@@ -125,6 +125,10 @@ audit, and adds the cache that makes a *hosted* `?pgx=` check legitimate rather 
   the wrapper was short, which is the half the webui and CLI call.
 - **`versions()` could only ever see the first page.** The endpoint is paged server-side and the
   wrapper sent neither `page` nor `per_page`.
+- **`list_modules(**filters)` is now fully named and keyword-only.** A server ignores a query param
+  it does not know, so a misspelled facet was not an error — it came back as a *wider* result set
+  that looks like a working search. `registry-client list` grew the filters it was missing
+  (`--genome-build`, `--namespace`, `--owner`, `--license`, `--featured`) and paging.
 - **SDK↔API parity is now asserted structurally**, not left to review: `test_client_sdk.py` compares
   the OpenAPI surface against a table of wrapping client methods, so a new route fails the suite by
   name. It also checks that every pre-flight query flag is spellable from both the SDK and the CLI —

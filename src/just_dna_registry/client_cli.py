@@ -71,14 +71,25 @@ def list_modules(
     q: Optional[str] = typer.Option(None, help="Full-text query"),
     gene: Optional[str] = typer.Option(None),
     category: Optional[str] = typer.Option(None),
-    group: Optional[str] = typer.Option(None, help="Tab: all|featured|popular|new|test"),
+    genome_build: Optional[str] = typer.Option(None, "--genome-build"),
+    namespace: Optional[str] = typer.Option(None),
+    owner: Optional[str] = typer.Option(None),
+    license: Optional[str] = typer.Option(None),
+    featured: Optional[bool] = typer.Option(None, "--featured/--not-featured"),
+    group: Optional[str] = typer.Option(None, help="Tab: all|featured|curated|popular|new|test"),
     sort: str = typer.Option("name", help="downloads|recent|name|stars|popular"),
+    page: int = typer.Option(1, help="1-based page number"),
+    per_page: int = typer.Option(20, "--per-page", help="Page size (max 100)"),
     url: Optional[str] = UrlOpt,
 ) -> None:
     """List / search catalog modules."""
     with _client(url, None) as c:
-        body = c.list_modules(q=q, gene=gene, category=category, group=group, sort=sort)
-    typer.echo(f"{body['total']} module(s):")
+        body = c.list_modules(
+            q=q, gene=gene, category=category, genome_build=genome_build, namespace=namespace,
+            owner=owner, license=license, featured=featured, group=group, sort=sort,
+            page=page, per_page=per_page,
+        )
+    typer.echo(f"{body['total']} module(s), page {body['page']} of {body['per_page']}-sized pages:")
     for item in body["items"]:
         typer.echo(
             f"  {item['namespace']}/{item['name']}@{item['latest_version']}"

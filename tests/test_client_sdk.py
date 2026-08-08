@@ -236,7 +236,9 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("POST", "/api/v1/auth/tokens"): ("issue_jwt_token",),
     ("GET", "/api/v1/auth/whoami"): ("whoami",),
     ("PATCH", "/api/v1/auth/whoami"): ("update_profile",),
-    ("GET", "/api/v1/modules"): ("list_modules", "catalog_stats"),
+    # `list_modules` alone — `catalog_stats` merely pages it, and listing a roll-up here would let
+    # its own `namespace=`/`group=` arguments stand in for filters the real wrapper had dropped.
+    ("GET", "/api/v1/modules"): ("list_modules",),
     ("GET", "/api/v1/modules/groups"): ("groups",),
     ("GET", "/api/v1/modules/lookup"): ("lookup_by_digest", "lookup_by_signature"),
     ("POST", "/api/v1/modules/lookup"): ("lookup_by_digests", "lookup_by_signatures"),
@@ -304,6 +306,36 @@ def test_every_route_is_wrapped_by_a_client_method(app) -> None:
     )
 
 
+# The one query param the SDK deliberately spells as two methods rather than an argument: `format`
+# selects between a file listing to walk and a single tarball, and the two return different types
+# (`ModuleManifest` after verification vs a `Path`), so one method with a mode switch would have a
+# return type that depends on a string.
+_NOT_AN_ARGUMENT: dict[tuple[str, str], set[str]] = {
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/download"): {"format"},
+}
+
+
+def test_every_query_param_is_spellable_from_the_sdk(app) -> None:
+    """A server ignores a query param it does not know, so an unsendable filter is not an error —
+    it is a *wider* result set that looks like a working search, or a check that silently never ran.
+    Union across the wrappers, since some routes are split into several methods."""
+    unreachable: dict[tuple[str, str], list[str]] = {}
+    for path, operations in app.openapi()["paths"].items():
+        for method, operation in operations.items():
+            route = (method.upper(), path)
+            wanted = {
+                parameter["name"]
+                for parameter in operation.get("parameters", [])
+                if parameter["in"] == "query"
+            } - _NOT_AN_ARGUMENT.get(route, set())
+            sendable: set[str] = set()
+            for wrapper in _WRAPPED_ROUTES.get(route, ()):
+                sendable |= set(inspect.signature(getattr(RegistryClient, wrapper)).parameters)
+            if wanted - sendable:
+                unreachable[route] = sorted(wanted - sendable)
+    assert unreachable == {}
+
+
 def test_the_wrapper_names_still_resolve() -> None:
     """The table is only worth having if a rename breaks it rather than the caller."""
     missing = [
@@ -322,14 +354,12 @@ def test_the_wrapper_names_still_resolve() -> None:
         ("/api/v1/modules/{namespace}/{name}/validate", "validate", "validate"),
     ],
 )
-def test_preflight_query_flags_reach_the_sdk_and_the_cli(
+def test_preflight_query_flags_reach_the_cli_too(
     app, path: str, sdk_method: str, cli_command: str
 ) -> None:
-    """Every knob on a pre-flight endpoint has to be spellable from both wrappers.
-
-    This is the drift that recurs: each new enrichment pass adds a query flag, and a flag the SDK
-    cannot send is a check the CLI silently never runs — the report comes back clean because the
-    question was never asked."""
+    """The pre-flight endpoints are held to the stricter bar: the CLI must expose every flag as well,
+    not just the SDK. This is the drift that recurs — each new enrichment pass adds a flag, and one
+    the CLI cannot pass reads as a clean report on a question nobody asked."""
     operation = app.openapi()["paths"][path]["post"]
     query_flags = {
         parameter["name"]

@@ -31,7 +31,7 @@ export REGISTRY_TOKEN=mk_live_…
 
 | Capability | `RegistryClient` method | `registry-client` command | Auth |
 |---|---|---|---|
-| List / search | `list_modules(**filters)` | `list` | — |
+| List / search | `list_modules(q=, gene=, category=, …)` | `list` | — |
 | Module detail | `get_module(ns, name)` | *(use the API / `download`)* | — |
 | Version list | `versions(ns, name)` | *(via detail)* | — |
 | Full manifest | `manifest(ns, name, v)` | *(written by `download`)* | — |
@@ -72,8 +72,11 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
 
 ### Reads (no token)
 
-- **`list_modules(**filters) -> dict`** — a `Page` of cards. Filters: `q, category, gene,
-  genome_build, owner, license, sort, page, per_page` (Nones dropped).
+- **`list_modules(*, q=None, category=None, gene=None, genome_build=None, owner=None, license=None,
+  namespace=None, featured=None, include_blacklisted=False, group=None, sort="name", page=1,
+  per_page=20) -> dict`** — a `Page` of cards; `None` filters are dropped. Keyword-only and fully
+  named on purpose: the server ignores a query param it does not know, so a misspelled facet would
+  otherwise come back as a *wider* result set that looks like a working search.
 - **`get_module(namespace, name) -> dict`** — module detail (readme, versions, `latest_manifest`,
   full `stats.genes`).
 - **`versions(namespace, name, *, page=1, per_page=20) -> dict`** — a `Page` of `VersionSummary`.

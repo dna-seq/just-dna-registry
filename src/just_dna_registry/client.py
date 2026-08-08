@@ -140,7 +140,37 @@ class RegistryClient:
 
     # ── Reads ─────────────────────────────────────────────────────────────────
 
-    def list_modules(self, **params: Any) -> dict:
+    def list_modules(
+        self,
+        *,
+        q: Optional[str] = None,
+        category: Optional[str] = None,
+        gene: Optional[str] = None,
+        genome_build: Optional[str] = None,
+        owner: Optional[str] = None,
+        license: Optional[str] = None,
+        namespace: Optional[str] = None,
+        featured: Optional[bool] = None,
+        include_blacklisted: bool = False,
+        group: Optional[str] = None,
+        sort: str = "name",
+        page: int = 1,
+        per_page: int = 20,
+    ) -> dict:
+        """A page of catalog cards: `{items, total, page, per_page}` (`per_page` max 100).
+
+        Every filter is named rather than swept up from `**kwargs`, because the server ignores a
+        query param it does not know: a misspelled facet used to come back as a *wider* result set
+        that looks like a working search. `group` ∈ `all|featured|curated|popular|new|test`,
+        `sort` ∈ `downloads|recent|name|stars|popular` — the server 422s on anything else.
+        `None` filters are dropped rather than sent empty.
+        """
+        params: dict[str, Any] = {
+            "q": q, "category": category, "gene": gene, "genome_build": genome_build,
+            "owner": owner, "license": license, "namespace": namespace, "featured": featured,
+            "include_blacklisted": include_blacklisted, "group": group,
+            "sort": sort, "page": page, "per_page": per_page,
+        }
         clean = {k: v for k, v in params.items() if v is not None}
         return self._json(self._http.get("/modules", params=clean))
 
