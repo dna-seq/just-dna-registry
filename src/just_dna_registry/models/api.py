@@ -516,6 +516,49 @@ class PgxCheck(BaseModel):
     )
 
 
+class IdentifierCheck(BaseModel):
+    """Authored trait CURIEs (OLS4) and gene symbols (HGNC) against the registries that own them.
+
+    The generalization of "is the source stale?" from datasets to identifiers: a dbSNP merge, an EFO
+    retirement and an HGNC rename each leave a module perfectly well-formed and quietly out of date.
+    rsIDs are **not** here — they are checked inside `enrich()`, because their verdict lands on
+    `resolution.csv`'s own columns; see `EnrichmentReport.stale_rsids`.
+
+    **Online only, and there is no snapshot to fall back on.** Offline the pass is not run at all and
+    says so, because neither OLS4 nor HGNC publishes one and `check_identifiers` takes no `offline`
+    parameter to defer the decision to.
+
+    **Nothing here moves `would_publish`.** A publish never runs this pass, so a finding predicts
+    nothing about one — it is advice to the author, and reporting it as a publish blocker would
+    predict a rejection that will not happen.
+    """
+
+    checked_traits: int = 0
+    checked_genes: int = 0
+    stale_traits: list[str] = Field(
+        default_factory=list, description="Obsolete or absent CURIEs, with the replacement when OLS4 names one"
+    )
+    stale_genes: list[str] = Field(
+        default_factory=list, description="Symbols HGNC has retired (with the current one) or never approved"
+    )
+    unchecked: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Identifiers no question could be put about — a CURIE in an ontology this tier has no "
+            "route to. Kept apart from the two above: never asked is not answered-clean"
+        ),
+    )
+    clean: Optional[bool] = Field(
+        default=None,
+        description="`null` when nothing was checked — clean out of zero identifiers says nothing",
+    )
+    skipped_offline: bool = False
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Why the pass could not run, or could only partly run — never a module defect",
+    )
+
+
 class EnrichmentReport(BaseModel):
     """What the network tier found. Every entry is reported, never repaired.
 
@@ -540,6 +583,7 @@ class EnrichmentReport(BaseModel):
     )
     frequencies: Optional[FrequencyCheck] = None
     literature: Optional[LiteratureCheck] = None
+    identifiers: Optional[IdentifierCheck] = None
     acmg: Optional[AcmgCheck] = None
     pgx: Optional[PgxCheck] = None
 

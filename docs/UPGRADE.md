@@ -11,8 +11,9 @@ blanket publish rejection with no obvious cause.
 
 **1. `registry warm-caches --apply`.** Publish now enriches before it compiles, and with
 `REGISTRY_COMPILE_STRICT` on (the default) a server holding no reference snapshot **cannot publish an
-rsID-authored module at all** — it refuses rather than emitting a partial artifact. `/check` likewise
-answers `503 enrichment_unavailable`. The dry run (`--dry-run`, the default) reports what the running
+rsID-authored module at all** — it refuses rather than emitting a partial artifact. `/check` still
+answers `200`, with the shortfall as a note: a snapshot is what makes *offline* resolution possible,
+and an online run reaches live Ensembl without one. The dry run (`--dry-run`, the default) reports what the running
 server would find, so it doubles as a health check. Already running just-dna-lite on the same host?
 Point `JUST_DNA_PIPELINES_CACHE_DIR` at its cache and reuse it.
 

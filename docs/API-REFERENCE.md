@@ -146,9 +146,10 @@ The full dry run: everything `/validate` does, plus what only the network tier c
 reference allele against the actual genome, `clin_sig` against ClinVar, rsIDs dbSNP has merged away,
 GA4GH allele-identity coverage.
 
-Query: `?strict=` `?offline=` `?frequencies=` `?literature=` `?acmg=` `?pgx=` `?declared_use=`.
+Query: `?strict=` `?offline=` `?frequencies=` `?literature=` `?identifiers=` `?acmg=` `?pgx=`
+`?declared_use=`.
 
-The four optional passes are opt-in because each has a cost the base run does not, and each degrades
+The five optional passes are opt-in because each has a cost the base run does not, and each degrades
 rather than failing — a pass that could not run reports **why**, in its own `warnings`, and never
 reports a clean result it did not earn:
 
@@ -156,8 +157,17 @@ reports a clean result it did not earn:
 |---|---|---|
 | `?frequencies=` | no-op | gnomAD is online-only and there is no snapshot to ship (the v4.1 sites VCFs are 58 GB / 742 GB); `skipped_offline: true` |
 | `?literature=` | no-op | PubMed / Europe PMC / Crossref are live; a PGx-only module carries no `studies.csv`, which is a note, not a defect |
+| `?identifiers=` | no-op | OLS4 and HGNC are live and neither publishes a snapshot, so offline the pass reports that nothing was **asked** — `clean: null`, not `clean: true` |
 | `?acmg=` | **works with a snapshot** | needs `REGISTRY_ACMG_SNAPSHOT_DIR` (build it with `just-dna-enricher acmg build`); without one, `checked: 0` and a warning — *unchecked*, never *clean* |
 | `?pgx=` | **works with snapshots** | each leg is snapshot → live → skipped-with-a-reason; `REGISTRY_CPIC_CACHE` / `REGISTRY_PHARMVAR_CACHE` / `REGISTRY_CLINPGX_CACHE`. ClinGen dosage alone is live-only |
+
+`?identifiers=true` checks authored `trait_efo_id` CURIEs against OLS4 and `gene` symbols against
+HGNC — the generalization of "is the source stale?" from datasets to identifiers, since an EFO
+retirement or an HGNC rename leaves a module well-formed and quietly out of date. rsIDs are **not**
+here: they are checked inside `enrich()` and land on `enrichment.stale_rsids`, because their verdict
+belongs on `resolution.csv`'s own columns. A CURIE in an ontology this tier has no route for comes
+back under `unchecked` rather than as a finding. **Nothing it reports moves `would_publish`** — a
+publish does not run this pass, so a finding predicts nothing about one.
 
 `?pgx=true` cross-checks authored PGx assertions against PharmVar, CPIC, ClinPGx and ClinGen dosage.
 **Provision its snapshots if you host this endpoint.** Without them the only alternatives are fetching

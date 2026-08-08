@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+import httpx
 from just_dna_compiler.compiler import content_signature, validate_spec
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 
@@ -41,6 +42,7 @@ from just_dna_registry.models.api import (
     EnrichmentReport,
     FrequencyCheck,
     FunctionConflictEntry,
+    IdentifierCheck,
     LiteratureCheck,
     PgxCheck,
     RefMismatchEntry,
@@ -53,10 +55,21 @@ from just_dna_registry.models.api import (
 
 logger = logging.getLogger("registry.enrich")
 
-#: Snapshots that decide whether a **publish** works: resolution (Ensembl, ClinVar) and the gene
-#: constraint the metrics pass reads. Absent and offline, an rsID-authored module cannot be placed and
-#: a strict publish fails — which is why `startup` warns about these at boot.
-RESOLUTION_REFERENCES: tuple[str, ...] = ("ensembl", "clinvar", "constraint")
+#: Snapshots that decide whether a **publish** works. Absent and offline, an rsID-authored module
+#: cannot be placed and a strict publish fails — which is why `startup` warns about these at boot.
+#:
+#: Exactly the two the resolution chain reads. `constraint` sat here until it was noticed that no
+#: registry pass reads it: the gene-metrics pass writes an authored sidecar (`gene_metrics.csv`) and
+#: this service never runs it, so a missing constraint snapshot cannot cost a publish anything. Under
+#: `enrich_require_cache` its presence here made the server *exit at boot* over a file nothing would
+#: have opened, and it put "constraint" in the `/check` note that says nothing could be resolved —
+#: the same false attribution the PGx set is kept out for.
+RESOLUTION_REFERENCES: tuple[str, ...] = ("ensembl", "clinvar")
+
+#: gnomAD gene constraint. Pullable and reported by `registry warm-caches` — an operator may well
+#: want it on the box, and a future gene-metrics pass would read it — but nothing here consults it
+#: today, so it gates neither a publish nor a check and never appears in a finding about a module.
+METRICS_REFERENCES: tuple[str, ...] = ("constraint",)
 
 #: The licence-gated PGx snapshots (enricher 0.5.1 / RM38). Kept apart from the three above because
 #: they gate a *different* thing — only the opt-in `?pgx=` check reads them — and conflating the two
@@ -67,9 +80,11 @@ RESOLUTION_REFERENCES: tuple[str, ...] = ("ensembl", "clinvar", "constraint")
 #: multiplies its callers onto one allowance rather than each getting their own.
 PGX_REFERENCES: tuple[str, ...] = ("cpic", "pharmvar", "clinpgx")
 
-#: Every snapshot this deployment can consult. Keys are the names surfaced in
-#: `503 enrichment_unavailable`'s `missing[]` and in `registry warm-caches`.
-REFERENCE_NAMES: tuple[str, ...] = RESOLUTION_REFERENCES + PGX_REFERENCES
+#: Every snapshot this deployment can hold. Keys are the names `registry warm-caches` reports and
+#: `configured_caches` / `available_references` are keyed by.
+REFERENCE_NAMES: tuple[str, ...] = (
+    RESOLUTION_REFERENCES + METRICS_REFERENCES + PGX_REFERENCES
+)
 
 #: The two the registry can *download*. PharmVar is absent by upstream design rather than oversight:
 #: its bulk data is taken under a key its terms make personal and non-transferable, so nothing is
@@ -143,14 +158,39 @@ def shared_lookup_clients() -> Any:
 
     That sharing is only safe because `PacingGate` has no lock and `enrich_max_concurrency` defaults
     to 1. Raising the concurrency races the gate; the setting says so.
+
+    **Every member is constructed here, and `LookupClients()` on its own is not a bundle.** Its
+    docstring says the clients are "optional and lazily built", which is true of `lookup.py` — each
+    of its functions does `client = clients.x or XClient()` and closes what it made. Nothing builds
+    them on the dataclass. So an empty `LookupClients()` handed to the passes below is six `None`s:
+    every `resolver=`, `gnomad_client=`, `client=`, `eutils=` argument arrived empty, each pass built
+    its own client with a fresh `PacingGate`, and the process-wide pacing this function exists for
+    never happened — `close_lookup_clients` closed nothing either. Constructed eagerly rather than
+    per attribute because the bundle is built once per process, on the first online run, and only
+    then: an offline caller never asks for it.
     """
     global _shared_clients
     if _shared_clients is None:
         with _clients_lock:
             if _shared_clients is None:
+                from just_dna_enricher.ensembl import EnsemblResolver
+                from just_dna_enricher.eutils import EutilsClient
+                from just_dna_enricher.gnomad import GnomadClient
+                from just_dna_enricher.identifiers import OntologyClient
+                from just_dna_enricher.literature import CrossrefClient, EuropePmcClient
                 from just_dna_enricher.lookup import LookupClients
 
-                _shared_clients = LookupClients()
+                # `EutilsClient` reads `NCBI_API_KEY` at construction to pick its interval (3/s
+                # without, 10/s with), which is why `export_enricher_credentials` runs at boot and
+                # this is built on demand rather than at import.
+                _shared_clients = LookupClients(
+                    gnomad=GnomadClient(),
+                    eutils=EutilsClient(),
+                    europepmc=EuropePmcClient(),
+                    crossref=CrossrefClient(),
+                    ontology=OntologyClient(),
+                    ensembl=EnsemblResolver(),
+                )
     return _shared_clients
 
 
@@ -358,13 +398,19 @@ def enrich_spec(
             ensembl_cache=caches["ensembl"],
             clinvar_cache=caches["clinvar"],
             use_clinvar=settings.enrich_use_clinvar,
-            use_gnomad=settings.enrich_use_gnomad and not offline,
+            # Passed as configured, `offline` beside them. `enrich()` already gates both on it —
+            # the gnomAD link and the dbSNP currency check are live-only — and an `and not offline`
+            # here would only take the decision away from the pass that reports on it: with the
+            # setting on and the run offline, the enricher says *why* the rsID check did not run.
+            # Silencing that turns "could not be checked" into an indistinguishable "was not asked
+            # for", which is the one distinction this tier exists to keep.
+            use_gnomad=settings.enrich_use_gnomad,
             download=settings.enrich_download,
             write=True,
             mint_vrs=settings.enrich_mint_vrs,
             verify_ref=settings.enrich_verify_ref,
             verify_clinsig=settings.enrich_verify_clinsig,
-            verify_rsids=settings.enrich_verify_rsids and not offline,
+            verify_rsids=settings.enrich_verify_rsids,
             keep_par_twin=settings.enrich_keep_par_twin,
         )
     except EnrichmentError as exc:
@@ -476,6 +522,7 @@ def dry_run(
     offline: bool,
     frequencies: bool = False,
     literature: bool = False,
+    identifiers: bool = False,
     acmg: bool = False,
     pgx: bool = False,
     declared_use: str = "unstated",
@@ -506,8 +553,9 @@ def dry_run(
                 dest.write_bytes(data)
             return _dry_run_inner(
                 settings=settings, repo=repo, spec_dir=spec_dir, name=name, strict=strict,
-                offline=offline, frequencies=frequencies, literature=literature, acmg=acmg,
-                pgx=pgx, declared_use=declared_use, started=started,
+                offline=offline, frequencies=frequencies, literature=literature,
+                identifiers=identifiers, acmg=acmg, pgx=pgx, declared_use=declared_use,
+                started=started,
             )
     finally:
         if gate is not None:
@@ -524,6 +572,7 @@ def _dry_run_inner(
     offline: bool,
     frequencies: bool,
     literature: bool,
+    identifiers: bool,
     acmg: bool,
     pgx: bool,
     declared_use: str,
@@ -564,7 +613,7 @@ def _dry_run_inner(
     enrichment = _run_enrichment_passes(
         settings=settings, spec_dir=spec_dir, offline=offline,
         caches=configured_caches(settings),
-        frequencies=frequencies, literature=literature, acmg=acmg,
+        frequencies=frequencies, literature=literature, identifiers=identifiers, acmg=acmg,
         pgx=pgx, declared_use=declared_use,
     )
     return CheckReport(
@@ -603,6 +652,7 @@ def _run_enrichment_passes(
     caches: dict[str, Optional[Path]],
     frequencies: bool,
     literature: bool,
+    identifiers: bool,
     acmg: bool,
     pgx: bool = False,
     declared_use: str = "unstated",
@@ -626,7 +676,7 @@ def _run_enrichment_passes(
             ensembl_cache=caches["ensembl"],
             clinvar_cache=caches["clinvar"],
             use_clinvar=settings.enrich_use_clinvar,
-            use_gnomad=settings.enrich_use_gnomad and not offline,
+            use_gnomad=settings.enrich_use_gnomad,  # `offline` gates it inside `enrich()`
             download=False,  # never provision a multi-hundred-MB snapshot inside a request
             # Required, not incidental: the optional passes below read `resolution.csv` back off
             # disk. The spec dir is a temp dir that is discarded when the request ends.
@@ -634,7 +684,7 @@ def _run_enrichment_passes(
             mint_vrs=settings.enrich_mint_vrs,
             verify_ref=settings.enrich_verify_ref,
             verify_clinsig=settings.enrich_verify_clinsig,
-            verify_rsids=settings.enrich_verify_rsids and not offline,
+            verify_rsids=settings.enrich_verify_rsids,  # ditto — live dbSNP is the only oracle
             keep_par_twin=settings.enrich_keep_par_twin,
         )
     except EnrichmentError as exc:
@@ -704,6 +754,8 @@ def _run_enrichment_passes(
         report.frequencies = _frequency_check(spec_dir, offline, clients)
     if literature:
         report.literature = _literature_check(spec_dir, offline, clients)
+    if identifiers:
+        report.identifiers = _identifiers_check(spec_dir, offline, clients)
     if acmg:
         report.acmg = _acmg_check(spec_dir, settings, offline)
     if pgx:
@@ -728,6 +780,15 @@ def _frequency_check(spec_dir: Path, offline: bool, clients: Any) -> FrequencyCh
     fact about a locus it does cover; `uncovered` is one it cannot cover at all (the Y
     pseudoautosomal region is hard-masked), where recording an absence would state something nobody
     established.
+
+    **A skipped-offline run reports no absences at all**, and that is the same rule again rather
+    than a special case. gnomAD is the one pass with no snapshot to fall back on (the v4.1 sites
+    VCFs are 58 GB / 742 GB), so offline it returns `skipped_offline=True` with `missing` holding
+    every allele that no existing `frequencies.csv` already pins — an honest statement of *what is
+    not pinned*, which is not the question this field answers. Surfaced verbatim it said gnomAD had
+    been asked about 57 alleles and had none of them, having asked about nothing: `unchecked`
+    reported as `not_found`. The count is still worth having, so it travels as a warning that says
+    which of the two it is.
     """
     from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 
@@ -744,12 +805,23 @@ def _frequency_check(spec_dir: Path, offline: bool, clients: Any) -> FrequencyCh
         # coordinate-bearing table at all) or one that will not parse. A degradation to report, not
         # a reason to fail a dry run whose other findings are perfectly good.
         return FrequencyCheck(warnings=[str(exc)])
+    if result.skipped_offline:
+        return FrequencyCheck(
+            covered=len(result.covered),
+            sources=list(result.sources),
+            skipped_offline=True,
+            warnings=[
+                f"gnomAD was not consulted: this run is offline and there is no frequency snapshot "
+                f"to fall back on. {len(result.missing)} allele(s) have no frequency pinned by an "
+                f"existing frequencies.csv — which is a coverage gap, not an absence from gnomAD."
+            ],
+        )
     return FrequencyCheck(
         covered=len(result.covered),
         missing=list(result.missing),
         uncovered=list(result.uncovered),
         sources=list(result.sources),
-        skipped_offline=result.skipped_offline,
+        skipped_offline=False,
     )
 
 
@@ -784,6 +856,76 @@ def _literature_check(spec_dir: Path, offline: bool, clients: Any) -> Literature
         quotes_found=result.quotes_found,
         quotes_unchecked=result.quotes_unchecked,
         skipped_offline=result.skipped_offline,
+    )
+
+
+def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> IdentifierCheck:
+    """Authored trait CURIEs against OLS4 and gene symbols against HGNC.
+
+    The one optional pass with **no offline route of any kind**: neither registry publishes a
+    snapshot, and `check_identifiers` takes no `offline` parameter, so there is no decision here to
+    defer to the pass the way `offline=` is deferred everywhere else. Guarding is the only option,
+    and what it must not do is come back empty — an unasked question reported as a clean answer is
+    the failure mode this whole tier is arranged against. So the skip is explicit and `clean` stays
+    `None`.
+
+    HGNC's `unknown` and OLS4's `absent` are findings; a CURIE in an ontology this tier has no IRI
+    route for comes back `unchecked` and is reported apart from both, because the enricher's own
+    `clean` counts it as clean and it is not a statement about the module.
+
+    Degrades on a transport failure rather than failing the dry run: OLS4 being down says nothing
+    about the spec, and the other passes' findings are still worth returning.
+    """
+    from just_dna_enricher.identifiers import check_identifiers
+
+    if not (spec_dir / "variants.csv").is_file():
+        return IdentifierCheck(
+            warnings=["no variants.csv — `trait_efo_id` and `gene` are variants-table columns, so "
+                      "there is nothing to check"]
+        )
+    if offline:
+        return IdentifierCheck(
+            skipped_offline=True,
+            warnings=["offline: OLS4 and HGNC are live-only and neither publishes a snapshot, so "
+                      "nothing was asked. That is not the same as nothing being found."],
+        )
+
+    try:
+        report = check_identifiers(spec_dir=spec_dir, client=clients.ontology if clients else None)
+    except ValueError as exc:
+        # `variants.csv` will not load — which the validation findings already explain in full, so
+        # this is a note rather than a second, worse-worded copy of them.
+        return IdentifierCheck(warnings=[str(exc)])
+    except httpx.HTTPError as exc:
+        return IdentifierCheck(warnings=[f"OLS4/HGNC could not be reached: {exc}"])
+
+    unchecked = [
+        f"{t.curie}: not an ontology this tier can resolve, so its currency is unknown"
+        for t in report.traits
+        if t.state == "unchecked"
+    ]
+    return IdentifierCheck(
+        checked_traits=len(report.traits) - len(unchecked),
+        checked_genes=len(report.genes),
+        stale_traits=[
+            f"{t.curie} is {t.state}"
+            + (f" — OLS4 replaces it with {t.replaced_by}" if t.replaced_by else "")
+            for t in report.stale_traits
+        ],
+        stale_genes=[
+            f"{g.symbol} is {g.state}"
+            + (f" — HGNC now approves {g.current}" if g.current else "")
+            for g in report.stale_genes
+        ],
+        unchecked=unchecked,
+        # Scoped to what this pass asked. `IdentifierReport.clean` also folds in `rsids`, which this
+        # call never populates (they are checked inside `enrich()` and reported as `stale_rsids`), so
+        # reading it would let one pass answer for another's field.
+        clean=(
+            not (report.stale_traits or report.stale_genes)
+            if (report.traits or report.genes)
+            else None
+        ),
     )
 
 
@@ -923,7 +1065,13 @@ def _pgx_check(
         check.skipped.extend(pgx_result.skipped_offline)
         check.warnings.extend(pgx_result.warnings)
         check.routes.update(pgx_result.routes)
-        sources.update(row.source for row in pgx_result.rows)
+        # `routes`, not `rows`. `PgxResult.rows` is the *merged* `sources.csv` — the module's own
+        # authored rows plus whatever this run emitted, existing-wins — so reading sources off it
+        # reported a source the module happened to declare as one the registry had consulted. A
+        # module carrying an authored CPIC row got `sources: [cpic]` on a run whose very next line
+        # said cpic was skipped for want of a snapshot, and picked up `ensembl` from the resolution
+        # row `enrich()` had just written. `routes` gains an entry only where a client answered.
+        sources.update(pgx_result.routes)
         check.conflicts.extend(
             FunctionConflictEntry(
                 gene=c.gene, allele=c.allele, authored=c.authored, reported=c.reported,
@@ -965,7 +1113,11 @@ def _pgx_check(
             check.warnings.append(
                 f"clinpgx: {len(cp.unmatched)} authored row(s) matched nothing in the snapshot"
             )
-        if present["clinpgx"] is None and caches["clinpgx"] is None:
+        # Keyed on "did it answer", not on "was a path configured". The earlier condition also
+        # required `caches["clinpgx"] is None`, so an operator who pointed REGISTRY_CLINPGX_CACHE at
+        # a directory holding no snapshot got silence — the one case where the setting *looks* done
+        # and is not.
+        if not (cp.rows or cp.dataset) and present["clinpgx"] is None:
             check.skipped.append(
                 "clinpgx: no snapshot found (REGISTRY_CLINPGX_CACHE); provision one with "
                 "`registry warm-caches --apply --use non_commercial`. It has no live route to fall "

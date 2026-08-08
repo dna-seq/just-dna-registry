@@ -91,9 +91,12 @@ stale wrapper.
     bad spec; `422 digest_mismatch` when a prebuilt upload disagrees with a sandbox re-compile.
   - `413 upload_too_large` — the request body exceeds `max_upload_bytes`. Distinct from
     `422 too_many_variants`, which is a legal body asking for too much *work*.
-  - `503 enrichment_unavailable` (+ `missing[]`) — no reference snapshot is provisioned and the run
-    is not offline. **No `Retry-After`**: retrying does not help until an operator provisions one.
-    503 over 501 (the feature is implemented) and over 424 (obscure).
+  - `503 enrichment_unavailable` (+ `missing[]`) — the network tier cannot run **at all** (today:
+    `just-dna-enricher` is not installed). **No `Retry-After`**: retrying does not help until an
+    operator changes the deployment. 503 over 501 (the feature is implemented) and over 424
+    (obscure). A *missing snapshot* is **not** this — it degrades per pass with a note in
+    `enrichment.notes`, because an online run resolves through live Ensembl without one, and the
+    earlier 503-on-empty-references refused the one configuration that works.
   - `503 enrichment_busy` / `504 enrichment_timeout` — the concurrency gate is full / the run
     exceeded `enrich_timeout_seconds`.
   - **A validation finding is a `200`, not a `422`.** `/validate` and `/check` return `valid: false`
@@ -140,6 +143,11 @@ Four rules that each cost a bug to learn:
   (`PacingGate` has no lock) — which means the two rules are one rule: **anything that takes the
   shared bundle must also take a gate permit.** `/check` and the publish path both do; publish takes
   it conditionally, since an offline publish reaches nothing and has nothing to serialize.
+  **And the bundle has to be *constructed*: bare `LookupClients()` is six `None`s.** Its docstring's
+  "lazily built" describes `lookup.py`, whose functions do `clients.x or XClient()` and close what
+  they made — nothing fills the dataclass. An empty bundle passes `None` into every `resolver=` /
+  `gnomad_client=` / `eutils=` argument, so each pass builds its own client, the pacing is per call
+  again, and `close_lookup_clients` closes nothing. `shared_lookup_clients()` builds all six.
 - **`offline` means *snapshot only*, not "that source is off" (enricher 0.5.1 / RM38).** Every pass
   is snapshot → live → skipped-with-a-reason, so a provisioned deployment gets the full `?pgx=` check
   with zero egress. Assuming the family is online-only silently skips work a cache could have done.

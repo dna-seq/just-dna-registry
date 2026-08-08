@@ -122,13 +122,19 @@ def import_module(
     report_title: Optional[str] = typer.Option(None),
     icon: Optional[str] = typer.Option(None),
     color: Optional[str] = typer.Option(None),
+    genome_build: Optional[str] = typer.Option(
+        None,
+        "--genome-build",
+        help="Assembly of a bare parquet archive that carries no manifest.json (default GRCh38). "
+        "Not display metadata: the build decides the variant_key identity.",
+    ),
     url: Optional[str] = UrlOpt,
     token: Optional[str] = TokenOpt,
 ) -> None:
     """Publish a module from a zip/tar.gz archive (in-house packaging / legacy import)."""
     display = {
         "title": title, "description": description, "report_title": report_title,
-        "icon": icon, "color": color,
+        "icon": icon, "color": color, "genome_build": genome_build,
     }
     with _client(url, token, need_token=True) as c:
         manifest = c.import_module(namespace, name, version, archive, changelog=changelog, display=display)
@@ -338,6 +344,9 @@ def check(
         False, "--frequencies", help="gnomAD allele frequencies (slow: ~6s per 20 variants)"
     ),
     literature: bool = typer.Option(False, "--literature", help="Citation existence + DOI agreement"),
+    identifiers: bool = typer.Option(
+        False, "--identifiers", help="trait_efo_id vs OLS4 and gene vs HGNC (online: no snapshot)"
+    ),
     acmg: bool = typer.Option(False, "--acmg", help="acmg_sf flags vs the ACMG SF list"),
     pgx: bool = typer.Option(
         False, "--pgx", help="function_status vs PharmVar/CPIC/ClinPGx/ClinGen (needs --use)"
@@ -361,7 +370,8 @@ def check(
         try:
             report = c.check(
                 namespace, name, spec_dir, strict=strict, offline=offline,
-                frequencies=frequencies, literature=literature, acmg=acmg, pgx=pgx,
+                frequencies=frequencies, literature=literature, identifiers=identifiers,
+                acmg=acmg, pgx=pgx,
                 # The CLI spells it with a hyphen (matching `just-dna-enricher --use`); the column
                 # vocabulary uses an underscore. Normalize here so a hand-typed flag cannot 422.
                 declared_use=use.replace("-", "_") if use else None,
@@ -407,6 +417,14 @@ def check(
         for stale in e.stale_rsids:
             colour = typer.colors.RED if stale.fatal else typer.colors.YELLOW
             typer.secho(f"  {'✗' if stale.fatal else '!'} rsID {stale.rsid} is {stale.state}", fg=colour)
+        if e.identifiers is not None:
+            for line in e.identifiers.stale_traits + e.identifiers.stale_genes:
+                typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
+            # Never asked is not answered-clean, so the two print differently on purpose.
+            for line in e.identifiers.unchecked:
+                typer.echo(f"  · {line}")
+            for line in e.identifiers.warnings:
+                typer.echo(f"  · {line}")
         if e.pgx is not None:
             for conflict in e.pgx.conflicts:
                 typer.secho(

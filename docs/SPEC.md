@@ -441,7 +441,9 @@ thing these exist to predict. Both require `PUBLISH` on the namespace.
 
 **A finding is a `200`.** A spec that would be rejected comes back with `valid: false` and the
 reasons; only a request no spec directory can be assembled from is a 4xx. `/check` answers
-`503 enrichment_unavailable` when the operator has provisioned no reference snapshot.
+`503 enrichment_unavailable` when the enrichment tier cannot run at all (`just-dna-enricher` is not
+installed on the server). A *missing snapshot* is not that: it degrades per pass with a note, since
+an online run resolves through live Ensembl without one.
 
 ### 8.9 Content identity pre-check — `GET /modules/lookup?signature=`
 

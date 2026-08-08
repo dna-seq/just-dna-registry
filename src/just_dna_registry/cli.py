@@ -638,12 +638,15 @@ def warm_caches(
     cache paths and the same resolver, so it doubles as a health check. `--apply` downloads what is
     missing: hundreds of megabytes, minutes.
 
-    Two groups, because they gate different things. **Resolution** (ensembl, clinvar, constraint)
-    decides whether a publish works. **PGx** (cpic, clinpgx — `--pgx`) is what makes a *hosted*
-    `?pgx=` check legitimate rather than merely possible: without a cache the only alternatives are
-    fetching a source that forbids sale live, per request, on the operator's own acceptance, or
-    skipping the check. Their rate figures are per IP, so a server multiplies its callers onto one
-    allowance. Tiny by comparison — CPIC is ~256 KB.
+    Three groups, because they gate different things. **Resolution** (ensembl, clinvar) decides
+    whether a publish works. **PGx** (cpic, clinpgx — `--pgx`) is what makes a *hosted* `?pgx=`
+    check legitimate rather than merely possible: without a cache the only alternatives are fetching
+    a source that forbids sale live, per request, on the operator's own acceptance, or skipping the
+    check. Their rate figures are per IP, so a server multiplies its callers onto one allowance.
+    Tiny by comparison — CPIC is ~256 KB. **Metrics** (constraint — `--constraint`) gates nothing
+    here yet: the gene-metrics pass writes an authored sidecar and the registry never runs it, so
+    this is provisioning for a `just-dna-enricher gene-metrics` run on the same box, and its absence
+    is never reported as a finding about a module.
 
     **`--use` applies to the PGx pair and to nothing else.** Under a data-usage policy the terms are
     accepted when the data is *taken*, and a download is taking it, so `unstated` skips them and
@@ -658,6 +661,7 @@ def warm_caches(
     settings = get_settings()
     from just_dna_registry.services.enrich import (
         GATED_REFERENCES,
+        METRICS_REFERENCES,
         PGX_REFERENCES,
         RESOLUTION_REFERENCES,
         available_references,
@@ -724,7 +728,11 @@ def warm_caches(
     configured = configured_caches(settings)
     present = available_references(settings)
     missing: list[str] = []
-    for group, names in (("resolution", RESOLUTION_REFERENCES), ("pgx", PGX_REFERENCES)):
+    for group, names in (
+        ("resolution", RESOLUTION_REFERENCES),
+        ("metrics", METRICS_REFERENCES),
+        ("pgx", PGX_REFERENCES),
+    ):
         typer.secho(f"\n{group}:", bold=True)
         for name in names:
             if not wanted[name]:

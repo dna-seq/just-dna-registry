@@ -157,8 +157,15 @@ class RegistryClient:
             raise RegistryError(404, f"{namespace}/{name} has no published version")
         return latest
 
-    def versions(self, namespace: str, name: str) -> dict:
-        return self._json(self._http.get(f"/modules/{namespace}/{name}/versions"))
+    def versions(self, namespace: str, name: str, *, page: int = 1, per_page: int = 20) -> dict:
+        """A page of the module's versions: `{items, total, page, per_page}` (`per_page` max 100).
+        The listing is paged server-side, so a module with a long history needs the second page."""
+        return self._json(
+            self._http.get(
+                f"/modules/{namespace}/{name}/versions",
+                params={"page": page, "per_page": per_page},
+            )
+        )
 
     def manifest(self, namespace: str, name: str, version: str) -> ModuleManifest:
         data = self._json(self._http.get(f"/modules/{namespace}/{name}/versions/{version}/manifest"))
@@ -329,6 +336,7 @@ class RegistryClient:
         offline: bool = False,
         frequencies: bool = False,
         literature: bool = False,
+        identifiers: bool = False,
         acmg: bool = False,
         pgx: bool = False,
         declared_use: Optional[str] = None,
@@ -339,20 +347,28 @@ class RegistryClient:
         roughly six seconds per twenty variants. The client's 600s default timeout covers the
         server's own 300s cap.
 
+        `identifiers=True` adds trait-CURIE (OLS4) and gene-symbol (HGNC) currency. Online only —
+        neither publishes a snapshot — so with `offline=True` it reports that nothing was asked
+        rather than that nothing was found, and it never moves `would_publish`, since a publish does
+        not run it.
+
         `pgx=True` adds the PharmVar / CPIC / ClinPGx / ClinGen cross-checks. They are gated by
         `declared_use` (`unstated` | `non_commercial` | `commercial`) — every PGx upstream forbids
         sale, so on the server's default each is skipped with a reason rather than queried. Pass
         `non_commercial` to run them.
 
-        Raises `RegistryError(503, {"error": "enrichment_unavailable", ...})` when the operator has
-        provisioned no reference snapshots; retry with `offline=True` for the checks that need none.
+        Raises `RegistryError(503, {"error": "enrichment_unavailable", ...})` when the server's
+        network tier cannot run at all (`just-dna-enricher` is not installed there) — retrying is
+        pointless until an operator changes the deployment. A server that merely holds no snapshot
+        answers `200`: the shortfall arrives as a note on `enrichment.notes`, since an online run
+        resolves through live Ensembl without one.
         """
         self.assert_compatible()
         resp = self._http.post(
             f"/modules/{namespace}/{name}/check",
             params={
                 "strict": strict, "offline": offline, "frequencies": frequencies,
-                "literature": literature, "acmg": acmg, "pgx": pgx,
+                "literature": literature, "identifiers": identifiers, "acmg": acmg, "pgx": pgx,
                 **({"declared_use": declared_use} if declared_use else {}),
             },
             files=[
@@ -390,11 +406,19 @@ class RegistryClient:
         changelog: str = "",
         display: Optional[dict] = None,
     ) -> ModuleManifest:
-        """Publish from a zip/tar.gz archive (spec archive or legacy parquet-only + `display`)."""
+        """Publish from a zip/tar.gz archive (spec archive or legacy parquet-only + `display`).
+
+        `display` carries the reverse-engineering metadata for a parquet-only archive: `title`,
+        `description`, `report_title`, `icon`, `color` — and `genome_build`, which is not display
+        metadata at all. The build decides the identity key (`variant_key` is minted against the
+        assembly's refget accession), so reversing a GRCh37 archive as the format's GRCh38 default
+        mints ids naming a base the module never carried. Pass it for a bare parquet archive that
+        carries no `manifest.json` and is not GRCh38; an explicit value always wins.
+        """
         self.assert_compatible()
         archive_path = Path(archive_path)
         data = {"version": version, "changelog": changelog}
-        for key in ("title", "description", "report_title", "icon", "color"):
+        for key in ("title", "description", "report_title", "icon", "color", "genome_build"):
             if display and display.get(key) is not None:
                 data[key] = display[key]
         resp = self._http.post(

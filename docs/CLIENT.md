@@ -76,7 +76,8 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
   genome_build, owner, license, sort, page, per_page` (Nones dropped).
 - **`get_module(namespace, name) -> dict`** — module detail (readme, versions, `latest_manifest`,
   full `stats.genes`).
-- **`versions(namespace, name) -> dict`** — paginated `VersionSummary` list.
+- **`versions(namespace, name, *, page=1, per_page=20) -> dict`** — a `Page` of `VersionSummary`.
+  The listing is paged server-side (`per_page` max 100), so a long history needs the second page.
 - **`manifest(namespace, name, version) -> ModuleManifest`** — the parsed `just_dna_format`
   manifest.
 - **`logs(namespace, name, version) -> list[dict]`** — `[{name, sha256, size, url}]`.
@@ -105,7 +106,10 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
   `manifest.json`) and returns the compiled manifest.
 - **`import_module(namespace, name, version, archive_path, *, changelog="", display=None) -> ModuleManifest`**
   — uploads a zip/tar.gz. `display` (`title/description/report_title/icon/color`) is used only for
-  legacy parquet-only archives.
+  legacy parquet-only archives. `display["genome_build"]` rides along the same channel but is *not*
+  display metadata: the build decides the identity key, so a GRCh37 archive with no `manifest.json`
+  must declare it or it is reversed as the format's GRCh38 default, minting `variant_key`s for a
+  base the module never carried. See API-REFERENCE §import.
 
 ### Identity & profile (token)
 
@@ -224,9 +228,12 @@ afterwards discernible as published-by-you (identity + `published_at`).
 ### `import-module`  *(token)*
 ```bash
 registry-client import-module NS NAME VERSION ARCHIVE.zip \
-    [--changelog "…"] [--title …] [--description …] [--report-title …] [--icon …] [--color …]
+    [--changelog "…"] [--title …] [--description …] [--report-title …] [--icon …] [--color …] \
+    [--genome-build GRCh37]
 ```
 Publishes from a zip/tar.gz. Display flags apply only to legacy parquet-only archives.
+`--genome-build` is not one of them: it decides the identity key, and a bare parquet archive that
+carries no `manifest.json` and is not GRCh38 needs it declared.
 
 ### `update-module-version`  *(token)*
 ```bash

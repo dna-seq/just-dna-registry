@@ -111,7 +111,10 @@ def validate_enrichment_caches(settings: Settings) -> None:
     but the three PGx caches gate the opt-in `?pgx=` check rather than publishing, so folding them in
     would greet every deployment that never asks for that check with three boot warnings about
     caches it does not need — and would put them behind `enrich_require_cache`, i.e. make a hosted
-    PGx snapshot a condition of starting the server. `registry warm-caches` reports all six.
+    PGx snapshot a condition of starting the server. The gnomAD constraint snapshot is out for a
+    blunter reason: no registry pass reads it at all, so under `enrich_require_cache` it could stop
+    a server from booting over a file nothing would have opened. `registry warm-caches` reports all
+    six.
     """
     if not (settings.enrich_enabled and settings.enrich_offline):
         return
@@ -138,9 +141,8 @@ def validate_enrichment_caches(settings: Settings) -> None:
     message = (
         f"enrichment is offline and these reference snapshots are not provisioned: "
         f"{', '.join(missing)}. Run `registry warm-caches --apply` (or point "
-        f"REGISTRY_ENSEMBL_CACHE / REGISTRY_CLINVAR_CACHE / REGISTRY_CONSTRAINT_CACHE at existing "
-        f"ones). Without them the enricher resolves nothing and strict publishes of rsID-authored "
-        f"modules will fail."
+        f"REGISTRY_ENSEMBL_CACHE / REGISTRY_CLINVAR_CACHE at existing ones). Without them the "
+        f"enricher resolves nothing and strict publishes of rsID-authored modules will fail."
     )
     if settings.enrich_require_cache:
         logger.error(message)

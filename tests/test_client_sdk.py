@@ -7,10 +7,13 @@ FastAPI app is driven in-process through Starlette's ASGI transport. Real router
 no stubbed HTTP layer."""
 
 import asyncio
+import inspect
 
 import pytest
 from fastapi.testclient import TestClient
+from test_import import _bare_parquet_zip
 
+from just_dna_registry import client_cli
 from just_dna_registry.client import RegistryClient
 
 _NS, _NAME, _VER = "just-dna-seq", "coronary", "1.0.0"
@@ -177,3 +180,172 @@ async def test_check_threads_pgx_and_declared_use(sdk, tmp_path) -> None:
     assert report.enrichment is not None
     assert report.enrichment.pgx is not None
     assert report.enrichment.pgx.declared_use == "non_commercial"
+
+
+async def test_versions_is_pageable(sdk, seed) -> None:
+    """The listing is paged server-side, so an unpageable wrapper can only ever see the first page —
+    which for a module with a long history is not the page you want."""
+    for minor in range(3):
+        seed(_NS, _NAME, f"1.{minor}.0", genes=["LPA"], categories=["cardio"],
+             created_at=f"2025-0{minor + 1}-01T00:00:00Z")
+    first = await asyncio.to_thread(lambda: sdk.versions(_NS, _NAME, page=1, per_page=2))
+    second = await asyncio.to_thread(lambda: sdk.versions(_NS, _NAME, page=2, per_page=2))
+    assert first["total"] == 3 and (first["page"], first["per_page"]) == (1, 2)
+    assert len(first["items"]) == 2 and len(second["items"]) == 1
+    listed = {v["version"] for v in first["items"] + second["items"]}
+    assert listed == {"1.0.0", "1.1.0", "1.2.0"}
+
+
+async def test_import_module_threads_genome_build(sdk, tmp_path) -> None:
+    """`genome_build` is the one importable form field that is *inside* `artifact.digest`, and the
+    SDK dropped it — so an SDK import of a GRCh37 archive silently produced GRCh38 identity keys.
+    The assertion is on the bytes, because a relabel would pass a metadata check: declaring the
+    build has to reproduce the digest the module was compiled to.
+
+    (`tests/test_import.py` proves the same over raw HTTP; this is the wrapper, which is the half
+    the webui and the CLI actually call.)
+    """
+    archive, original_digest = _bare_parquet_zip(tmp_path, "GRCh37")
+    zip_path = tmp_path / "legacy.zip"
+    zip_path.write_bytes(archive)
+
+    guessed = await asyncio.to_thread(
+        lambda: sdk.import_module(_NS, "hfe_build", "1.0.0", zip_path)
+    )
+    assert guessed.artifact.digest != original_digest, "no manifest in the archive → GRCh38 default"
+
+    declared = await asyncio.to_thread(
+        lambda: sdk.import_module(
+            _NS, "hfe_build", "1.0.1", zip_path, display={"genome_build": "GRCh37"}
+        )
+    )
+    assert declared.artifact.digest == original_digest
+
+
+# ── The parity guard: a route with no client method is an unfinished route ─────
+#
+# SDK↔API drift is what blocked webui publishing in 0.8.1, so the coverage is asserted structurally
+# rather than trusted to review. The table is the contract: adding a route without wrapping it fails
+# here with the route named, and so does renaming a client method out from under one.
+
+_WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("GET", "/health"): ("health",),
+    ("GET", "/api/v1/version"): ("server_version",),
+    ("GET", "/api/v1/pubkey"): ("pubkey",),
+    ("POST", "/api/v1/auth/register"): ("register",),
+    ("POST", "/api/v1/auth/tokens"): ("issue_jwt_token",),
+    ("GET", "/api/v1/auth/whoami"): ("whoami",),
+    ("PATCH", "/api/v1/auth/whoami"): ("update_profile",),
+    ("GET", "/api/v1/modules"): ("list_modules", "catalog_stats"),
+    ("GET", "/api/v1/modules/groups"): ("groups",),
+    ("GET", "/api/v1/modules/lookup"): ("lookup_by_digest", "lookup_by_signature"),
+    ("POST", "/api/v1/modules/lookup"): ("lookup_by_digests", "lookup_by_signatures"),
+    ("GET", "/api/v1/modules/{namespace}/{name}"): ("get_module", "resolve_version"),
+    ("POST", "/api/v1/modules/{namespace}/{name}/validate"): ("validate",),
+    ("POST", "/api/v1/modules/{namespace}/{name}/check"): ("check",),
+    ("PUT", "/api/v1/modules/{namespace}/{name}/star"): ("star",),
+    ("DELETE", "/api/v1/modules/{namespace}/{name}/star"): ("unstar",),
+    ("GET", "/api/v1/modules/{namespace}/{name}/reviews"): ("reviews",),
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions"): ("versions",),
+    ("POST", "/api/v1/modules/{namespace}/{name}/versions"): ("publish",),
+    ("POST", "/api/v1/modules/{namespace}/{name}/versions/import"): ("import_module",),
+    ("PATCH", "/api/v1/modules/{namespace}/{name}/versions/{version}"): ("amend_changelog",),
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/manifest"): ("manifest",),
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/logs"): ("logs",),
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/download"): (
+        "download", "get_tarball",
+    ),
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/files/{file_path}"): (
+        "_fetch_file",
+    ),
+    ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/logo"): ("amend_logo",),
+    ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/yank"): ("yank", "unyank"),
+    ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): ("reviews",),
+    ("PUT", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): ("review",),
+    ("DELETE", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): (
+        "delete_review",
+    ),
+    ("PUT", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews/{reviewer}/highlight"): (
+        "highlight_review",
+    ),
+    (
+        "DELETE",
+        "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews/{reviewer}/highlight",
+    ): ("highlight_review",),
+    ("POST", "/api/v1/namespaces"): ("claim_namespace",),
+    ("GET", "/api/v1/namespaces/{namespace}"): ("namespace_available",),
+    ("GET", "/api/v1/namespaces/{namespace}/members"): ("members",),
+    ("POST", "/api/v1/namespaces/{namespace}/members"): ("add_member",),
+    ("DELETE", "/api/v1/namespaces/{namespace}/members/{member}"): ("remove_member",),
+    ("POST", "/api/v1/orgs"): ("create_org",),
+    ("GET", "/api/v1/orgs/{org}/members"): ("org_members",),
+    ("POST", "/api/v1/orgs/{org}/members"): ("add_org_member",),
+    ("DELETE", "/api/v1/orgs/{org}/members/{member}"): ("remove_org_member",),
+    ("PUT", "/api/v1/orgs/{org}/members/{member}/role"): ("set_org_role",),
+    ("POST", "/api/v1/orgs/{org}/namespaces"): ("create_org_namespace",),
+    ("PATCH", "/api/v1/orgs/{org}/settings"): ("update_org_settings",),
+}
+
+
+def _server_routes(app) -> set[tuple[str, str]]:
+    return {
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        for method in operations
+    }
+
+
+def test_every_route_is_wrapped_by_a_client_method(app) -> None:
+    served = _server_routes(app)
+    assert served == set(_WRAPPED_ROUTES), (
+        "unwrapped routes: "
+        f"{sorted(served - set(_WRAPPED_ROUTES))}; routes that no longer exist: "
+        f"{sorted(set(_WRAPPED_ROUTES) - served)}"
+    )
+
+
+def test_the_wrapper_names_still_resolve() -> None:
+    """The table is only worth having if a rename breaks it rather than the caller."""
+    missing = [
+        name
+        for names in _WRAPPED_ROUTES.values()
+        for name in names
+        if not callable(getattr(RegistryClient, name, None))
+    ]
+    assert missing == []
+
+
+@pytest.mark.parametrize(
+    ("path", "sdk_method", "cli_command"),
+    [
+        ("/api/v1/modules/{namespace}/{name}/check", "check", "check"),
+        ("/api/v1/modules/{namespace}/{name}/validate", "validate", "validate"),
+    ],
+)
+def test_preflight_query_flags_reach_the_sdk_and_the_cli(
+    app, path: str, sdk_method: str, cli_command: str
+) -> None:
+    """Every knob on a pre-flight endpoint has to be spellable from both wrappers.
+
+    This is the drift that recurs: each new enrichment pass adds a query flag, and a flag the SDK
+    cannot send is a check the CLI silently never runs — the report comes back clean because the
+    question was never asked."""
+    operation = app.openapi()["paths"][path]["post"]
+    query_flags = {
+        parameter["name"]
+        for parameter in operation.get("parameters", [])
+        if parameter["in"] == "query"
+    }
+    sdk_params = set(inspect.signature(getattr(RegistryClient, sdk_method)).parameters)
+    assert query_flags <= sdk_params, f"SDK cannot send {sorted(query_flags - sdk_params)}"
+
+    command = next(
+        info.callback
+        for info in client_cli.app.registered_commands
+        if (info.name or info.callback.__name__.replace("_", "-")) == cli_command
+    )
+    cli_params = set(inspect.signature(command).parameters)
+    # The CLI spells `declared_use` as `--use`, matching `just-dna-enricher`; everything else is 1:1.
+    assert query_flags - {"declared_use"} <= cli_params, (
+        f"CLI cannot send {sorted(query_flags - {'declared_use'} - cli_params)}"
+    )

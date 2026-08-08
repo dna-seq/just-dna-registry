@@ -25,6 +25,9 @@ from just_dna_registry.services.enrich import (
     EnrichmentGate,
     enricher_available,
     EnrichOutcome,
+    PULLABLE_REFERENCES,
+    REFERENCE_NAMES,
+    RESOLUTION_REFERENCES,
     available_references,
     configured_caches,
     unresolved_hint,
@@ -248,3 +251,71 @@ def test_a_missing_snapshot_is_not_an_unavailability(tmp_path: Path) -> None:
     )
     assert all(v is None for v in available_references(settings).values())
     assert enricher_available()  # ...and the tier itself is present, which is what a 503 would mean
+
+
+# ── The shared client bundle ──────────────────────────────────────────────────
+
+
+def test_the_shared_bundle_actually_holds_clients() -> None:
+    """The whole point of sharing is the pacing state, and an empty bundle shares none of it.
+
+    `LookupClients()` builds nothing: its "lazily built" is `lookup.py` doing `clients.x or X()` and
+    closing what it made, not the dataclass filling itself. So the bundle this service handed to
+    every pass was six `None`s — each pass built its own client with a fresh `PacingGate`, N
+    concurrent runs egressed at N× the intended rate against limits enforced by IP that gnomAD sells
+    no key to raise, and `close_lookup_clients` closed nothing. The gate defaulting to 1 is what
+    makes one shared bundle *safe*; it is not what makes it exist.
+    """
+    from just_dna_registry.services.enrich import close_lookup_clients, shared_lookup_clients
+
+    close_lookup_clients()  # this is process-global; start from a known state
+    try:
+        bundle = shared_lookup_clients()
+        assert bundle is shared_lookup_clients(), "one bundle per process, or the pacing is per call"
+        members = {
+            name: getattr(bundle, name)
+            for name in ("gnomad", "eutils", "europepmc", "crossref", "ontology", "ensembl")
+        }
+        assert all(client is not None for client in members.values()), members
+        # Every paced client carries the state worth sharing. Ensembl deliberately has no gate: it
+        # is the last link after cache and snapshot, so its volume stays low.
+        assert all(
+            getattr(client, "gate", None) is not None
+            for name, client in members.items()
+            if name != "ensembl"
+        ), members
+    finally:
+        close_lookup_clients()
+
+
+# ── Which snapshots gate what ─────────────────────────────────────────────────
+
+
+def test_the_boot_gate_covers_only_what_a_publish_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`enrich_require_cache` may only refuse to start over a snapshot this service actually reads.
+
+    `constraint` sat in `RESOLUTION_REFERENCES` while no registry pass consulted it — the
+    gene-metrics pass writes an authored sidecar and nothing here runs it — so an operator who asked
+    for the strict boot gate got `sys.exit(1)` over a file that would never have been opened, and
+    `/check` blamed it for coordinates it had nothing to do with. Keep it out of the set that gates,
+    and keep it in the set `warm-caches` reports.
+    """
+    from just_dna_registry.services import enrich as enrich_service
+    from just_dna_registry.startup import validate_enrichment_caches
+
+    provisioned = tmp_path / "snapshot"
+    resolution_only = {name: None for name in REFERENCE_NAMES}
+    resolution_only["ensembl"] = resolution_only["clinvar"] = provisioned
+    monkeypatch.setattr(enrich_service, "available_references", lambda _s: resolution_only)
+
+    # Ensembl and ClinVar are there; constraint and the three PGx caches are not. On the old
+    # grouping this raised `SystemExit(1)` and the server never came up.
+    validate_enrichment_caches(
+        Settings(enrich_enabled=True, enrich_offline=True, enrich_require_cache=True)
+    )
+
+    assert "constraint" not in RESOLUTION_REFERENCES
+    assert "constraint" in REFERENCE_NAMES  # still reportable, still pullable
+    assert "constraint" in PULLABLE_REFERENCES

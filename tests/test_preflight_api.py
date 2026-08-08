@@ -334,6 +334,41 @@ def test_offline_pgx_is_snapshot_only_rather_than_skipped_wholesale(tmp_path: Pa
     assert any("clingen dosage" in s and "offline" in s for s in pgx["skipped"])
 
 
+def test_an_authored_sources_row_is_not_a_source_the_registry_consulted(tmp_path: Path) -> None:
+    """`PgxCheck.sources` says "actually consulted", and it has to keep saying that.
+
+    `PgxResult.rows` is the *merged* `sources.csv` — the module's own authored rows plus whatever
+    the run emitted, existing-wins — so deriving `sources` from it reported a module's declaration
+    back as the registry's own consultation. Here the module declares CPIC and the deployment holds
+    no CPIC snapshot on an offline run, so the same report says in one field that CPIC answered and
+    in the next that it was skipped for want of one. The honest source is `routes`, which gains an
+    entry only where a client actually answered.
+    """
+    sources_csv = (
+        "source,layer,license,commercial_use,declared_use\n"
+        "cpic,annotation,CC BY-SA 4.0,false,non_commercial\n"
+    )
+    # A PGx module, because the cross-check needs a gene to ask about: with none it stops before it
+    # would have consulted anything, and the bug this pins needs the CPIC leg to be *reached*.
+    parts = [
+        ("files", ("module_spec.yaml", _YAML.encode(), "text/yaml")),
+        ("files", ("allele_function.csv",
+                   b"gene,allele,function_status\nCYP2C19,*2,no_function\n", "text/csv")),
+        ("files", ("sources.csv", sources_csv.encode(), "text/csv")),
+    ]
+    body = _app(tmp_path).post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": True, "pgx": True, "declared_use": "non_commercial"},
+        files=parts,
+        headers=_AUTH,
+    ).json()
+    pgx = body["enrichment"]["pgx"]
+    assert pgx["sources"] == []
+    assert any(s.startswith("cpic:") for s in pgx["skipped"])
+    # And the two fields cannot contradict each other: a skipped source has no route either.
+    assert pgx["routes"].get("cpic") is None
+
+
 def test_a_pharmvar_snapshot_enables_the_leg_without_a_key(tmp_path: Path) -> None:
     """The key stopped being the only switch when PharmVar got a cache (0.5.1 / RM38).
 
@@ -473,6 +508,26 @@ def test_the_frequency_pass_runs_and_reports_rather_than_raising(tmp_path: Path)
     assert freq["covered"] == 0
 
 
+def test_a_skipped_frequency_pass_reports_no_absences(tmp_path: Path) -> None:
+    """`unchecked` is not `not_found`, and this is the pass where the two are easiest to confuse.
+
+    Skipped offline, `FrequencyResult.missing` carries every allele no existing `frequencies.csv`
+    already pins — a statement about the module's coverage, not about gnomAD. Surfaced verbatim
+    under a field documented as "asked and does not have", it said gnomAD had been asked about this
+    module's alleles and had none of them, on a run that made no request at all. The count is real
+    and stays, as a warning that names which of the two it is.
+    """
+    code, body = _check(_app(tmp_path), offline=True, frequencies=True)
+    assert code == 200, body
+    freq = body["enrichment"]["frequencies"]
+    assert freq["skipped_offline"] is True
+    assert freq["missing"] == [] and freq["uncovered"] == []
+    warning = " ".join(freq["warnings"])
+    assert "not consulted" in warning
+    # The coverage gap the authored spec does have — one allele, unpinned — is still reported.
+    assert "1 allele(s)" in warning
+
+
 def test_the_literature_pass_runs_and_reports_rather_than_raising(tmp_path: Path) -> None:
     code, body = _check(_app(tmp_path), offline=True, literature=True)
     assert code == 200, body
@@ -481,6 +536,89 @@ def test_the_literature_pass_runs_and_reports_rather_than_raising(tmp_path: Path
     assert lit["skipped_offline"] is True
     # A quote that could not be checked is never a quote that failed.
     assert lit["quotes_found"] == 0 and lit["missing_pmids"] == []
+
+
+def test_the_identifier_pass_reports_nothing_asked_offline(tmp_path: Path) -> None:
+    """OLS4 and HGNC publish no snapshot, so offline there is no question to put — and `unchecked`
+    must not arrive looking like a clean bill of health.
+
+    `check_identifiers` takes no `offline` parameter, so unlike every other pass there is nothing to
+    defer the decision to: guarding is the only option, which makes saying so the whole job. `clean`
+    stays `null` rather than `true`, on the same rule that keeps `VrsCoverage.complete` null over an
+    empty table.
+    """
+    code, body = _check(_app(tmp_path), offline=True, identifiers=True)
+    assert code == 200, body
+    ident = body["enrichment"]["identifiers"]
+    assert ident["skipped_offline"] is True
+    assert ident["clean"] is None
+    assert ident["stale_traits"] == [] and ident["stale_genes"] == []
+    assert ident["checked_traits"] == 0 and ident["checked_genes"] == 0
+    assert "nothing was asked" in " ".join(ident["warnings"])
+
+
+def test_the_identifier_pass_grades_traits_and_genes_without_gating_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real pass, with the network boundary — and only that — replaced.
+
+    Three answers in one run, because the interesting part is that they are three: an obsolete EFO
+    term is a finding, a retired HGNC symbol is a finding, and a CURIE in an ontology this tier has
+    no route for is neither — it is a question that was never put, and the enricher's own `clean`
+    counts it as clean. That is why `unchecked` is a separate field rather than folded into the
+    other two.
+
+    And none of it moves `would_publish`: a publish never runs this pass, so a finding here predicts
+    nothing about one. Reporting it as a blocker would predict a rejection that will not happen.
+    """
+    from types import SimpleNamespace
+
+    from just_dna_enricher.identifiers import GeneStatus, TraitStatus
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _Ontology:
+        def trait(self, curie: str) -> TraitStatus:
+            if curie == "EFO_0004340":
+                return TraitStatus(
+                    curie=curie, state="obsolete", label="obesity", replaced_by="EFO_0007041"
+                )
+            return TraitStatus(curie=curie, state="unchecked")
+
+        def gene(self, symbol: str) -> GeneStatus:
+            return GeneStatus(symbol=symbol, state="retired", current="CYP2C19P1")
+
+    monkeypatch.setattr(
+        enrich_service,
+        "shared_lookup_clients",
+        lambda: SimpleNamespace(
+            ontology=_Ontology(), gnomad=None, ensembl=None, eutils=None,
+            europepmc=None, crossref=None,
+        ),
+    )
+    variants = (
+        "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category,trait_efo_id\n"
+        "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19,EFO_0004340;DOID_1234\n"
+    )
+    # Online, so the pass actually runs; `enrich_verify_ref=False` because the reference-allele check
+    # reads sequence over HTTP and the `no_network` fixture would (rightly) trip on it.
+    resp = _app(tmp_path, enrich_verify_ref=False).post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": False, "identifiers": True},
+        files=_parts(variants=variants),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    ident = body["enrichment"]["identifiers"]
+
+    assert ident["stale_traits"] == ["EFO_0004340 is obsolete — OLS4 replaces it with EFO_0007041"]
+    assert ident["stale_genes"] == ["CYP2C19 is retired — HGNC now approves CYP2C19P1"]
+    assert len(ident["unchecked"]) == 1 and "DOID_1234" in ident["unchecked"][0]
+    # The unroutable CURIE is not counted as checked, and `clean` is about what was asked.
+    assert ident["checked_traits"] == 1 and ident["checked_genes"] == 1
+    assert ident["clean"] is False
+    assert body["would_publish"] is True
 
 
 def test_a_pgx_only_module_gets_a_literature_note_not_a_failure(tmp_path: Path) -> None:

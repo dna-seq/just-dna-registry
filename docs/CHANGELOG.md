@@ -116,6 +116,20 @@ audit, and adds the cache that makes a *hosted* `?pgx=` check legitimate rather 
   `find-by-hash`'s exit code: it is a pre-publish gate, so a match is the failure.
 
 ### Fixed
+- **The SDK dropped `genome_build` on import.** `import_module`'s `display` dict was filtered
+  through a hardcoded five-key tuple, so the one form field that is *inside* `artifact.digest` never
+  left the client: an SDK import of a bare GRCh37 archive was reversed as the GRCh38 default, minting
+  `variant_key`s against the wrong assembly. Nothing downstream catches it — the recompile is
+  internally consistent and `verify_manifest` re-derives the same wrong digest. `registry-client
+  import-module --genome-build` too. The raw-HTTP path had been correct and tested since 0.11; only
+  the wrapper was short, which is the half the webui and CLI call.
+- **`versions()` could only ever see the first page.** The endpoint is paged server-side and the
+  wrapper sent neither `page` nor `per_page`.
+- **SDK↔API parity is now asserted structurally**, not left to review: `test_client_sdk.py` compares
+  the OpenAPI surface against a table of wrapping client methods, so a new route fails the suite by
+  name. It also checks that every pre-flight query flag is spellable from both the SDK and the CLI —
+  the drift that recurs, since each new enrichment pass adds one and a flag the client cannot send
+  reads as a clean report on a question nobody asked.
 - **Authenticated path traversal on the multipart publish path.** `spec_dir / filename` was written
   with no containment check, while the archive path had been guarded since it was written — so a part
   named `../../../x` escaped the temp directory. All four upload routes now share one bounded,

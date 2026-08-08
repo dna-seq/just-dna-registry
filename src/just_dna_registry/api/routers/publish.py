@@ -382,6 +382,9 @@ async def check_spec(
     offline: bool = Query(False, description="Clamp to the server's local caches; zero egress"),
     frequencies: bool = Query(False, description="gnomAD frequencies — online only, ~6s/20 variants"),
     literature: bool = Query(False, description="PubMed/EuropePMC/Crossref citation check — online"),
+    identifiers: bool = Query(
+        False, description="trait_efo_id vs OLS4 and gene vs HGNC — online, no snapshot exists"
+    ),
     acmg: bool = Query(False, description="Authored acmg_sf flags vs the ACMG SF list"),
     pgx: bool = Query(False, description="function_status vs PharmVar/CPIC/ClinPGx/ClinGen"),
     declared_use: Optional[str] = Query(
@@ -408,15 +411,24 @@ async def check_spec(
     grades the validation findings and decides whether unresolved positions count against
     `would_publish`.
 
+    `?identifiers=true` adds trait-CURIE (OLS4) and gene-symbol (HGNC) currency — the generalization
+    of "is the source stale?" from datasets to identifiers, since an EFO retirement or an HGNC rename
+    leaves a module well-formed and quietly out of date. Neither registry publishes a snapshot, so
+    offline the pass reports that nothing was asked rather than that nothing was found. It never
+    moves `would_publish`: a publish does not run it, so a finding predicts nothing about one.
+
     `?pgx=true` adds the PGx-family cross-checks. They are gated by `declared_use`, a third axis
     orthogonal to strict/offline: every PGx upstream is CC BY-SA *plus* a no-sale clause, so on
     `unstated` each source is **skipped with a reason** rather than queried — the registry will not
     declare a purpose on your behalf. Pass `non_commercial` to actually run them; `commercial` is a
     direct contradiction and comes back `422 license_refused` having fetched nothing.
 
-    `503 enrichment_unavailable` when the operator has provisioned no reference snapshot and the run
-    is not `offline` — deliberately without `Retry-After`, because retrying does not help until
-    someone runs `registry warm-caches --apply`.
+    `503 enrichment_unavailable` when the network tier cannot run **at all** — today that means
+    `just-dna-enricher` is not installed on this server. Deliberately without `Retry-After`:
+    retrying does not help until an operator changes the deployment. A *missing snapshot* is not
+    this. It degrades per pass, with the reason in `enrichment.notes`, because an online run
+    resolves through live Ensembl without one and a 503 there would refuse the one configuration
+    that works.
     """
     require_capability(repo, account, namespace, Capability.PUBLISH)
     gate = request.app.state.enrichment_gate
@@ -454,8 +466,9 @@ async def check_spec(
                 run_in_threadpool(
                     enrich_service.dry_run,
                     settings=settings, repo=repo, uploads=uploads, name=name, strict=strict,
-                    offline=offline, frequencies=frequencies, literature=literature, acmg=acmg,
-                    pgx=pgx, declared_use=declared_use or settings.declared_use, gate=gate,
+                    offline=offline, frequencies=frequencies, literature=literature,
+                    identifiers=identifiers, acmg=acmg, pgx=pgx,
+                    declared_use=declared_use or settings.declared_use, gate=gate,
                 ),
                 timeout=settings.enrich_timeout_seconds,
             )
