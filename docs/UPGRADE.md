@@ -1,5 +1,48 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.11 reference caches + content-hash re-signing (operator note)
+
+0.11 adopts format/compiler/enricher **0.5**, and two of its changes need a deliberate act before the
+server is correct. Do both in the same maintenance window.
+
+**0. Bump clients to 0.5 first.** The version guard treats a `0.x` minor as a breaking contract
+change, so a 0.4 client talking to a 0.5 server is refused. Skipping this makes the first symptom a
+blanket publish rejection with no obvious cause.
+
+**1. `registry warm-caches --apply`.** Publish now enriches before it compiles, and with
+`REGISTRY_COMPILE_STRICT` on (the default) a server holding no reference snapshot **cannot publish an
+rsID-authored module at all** — it refuses rather than emitting a partial artifact. `/check` likewise
+answers `503 enrichment_unavailable`. The dry run (`--dry-run`, the default) reports what the running
+server would find, so it doubles as a health check. Already running just-dna-lite on the same host?
+Point `JUST_DNA_PIPELINES_CACHE_DIR` at its cache and reuse it.
+
+**2. `registry rederive-signatures --apply`.** 0.11 replaced the registry's own manifest-inputs
+Merkle root with the compiler's canonical row-level `content_signature`. The new value cannot be
+computed from a manifest — it reads the authored CSVs out of storage — so it is an ops command rather
+than a schema migration. Until it runs, versions predating 0.5 carry an empty signature and drop out
+of the dedup gate: publishing stays *safe* (nothing false-positives) but is *incomplete* (a genuine
+re-list of old data under a new name would not be caught).
+
+Read its report before applying. **Splits** are benign and expected — two modules differing only in
+`defaults.curator` used to hash equal, so anything previously refused as `duplicate_content` against
+one of them is now publishable. **Merges** are not: they mean two already-published modules will now
+be considered duplicates of each other, so the next version of one gets a 409. The command refuses to
+apply a merge without `--allow-merges`.
+
+**3. Measure before you tighten.** `registry revalidate --recompile-check` enriches and
+strict-compiles every published version exactly as a publish would, and reports `strict_blocked` for
+the ones a strict flip would stop accepting. Run it, fix or notify, *then* leave
+`REGISTRY_COMPILE_STRICT=true`. Running a migration off `REGISTRY_COMPILE_STRICT=false` is the
+supported path in the meantime.
+
+**On the digest re-baseline.** 0.5 moved `variant_key` onto the VRS allele identity, so every module
+recompiled under it gets a different `artifact.digest`. This is a one-time, catalog-wide event and it
+is not a corruption. `registry upgrade` re-publishes as a new PATCH and never mutates the
+predecessor, so old versions stay published and verifiable and a client pinned to one is unaffected;
+only a client tracking `latest` sees new bytes, which is what a new PATCH means. Use
+`registry upgrade --apply --limit N` to batch it — with enrichment in the loop it is the
+longest-running operation the registry has.
+
 ## 0.9 default DB path moved (operator note)
 
 The 0.9 `marketplace → registry` rebrand changed the **default** `db_path` from `data/marketplace.db`
@@ -75,6 +118,19 @@ truth** — knowing which published modules would fail *today's* contract.
      upgraded** — the original is immutable and stays drifted, so an older version already superseded
      by a newer one is skipped (and `revalidate` reports it `superseded`, not `upgradable`).
      Idempotent: once the latest is on-contract, re-running does nothing (no endless patch chain).
+   - **Schema-only migration is `registry upgrade --force` (aka `--recompile`).** After a contract
+     minor that only moves the parquet shape (e.g. 0.3→0.4), an already-on-contract module has no
+     back-population to do, so plain `upgrade` skips it. `--force` re-emits the latest in the current
+     schema anyway — non-lossy (the authored data is unchanged; only the compiled `artifact.digest`
+     moves). Use it to bring a whole catalog onto the new parquet shape for 0.4 consumers.
+   - **Columns/keys the new contract rejects need `--trim` (LOSSY, so `--force`-gated).** 0.4 made
+     the row models *and* the `module_spec.yaml` blocks (`module:`/`defaults:`/`panel:`/`authorship:`
+     + top level) `extra="forbid"`; older lax schemas only *warned* on an unknown column/key, so a
+     pre-0.4 `variants.csv`/`studies.csv`/`module_spec.yaml` can carry one a 0.4 compile now rejects.
+     Without `--trim` such a version is reported **blocked** (never crashes the planner);
+     `registry upgrade --trim --force` drops the offending columns/keys so the spec compiles. It
+     discards data, hence opt-in and manual. (The registry-owned `module.version` etc. are not
+     trimmed — the always-on strip handles them non-lossily.)
    - **Validator-failure upgrades** stay a manual transform + publish: apply the fix to the spec
      inputs (for PMID: `extract_pmids` → digit-only; drop or fix references that don't resolve
      online), then `registry-client publish … <new PATCH version>` under the new contract.
@@ -82,6 +138,14 @@ truth** — knowing which published modules would fail *today's* contract.
      successor is live if you want it out of `latest`/listings.
 4. **Out-of-digest assets never trigger this.** `logs`, `provenance`, and `logo` are hashed but
    excluded from `artifact.digest`; a logo change is a PATCH via `amend-logo`, not a re-publish.
+5. **Registry-owned keys are normalized, not a drift class (0.4).** 0.4 made the `module:` block
+   `extra="forbid"`, which would otherwise reject the `module.version` (and `namespace`/`owner`/
+   `canonical_id`) that every pre-0.4 spec archive carried — keys the registry fills itself. The
+   server strips that registry-owned set from the authored `module_spec.yaml` before validate/compile
+   on every path (publish, import, upgrade) and before the `revalidate` check
+   (`strip_registry_owned_keys`), so a legacy `module.version` alone reads as `ok`, not
+   `needs_upgrade`, and the pre-0.4 corpus imports/upgrades cleanly. This is a permanent, contract-
+   independent normalization (the registry is the identity authority), not a per-bump migration step.
 
 ## Boundary: where the network lives
 

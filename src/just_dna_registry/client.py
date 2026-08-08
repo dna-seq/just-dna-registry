@@ -11,6 +11,7 @@ import httpx
 from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import ModuleManifest, write_manifest
 
+from just_dna_registry.models.api import CheckReport, ValidationReport, VersionRef
 from just_dna_registry.version import VersionInfo, compatibility_error
 
 API_PREFIX: str = "/api/v1"
@@ -247,6 +248,119 @@ class RegistryClient:
             public_key=public_key,
         )
         return manifest
+
+    # ── Pre-flight: predict a publish before spending one ──────────────────────
+
+    def content_signature(self, spec_dir: Path) -> str:
+        """The canonical content signature of a *local* spec. Computed here — no HTTP, no recompile.
+
+        `just_dna_compiler.compiler.content_signature` reads the authored CSVs as parsed rows, with
+        no Ensembl resolution and no parquet build, so a publisher can ask "is this already
+        published?" before uploading anything. That is the whole point: the registry gates
+        `409 duplicate_content` on this value, and until 0.11 a client had no way to compute it.
+
+        Needs the compiler tier, which is not in the base install: `pip install
+        just-dna-registry[compiler]` (the `server` extra includes it).
+        """
+        try:
+            from just_dna_compiler.compiler import content_signature
+        except ImportError:
+            raise RegistryError(
+                0,
+                "computing a content signature needs just-dna-compiler — install "
+                "`just-dna-registry[compiler]`",
+            )
+        return content_signature(Path(spec_dir))
+
+    def lookup_by_signature(self, signature: str) -> list[VersionRef]:
+        """Published versions built from identical authored data, under any name.
+
+        Unlike `lookup_by_digest`, this ignores the module name and the reference the module was
+        compiled against — so it catches the rename/rebrand a digest cannot.
+        """
+        resp = self._http.get("/modules/lookup", params={"signature": signature})
+        return [VersionRef.model_validate(m) for m in self._json(resp)["matches"]]
+
+    def lookup_by_signatures(self, signatures: list[str]) -> dict[str, list[VersionRef]]:
+        """Batch `lookup_by_signature` — classify a whole local corpus in one request."""
+        resp = self._http.post("/modules/lookup", json={"signatures": signatures})
+        return {
+            r["signature"]: [VersionRef.model_validate(m) for m in r["matches"]]
+            for r in self._json(resp)["results"]
+        }
+
+    def is_published(self, spec_dir: Path) -> list[VersionRef]:
+        """Whether this spec's data is already on the registry. Empty list = free to publish.
+
+        The pre-publish dedup check, in one call. Calls `assert_compatible` first because the
+        signature it sends was computed by *this* client's compiler, and a signature computed under a
+        different format minor answers about a different algorithm.
+        """
+        self.assert_compatible()
+        return self.lookup_by_signature(self.content_signature(spec_dir))
+
+    def validate(
+        self, namespace: str, name: str, spec_dir: Path, *, strict: bool = True
+    ) -> ValidationReport:
+        """Validate a spec server-side without publishing it. Writes nothing.
+
+        The module need not exist; `name` is the name you intend to publish under. A spec that would
+        be rejected still returns normally, with `valid=False` and the reasons — findings are data,
+        not exceptions.
+        """
+        self.assert_compatible()
+        resp = self._http.post(
+            f"/modules/{namespace}/{name}/validate",
+            params={"strict": strict},
+            files=[
+                ("files", (rel, data, "application/octet-stream"))
+                for rel, data in gather_spec_files(spec_dir)
+            ],
+        )
+        return ValidationReport.model_validate(self._json(resp))
+
+    def check(
+        self,
+        namespace: str,
+        name: str,
+        spec_dir: Path,
+        *,
+        strict: bool = True,
+        offline: bool = False,
+        frequencies: bool = False,
+        literature: bool = False,
+        acmg: bool = False,
+        pgx: bool = False,
+        declared_use: Optional[str] = None,
+    ) -> CheckReport:
+        """The full publish dry run: validation plus what the server's network tier finds.
+
+        Blocks for as long as the server takes — minutes with `frequencies=True`, which is paced at
+        roughly six seconds per twenty variants. The client's 600s default timeout covers the
+        server's own 300s cap.
+
+        `pgx=True` adds the PharmVar / CPIC / ClinPGx / ClinGen cross-checks. They are gated by
+        `declared_use` (`unstated` | `non_commercial` | `commercial`) — every PGx upstream forbids
+        sale, so on the server's default each is skipped with a reason rather than queried. Pass
+        `non_commercial` to run them.
+
+        Raises `RegistryError(503, {"error": "enrichment_unavailable", ...})` when the operator has
+        provisioned no reference snapshots; retry with `offline=True` for the checks that need none.
+        """
+        self.assert_compatible()
+        resp = self._http.post(
+            f"/modules/{namespace}/{name}/check",
+            params={
+                "strict": strict, "offline": offline, "frequencies": frequencies,
+                "literature": literature, "acmg": acmg, "pgx": pgx,
+                **({"declared_use": declared_use} if declared_use else {}),
+            },
+            files=[
+                ("files", (rel, data, "application/octet-stream"))
+                for rel, data in gather_spec_files(spec_dir)
+            ],
+        )
+        return CheckReport.model_validate(self._json(resp))
 
     # ── Publish ────────────────────────────────────────────────────────────────
 
@@ -509,3 +623,25 @@ class RegistryClient:
             page += 1
         agg["namespaces"] = len(seen_namespaces)
         return agg
+
+    # ── Ops ────────────────────────────────────────────────────────────────────
+
+    def health(self) -> dict:
+        """Server liveness: `{status, version, storage}`.
+
+        Note the absolute URL. `/health` is mounted *outside* `/api/v1` (it answers whether the
+        process is up, which is not an API-versioned question) while this client bakes the prefix
+        into its base URL — that mismatch is why the endpoint went unwrapped until 0.11.
+        """
+        resp = self._http.get(f"{self.base_url}/health")
+        return self._json(resp)
+
+    def issue_jwt_token(self, api_key: str) -> dict:
+        """Exchange a static API key for a short-lived JWT session: `{token, expires_in}`.
+
+        Raises `RegistryError(501, "jwt_disabled")` when the server has no `jwt_secret` configured —
+        static keys keep working either way, so this is an optional upgrade rather than a
+        prerequisite.
+        """
+        resp = self._http.post("/auth/tokens", json={"api_key": api_key})
+        return self._json(resp)

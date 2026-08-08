@@ -6,6 +6,259 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.11.0] — 2026-08-08
+
+Adopts `just-dna-format` **0.5.0** plus `just-dna-compiler` / `just-dna-enricher` **0.5.1**, and with
+them the network tier the format grew in this release.
+
+### Adopts 0.5.1 — the gated sources get a cache, and four workarounds are deleted
+
+0.5.1 is a two-package network-tier patch (format stays at 0.5.0, since nothing in it touches a
+model, a parquet or a manifest field). It answers the four RMs this repo filed during the 0.5 seam
+audit, and adds the cache that makes a *hosted* `?pgx=` check legitimate rather than merely possible.
+
+- **`?pgx=` is snapshot-first for every source (RM38).** PharmVar and CPIC were live-only, so the
+  endpoint's real options were to fetch a source that forbids sale live, per request, on the
+  operator's own acceptance and *personal* PharmVar key, or to skip. Both published rate figures are
+  per IP, so a server multiplies its callers onto one allowance. Each leg is now snapshot → live →
+  skipped-with-a-reason, `offline` means snapshot-only rather than "PGx is off", and
+  `PgxCheck.routes` records which route answered, because a pinned file and a live API can differ by
+  a release. New settings `REGISTRY_CPIC_CACHE` / `REGISTRY_PHARMVAR_CACHE`; **`REGISTRY_CLINPGX_SNAPSHOT`
+  is renamed `REGISTRY_CLINPGX_CACHE`** for symmetry with the other five (free to rename — 0.11 is
+  unreleased).
+- **PharmVar no longer needs a key when a snapshot is present**, which is the configuration a public
+  deployment wants: that key is non-transferable under PharmVar's terms §2, so serving third parties
+  on it is the thing to avoid. It is also the one cache nothing publishes — the bulk data comes down
+  under that same key — so `warm-caches` reports it as build-it-yourself rather than as a failure.
+- **`registry warm-caches` covers all six snapshots**, in two groups, because they gate different
+  things: resolution decides whether a *publish* works, PGx decides whether the *check* does. Only
+  the resolution three are behind `enrich_require_cache` and the boot warning; folding the PGx ones in
+  would have made a hosted PGx snapshot a condition of starting the server. `--pgx` opts in, and
+  `--use` gates the two licence-gated pulls, because downloading is *taking* the data.
+- **`src/just_dna_registry/retries.py` is deleted (RM42).** It walked the enricher's package at boot
+  and assigned `policy.stop` on tenacity's objects. The floor is now
+  `JUST_DNA_HTTP_RETRY_ATTEMPTS`, exported beside the other credentials and read per call — still a
+  floor, so gnomAD and eutils keep their higher own defaults. `REGISTRY_HTTP_RETRY_ATTEMPTS` is
+  unchanged for operators.
+- **VRS coverage is the enricher's, not a recount (RM40).** `EnrichmentResult.vrs` carries the
+  `MintResult` `enrich()` always computed and used to drop, so `services/enrich.py` no longer
+  re-implements per-ALT slot counting — and cannot disagree with the manifest a publish stamps, which
+  a new test asserts by doing both to one spec. It also brings `unmintable_reasons`, previously
+  reachable only as a log line: surfaced on `VrsCoverage`, because "no refget table for GRCh37" is
+  the tier's limit and a publisher shown only a shortfall would hunt for a mistake that is not theirs.
+- **The ACMG check hands over a directory (RM41).** `verify_acmg_sf(spec_dir=…)` replaces loading
+  `variants.csv` here through the compiler's *private* `_load_csv_rows` — which is now public as
+  `load_csv_rows`, alongside `load_spec_variants`. The registry holds no copy of the empty-cell and
+  build-injection rules, and in fact gained the second one: the hand-rolled call never re-stamped for
+  a non-GRCh38 module.
+- **The ClinGen dosage guard is gone (RM39).** It was the one pass with no `offline` parameter, so
+  this file hoisted an `if not offline:` around it; it now takes the flag and reports
+  `skipped_offline` itself.
+
+### Changed
+- **Publish is now enrich → compile strict, as two steps.** The enricher resolves rsIDs and writes
+  `resolution.csv`; the compiler then consumes that file and never fetches for itself. This is the
+  shape the format's constitution intends — what it forbids is the *compile path* importing the
+  network tier, which is exactly what `compile_module(ensembl_cache=…)` does, so that parameter is
+  gone from the registry entirely (it is deprecated upstream for removal at 1.0).
+  **This is a breaking change for publishers.** `strict` refuses to emit a partial artifact when a
+  variant is left without a genomic position, so an rsID-authored module that published on 0.4 now
+  fails with `422 compile_failed` unless the server has a reference snapshot. That is the point —
+  it is what makes `compiled_by=marketplace-server` worth trusting — but see the migration note.
+- **`Settings.resolve_with_ensembl` is gone**, replaced by `compile_strict` + the `enrich_*` block.
+  In 0.5 that flag gated the entire resolution path rather than just network lookups, so leaving it
+  at its old default would have made the whole adoption a silent no-op. A stale
+  `REGISTRY_RESOLVE_WITH_ENSEMBL` in a deployment's `.env` now logs a warning at boot rather than
+  being swallowed.
+- **`module.version` is no longer stripped.** 0.4 made the `module:` block `extra="forbid"` and the
+  registry dropped the key to keep the pre-0.4 corpus importable; 0.5 turned it back into a real
+  advisory field, so it is now *normalized* instead — an unquoted YAML integer (`version: 3`, which
+  the entire legacy corpus has) is quoted, and the format coerces it to SemVer while recording the
+  original. The registry still stamps `Identity.version`, which always wins.
+- **Adopted the compiler's canonical `content_signature`** in place of the registry's own
+  manifest-inputs Merkle root. It hashes the authored rows *as parsed* — `defaults:` folded in, the
+  declared build included — so it survives a reformat, a row reorder, and a recompile against a
+  different reference. `src/just_dna_registry/content.py` is deleted.
+- **The SDK's new methods return Pydantic models rather than dicts.** The direction of travel for
+  the rest of the client.
+
+### Added
+- **`POST /modules/{ns}/{name}/validate`** — validate a spec server-side without publishing. Returns
+  findings, stats, the content signature, and any versions already built from identical data. A
+  finding is a `200`, not a `422`.
+- **`POST /modules/{ns}/{name}/check`** — the full publish dry run, including the network-tier checks
+  (reference allele, `clin_sig` vs ClinVar, rsID currency, VRS coverage, optional gnomAD frequencies
+  / literature / ACMG). Returns `would_publish`. Rate-limited hard and backed by a process-wide
+  concurrency gate: the upstreams are unauthenticated and throttle by IP, so an overspend penalises
+  the deployment rather than the caller, and gnomAD offers no key to raise the ceiling.
+- **`?pgx=` on `/check`** — authored `function_status` against PharmVar, CPIC, ClinPGx and ClinGen
+  dosage, plus **`?declared_use=`** (and `REGISTRY_DECLARED_USE`) gating all four. Every PGx upstream
+  forbids sale, so on the default `unstated` each is skipped with a reason rather than queried;
+  `commercial` is refused at acquisition with `422 license_refused`. PharmVar has no separate switch —
+  the presence of `PHARMVAR_API_KEY` is the switch, so it cannot disagree with reality.
+- **Content-signature lookup** on `GET`/`POST /modules/lookup` (`?signature=`), so a publisher can
+  pre-check dedup *before* uploading. Requested by the format in `PROPOSAL_0_4_1.md`.
+- **Trust and licensing facets** on cards and versions: `resolution` (mode, `fully_resolved`,
+  `trusted`, VRS coverage) and `licensing` (tri-state `commercial_use`/`redistribution`, per-layer
+  share-alike lists). `trusted` is deliberately nullable — `null` means the version predates the 0.5
+  contract, which is not the same as untrustworthy.
+- **`registry warm-caches`** — provision the reference snapshots enrichment needs. Dry-run doubles as
+  a health check.
+- **`registry rederive-signatures`** — the one-time content-signature migration, with a split/merge
+  collision report and a refusal to apply a merge without `--allow-merges`.
+- **`registry revalidate --strict-check` / `--recompile-check`** and a new `strict_blocked` status,
+  so an operator can measure what a strict flip would cost *before* flipping it.
+- **`registry upgrade --limit`**, and automatic detection of versions that predate the 0.5 contract
+  (so the catalog migration is `--apply` rather than a `--force` people forget).
+- **SDK**: `content_signature`, `is_published`, `lookup_by_signature(s)`, `validate`, `check` — plus
+  `health()` and `issue_jwt_token()`, closing the two endpoints that had no client method.
+- **CLI**: `registry-client validate` / `check` / `signature`. Note `signature --lookup` inverts
+  `find-by-hash`'s exit code: it is a pre-publish gate, so a match is the failure.
+
+### Fixed
+- **Authenticated path traversal on the multipart publish path.** `spec_dir / filename` was written
+  with no containment check, while the archive path had been guarded since it was written — so a part
+  named `../../../x` escaped the temp directory. All four upload routes now share one bounded,
+  containment-checked reader.
+- **No upload bounds existed.** Added `max_upload_bytes` (25 MiB) and `max_spec_files` (64), checked
+  from the spooled part sizes *before* anything is read.
+- **Every JWT caller shared one rate-limit bucket.** `_rate_identity` keyed on the bearer's first 16
+  characters, and every HS256 token begins `eyJhbGciOiJIUzI1`. Now keyed on the resolved account.
+- **PGx-only modules could not be published, revalidated, or upgraded.** Three services hardcoded a
+  `(module_spec.yaml, variants.csv, studies.csv)` triple that has been incomplete since format 0.3.
+  Composition is the compiler's rule now; `specfiles.py` is the single recognized-file set.
+- **Upgrade silently dropped every 0.5 sidecar.** It carried `manifest.inputs`, which by construction
+  excludes `resolution.csv` and the fact tables — losing licence facts and, with them, the resolution
+  table a strict recompile needs.
+- **Two modules differing only in `defaults.curator` hashed equal** (RM37), so a genuinely distinct
+  module could be refused as a duplicate. Fixed by the canonical signature.
+
+#### From the 0.5 seam audit
+
+A pass over every call into `just-dna-format` / `just-dna-compiler` / `just-dna-enricher`, against
+those packages' own docs and their live signatures. Six findings, all in this repo.
+
+- **`?frequencies=`, `?literature=` and `?acmg=` on `/check` raised `NameError`.** The router exposed
+  all three; the functions they dispatch to did not exist anywhere in the package. Nothing caught it
+  because no test had ever passed the flags — so they are now implemented, and each has one.
+- **Every optional pass built its own enricher clients.** The outbound pacing that holds us inside
+  gnomAD's 10-per-60s and NCBI's 3-per-second budgets lives *on the client object*, so a frequency
+  pass with a fresh `GnomadClient` started its interval from zero and doubled the rate the resolution
+  chain in the same request had just been paced at. All passes now take the shared bundle.
+- **The publish path did neither.** It built fresh clients *and* took no concurrency permit, so on a
+  deployment with `REGISTRY_ENRICH_OFFLINE=false` two concurrent publishes egressed at twice the
+  intended rate against an IP-scoped budget with no key to raise it. Publish now shares the bundle
+  and takes a permit from the same gate `/check` uses — but only when it will actually reach the
+  network, since serializing an offline publish behind a limit of 1 would buy nothing.
+- **An offline `?pgx=` skipped ClinPGx**, on the reading that the whole PGx family is online-only.
+  That is true of PharmVar, CPIC and ClinGen and false of ClinPGx, which is snapshot-based and takes
+  no `offline` argument at all — so a deployment with a snapshot built was skipping a check it could
+  have completed with zero egress.
+- **A legacy GRCh37 archive imported as GRCh38.** `genome_build` reaches a compiled module through
+  `manifest.json` and no parquet column, so a bare parquet archive reverses to the format's default —
+  and the build decides the identity key, so the recompile minted `ga4gh:VA.…` ids naming a base the
+  module never carried, with a moved digest and nothing downstream able to notice. `import` takes a
+  `genome_build` form field; the manifest still wins when the archive has one.
+- **`?declared_use=` was passed through unvalidated**, so `non-commercial` — the enricher CLI's own
+  hyphenated spelling — reached a gate whose entire job is that an undeclared purpose means *do not
+  fetch*. Now `422 invalid_declared_use`.
+
+Four upstream API asymmetries the same audit surfaced were filed as RM39–RM42 in
+`just-dna-format`'s `docs/PROPOSAL_0_5_1.md`. **All four shipped in `just-dna-enricher` /
+`just-dna-compiler` 0.5.1, and the workarounds are gone** — see *Adopts 0.5.1* below.
+
+#### Publish became the idle lane
+
+Following from the audit, and a behaviour change worth reading before deploying with
+`REGISTRY_ENRICH_OFFLINE=false`.
+
+- **Publish queues for an enrichment permit instead of failing on a full gate, with no deadline.**
+  A dry run has someone waiting on the answer, so a full gate stays a fast `503`; a publish has
+  nobody waiting and an upload already spent, and `503` there means re-uploading a module over a
+  condition that clears in seconds. Publish is correspondingly exempt from
+  `enrich_timeout_seconds` and `enrich_max_variants` — both were always `/check`-only bounds, and
+  the variant cap is really about the frequency pass, which publish never runs. **Raise your client
+  and reverse-proxy timeouts to match.**
+- **A queued publish holds no threadpool worker.** It waits in the coroutine, so a backlog cannot
+  starve the fixed pool that `/check` and every other blocking handler need in order to run. This
+  is the concession that actually bites; the rest are scheduling hints.
+- **A running publish gets its own niced thread**, discarded afterwards, rather than a shared
+  worker. It has to be disposable: raising a thread's nice value is unprivileged and *lowering it
+  back is not*, so a pooled worker niced once could never be restored and would hand the penalty to
+  whichever request it served next — quite possibly the `/check` this exists to protect.
+  `REGISTRY_PUBLISH_NICE` (default 10), `REGISTRY_ENRICH_IDLE_QUIET_SECONDS` (default 5).
+- **Deference is at entry only, and the docs say so.** Once a publish is enriching it keeps the
+  permit until it finishes and a concurrent `/check` still gets `503`. Nothing can preempt it —
+  `enrich()` is one opaque call and Python cannot interrupt a thread. Real preemption needs a job
+  queue with a broker, which is the horizontal-scaling answer rather than this one.
+- **The enricher's outbound retry ceiling is raised to 5 attempts at boot**
+  (`REGISTRY_HTTP_RETRY_ATTEMPTS`). It already retried — tenacity, exponential jitter, paced
+  *before* the retry so an extra attempt spends a budget slot rather than bursting past it — but at
+  `stop_after_attempt(3..4)` baked into import-time decorators, tuned for an author at a terminal
+  who would rather see the failure than wait. Unattended server work wants the opposite. Raised
+  only, never lowered, and the nine clients are **discovered** rather than listed, so one added
+  upstream is covered; a test asserts the walk still finds them all.
+
+### Migration
+Run both, in order, in the same maintenance window:
+
+1. `registry warm-caches --apply` — publish now *requires* enrichment. A server with no snapshot
+   cannot publish an rsID-authored module at all.
+2. `registry rederive-signatures --apply` — until this runs, pre-0.5 versions carry an empty
+   signature and drop out of the dedup gate (safe, but incomplete).
+
+Then, before enabling strict: `registry revalidate --recompile-check` reports which existing modules
+a strict flip would stop accepting. `REGISTRY_COMPILE_STRICT=false` is the escape hatch while you
+work through them.
+
+**Bump clients to 0.5 first.** The version guard already treats a 0.x minor as a breaking contract
+change, so a 0.4 client against a 0.5 server is refused — and the first symptom otherwise is a
+blanket publish rejection with no obvious cause. Note also that 0.5 re-baselined `variant_key` onto
+the VRS allele identity, so every recompiled module gets a new `artifact.digest`. Predecessors stay
+published and verifiable; a pinned client is unaffected.
+
+## [0.10.0] — 2026-07-15
+
+### Changed
+- **Adopted `just-dna-format` / `just-dna-compiler` 0.4** (pins `>=0.4.0`). 0.4 is a contract minor —
+  the parquet schema and `artifact.digest` move — so the version-mismatch guard now requires client
+  and server to both run `0.4` (mixed 0.3/0.4 pairs are rejected with an actionable message). New
+  authored columns and the frozen `variant_key` flow through the server recompile automatically.
+
+### Added
+- **Structured per-version `authorship`** (format RM14) rides the manifest end to end: a
+  `module_spec.yaml` `authorship:` block is recorded into the manifest (out of `artifact.digest`) and
+  surfaces on the detail endpoint's inline `latest_manifest`, so consumers can route scrutiny by
+  author-kind. No DB or API-model change — it flows through the whole-manifest projection.
+- **`strip_registry_owned_keys`** on the server compile path. 0.4 made the `module:` block
+  `extra="forbid"`, which rejects the registry-owned `module.version` (and `namespace`/`owner`/
+  `canonical_id`) that every pre-0.4 spec archive carried. The server drops that set from the authored
+  block before validate/compile on **publish, import, and upgrade**, and before the `revalidate` drift
+  check — so importing/upgrading the pre-0.4 corpus keeps working and a legacy `module.version` alone
+  is not misread as un-fixable drift. Byte-preserving on a clean spec; kept permanently.
+
+- **Cross-name content dedup on publish** (`409 duplicate_content`). Publish/import now rejects a
+  spec whose data is already published under a *different* `(namespace, name)`, so the same module
+  can't be re-listed under another name. It keys on a name-independent signature over the data inputs
+  (`variants.csv`/`studies.csv` hashes, excluding `module_spec.yaml`) — `artifact.digest` can't gate
+  this because the module name is baked into the compiled parquets, so a rename yields a different
+  digest. A collision under the *same* module (a later version with unchanged data) is still allowed.
+  New `versions.content_hash` column (backfilled from stored manifests on migration) +
+  `Repository.find_versions_by_content`.
+
+- **`registry upgrade --force` / `--trim`** for migrating the catalog onto the 0.4 parquet shape.
+  `--force` (alias `--recompile`) re-emits an already-on-contract module in the current schema even
+  with no 0.3 drift (non-lossy). `--trim` drops columns *and* `module_spec.yaml` keys 0.4 now rejects
+  (older schemas only warned) so a legacy spec compiles — LOSSY, so it requires `--force`; a version
+  with such offenders and no `--trim` is reported *blocked*, never crashing. New
+  `prepare_version_upgrade` + `offending_columns`/`trim_unknown_columns` and `offending_yaml_keys`/
+  `trim_unknown_yaml_keys` in `services/upgrade.py`. Registry-owned `module:` keys are excluded from
+  the trim (the always-on strip handles them).
+
+### Dependencies
+- Added `pyyaml` to the `server` extra (the publish path now parses `module_spec.yaml` directly to
+  normalize registry-owned keys).
+
 ## [0.9.1] — 2026-07-10
 
 ### Added

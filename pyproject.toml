@@ -1,19 +1,34 @@
 [project]
 name = "just-dna-registry"
-version = "0.9.1"
+version = "0.11.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
-# Default install = the reference client only (lightweight). The server is the `server` extra.
+# Default install = the reference client only (lightweight: httpx + the `just-dna-format` contract).
+# The tiers mirror just-dna-format's own (CONSTITUTION Goal 2): format is pydantic+cryptography,
+# `compiler` adds polars/pyyaml/typer, `server` adds the network tier on top. A verify-only or
+# download-only client pulls none of it.
 dependencies = [
     "httpx>=0.28.1",
     "typer>=0.26.8",
     "python-dotenv>=1.0.1",
-    "just-dna-format>=0.3.0",
+    "just-dna-format>=0.5.0",
 ]
 
 [project.optional-dependencies]
-# Everything needed to RUN the registry: FastAPI app, server-side recompile, storage, admin CLI.
+# Client-side spec inspection: `RegistryClient.content_signature()` / `registry-client signature`
+# compute a spec's content identity locally, without uploading and without recompiling, so a
+# publisher can pre-check dedup before spending a publish. Only the compiler tier is needed for
+# that — no network tier, no FastAPI.
+# `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41). `just-dna-format` stays at
+# 0.5.0 on purpose — 0.5.1 was a two-package network-tier cut that touched no model, parquet or
+# manifest field, which is what made it legal inside the closed 0.5 digest window.
+compiler = [
+    "just-dna-compiler>=0.5.1",
+]
+# Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
+# CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
+# here rather than in the base deps so a client install pulls no duckdb / ga4gh-vrs / HuggingFace.
 server = [
     "fastapi>=0.139.0",
     "uvicorn>=0.34.0",
@@ -21,9 +36,14 @@ server = [
     "pydantic-settings>=2.7.0",
     "python-multipart>=0.0.9",
     "eliot>=1.17.5",
-    "huggingface-hub>=0.27.0",
+    "huggingface-hub>=0.34.0",
     "pyjwt>=2.10.0",
-    "just-dna-compiler>=0.3.0",
+    "pyyaml>=6.0.2",
+    # `>=0.5.1` is a hard floor, not a preference: the server reads `EnrichmentResult.vrs` (RM40),
+    # passes `offline=` to the dosage pass (RM39), and hands `cpic_cache`/`pharmvar_cache` plus
+    # `offline=` to `enrich_pgx` (RM38). None of those exists in 0.5.0.
+    "just-dna-compiler>=0.5.1",
+    "just-dna-enricher>=0.5.1",
 ]
 
 [build-system]

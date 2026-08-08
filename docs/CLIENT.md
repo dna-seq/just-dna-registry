@@ -38,6 +38,13 @@ export REGISTRY_TOKEN=mk_live_…
 | List logs | `logs(ns, name, v)` | *(via `download`, which fetches them)* | — |
 | Find by digest | `lookup_by_digest(digest)` | `find-by-hash` | — |
 | Batch find by digest | `lookup_by_digests(digests)` | *(programmatic)* | — |
+| Content signature (local) | `content_signature(spec_dir)` | `signature` | — |
+| Find by content signature | `lookup_by_signature(sig)` | `signature --lookup` | — |
+| Already published? | `is_published(spec_dir)` | `signature --lookup` | — |
+| Validate a spec | `validate(ns, name, spec_dir)` | `validate` | bearer |
+| Full publish dry run | `check(ns, name, spec_dir)` | `check` | bearer |
+| Server liveness | `health()` | *(programmatic)* | — |
+| Exchange key for a JWT | `issue_jwt_token(api_key)` | *(programmatic)* | api key |
 | Self-register | `register(install_id, account)` | `register` | install-id |
 | Namespace availability | `namespace_available(ns)` | `namespace-available` | — |
 | Claim namespace | `claim_namespace(ns)` | `claim-namespace` | bearer |
@@ -261,3 +268,69 @@ between DBs/environments; the export contains live tokens, so protect it. `reset
 catalog projection for a fresh start while keeping your keys (so you don't lock yourself out); it
 requires typing `RESET` and does not touch artifact storage. The **signing key** is a PEM file
 (`REGISTRY_SIGNING_KEY`), never in the DB — copy it directly to reuse across environments.
+
+
+---
+
+## Pre-flight: predict a publish before spending one
+
+Three commands, cheapest first.
+
+```bash
+registry-client signature spec/ --lookup       # local hash; is this data already published?
+registry-client validate  my-ns my-module spec/   # server-side validation, no network
+registry-client check     my-ns my-module spec/ --offline   # + the enricher's cross-checks
+```
+
+**`signature`** computes the spec's content identity *locally* — no upload, no recompile — using the
+same algorithm the registry gates `409 duplicate_content` on. Needs the compiler tier
+(`pip install just-dna-registry[compiler]`).
+
+> **The exit code with `--lookup` is the inverse of `find-by-hash`'s.** That command asks "is this
+> artifact published?" and fails when it is not. This one is a *pre-publish dedup gate*, so a match
+> is the failure: exit 1 means the registry already has this data under some name.
+
+**`validate`** runs the real compiler server-side and returns findings, stats, the content signature,
+and any versions already built from identical data. It writes nothing and the module need not exist —
+`name` is the name you intend to publish under. It defaults to `--strict`, matching what publish
+compiles with; a dry run whose default disagrees with the publish it predicts is a trap.
+
+**`check`** adds what only the network tier can see: an authored reference allele against the actual
+genome, `clin_sig` against ClinVar, rsIDs dbSNP has merged away, GA4GH allele-identity coverage, and
+optionally gnomAD frequencies (`--frequencies`), citations (`--literature`), ACMG SF membership
+(`--acmg`) and the PGx nomenclature cross-check (`--pgx`). It exits 0 only when the server says it
+`would_publish`.
+
+`--pgx` needs `--use`. Every PGx upstream (PharmVar, CPIC, ClinPGx, ClinGen) is CC BY-SA *plus* a
+no-sale clause, so without a declaration each is skipped rather than queried — the registry will not
+assert a purpose on your behalf:
+
+```bash
+registry-client check my-ns my-module spec/ --pgx --use non-commercial
+```
+
+`--use commercial` against those sources is a contradiction and comes back refused, having fetched
+nothing. PharmVar is consulted only when the *server* holds a key (it is personal to an account under
+their terms §2); otherwise CPIC carries the check and the report says so.
+
+This is the expensive one, and the cost lands on the whole deployment rather than on you: gnomAD is
+unauthenticated and rate-limits by IP, with no key available to raise the ceiling, so an overspend
+throttles the server for everyone. Pacing is roughly six seconds per twenty variants, so
+`--frequencies` on a large module takes minutes. It is the tightest rate
+bucket in the service and is additionally capped process-wide. Start with `--offline`, which clamps
+to the server's local snapshots and guarantees zero egress, and add passes as you need them.
+
+If the server has no reference snapshot provisioned you get a clear message naming
+`registry warm-caches --apply` rather than an opaque 503.
+
+### Admin: 0.11 operator commands
+
+```bash
+registry warm-caches --dry-run          # what the running server can read (health check)
+registry warm-caches --apply            # provision the snapshots from HuggingFace (slow, large)
+registry rederive-signatures --dry-run  # the one-time 0.11 content-hash migration; read the report
+registry revalidate --recompile-check   # which modules would a strict publish refuse?
+registry upgrade --apply --limit 20     # batch the catalog migration
+```
+
+See [UPGRADE.md](UPGRADE.md) for the order these must run in and why.

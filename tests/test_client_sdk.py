@@ -96,3 +96,84 @@ async def test_groups_and_catalog_stats(sdk, seed) -> None:
     assert keys[0] == "all" and "curated" in keys
     stats = await asyncio.to_thread(sdk.catalog_stats)
     assert stats["modules"] >= 2 and stats["genes"] >= 3 and stats["namespaces"] == 1
+
+
+# ── 0.11: pre-flight, and the two gaps that were open until now ───────────────
+
+
+def _write_spec(tmp_path, name: str = _NAME):
+    spec = tmp_path / "spec"
+    spec.mkdir(exist_ok=True)
+    (spec / "module_spec.yaml").write_text(
+        f'schema_version: "1.0"\nmodule:\n  name: {name}\n  title: T\n'
+        f"  description: d\n  report_title: R\ngenome_build: GRCh38\n"
+    )
+    (spec / "variants.csv").write_text(
+        "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category\n"
+        "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19\n"
+    )
+    (spec / "studies.csv").write_text(
+        "rsid,pmid,population,p_value,conclusion,study_design\nrs4244285,1,T,0.05,E,U\n"
+    )
+    return spec
+
+
+async def test_content_signature_is_computed_locally(sdk, tmp_path) -> None:
+    """No HTTP at all — that is the point. A publisher can dedup before uploading anything."""
+    spec = _write_spec(tmp_path)
+    signature = await asyncio.to_thread(lambda: sdk.content_signature(spec))
+    assert signature.startswith("sha256:")
+
+
+async def test_is_published_reports_free_then_taken(sdk, tmp_path, app) -> None:
+    spec = _write_spec(tmp_path)
+    assert await asyncio.to_thread(lambda: sdk.is_published(spec)) == []
+
+    published = await asyncio.to_thread(lambda: sdk.publish(_NS, _NAME, _VER, spec))
+    taken = await asyncio.to_thread(lambda: sdk.is_published(spec))
+    assert [(v.name, v.version) for v in taken] == [(_NAME, _VER)]
+    assert published.content_signature == await asyncio.to_thread(
+        lambda: sdk.content_signature(spec)
+    )
+
+
+async def test_validate_returns_a_typed_report(sdk, tmp_path) -> None:
+    report = await asyncio.to_thread(lambda: sdk.validate(_NS, _NAME, _write_spec(tmp_path)))
+    assert report.valid is True and report.strict is True
+    assert report.stats.variant_count == 1
+    assert report.content_signature is not None
+
+
+async def test_check_returns_a_typed_report(sdk, tmp_path) -> None:
+    report = await asyncio.to_thread(
+        lambda: sdk.check(_NS, _NAME, _write_spec(tmp_path), offline=True)
+    )
+    assert report.would_publish is True
+    assert report.enrichment is not None and report.enrichment.offline is True
+
+
+async def test_health_is_wrapped(sdk) -> None:
+    """Mounted outside `/api/v1`, which is why it went unwrapped until 0.11."""
+    assert (await asyncio.to_thread(sdk.health))["status"] == "ok"
+
+
+async def test_issue_jwt_token_is_wrapped(sdk, api_key) -> None:
+    """501 when the server has no `jwt_secret` — which is the default, so that is the wired path."""
+    from just_dna_registry.client import RegistryError
+
+    with pytest.raises(RegistryError) as caught:
+        await asyncio.to_thread(lambda: sdk.issue_jwt_token(api_key))
+    assert caught.value.status_code == 501
+
+
+async def test_check_threads_pgx_and_declared_use(sdk, tmp_path) -> None:
+    """The two axes must reach the server, or the SDK quietly answers a different question."""
+    report = await asyncio.to_thread(
+        lambda: sdk.check(
+            _NS, _NAME, _write_spec(tmp_path),
+            offline=True, pgx=True, declared_use="non_commercial",
+        )
+    )
+    assert report.enrichment is not None
+    assert report.enrichment.pgx is not None
+    assert report.enrichment.pgx.declared_use == "non_commercial"

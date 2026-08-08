@@ -58,11 +58,7 @@ stale wrapper.
 - **Pydantic 2**: Mandatory for data classes — request/response models, config, and the manifest
   contract. FastAPI response models should be explicit Pydantic types, not bare dicts.
 - **Typer CLI**: Mandatory for all CLI tools.
-- **Logging**: Use the standard-library `logging` system logger. **Eliot is being retired** (see
-  `docs/ROADMAP.md` → "Next registry version"): the remaining `eliot` usage (`start_action` in
-  `services/publish.py`, the Eliot→stdlib bridge in `logging_setup.py`) is rewired to stdlib
-  `logging` next version, and the `eliot` dependency dropped. Do **not** add new Eliot usage; wrap
-  multi-step work (publish, compile, backfill) with `logging` at INFO with structured `extra=`.
+- **Logging**: Use the standard-library `logging` system logger.
 - **Pay attention to terminal warnings**: Always check output for warnings, especially deprecation
   ones. AI knowledge of APIs can be outdated; these warnings are critical hints to update code.
 - **No placeholders**: Never use `/my/custom/path/` or fabricated example values in code.
@@ -86,14 +82,94 @@ stale wrapper.
   not full-text.
 - **HTTP status contract** (match the spec exactly — clients depend on these):
   - `409 version_exists` — a published `(namespace, name, version)` is **immutable**; re-publish fails.
+  - `409 duplicate_content` — the same module data is already published under a **different**
+    `(namespace, name)`. Keyed on a name-independent data-input signature (`content_hash`), not
+    `artifact.digest` (the module name is baked into the compiled parquets, so it can't detect a
+    rename). A collision under the same module (later version, unchanged data) is allowed.
   - `403 not_namespace_member` — the bearer token's `namespaces` must include the path `{ns}`.
-  - `422 invalid_version` / `422` with `errors[]`/`warnings[]` from `ValidationResult` on a bad spec;
-    `422 digest_mismatch` when a prebuilt upload disagrees with a sandbox re-compile.
+  - `422 invalid_version` / `422` with `errors[]`/`warnings[]`/`info[]` from `ValidationResult` on a
+    bad spec; `422 digest_mismatch` when a prebuilt upload disagrees with a sandbox re-compile.
+  - `413 upload_too_large` — the request body exceeds `max_upload_bytes`. Distinct from
+    `422 too_many_variants`, which is a legal body asking for too much *work*.
+  - `503 enrichment_unavailable` (+ `missing[]`) — no reference snapshot is provisioned and the run
+    is not offline. **No `Retry-After`**: retrying does not help until an operator provisions one.
+    503 over 501 (the feature is implemented) and over 424 (obscure).
+  - `503 enrichment_busy` / `504 enrichment_timeout` — the concurrency gate is full / the run
+    exceeded `enrich_timeout_seconds`.
+  - **A validation finding is a `200`, not a `422`.** `/validate` and `/check` return `valid: false`
+    with the reasons in the body; only a request no spec dir can be built from is a 4xx. Publish is
+    the opposite. Getting this backwards makes the endpoints useless to the CI jobs they exist for.
+- **SDK parity is part of the endpoint.** Every REST endpoint is wrapped by a `RegistryClient` method
+  **in the same patch** that adds it, and covered in `tests/test_client_sdk.py`. SDK↔API drift is
+  what blocked webui publishing in 0.8.1; a route with no client method is an unfinished route.
 - **Downloads** redirect (`302`) to presigned/CDN URLs; the API serves JSON, not artifact bytes.
 - **Auth**: Bearer tokens. Anonymous reads are allowed but throttled harder. Rate-limit with per-token
   buckets (publish 10/h, download 1000/h, search 60/min).
 - **Async**: prefer `async def` handlers; never block the event loop with heavy CPU work (compilation,
-  hashing) — offload to a thread/executor or a worker.
+  hashing) — offload to a thread/executor or a worker. An endpoint with an **external** cost needs a
+  process-wide concurrency gate as well: a token bucket bounds one caller, not the server. Acquire
+  such a permit in the coroutine (so queued callers do not each occupy a threadpool worker) and
+  release it in the worker's own `finally` — `asyncio.wait_for` cancels the await, not the thread.
+  **Whether a full gate is a `503` or a queue depends on who is waiting**: an interactive endpoint
+  fails fast, an unattended one queues without a deadline. See *Enrichment on the server*.
+
+---
+
+## Enrichment on the server (0.11)
+
+`just-dna-enricher` is the only tier permitted to fetch. It runs **before** the compile, as a
+separate step, writing `resolution.csv` for the compiler to consume — the compile path must never
+import it (CONSTITUTION Principle 2), which is why `compile_module(ensembl_cache=…)` is not used and
+why `services/enrich.py` imports the enricher lazily, inside its functions. A test asserts the
+boundary; keep it true.
+
+Four rules that each cost a bug to learn:
+
+- **Always pass the *configured* cache path, never the resolved one.** `enrich()` runs the resolver
+  ladder itself and reads `None` as "find one for me" — so passing a resolved-to-`None` empty cache
+  licenses the ambient discovery the explicit setting existed to prevent. `configured_caches()` for
+  the call, `available_references()` for reporting.
+- **Always `download=False`** on a request path. A missing snapshot is a well-defined `503`, not a
+  five-minute HuggingFace pull inside a handler.
+- **Never `mode="strict"` on a reporting endpoint.** Strict enrichment raises *before* writing
+  `resolution.csv`, so a failure leaves nothing to diagnose from. Enrich best-effort and let the
+  compiler's strict gate refuse — it names the offending variants.
+- **One shared `LookupClients` per process, on *every* path that egresses.** The outbound pacing that
+  keeps us inside gnomAD's and NCBI's limits lives on the client object, so per-request bundles egress
+  at N× the intended rate. That sharing is only safe because the concurrency gate defaults to 1
+  (`PacingGate` has no lock) — which means the two rules are one rule: **anything that takes the
+  shared bundle must also take a gate permit.** `/check` and the publish path both do; publish takes
+  it conditionally, since an offline publish reaches nothing and has nothing to serialize.
+- **`offline` means *snapshot only*, not "that source is off" (enricher 0.5.1 / RM38).** Every pass
+  is snapshot → live → skipped-with-a-reason, so a provisioned deployment gets the full `?pgx=` check
+  with zero egress. Assuming the family is online-only silently skips work a cache could have done.
+  ClinGen dosage is the one genuine exception — CC0, live-only, no snapshot exists.
+- **Pass the caches, and pass `offline` — never hoist a guard of your own.** A caller-side
+  `if not offline:` reimplements a decision the pass now makes better than we can: it knows whether
+  a *snapshot* client was injected, which is not egress.
+- **A pass that could not run reports why, and never reports clean.** `unchecked` ≠ `clean` and
+  `not_covered` ≠ `not_found`; an ACMG check with no list read must say `checked: 0`, not zero
+  mismatches. Each pass carries its own `warnings` for exactly this.
+- **The two callers want opposite things from a full gate, so there are two lanes.** `/check` is
+  interactive: `try_acquire`, `503` on a full gate, because queueing behind a paced run turns a fast
+  rejection into a slow timeout. Publish is idle: `acquire_idle`, no deadline, deferring to
+  interactive demand — nobody is waiting on it and a rejection costs a whole re-upload. A queued
+  publish must wait **in the coroutine**; waiting in a worker would starve the pool `/check` needs,
+  which is the opposite of yielding. Deference is at *entry* only; a running publish cannot be
+  preempted, and pretending otherwise in a comment would be worse than saying so.
+- **Nice values are one-way.** Raising a thread's nice is unprivileged, lowering it back is not, and
+  anyio reuses its workers — so anything niced runs on a thread we create and discard
+  (`lowpriority.py`). A `finally: restore()` here does not work and cannot be made to.
+
+These upstreams are **unauthenticated and throttle by IP**. gnomAD publishes a 10-per-60s budget and
+offers no API key at any price, so there is no quota to top up and no per-caller scoping — an
+overspend throttles the whole deployment. `NCBI_API_KEY` is optional and only tightens NCBI's own
+pacing; `PHARMVAR_API_KEY` gates a leg rather than pacing it, and it is personal to an account under
+PharmVar's terms §2 — so on a public deployment third parties would query it on the operator's.
+**Prefer the snapshot to the key for that reason**: since 0.5.1 a built PharmVar cache runs the leg
+with no credential, and it is the one cache nothing publishes (the bulk data comes down under that
+same key), so an operator builds it once. That is also why the concurrency gate is not merely a cost
+control: it is the only thing holding our aggregate rate inside a limit we cannot buy our way out of.
 
 ---
 

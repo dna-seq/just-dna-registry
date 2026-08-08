@@ -2,9 +2,18 @@
 Server-side publish (SPEC §7, §8.6–§8.7): the trust-bearing path.
 
 The publisher uploads the **spec only** (as individual files or a zip/tar.gz archive); the server
-validates it, runs `compile_module` itself (so `compile_success`, input hashes, and the artifact
+enriches it, runs `compile_module` itself (so `compile_success`, input hashes, and the artifact
 digest are produced by the trusted party), fills the registry-level manifest fields, stores the
 compiled module under a version key, and indexes the manifest.
+
+The 0.5 pipeline is **enrich → compile strict**, in that order and as two steps. The enricher
+resolves rsIDs to coordinates and writes `resolution.csv`; the compiler then consumes that file and
+never fetches anything itself. Running them as one call — `compile_module(ensembl_cache=…)` — is
+deprecated upstream precisely because it reaches into the network tier from inside the compile path.
+
+`strict` is what makes the registry's `compiled_by` token worth anything: it refuses to emit a
+partial artifact when a variant was left without a position, rather than publishing something whose
+`fully_resolved` is quietly false.
 
 Legacy modules that ship only compiled parquets (the old zip format, no manifest) are imported by
 reverse-engineering a spec (`reverse_module`) with the client supplying the missing display
@@ -16,11 +25,17 @@ import shutil
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
-from typing import Mapping, Optional
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any, Mapping, Optional
 
+import yaml
 from eliot import start_action
-from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_compiler.compiler import (
+    compile_module,
+    content_signature,
+    reverse_module,
+    validate_spec,
+)
 from just_dna_format.identity import canonical_id
 from just_dna_format.integrity import sha256_bytes
 from just_dna_format.manifest import (
@@ -30,27 +45,151 @@ from just_dna_format.manifest import (
     ModuleManifest,
     write_manifest,
 )
+from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_format.signing import sign_digest
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
+from just_dna_registry.services.enrich import enrich_spec, unresolved_hint
 from just_dna_registry.services.ingest import ingest_manifest, now_iso
+from just_dna_registry.specfiles import REQUIRED_SPEC_FILES, SPEC_YAML
 from just_dna_registry.storage.base import StorageBackend, version_key
 
-REQUIRED_SPEC_FILES: tuple[str, ...] = ("module_spec.yaml", "variants.csv", "studies.csv")
 _REVERSE_MARKER: str = "weights.parquet"  # a legacy compiled module has this but no spec
+
+# Manifest fields the registry fills itself on publish (SPEC §4) and is therefore the authority on:
+# it stamps `identity.{namespace,canonical_id}` and `owner` from the request, overriding any authored
+# value. The format calls these "authority keys" and ships the canonical set, which the registry
+# injects rather than maintaining its own — `validate_spec`/`compile_module` take it as a parameter
+# and report what they dropped on `ValidationResult.info`.
+#
+# `module.version` is deliberately NOT here any more. Through 0.10 the registry stripped it too,
+# because format 0.4 made the `module:` block `extra="forbid"` and every pre-0.4 archive shipped one.
+# Format 0.5 turned it back into a real, freeform, advisory field (coerced to SemVer at load, with
+# the original kept as `version_coerced_from`), so stripping it now discards author intent for no
+# gain: the registry stamps `Identity.version` from the request regardless, and that always wins.
+_REGISTRY_OWNED_MODULE_KEYS: tuple[str, ...] = tuple(sorted(IDENTITY_AUTHORITY_KEYS))
+
+
+def normalize_module_block(spec_dir: Path) -> list[str]:
+    """Normalize `module_spec.yaml`'s `module:` block in place. Returns a description of each change.
+
+    Two normalizations, both contract-independent housekeeping rather than a per-release migration:
+
+    **Registry-owned keys are dropped.** The compiler's injected `authority_keys=` does the same job
+    non-destructively, and we pass that too — but it is not a substitute, because
+    `content_signature(spec_dir)` loads the YAML with **no** authority keys of its own. A stored spec
+    still carrying `namespace:` fails that load, falls back to the default genome build, and quietly
+    produces the wrong signature for a non-GRCh38 module. Normalizing on disk, first, is what stops
+    that, and it keeps the *stored* spec self-consistent for everything that reads it back later:
+    revalidate, upgrade, and signature re-derivation.
+
+    **A non-string `module.version` is stringified.** `version: 3` in YAML is an integer, and format
+    0.5's `ModuleInfo.version` is a freeform *string*, so the whole pre-0.4 corpus fails to load on a
+    quoting accident. Through 0.10 the registry dropped the key outright to sidestep this; 0.5 made
+    it a real advisory field, so discarding it now would throw away author intent for nothing —
+    `"3"` is coerced to `3.0.0` with the original kept as `version_coerced_from`, and the registry's
+    own stamped `Identity.version` wins regardless.
+
+    A no-op leaves the file byte-identical, so a clean spec keeps its authored bytes.
+    """
+    spec_file = spec_dir / SPEC_YAML
+    if not spec_file.is_file():
+        return []
+    doc = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+    module = doc.get("module") if isinstance(doc, dict) else None
+    if not isinstance(module, dict):
+        return []
+
+    changes = [
+        f"dropped registry-owned `module.{key}` (the registry stamps it on publish)"
+        for key in _REGISTRY_OWNED_MODULE_KEYS
+        if module.pop(key, None) is not None
+    ]
+    version = module.get("version")
+    if version is not None and not isinstance(version, str):
+        module["version"] = str(version)
+        changes.append(
+            f"quoted `module.version: {version!r}` as {str(version)!r} "
+            f"(YAML read it as {type(version).__name__}; the field is a freeform string)"
+        )
+
+    if changes:
+        spec_file.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    return changes
 
 
 class PublishError(Exception):
     """A publish failure the router maps to an HTTP status."""
 
     def __init__(
-        self, detail: str, *, errors: list[str] | None = None, warnings: list[str] | None = None
+        self,
+        detail: str,
+        *,
+        errors: list[str] | None = None,
+        warnings: list[str] | None = None,
+        info: list[str] | None = None,
     ) -> None:
         super().__init__(detail)
         self.detail = detail
         self.errors = errors or []
         self.warnings = warnings or []
+        # `ValidationResult.info` — accepted-but-noteworthy findings, e.g. which authority keys were
+        # dropped from the authored block, or that `module.version: v2` was coerced to `2.0.0`.
+        # Carried so a publisher sees what the server changed about their spec, not just why it lost.
+        self.info = info or []
+
+
+async def collect_uploads(files: list[Any], settings: Settings) -> dict[str, bytes]:
+    """Read a multipart spec upload into memory: counted, bounded, and containment-checked.
+
+    Shared by every upload route (publish, import, validate, check) so the guards cannot be present
+    on one and absent on another — which is how the traversal below survived: the archive path has
+    always checked containment (`_extract_archive`), the multipart path never did.
+
+    Order matters. Count and size are checked from `UploadFile.size` *before* anything is read —
+    Starlette spools parts over 1 MiB to disk, so the sizes are known without materializing the
+    payload, and a 2 GiB upload is rejected without ever being held in memory.
+
+    Raises `PublishError` with `too_many_files` / `upload_too_large` / `unsafe_filename`.
+    """
+    named = [f for f in files if f.filename]
+    if len(named) > settings.max_spec_files:
+        raise PublishError(
+            "too_many_files",
+            errors=[f"{len(named)} files uploaded; the limit is {settings.max_spec_files}"],
+        )
+
+    total = sum(f.size or 0 for f in named)
+    if total > settings.max_upload_bytes:
+        raise PublishError(
+            "upload_too_large",
+            errors=[
+                f"{total} bytes uploaded; the limit is {settings.max_upload_bytes} "
+                f"({settings.max_upload_bytes // (1024 * 1024)} MiB)"
+            ],
+        )
+
+    for upload in named:
+        reject_unsafe_relpath(upload.filename)
+    return {f.filename: await f.read() for f in named}
+
+
+def reject_unsafe_relpath(name: str) -> None:
+    """Refuse a spec-file name that would write outside the spec directory.
+
+    Checked structurally rather than by resolving against a real directory, so the verdict does not
+    depend on which temp dir the caller later picks and cannot be raced by a symlink appearing
+    between the check and the write. Backslashes are rejected outright: they are not path separators
+    on POSIX, so `..\\..\\x` would pass a POSIX-only check and still escape on a Windows host.
+    """
+    candidate = PurePosixPath(name)
+    if candidate.is_absolute() or PureWindowsPath(name).is_absolute() or "\\" in name:
+        raise PublishError("unsafe_filename", errors=[f"absolute path not allowed: {name!r}"])
+    if any(part == ".." for part in candidate.parts):
+        raise PublishError("unsafe_filename", errors=[f"path escapes the spec directory: {name!r}"])
+    if not candidate.name or candidate.name in {".", ".."}:
+        raise PublishError("unsafe_filename", errors=[f"not a file path: {name!r}"])
 
 
 # ── Public entry points ───────────────────────────────────────────────────────
@@ -68,22 +207,36 @@ def publish_version(
     owner: str,
     files: Mapping[str, bytes],
     published_by: Optional[int] = None,
+    gate: Optional[Any] = None,
 ) -> ModuleManifest:
-    """Publish from individually-uploaded spec files."""
-    missing = [f for f in REQUIRED_SPEC_FILES if f not in files]
-    if missing:
-        raise PublishError("missing_spec_files", errors=[f"missing: {m}" for m in missing])
-    with tempfile.TemporaryDirectory() as tmp:
-        spec_dir = Path(tmp) / "spec"
-        for rel, data in files.items():
-            dest = spec_dir / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(data)
-        return _finalize(
-            repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
-            version=version, changelog=changelog, owner=owner, published_by=published_by,
-            spec_dir=spec_dir,
-        )
+    """Publish from individually-uploaded spec files.
+
+    `gate` is an already-acquired `EnrichmentGate` permit, released here in the worker's own
+    `finally` — see `import_archive` for why the release cannot live on the caller's side.
+    """
+    try:
+        missing = [f for f in REQUIRED_SPEC_FILES if f not in files]
+        if missing:
+            raise PublishError("missing_spec_files", errors=[f"missing: {m}" for m in missing])
+        with tempfile.TemporaryDirectory() as tmp:
+            spec_dir = Path(tmp) / "spec"
+            for rel, data in files.items():
+                # Re-checked at the point of the write, not only at the door: this function is a
+                # public entry point and its callers (routers, the CLI, a future one) each supply
+                # the mapping themselves. A containment check that lives only in the HTTP layer is
+                # one refactor away from being absent.
+                reject_unsafe_relpath(rel)
+                dest = spec_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+            return _finalize(
+                repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
+                version=version, changelog=changelog, owner=owner, published_by=published_by,
+                spec_dir=spec_dir,
+            )
+    finally:
+        if gate is not None:
+            gate.release()
 
 
 def import_archive(
@@ -99,31 +252,42 @@ def import_archive(
     archive: bytes,
     display: Optional[dict] = None,
     published_by: Optional[int] = None,
+    gate: Optional[Any] = None,
 ) -> ModuleManifest:
     """Publish from a zip/tar.gz archive: a spec archive is compiled directly; a legacy
-    parquet-only archive is reverse-engineered (with client-supplied `display` metadata) first."""
-    with start_action(
-        action_type="import_archive", namespace=namespace, name=name, version=version,
-        archive_bytes=len(archive),
-    ) as action:
-        with tempfile.TemporaryDirectory() as tmp:
-            extracted = Path(tmp) / "extracted"
-            extracted.mkdir()
-            _extract_archive(archive, extracted)
-            root = _module_root(extracted)
-            is_spec = (root / "module_spec.yaml").is_file()
-            action.log(message_type="archive_extracted", mode="spec" if is_spec else "reverse",
-                       root=str(root.relative_to(extracted)) or ".")
-            if is_spec:
-                spec_dir = root
-            else:
-                spec_dir = Path(tmp) / "reversed"
-                reverse_module(root, spec_dir, module_name=name, **(_reverse_kwargs(display)))
-            return _finalize(
-                repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
-                version=version, changelog=changelog, owner=owner, published_by=published_by,
-                spec_dir=spec_dir,
-            )
+    parquet-only archive is reverse-engineered (with client-supplied `display` metadata) first.
+
+    `gate` is an already-acquired `EnrichmentGate` permit. It is released **here**, in the worker's
+    own `finally`, rather than by the coroutine that took it: a run that outlives its request keeps
+    its thread (Python cannot kill one), so releasing on the caller's side would let a run that is
+    still spending stop counting against occupancy. Same rule as `dry_run`.
+    """
+    try:
+        with start_action(
+            action_type="import_archive", namespace=namespace, name=name, version=version,
+            archive_bytes=len(archive),
+        ) as action:
+            with tempfile.TemporaryDirectory() as tmp:
+                extracted = Path(tmp) / "extracted"
+                extracted.mkdir()
+                _extract_archive(archive, extracted)
+                root = _module_root(extracted)
+                is_spec = (root / "module_spec.yaml").is_file()
+                action.log(message_type="archive_extracted", mode="spec" if is_spec else "reverse",
+                           root=str(root.relative_to(extracted)) or ".")
+                if is_spec:
+                    spec_dir = root
+                else:
+                    spec_dir = Path(tmp) / "reversed"
+                    reverse_module(root, spec_dir, module_name=name, **(_reverse_kwargs(display)))
+                return _finalize(
+                    repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
+                    version=version, changelog=changelog, owner=owner, published_by=published_by,
+                    spec_dir=spec_dir,
+                )
+    finally:
+        if gate is not None:
+            gate.release()
 
 
 # ── Core ──────────────────────────────────────────────────────────────────────
@@ -142,27 +306,59 @@ def _finalize(
     spec_dir: Path,
     published_by: Optional[int] = None,
 ) -> ModuleManifest:
-    """Validate + recompile a prepared spec dir, store the version, and index it."""
+    """Validate, enrich, recompile a prepared spec dir, store the version, and index it."""
     with start_action(
         action_type="publish_finalize", namespace=namespace, name=name, version=version
     ) as action:
-        validation = validate_spec(spec_dir)
+        normalized = normalize_module_block(spec_dir)
+        if normalized:
+            action.log(message_type="normalized_module_block", changes=normalized)
+
+        # Modeless on purpose, even though the compile below is strict. This pass exists to reject a
+        # broken spec before spending enrichment on it; the strict-only findings are all judgements
+        # about *resolved* data, and raising them here — before any coordinate exists — would point
+        # the author at the wrong column. `compile_module` re-runs validation itself and then re-runs
+        # the mode-ladder checks at their real severity, which is where strict belongs.
+        validation = validate_spec(spec_dir, IDENTITY_AUTHORITY_KEYS)
         action.log(
             message_type="validated", valid=validation.valid,
             errors=validation.errors[:20], warnings=validation.warnings[:20],
+            info=validation.info[:20],
         )
         if not validation.valid:
             raise PublishError(
-                "invalid_spec", errors=validation.errors, warnings=validation.warnings
+                "invalid_spec",
+                errors=validation.errors,
+                warnings=validation.warnings,
+                info=validation.info,
             )
+
+        # Dedup before the compile, not after. The signature is a hash of the authored rows — no
+        # reference, no parquet build — so it is cheap and available now, and rejecting here saves a
+        # duplicate the entire cost of enrich + compile. Same value the compiler will stamp onto
+        # `manifest.content_signature`.
+        _reject_duplicate_content(repo, spec_dir, namespace, name, action)
+
+        # The network tier, as a separate step ahead of the compile (CONSTITUTION Principle 2).
+        # Writes `resolution.csv` into the spec dir; the compiler reads it from there.
+        enriched = enrich_spec(spec_dir, settings, action=action)
 
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp) / "out"
             result = compile_module(
                 spec_dir,
                 out_dir,
-                resolve_with_ensembl=settings.resolve_with_ensembl,
-                ensembl_cache=settings.ensembl_cache,
+                # Always on: in 0.5 this is the master switch for consuming `resolution.csv` at all,
+                # not just for network lookups (the compiler never fetches). Off would mean the
+                # enrichment we just ran is ignored and every rsID-authored variant stays unresolved.
+                # Deliberately not a setting — there is no coherent deployment that wants it off.
+                resolve_with_ensembl=True,
+                # NB: no `ensembl_cache=`. That parameter is deprecated (removal at 1.0) and its
+                # implementation lazily imports the enricher from inside the compile path, which is
+                # exactly the tier violation this two-step pipeline exists to avoid.
+                authority_keys=IDENTITY_AUTHORITY_KEYS,
+                strict=settings.compile_strict,
+                ba1_threshold=settings.ba1_threshold,
                 # Trust token stamped into the manifest + enforced by just-dna-format's
                 # verify_manifest. Deliberately kept as the legacy value "marketplace-server" across
                 # the registry rebrand: it's an internal token (not user-facing), and changing it
@@ -170,14 +366,28 @@ def _finalize(
                 # next just-dna-format major cleanup, not here.
                 compiled_by=MARKETPLACE_COMPILED_BY,
                 ensembl_reference=settings.ensembl_reference,
+                # `log_files` / `provenance_file` / `logo_file` are left to the compiler's own
+                # discovery over `spec_dir`, which finds exactly what the registry used to gather by
+                # hand (`*.log`, `logs/**.log`, `provenance.json`, `logo.{png,jpg,jpeg}`) and copies
+                # them into `out_dir` — so the carry-forward loop below already skips them.
             )
             action.log(
                 message_type="compiled", success=result.success,
                 errors=result.errors[:20], warnings=result.warnings[:20],
+                strict=settings.compile_strict,
             )
             if not result.success or result.manifest is None:
+                # The compiler names *which* variants have no position; it cannot know that the
+                # reason was an offline enrichment against an unprovisioned snapshot. Supply that
+                # half, so whichever of the two people can act — publisher or operator — can.
+                errors = list(result.errors)
+                if enriched.unresolved or not enriched.ran:
+                    errors.append(unresolved_hint(enriched, settings))
                 raise PublishError(
-                    "compile_failed", errors=result.errors, warnings=result.warnings
+                    "compile_failed",
+                    errors=errors,
+                    warnings=result.warnings + enriched.notes,
+                    info=validation.info,
                 )
 
             manifest = result.manifest
@@ -221,12 +431,48 @@ def _finalize(
             ingest_manifest(repo, manifest, changelog=changelog, published_by=published_by)
             action.add_success_fields(
                 digest=manifest.artifact.digest,
+                content_signature=manifest.content_signature,
                 storage_key=key,
                 n_files=len(stored),
                 variant_count=manifest.stats.variant_count,
                 logs=[e.name for e in manifest.logs],
+                resolution_mode=manifest.compilation.resolution_mode,
+                fully_resolved=manifest.compilation.fully_resolved,
             )
             return manifest
+
+
+def _reject_duplicate_content(
+    repo: Repository, spec_dir: Path, namespace: str, name: str, action: Any
+) -> str:
+    """Refuse a republish of data already listed under a *different* `(namespace, name)`.
+
+    `artifact.digest` cannot gate this: the module name is baked into the compiled parquets, so a
+    rename produces different bytes and a different digest. The content signature is the identity
+    built for the job — a hash of the authored rows, normalized, with `defaults:` folded in and the
+    declared build included, so it survives a reformat, a row reorder, and a recompile against a
+    different reference, and moves when the data genuinely differs.
+
+    A collision under the *same* module (a later version with unchanged data) is fine and allowed.
+    Returns the signature.
+
+    Rows whose `content_hash` is empty are pre-0.5 and have not been re-derived yet
+    (`registry rederive-signatures`); the repository filters them out rather than letting an empty
+    string collide with itself and 409 every publish during the migration window.
+    """
+    signature = content_signature(spec_dir)
+    elsewhere = [
+        r for r in repo.find_versions_by_content(signature)
+        if (r["namespace"], r["name"]) != (namespace, name)
+    ]
+    if elsewhere:
+        where = ", ".join(f"{r['namespace']}/{r['name']}@{r['version']}" for r in elsewhere)
+        action.log(message_type="duplicate_content", signature=signature, published_as=where)
+        raise PublishError(
+            "duplicate_content",
+            errors=[f"identical module data already published as: {where}"],
+        )
+    return signature
 
 
 def amend_logo(
@@ -304,7 +550,18 @@ def _module_root(extracted: Path) -> Path:
 
 
 def _reverse_kwargs(display: Optional[dict]) -> dict:
-    """Filter client-supplied display metadata to reverse_module's accepted, non-null keys."""
-    allowed = ("title", "description", "report_title", "icon", "color")
+    """Filter client-supplied metadata to `reverse_module`'s accepted, non-null keys.
+
+    `genome_build` is on this list and is not display metadata — it is the one value here that is
+    inside `artifact.digest`. It reaches a compiled module through `manifest.json` and no parquet
+    column, so `reverse_module` reads it from the artifact's own manifest and falls back to `GRCh38`
+    for a bare parquet directory that has none. That fallback is right for the common case and
+    silently wrong for a GRCh37 legacy archive: the build decides the identity key, so the recompile
+    would mint `ga4gh:VA.…` ids for GRCh37 coordinates against GRCh38 accessions — an allele id
+    naming a base 228 bp from the one the module meant, with a moved digest and nothing downstream
+    able to notice. Passing it through gives the importer the override the compiler documents
+    (`reference_examples/grch37_build/`); omitted, the manifest still wins.
+    """
+    allowed = ("title", "description", "report_title", "icon", "color", "genome_build")
     display = display or {}
     return {k: display[k] for k in allowed if display.get(k) is not None}

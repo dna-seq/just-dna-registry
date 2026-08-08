@@ -156,10 +156,25 @@ def require_org_capability(
 
 
 def _rate_identity(request: Request) -> str:
-    """Rate-limit key: the API key if present (first 16 chars), else the client IP."""
+    """Rate-limit key: the authenticated account if the bearer resolves to one, else the API key
+    prefix, else the client IP.
+
+    The account is tried first because a bearer *prefix* is not an identity when the bearer is a JWT:
+    every HS256 token begins `eyJhbGciOiJIUzI1`, so keying on the first 16 characters collapsed every
+    JWT session in the deployment into one shared bucket — one caller's publishes exhausting
+    everyone's. Static API keys are distinct in their prefix, so they were unaffected; the bug only
+    appeared once JWT sessions were enabled.
+
+    Falling back to the prefix (rather than to the IP) for an unrecognized bearer keeps a bad token
+    from sharing a bucket with the anonymous traffic behind the same NAT.
+    """
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
-        return "key:" + auth.split(" ", 1)[1].strip()[:16]
+        token = auth.split(" ", 1)[1].strip()
+        claims = decode_jwt(request.app.state.settings, token)
+        if claims and claims.get("account_id") is not None:
+            return f"account:{claims['account_id']}"
+        return "key:" + token[:16]
     return "ip:" + (request.client.host if request.client else "unknown")
 
 

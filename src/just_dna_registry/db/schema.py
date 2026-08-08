@@ -9,6 +9,8 @@ tables (`version_genes`, `version_categories`) for facet filters. SPEC §9.
 import sqlite3
 from pathlib import Path
 
+from just_dna_format.manifest import ModuleManifest
+
 SCHEMA: str = """
 CREATE TABLE IF NOT EXISTS accounts (
     id         INTEGER PRIMARY KEY,
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS versions (
     module_id       INTEGER NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
     version         TEXT NOT NULL,
     digest          TEXT NOT NULL,
+    content_hash    TEXT NOT NULL DEFAULT '',   -- name-independent data-input signature (dedup)
     manifest_json   TEXT NOT NULL,
     compile_success INTEGER NOT NULL DEFAULT 0,
     yanked          INTEGER NOT NULL DEFAULT 0,
@@ -199,6 +202,32 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE versions ADD COLUMN downloads INTEGER NOT NULL DEFAULT 0")
     if "published_by" not in ver_cols:  # 0.9.0 authoring account (RBAC own-scoping + author funding)
         conn.execute("ALTER TABLE versions ADD COLUMN published_by INTEGER REFERENCES accounts(id)")
+    if "content_hash" not in ver_cols:
+        # Name-independent content signature (0.9.1): gates cross-name republish dedup on publish.
+        conn.execute("ALTER TABLE versions ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
+    # Backfill anything still empty from the manifest, on every startup rather than only on the
+    # column's first appearance — the 0.9.1 one-shot block above has already run on any migrated DB,
+    # so a guarded backfill there would never fire again.
+    #
+    # 0.11 replaced the registry's own manifest-inputs Merkle root with the compiler's canonical
+    # row-level `content_signature`, which the compiler now stamps onto the manifest itself. Rows
+    # compiled under 0.5 carry it and are free to backfill from here. Rows that predate it cannot be:
+    # the new algorithm reads the authored CSVs, which live in storage, and this function holds only
+    # a connection. They keep `''` — the sentinel `find_versions_by_content` filters out — until an
+    # operator runs `registry rederive-signatures --apply`, which has the storage backend, can report
+    # a per-row failure, and is a deliberate act rather than a side effect of starting the server.
+    for row in conn.execute(
+        "SELECT id, manifest_json FROM versions WHERE content_hash = ''"
+    ).fetchall():
+        signature = ModuleManifest.model_validate_json(row["manifest_json"]).content_signature
+        if signature:
+            conn.execute(
+                "UPDATE versions SET content_hash = ? WHERE id = ?", (signature, row["id"])
+            )
+    # Indexed here (not in SCHEMA) so it is created only after the column exists on migrated DBs.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_content ON versions(content_hash)")
+
+    _migrate_0_11_facets(conn, ver_cols)
 
     # 0.6.0 namespace membership: seed each existing single-owner namespace as an `owner` member,
     # so the new membership check (which supersedes single-owner) sees no disruption. Idempotent.
@@ -209,3 +238,47 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # 0.9.0 RBAC role rename: contributor → member. Old contributors could amend/yank ANY version;
     # `member` is own-only. Re-grant `admin` to preserve broad rights. Idempotent. See docs/UPGRADE.md.
     conn.execute("UPDATE namespace_members SET role = 'member' WHERE role = 'contributor'")
+
+
+#: 0.11 per-version facets, projected out of `manifest.json` so listings can filter on them in SQL.
+#: Everything else the 0.5 manifest gained — `resolution_signature`, `resolution_sources`, the full
+#: `sources` licence lists, the `frequency`/`gene_metrics`/`literature` blocks — stays in
+#: `manifest_json` and surfaces through the detail endpoint's inline manifest, the way `authorship`
+#: and `panel` already do. A column is for something you filter or sort by; the rest is payload.
+_V011_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("resolution_mode", "TEXT"),                          # 'strict' | 'best_effort' | NULL
+    ("fully_resolved", "INTEGER NOT NULL DEFAULT 0"),
+    ("trusted", "INTEGER"),                               # NULLABLE — see below
+    ("vrs_alleles", "INTEGER NOT NULL DEFAULT 0"),
+    ("vrs_identified", "INTEGER NOT NULL DEFAULT 0"),
+    ("commercial_use", "INTEGER"),                        # tri-state 1/0/NULL
+    ("redistribution", "INTEGER"),                        # tri-state 1/0/NULL
+    ("share_alike", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+
+def _migrate_0_11_facets(conn: sqlite3.Connection, ver_cols: set[str]) -> None:
+    """Add and backfill the 0.5-manifest facets.
+
+    Unlike the content-signature re-derivation, this backfill reads `manifest_json` and nothing else
+    — no storage, no network — which is exactly why it can live in a migration while that one cannot.
+
+    `trusted` is deliberately nullable. A pre-0.5 manifest has `resolution_mode=None` and
+    `fully_resolved=False`, so `NOT NULL DEFAULT 0` would stamp "untrusted" across the entire existing
+    catalog on the day this ships. `NULL` means *predates the contract*, which the API renders as "—"
+    rather than as a judgement.
+    """
+    added = [name for name, decl in _V011_COLUMNS if name not in ver_cols]
+    for name, decl in _V011_COLUMNS:
+        if name not in ver_cols:
+            conn.execute(f"ALTER TABLE versions ADD COLUMN {name} {decl}")
+    if added:
+        from just_dna_registry.db.facets import version_facets
+
+        for row in conn.execute("SELECT id, manifest_json FROM versions").fetchall():
+            facets = version_facets(ModuleManifest.model_validate_json(row["manifest_json"]))
+            conn.execute(
+                "UPDATE versions SET " + ", ".join(f"{k} = ?" for k in facets) + " WHERE id = ?",
+                (*facets.values(), row["id"]),
+            )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_trusted ON versions(trusted)")

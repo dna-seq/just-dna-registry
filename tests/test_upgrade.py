@@ -6,14 +6,21 @@ performs the migrate + re-publish, never mutating the predecessor."""
 import csv
 import io
 
+import yaml
 from fastapi.testclient import TestClient
 from just_dna_format.manifest import ModuleManifest
+from just_dna_format.spec import StudyRow, VariantRow
 
 from just_dna_registry.config import Settings
 from just_dna_registry.services.revalidate import revalidate_version
 from just_dna_registry.services.upgrade import (
     is_latest_version,
+    offending_columns,
+    offending_yaml_keys,
     plan_variants_upgrade,
+    prepare_version_upgrade,
+    trim_unknown_columns,
+    trim_unknown_yaml_keys,
     upgrade_version,
 )
 from just_dna_registry.storage.base import version_key
@@ -164,3 +171,175 @@ def test_superseded_predecessor_is_not_re_upgraded(
     )
     assert again is None
     assert not repo.version_exists("just-dna-seq", "coronary", "1.0.2")
+
+
+# ── Schema recompile (--force / recompile) ────────────────────────────────────────
+
+def test_recompile_republishes_on_contract_version(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """`recompile=True` re-emits a module with no 0.3 drift as the next PATCH (a schema migration);
+    the default is a no-op. Within one contract the recompile is deterministic → identical digest."""
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+    _, upgraded = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    )  # 1.0.1 is now on-contract (no drift)
+
+    # Default: nothing to do.
+    assert upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.1", manifest=upgraded,
+    ) is None
+    # recompile=True re-publishes anyway.
+    result = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.1", manifest=upgraded,
+        recompile=True,
+    )
+    assert result is not None
+    new_version, new_manifest = result
+    assert new_version == "1.0.2"
+    assert new_manifest.compilation.compile_success
+    # Non-lossy: identical spec recompiled under the same contract yields the same content identity.
+    assert new_manifest.artifact.digest == upgraded.artifact.digest
+
+
+# ── Column trim (--trim, lossy) ───────────────────────────────────────────────────
+
+# A legacy spec whose lax schema let an unknown column through (`legacy_note`) — 0.4 forbids it.
+_VARIANTS_EXTRA_COL = (
+    "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category,legacy_note\n"
+    "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19,keep-for-now\n"
+)
+
+
+def test_offending_and_trim_helpers() -> None:
+    assert offending_columns(_VARIANTS_EXTRA_COL, VariantRow) == ["legacy_note"]
+    trimmed, dropped = trim_unknown_columns(_VARIANTS_EXTRA_COL, VariantRow)
+    assert dropped == ["legacy_note"]
+    assert "legacy_note" not in trimmed and "CYP2C19" in trimmed
+    assert offending_columns(trimmed, VariantRow) == []
+    # A clean CSV is a byte-preserving no-op.
+    assert trim_unknown_columns(_VARIANTS, VariantRow) == (_VARIANTS, [])
+    assert offending_columns(_STUDIES, StudyRow) == []
+
+
+def _make_stored_spec_legacy(app, api_key, client) -> ModuleManifest:
+    """Publish a clean module, then overwrite its stored `variants.csv` with one carrying a column
+    the current contract rejects — simulating a version published under an older, lax schema."""
+    manifest = _publish(client, api_key)
+    app.state.storage.store_module(
+        version_key("just-dna-seq", "coronary", "1.0.0"),
+        {"variants.csv": _VARIANTS_EXTRA_COL.encode()},
+    )
+    return manifest
+
+
+def test_offending_column_blocks_upgrade_without_trim(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    manifest = _make_stored_spec_legacy(app, api_key, client)
+    storage = app.state.storage
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.0", manifest, trim=False)
+    assert prep.blocked == {"variants.csv": ["legacy_note"]}
+    assert not prep.would_act(recompile=True)  # blocked wins even over recompile
+    # And the upgrade itself is a no-op (blocked), never crashing on the unknown column.
+    assert upgrade_version(
+        repo=app.state.repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    ) is None
+
+
+def test_trim_drops_column_and_republishes(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    manifest = _make_stored_spec_legacy(app, api_key, client)
+    repo, storage = app.state.repo, app.state.storage
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.0", manifest, trim=True)
+    assert prep.dropped == {"variants.csv": ["legacy_note"]}
+    assert prep.would_act(recompile=False)
+
+    result = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+        trim=True, prepared=prep,
+    )
+    assert result is not None
+    new_version, _ = result
+    assert new_version == "1.0.1"
+    # The offending column is gone from the successor's stored spec (lossy trim applied) …
+    migrated = storage.read_file(
+        version_key("just-dna-seq", "coronary", "1.0.1"), "variants.csv"
+    ).decode()
+    header = migrated.splitlines()[0]
+    assert "legacy_note" not in header
+    # … and the 0.3 back-population still ran on the trimmed spec.
+    assert "direction" in header
+    # Predecessor's stored (legacy) bytes are untouched.
+    assert "legacy_note" in storage.read_file(
+        version_key("just-dna-seq", "coronary", "1.0.0"), "variants.csv"
+    ).decode()
+
+
+# ── YAML-key trim (module_spec.yaml) ──────────────────────────────────────────────
+
+# A legacy module_spec.yaml with a top-level unknown key and a typo'd `defaults` key. `module.version`
+# is registry-owned (stripped non-lossily at publish), so it must NOT count as an offender here.
+_YAML_LEGACY = """\
+schema_version: "1.0"
+legacy_top: whatever
+module:
+  name: coronary
+  version: 2
+  title: Coronary
+  description: d
+  report_title: R
+defaults:
+  curator: ai-module-creator
+  currator: typo
+genome_build: GRCh38
+"""
+
+
+def test_offending_yaml_keys_excludes_registry_owned() -> None:
+    offenders = set(offending_yaml_keys(_YAML_LEGACY))
+    assert offenders == {"legacy_top", "defaults.currator"}
+    assert "module.version" not in offenders  # registry-owned, handled by the always-on strip
+    trimmed, dropped = trim_unknown_yaml_keys(_YAML_LEGACY)
+    assert set(dropped) == {"legacy_top", "defaults.currator"}
+    assert offending_yaml_keys(trimmed) == []
+    # The registry-owned key and the real keys are preserved by the trim.
+    reparsed = yaml.safe_load(trimmed)
+    assert reparsed["module"]["version"] == 2 and reparsed["defaults"]["curator"] == "ai-module-creator"
+
+
+def test_trim_drops_yaml_keys_and_republishes(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+    # Overwrite the stored module_spec.yaml with a legacy one carrying offending keys.
+    storage.store_module(
+        version_key("just-dna-seq", "coronary", "1.0.0"), {"module_spec.yaml": _YAML_LEGACY.encode()}
+    )
+    blocked = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.0", manifest, trim=False)
+    assert blocked.blocked == {"module_spec.yaml": ["legacy_top", "defaults.currator"]}
+
+    result = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+        trim=True,
+    )
+    assert result is not None
+    new_ver, _ = result
+    stored_yaml = storage.read_file(
+        version_key("just-dna-seq", "coronary", new_ver), "module_spec.yaml"
+    ).decode()
+    assert "legacy_top" not in stored_yaml and "currator" not in stored_yaml
+    # The authored `module.version` SURVIVES, quoted. Format 0.5 made it a real advisory field, so
+    # the publish path normalizes it (`2` → `"2"`) instead of dropping it the way 0.10 did — the
+    # registry stamps `Identity.version` regardless, so keeping the author's marker costs nothing.
+    # It is not a trim offender either: the trim only removes keys no model accepts.
+    assert yaml.safe_load(stored_yaml)["module"]["version"] == "2"

@@ -281,3 +281,181 @@ def update_module_version(
 
 if __name__ == "__main__":
     app()
+
+
+# ── Pre-flight (0.11) ─────────────────────────────────────────────────────────
+
+
+def _echo_findings(report) -> None:
+    for line in report.errors:
+        typer.secho(f"  ✗ {line}", fg=typer.colors.RED)
+    for line in report.warnings:
+        typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
+    for line in report.info:
+        typer.echo(f"  · {line}")
+
+
+@app.command()
+def validate(
+    namespace: str,
+    name: str,
+    spec_dir: Path,
+    strict: bool = typer.Option(
+        True, "--strict/--no-strict", help="Grade findings under the mode publish compiles in"
+    ),
+    url: Optional[str] = UrlOpt,
+    token: Optional[str] = TokenOpt,
+) -> None:
+    """Validate a spec directory server-side, without publishing. Exits 1 when it would be rejected."""
+    with _client(url, token, need_token=True) as c:
+        report = c.validate(namespace, name, spec_dir, strict=strict)
+    _echo_findings(report)
+    typer.echo(
+        f"  {report.stats.variant_count} variant(s), {report.stats.gene_count} gene(s)"
+        f"  signature={(report.content_signature or 'n/a')[:23]}…"
+    )
+    if not report.name_matches_path:
+        typer.secho(
+            f"  ✗ the spec's module.name is not {name!r} — publish would refuse", fg=typer.colors.RED
+        )
+    if report.published_as:
+        where = ", ".join(f"{v.namespace}/{v.name}@{v.version}" for v in report.published_as)
+        typer.secho(f"  ✗ identical data already published as: {where}", fg=typer.colors.RED)
+    if report.valid and report.name_matches_path and not report.published_as:
+        typer.secho("✓ valid", fg=typer.colors.GREEN)
+        return
+    raise typer.Exit(code=1)
+
+
+@app.command()
+def check(
+    namespace: str,
+    name: str,
+    spec_dir: Path,
+    strict: bool = typer.Option(True, "--strict/--no-strict"),
+    offline: bool = typer.Option(False, "--offline", help="Clamp to the server's local caches"),
+    frequencies: bool = typer.Option(
+        False, "--frequencies", help="gnomAD allele frequencies (slow: ~6s per 20 variants)"
+    ),
+    literature: bool = typer.Option(False, "--literature", help="Citation existence + DOI agreement"),
+    acmg: bool = typer.Option(False, "--acmg", help="acmg_sf flags vs the ACMG SF list"),
+    pgx: bool = typer.Option(
+        False, "--pgx", help="function_status vs PharmVar/CPIC/ClinPGx/ClinGen (needs --use)"
+    ),
+    use: Optional[str] = typer.Option(
+        None,
+        "--use",
+        help="unstated | non-commercial | commercial. Every PGx source forbids sale, so without a "
+             "declaration each is skipped rather than queried.",
+    ),
+    url: Optional[str] = UrlOpt,
+    token: Optional[str] = TokenOpt,
+) -> None:
+    """Full publish dry run: validation plus the network-tier checks. Exits 1 unless it would publish.
+
+    Slow by design. It spends the server's standing with rate-limited public APIs (gnomAD throttles
+    by IP and offers no key), so the server limits it hard. Start with `--offline` and add passes as
+    you need them.
+    """
+    with _client(url, token, need_token=True) as c:
+        try:
+            report = c.check(
+                namespace, name, spec_dir, strict=strict, offline=offline,
+                frequencies=frequencies, literature=literature, acmg=acmg, pgx=pgx,
+                # The CLI spells it with a hyphen (matching `just-dna-enricher --use`); the column
+                # vocabulary uses an underscore. Normalize here so a hand-typed flag cannot 422.
+                declared_use=use.replace("-", "_") if use else None,
+            )
+        except RegistryError as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if detail.get("error") != "enrichment_unavailable":
+                raise
+            # A bare "HTTP 503: {...}" here becomes a support ticket. Name the fix instead, for both
+            # of the people who could apply one.
+            missing = ", ".join(detail.get("missing", []))
+            typer.secho(
+                f"✗ the server has no reference snapshot provisioned ({missing}).\n"
+                f"  Ask the operator to run `registry warm-caches --apply`, or re-run with "
+                f"--offline for the checks that need no reference.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(code=1)
+
+    _echo_findings(report.validation)
+    if report.skipped_reason:
+        typer.secho(f"  enrichment skipped: {report.skipped_reason}", fg=typer.colors.YELLOW)
+    e = report.enrichment
+    if e is not None:
+        if e.unresolved:
+            typer.secho(
+                f"  ! {len(e.unresolved)} variant(s) unresolved: {', '.join(e.unresolved[:5])}",
+                fg=typer.colors.YELLOW,
+            )
+        for m in e.ref_mismatches:
+            shift = f" — likely a wrong `start`, off by {m.shift:+d}" if m.shift else ""
+            typer.secho(
+                f"  ✗ ref mismatch {m.variant_key} at {m.chrom}:{m.start}: "
+                f"authored {m.claimed!r}, genome has {m.actual!r}{shift}",
+                fg=typer.colors.RED,
+            )
+        for conflict in e.clin_sig_conflicts:
+            typer.secho(
+                f"  ! clin_sig {conflict.variant_key}: you say {conflict.authored!r}, "
+                f"ClinVar says {conflict.clinvar!r} ({conflict.confidence})",
+                fg=typer.colors.YELLOW,
+            )
+        for stale in e.stale_rsids:
+            colour = typer.colors.RED if stale.fatal else typer.colors.YELLOW
+            typer.secho(f"  {'✗' if stale.fatal else '!'} rsID {stale.rsid} is {stale.state}", fg=colour)
+        if e.pgx is not None:
+            for conflict in e.pgx.conflicts:
+                typer.secho(
+                    f"  ! {conflict.source} {conflict.gene}*{conflict.allele}: you say "
+                    f"{conflict.authored!r}, {conflict.source} reports {conflict.reported!r}",
+                    fg=typer.colors.YELLOW,
+                )
+            for line in e.pgx.skipped:
+                typer.echo(f"  · {line}")
+            typer.echo(
+                f"  PGx: declared_use={e.pgx.declared_use}"
+                f"  pharmvar_key={'yes' if e.pgx.pharmvar_enabled else 'no'}"
+                f"  consulted: {', '.join(e.pgx.sources) or 'nothing'}"
+            )
+        typer.echo(
+            f"  VRS identity: {e.vrs.identified}/{e.vrs.alleles} allele(s)"
+            f"   sources: {', '.join(e.sources) or 'none'}   [{report.elapsed_seconds}s]"
+        )
+
+    if report.would_publish:
+        typer.secho("✓ would publish", fg=typer.colors.GREEN)
+        return
+    typer.secho("✗ would NOT publish", fg=typer.colors.RED)
+    raise typer.Exit(code=1)
+
+
+@app.command()
+def signature(
+    spec_dir: Path,
+    lookup: bool = typer.Option(
+        False, "--lookup", help="Also ask the registry whether this data is already published"
+    ),
+    url: Optional[str] = UrlOpt,
+) -> None:
+    """Print a spec's content signature, computed locally — no upload, no recompile.
+
+    NOTE the exit code with `--lookup` is the **inverse** of `find-by-hash`'s. That one asks "is this
+    artifact published?" and fails when it is not. This one is a pre-publish dedup gate, so a match
+    is the failure: exit 1 means the registry already has this data under some name.
+    """
+    with _client(url, None) as c:
+        sig = c.content_signature(spec_dir)
+        typer.echo(sig)
+        if not lookup:
+            return
+        matches = c.lookup_by_signature(sig)
+    if not matches:
+        typer.secho("✓ not published — free to publish", fg=typer.colors.GREEN)
+        return
+    where = ", ".join(f"{v.namespace}/{v.name}@{v.version}" for v in matches)
+    typer.secho(f"✗ identical data already published as: {where}", fg=typer.colors.RED)
+    raise typer.Exit(code=1)

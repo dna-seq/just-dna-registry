@@ -306,7 +306,75 @@ an explicit guard:
   `REGISTRY_SKIP_VERSION_CHECK=1` (or `RegistryClient(check_version=False)`) is the escape
   hatch; `registry-client version` prints both sides and the verdict. Logic in `version.py`.
 
-## Next registry version (post-0.7)
+## 0.10 — format 0.4 adoption
+
+- **Adopted `just-dna-format` / `just-dna-compiler` 0.4.** Pins bumped to `>=0.4.0`. 0.4 is a
+  contract minor (the parquet schema and therefore `artifact.digest` move), so the version-mismatch
+  guard now requires client and server to both be on `0.4`. The new authored columns (`weight`,
+  `effect_size`/`effect_measure`, `effect_allele`, `flags`, `requires_callable`, `acmg_sf`,
+  `actionability`, `priority`, `negatives`) and the frozen compiler-managed `variant_key` flow
+  through publish/recompile automatically — additive, server-recompiled. The 0.3 upgrade automation
+  (`services/upgrade.py`, `VariantRow.upgraded()`) is unchanged and still correct: the 0.4 columns
+  are additive with no legacy source, so `upgraded()` still touches only the 0.3 axes.
+- **Structured per-version `authorship` (format RM14) flows through end to end.** A `module_spec.yaml`
+  may carry an `authorship:` block (one `{who, role, kind}` entry per contributor — a human ladder or
+  `ai`+scale). The compiler records it verbatim into the manifest (out of `artifact.digest`), the
+  registry stores it in the projected `manifest_json`, and it surfaces on the detail endpoint's inline
+  `latest_manifest` — so a consumer (review queue, human auditor) can route scrutiny by author-kind.
+  No DB/API-model change was needed; it rides the whole-manifest projection.
+- **Server strips registry-owned keys before validate/compile (`strip_registry_owned_keys`).** 0.4
+  made the `module:` block `extra="forbid"`, which rejects `module.version` (and `namespace`/`owner`/
+  `canonical_id`) — keys the registry fills itself and every pre-0.4 spec archive carried. The server
+  now drops that registry-owned set from the authored block on every compile path (publish, import,
+  upgrade) and before the `revalidate` drift check, so the pre-0.4 corpus keeps importing/upgrading
+  cleanly and a legacy `module.version` alone is not mistaken for un-fixable contract drift. The strip
+  is byte-preserving on a clean 0.4 spec and kept permanently (a robust, version-independent
+  normalization — the registry is the identity authority). Format-side follow-ups for this friction
+  are filed as consumer suggestions in `just-dna-format` `docs/CONSUMER_SUGGESTIONS.md`.
+- **`registry upgrade` gained schema-recompile and column-trim, for a clean 0.4 catalog migration.**
+  Plain `upgrade` still only fires on 0.3 back-population, so it left on-contract modules on their old
+  parquet shape. `--force` (`--recompile`) now re-emits the latest in the current schema even with no
+  drift (non-lossy — only `artifact.digest` moves). Because 0.4 made the row models `extra="forbid"`
+  (older lax schemas only *warned* on unknown columns/keys), a pre-0.4 `variants.csv`/`studies.csv`
+  *or* `module_spec.yaml` can carry a column/key a 0.4 compile rejects; `--trim` drops those so the
+  spec compiles (LOSSY, so `--force`-gated), and a version with such offenders and no `--trim` is
+  reported **blocked** rather than crashing the planner. `services/upgrade.py` now exposes
+  `prepare_version_upgrade` + `offending_columns`/`trim_unknown_columns` (CSV) and
+  `offending_yaml_keys`/`trim_unknown_yaml_keys` (module_spec.yaml); the old `plan_version_upgrade`
+  is folded into it.
+
+## 0.11 — compiler/format/enricher 0.5 adoption ✅
+
+- **Enrich → compile strict on publish.** The enricher (the only tier permitted to fetch) writes
+  `resolution.csv`; the compiler consumes it. Two steps, never one call — `compile_module`'s
+  `ensembl_cache=` shim reaches into the network tier from inside the compile path, which the
+  constitution forbids and which is deprecated for removal at 1.0.
+- **Pre-flight REST surface.** `POST .../validate` (offline, cheap) and `POST .../check` (the network
+  tier, expensive). Findings are `200`s; `would_publish` is the field CI branches on.
+- **Enrichment cost control.** A per-caller `enrich` bucket, a process-wide concurrency gate, a
+  variant cap, a wall-clock timeout, and one shared `LookupClients` — because the outbound pacing
+  that keeps us inside gnomAD's budget lives on the client object, not in the process.
+- **Canonical `content_signature`** + a client-reachable lookup endpoint, as the format asked for in
+  `PROPOSAL_0_4_1.md`. One-time re-derivation via `registry rederive-signatures`.
+- **Trust and licensing facets** projected onto cards and versions.
+- **Operator tooling**: `warm-caches`, `rederive-signatures`, `revalidate --recompile-check`,
+  `upgrade --limit`.
+- **Fixed**: multipart path traversal, missing upload bounds, the JWT rate-bucket collision, the
+  PGx-only rejection, and the sidecar-dropping upgrade.
+
+## Next registry version (post-0.11)
+
+- **Retire Eliot → stdlib `logging`.** (Carried over; still pending.)
+- **Redis-backed limiter *and* concurrency gate.** Both are process-local today, so with two replicas
+  every limit is 2× — and gnomAD pacing in particular does not survive horizontal scaling without a
+  shared gate. The gate is the newer half of that problem and the easier one to forget.
+- **An async job queue for `/check`**, if the synchronous form proves too slow in practice. Deferred
+  deliberately: it is a whole subsystem (jobs table, runner, TTL, SDK polling) and the sync form with
+  a 300s cap covers the offline and small-online cases, which is most of them.
+- **gnomAD gene-constraint enrichment** (`enrich_gene_metrics`) on the publish path, once the
+  constraint snapshot is routinely provisioned.
+
+## Superseded (post-0.10)
 
 - **Retire Eliot → stdlib `logging`.** Rewire the Eliot usage — `start_action` in
   `services/publish.py` and the Eliot→stdlib bridge in `logging_setup.py` — onto the standard-library

@@ -48,9 +48,25 @@ use an object.
 | `404` | `module_not_found` / `version_not_found` / `file_not_found` / `account_not_found` / `not_a_member` | unknown module/version/file/account/member |
 | `409` | `version_exists` | re-publishing an existing `(ns, name, version)` (immutable) |
 | `409` | `last_owner` | removing a namespace's only owner |
+| `409` | `duplicate_content` | the same authored data is already published under a different `(ns, name)` |
+| `409` | `account_taken` / `email_taken` | self-registration collision |
+| `413` | `{ "error": "upload_too_large", ... }` | the multipart body exceeds `max_upload_bytes` |
 | `422` | `invalid_version` | version isn't SemVer `MAJOR.MINOR.PATCH` |
-| `422` | `{ "error": "<code>", "errors": [...], "warnings": [...] }` | spec/import failure (see below) |
-| `429` | `rate_limited` | token bucket exhausted (search/download/publish); `Retry-After` header |
+| `422` | `invalid_install_id` / `invalid_account` | bad proof-of-work / account name at registration |
+| `422` | `lookup_needs_one_key` | `/modules/lookup` got neither or both of `digest`/`signature` |
+| `422` | `{ "error": "<code>", "errors": [...], "warnings": [...], "info": [...] }` | spec/import failure (see below) |
+| `429` | `rate_limited` | token bucket exhausted; `Retry-After` header |
+| `501` | `jwt_disabled` | `POST /auth/tokens` on a server with no `jwt_secret` |
+| `403` | `self_register_disabled` | `POST /auth/register` when the server has it off |
+| `404` | `signing_not_configured` | `GET /pubkey` on a server that does not sign |
+| `503` | `{ "error": "enrichment_unavailable", "missing": [...] }` | `/check` on a server where the enrichment tier cannot run at all (e.g. `just-dna-enricher` not installed). **No `Retry-After`** — retrying does not help until an operator changes the deployment. A *missing snapshot* is **not** this: it degrades with a note in `enrichment.notes`, since an online run resolves via live Ensembl without one |
+| `422` | `license_refused` | `/check?pgx=true&declared_use=commercial` against a source that forbids sale — a contradiction, refused at acquisition, nothing fetched |
+| `503` | `enrichment_busy` | `/check` while `enrich_max_concurrency` runs are already in flight |
+| `504` | `enrichment_timeout` | `/check` exceeded `enrich_timeout_seconds` |
+
+**A validation finding is a `200`, not a `422`.** `POST .../validate` and `POST .../check` return
+`valid: false` with the reasons in the body; only a request no spec directory can be assembled from
+is a 4xx. Publish is the opposite — there, an invalid spec *is* the failure.
 
 Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 `ValidationResult.errors`/`warnings`), `compile_failed`, `name_mismatch`, and for import
@@ -88,6 +104,155 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 24 | GET | `/api/v1/namespaces/{ns}/members` | bearer | List namespace members + roles |
 | 25 | POST | `/api/v1/namespaces/{ns}/members` | bearer (owner) | Add / promote a member |
 | 26 | DELETE | `/api/v1/namespaces/{ns}/members/{account}` | bearer (owner) | Revoke a member's access |
+| 27 | POST | `/api/v1/modules/{ns}/{name}/validate` | bearer | Validate a spec without publishing (0.11) |
+| 28 | POST | `/api/v1/modules/{ns}/{name}/check` | bearer | Full publish dry run incl. network checks (0.11) |
+| 29 | GET | `/api/v1/modules/lookup?digest=\|signature=` | — | Find published versions by compiled digest **or** content signature |
+| 30 | POST | `/api/v1/modules/lookup` | — | Batch lookup; body `{digests: [], signatures: []}` |
+| 31 | POST | `/api/v1/auth/tokens` | api key | Exchange a static key for a short-lived JWT |
+| 32 | GET | `/api/v1/version` | — | The server's API + `just-dna-format` contract versions |
+| 33 | POST | `/api/v1/orgs` … | bearer | Org create / members / role / settings / namespaces |
+| 34 | GET/PUT/DELETE | `/api/v1/modules/{ns}/{name}[/versions/{v}]/reviews` | bearer (writes) | Reviews and audits |
+
+---
+
+### 27. `POST /api/v1/modules/{ns}/{name}/validate`
+
+Validate a spec server-side without publishing. Writes nothing, touches no network, and **the module
+need not exist** — `{name}` is the name you intend to publish under. Requires `PUBLISH` on `{ns}`:
+nothing is stored, but the real compiler runs over your CSVs, which is the same server CPU a publish
+spends.
+
+Multipart `files=` exactly as for publish, minus `version`. Query: `?strict=` (default **true** —
+a dry run whose default disagrees with the publish it predicts is a trap).
+
+```json
+{
+  "valid": true, "strict": true,
+  "errors": [], "warnings": [],
+  "info": ["dropped registry-owned `module.namespace` (the registry stamps it on publish)"],
+  "stats": {"variant_count": 42, "gene_count": 3, "genes": ["…"], "categories": ["…"]},
+  "content_signature": "sha256:…",
+  "name_matches_path": true,
+  "published_as": []
+}
+```
+
+`info` is what the server rewrote and accepted; `published_as` is the `409 duplicate_content`
+pre-check. Rate bucket `validate` (60/h).
+
+### 28. `POST /api/v1/modules/{ns}/{name}/check`
+
+The full dry run: everything `/validate` does, plus what only the network tier can see — an authored
+reference allele against the actual genome, `clin_sig` against ClinVar, rsIDs dbSNP has merged away,
+GA4GH allele-identity coverage.
+
+Query: `?strict=` `?offline=` `?frequencies=` `?literature=` `?acmg=` `?pgx=` `?declared_use=`.
+
+The four optional passes are opt-in because each has a cost the base run does not, and each degrades
+rather than failing — a pass that could not run reports **why**, in its own `warnings`, and never
+reports a clean result it did not earn:
+
+| Pass | Offline | What a missing prerequisite looks like |
+|---|---|---|
+| `?frequencies=` | no-op | gnomAD is online-only and there is no snapshot to ship (the v4.1 sites VCFs are 58 GB / 742 GB); `skipped_offline: true` |
+| `?literature=` | no-op | PubMed / Europe PMC / Crossref are live; a PGx-only module carries no `studies.csv`, which is a note, not a defect |
+| `?acmg=` | **works with a snapshot** | needs `REGISTRY_ACMG_SNAPSHOT_DIR` (build it with `just-dna-enricher acmg build`); without one, `checked: 0` and a warning — *unchecked*, never *clean* |
+| `?pgx=` | **works with snapshots** | each leg is snapshot → live → skipped-with-a-reason; `REGISTRY_CPIC_CACHE` / `REGISTRY_PHARMVAR_CACHE` / `REGISTRY_CLINPGX_CACHE`. ClinGen dosage alone is live-only |
+
+`?pgx=true` cross-checks authored PGx assertions against PharmVar, CPIC, ClinPGx and ClinGen dosage.
+**Provision its snapshots if you host this endpoint.** Without them the only alternatives are fetching
+a source that forbids sale live, per request, on the operator's own acceptance and personal PharmVar
+key, or skipping the check — and every published rate figure for these is per IP, so a server
+multiplies its callers onto one allowance rather than each getting their own. They are small (CPIC
+~256 KB) and `registry warm-caches --pgx --apply --use non_commercial` pulls them.
+
+Two consequences worth reading:
+
+* **`routes`** says `snapshot` or `live` per source. Recorded rather than implied, because a pinned
+  file and a live API can differ by a release.
+* **PharmVar needs no key when a snapshot is present**, which is the configuration a public
+  deployment wants: that key is personal and non-transferable under PharmVar's terms §2, so serving
+  third parties on it is the thing to avoid. It is also the one cache the registry cannot pull for
+  you — nothing is published, because the bulk data comes down under that same key. Build it once
+  with `just-dna-enricher pharmvar build`.
+
+Prefer the **ACMG snapshot** to the scrape even online: NCBI's page still serves SF v3.2 while ACMG
+published v3.3 in June 2025, so a disagreement against the page is as likely to mean the list is old
+as that the module is wrong. Those are reported apart, under `unverifiable` rather than `mismatches`,
+and never count against `would_publish`.
+
+**`declared_use` is a third axis, orthogonal to `strict` and `offline`** (format Principle 5):
+`strict` says how hard to fail on a finding, this says who is using the data and why, and it is
+checked at *acquisition*, because that is when a data-usage policy is accepted. Every PGx upstream is
+CC BY-SA **plus a no-sale clause**, so:
+
+| `declared_use` | effect on a source that forbids sale |
+|---|---|
+| `unstated` (default) | **skipped**, with a reason — the registry will not declare a purpose on your behalf |
+| `non_commercial` | fetched, and the declaration recorded |
+| `commercial` | **`422 license_refused`**, nothing fetched |
+
+Defaults to the deployment's `REGISTRY_DECLARED_USE`. A value outside the three is
+`422 invalid_declared_use` — checked here rather than passed through, because the hyphenated
+`non-commercial` (the enricher CLI's user-facing spelling) is the likely typo and an unrecognized
+declaration must never resolve to anything other than a refusal. **PharmVar has no on/off switch** — the
+presence of `PHARMVAR_API_KEY` on the server *is* the switch, so a flag can never disagree with
+reality; unset simply means CPIC carries the check alone. That key is personal to a PharmVar account
+under their terms §2, so on a public deployment it means third parties query PharmVar on the
+operator's account.
+
+**The enricher always runs `best_effort`, whatever `?strict=` says.** Strict enrichment *raises*, and
+an endpoint whose purpose is to report cannot run in a mode that refuses to finish. `strict` grades
+the validation findings and decides whether unresolved positions count against `would_publish`.
+
+```json
+{
+  "validation": { "…as above…" },
+  "enrichment": {
+    "mode": "best_effort", "offline": true,
+    "unresolved": [], "ref_mismatches": [], "clin_sig_conflicts": [], "stale_rsids": [],
+    "vrs": {"alleles": 57, "identified": 55, "complete": false,
+            "unmintable_reasons": {"indel/MNV: needs the reference sequence": 2}},
+    "sources": ["cache"]
+  },
+  "would_publish": true,
+  "elapsed_seconds": 0.21
+}
+```
+
+`vrs` is the enricher's own coverage, not a recount — the same numbers the compiler stamps into
+`manifest.compilation.vrs_alleles` / `vrs_alleles_identified`, so a dry run cannot disagree with the
+publish it predicts. `unmintable_reasons` is the half that tells a publisher whether to act: an indel
+with no sequence proxy, or a build with no refget table, is the tier's own limit and no authored edit
+clears it, so a shortfall never counts against `would_publish`.
+
+`would_publish` is the field a CI job should branch on — it is derived server-side so the
+strict-publish contract lives in one place.
+
+**Expensive, and the cost lands on the whole deployment.** gnomAD is unauthenticated and throttles
+by IP against a published 10-per-60s budget — there is no API key to raise it — so an overspend limits
+*the server*, not the caller who caused it. Pacing is ~6s per 20 variants, so
+`?frequencies=true` can take minutes. Rate bucket `enrich` (5/h) *plus* a process-wide concurrency
+gate (`enrich_max_concurrency`, default 1) — the bucket bounds one caller, the gate bounds the
+server. An invalid spec short-circuits before any of it is spent (`skipped_reason: "invalid_spec"`),
+and a module over `enrich_max_variants` is refused with `422 too_many_variants`.
+
+### 29–30. `GET`/`POST /api/v1/modules/lookup`
+
+Two identities, one endpoint, because they answer different questions:
+
+* **`digest`** names the *compiled bytes*. It moves when the same spec is recompiled against a
+  different reference, and it embeds the module name — so it moves on a rename too.
+* **`signature`** names the *authored rows*. Name-, reference- and metadata-independent, and what
+  publish gates `409 duplicate_content` on — so it is the only one that can predict a rejection. A
+  client computes it locally with `just_dna_compiler.compiler.content_signature(spec_dir)`, no upload
+  and no recompile.
+
+`GET` takes exactly one of the two (`422 lookup_needs_one_key` otherwise) and returns
+`{digest, signature, matches: [{namespace, name, version, yanked}]}`. `POST` takes
+`{digests: [], signatures: []}` — mixed is fine and usually what you want — and returns `{results: [...]}`,
+each list capped at `lookup_batch_max`. Anonymous: a content signature is not a secret, and someone
+about to publish a duplicate should not need an account to find that out.
 
 ---
 
@@ -213,12 +378,36 @@ Publish a new version. `multipart/form-data`:
   `studies.csv` required; `MODULE.md`, `logo.*`, and logs (`*.log`, `logs/*.log`) optional. Nested
   names are honored (`logs/reviewer.log`).
 
-Flow: ownership → version format → immutability → `validate_spec` → `compile_module`
+Flow: ownership → version format → immutability → `validate_spec` → `enrich` → `compile_module`
 (`compiled_by="marketplace-server"`) → fill registry fields → store (version-scoped) → index.
 The spec's `module.name` must equal the path `{name}` (`422 name_mismatch`).
 
 `201 →` the full `ModuleManifest`. Errors: `401`, `403 not_namespace_member`,
 `422 invalid_version`, `409 version_exists`, `422 {error: missing_spec_files|invalid_spec|compile_failed|name_mismatch}`.
+
+**Publish is the low-priority lane, and it has no deadline.** On a deployment that enriches online
+(`REGISTRY_ENRICH_OFFLINE=false`) it egresses through the same paced clients as `/check`, on the same
+IP-scoped budget, so it takes a permit from the same process-wide gate — but it **queues** for one
+rather than failing. There is no `503 enrichment_busy` here and no `enrich_timeout_seconds`: a dry run
+has someone waiting on the answer, so a full gate is a fast rejection, while a publish has nobody
+waiting and an upload already spent, and rejecting it would mean re-uploading a module over a
+condition that clears in seconds.
+
+Three things it concedes to interactive callers while it waits and runs:
+
+* it **defers at entry** — a queued publish will not start within `enrich_idle_quiet_seconds` of any
+  `/check` asking for the gate, granted or refused;
+* it **holds no threadpool worker** while queued, so a backlog of publishes cannot starve the pool
+  `/check` needs in order to run at all;
+* it **runs niced**, on a thread of its own, so the compile yields CPU.
+
+What it cannot do is give the permit back mid-run: once a publish is enriching, a `/check` arriving
+in that window still gets `503 enrichment_busy`. Nothing can preempt it — `enrich()` is one opaque
+call and Python cannot interrupt a thread.
+
+**Set your client and proxy timeouts accordingly.** An online publish can legitimately stay open for
+minutes, plus however long it queues. On the default offline deployment none of this applies: the
+publish reaches nothing, takes no permit, and runs straight through.
 
 ### 11. `POST /api/v1/modules/{ns}/{name}/versions/import`  *(bearer)*
 Publish from a **zip or tar.gz** archive (in-house packaging / legacy import). `multipart/form-data`:
@@ -226,10 +415,22 @@ Publish from a **zip or tar.gz** archive (in-house packaging / legacy import). `
 - `archive` (file, required) — a `.zip` / `.tar.gz`.
 - Display metadata (form, optional): `title`, `description`, `report_title`, `icon`, `color` —
   used only for **legacy parquet-only** archives (reverse-engineered before recompiling).
+- `genome_build` (form, optional) — **not display metadata**, and the one importable value that is
+  inside `artifact.digest`. See below.
 
 A spec archive (contains `module_spec.yaml`) is recompiled directly; a legacy archive (only
 `weights.parquet`, no spec) is reverse-engineered via `reverse_module` then recompiled. Extraction
 is path-traversal-safe. Same guards/response as endpoint 10, plus `422 {error: unsafe_archive|bad_archive|no_module_content}`.
+
+**Declare `genome_build` for a non-GRCh38 legacy archive.** The build reaches a compiled module
+through `manifest.json` and no parquet column, so `reverse_module` recovers it from the archive's own
+manifest — and a bare parquet archive has none, in which case the format's `GRCh38` default applies.
+That is right for the common case and silently wrong otherwise, because the build decides the
+*identity key*: on GRCh38 a resolved substitution is keyed by a `ga4gh:VA.…` minted against that
+assembly's refget accession, so importing GRCh37 coordinates as GRCh38 mints an allele id naming a
+different base, and the digest moves. Nothing downstream catches it — the recompile is internally
+consistent and `verify_manifest` re-derives the same wrong digest. An explicit value always wins; a
+spec archive, or a bare one that really is GRCh38, needs nothing.
 
 ### 12. `POST /api/v1/modules/{ns}/{name}/versions/{v}/yank`  *(bearer)*
 Body (optional JSON): `{"yanked": true}` (default `true`; send `false` to un-yank). Owner-only.

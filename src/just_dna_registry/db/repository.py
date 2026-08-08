@@ -9,6 +9,8 @@ from typing import Any, Optional
 from just_dna_format.identity import latest as latest_version
 from just_dna_format.manifest import ModuleManifest
 
+from just_dna_registry.db.facets import version_facets
+
 _SORT_SQL: dict[str, str] = {
     "downloads": "m.downloads DESC, m.name ASC",
     "recent": "m.updated_at DESC, m.name ASC",
@@ -432,6 +434,28 @@ class Repository:
             (digest,),
         ).fetchall()
 
+    def find_versions_by_content(self, content_hash: str) -> list[sqlite3.Row]:
+        """Every published version sharing this content signature — used on publish to reject the
+        same module republished under a different name, and by the client-facing signature lookup so
+        a publisher can pre-check before uploading.
+
+        Unlike `find_versions_by_digest`, this ignores the module name (and the reference the module
+        was compiled against), so it catches renamed or rebranded copies of identical data.
+
+        An empty `content_hash` is never a match, on either side. Rows predating 0.5 carry `''` until
+        `registry rederive-signatures` fills them in, and without this guard every one of them would
+        collide with every other during the migration window — turning a partially-derived corpus
+        into a service that 409s every publish.
+        """
+        if not content_hash:
+            return []
+        return self.conn.execute(
+            "SELECT m.namespace, m.name, v.version, v.yanked FROM versions v "
+            "JOIN modules m ON m.id = v.module_id WHERE v.content_hash = ? AND v.content_hash != '' "
+            "ORDER BY m.namespace, m.name, v.version",
+            (content_hash,),
+        ).fetchall()
+
     def get_manifest_json(
         self, namespace: str, name: str, version: str
     ) -> Optional[str]:
@@ -485,13 +509,25 @@ class Repository:
     ) -> int:
         """Insert a version row + facet rows from a manifest. Returns version id. `published_by` is
         the authoring account (drives RBAC own-scoping + author funding); None for legacy imports."""
+        # The 0.5 manifest facets (trust, VRS coverage, licensing) are projected here so listings can
+        # filter on them in SQL; `db.facets.version_facets` is the single derivation, shared with the
+        # backfill migration and the amend path.
+        facets = version_facets(manifest)
         cur = self.conn.execute(
-            "INSERT INTO versions(module_id, version, digest, manifest_json, "
-            "compile_success, yanked, changelog, created_at, published_by) VALUES (?,?,?,?,?,0,?,?,?)",
+            "INSERT INTO versions(module_id, version, digest, content_hash, manifest_json, "
+            "compile_success, yanked, changelog, created_at, published_by, "
+            + ", ".join(facets)
+            + ") VALUES (?,?,?,?,?,?,0,?,?,?"
+            + ",?" * len(facets)
+            + ")",
             (
+                # `content_signature` is stamped by the compiler onto the manifest at compile time,
+                # so the projection just reads it — no second, possibly-divergent derivation here.
+                # Empty for a manifest that predates it; `registry rederive-signatures` fills those.
                 module_id, manifest.identity.version, manifest.artifact.digest,
-                manifest.model_dump_json(), int(manifest.compilation.compile_success),
-                changelog, created_at, published_by,
+                manifest.content_signature or "", manifest.model_dump_json(),
+                int(manifest.compilation.compile_success), changelog, created_at, published_by,
+                *facets.values(),
             ),
         )
         version_id = int(cur.lastrowid)
@@ -580,6 +616,31 @@ class Repository:
         )
         self.conn.commit()
         return cur.rowcount > 0
+
+    def all_versions_for_signature(
+        self, namespace: Optional[str] = None
+    ) -> list[sqlite3.Row]:
+        """Every version's `(id, namespace, name, version, content_hash, manifest_json)`.
+
+        The sweep `registry rederive-signatures` walks. Ordered so a long run's output is stable and
+        diffable between a dry run and the apply that follows it.
+        """
+        sql = (
+            "SELECT v.id, m.namespace, m.name, v.version, v.content_hash, v.manifest_json "
+            "FROM versions v JOIN modules m ON m.id = v.module_id "
+        )
+        params: tuple = ()
+        if namespace is not None:
+            sql += "WHERE m.namespace = ? "
+            params = (namespace,)
+        return self.conn.execute(sql + "ORDER BY m.namespace, m.name, v.version", params).fetchall()
+
+    def set_version_content_hash(self, version_id: int, content_hash: str) -> None:
+        """Overwrite one version's content signature. Used only by the 0.11 re-derivation sweep;
+        publish stamps it from the manifest at insert time. Does not commit — the sweep commits once."""
+        self.conn.execute(
+            "UPDATE versions SET content_hash = ? WHERE id = ?", (content_hash, version_id)
+        )
 
     def set_version_manifest(
         self, namespace: str, name: str, version: str, manifest: ModuleManifest

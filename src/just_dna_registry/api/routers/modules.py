@@ -26,10 +26,14 @@ from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.groups import GROUPS, GroupInfo
 from just_dna_registry.models.api import (
+    LookupBatch,
+    LookupBatchResponse,
+    LookupMatch,
     ModuleCard,
     ModuleDetail,
     Page,
     StarStatus,
+    VersionRef,
     VersionSummary,
 )
 from just_dna_registry.services import catalog
@@ -45,16 +49,23 @@ CallerDep = Annotated[Optional[Account], Depends(optional_account)]
 AccountDep = Annotated[Account, Depends(require_account)]
 
 
-def _digest_matches(repo: Repository, digest: str) -> list[dict]:
+def _refs(rows) -> list[VersionRef]:
     return [
-        {"namespace": r["namespace"], "name": r["name"], "version": r["version"],
-         "yanked": bool(r["yanked"])}
-        for r in repo.find_versions_by_digest(digest)
+        VersionRef(
+            namespace=r["namespace"], name=r["name"], version=r["version"], yanked=bool(r["yanked"])
+        )
+        for r in rows
     ]
 
 
-class DigestLookup(BaseModel):
-    digests: list[str]
+def _lookup_one(repo: Repository, *, digest: Optional[str], signature: Optional[str]) -> LookupMatch:
+    """Resolve one identity. Exactly one of `digest`/`signature` is set (the route enforces it)."""
+    rows = (
+        repo.find_versions_by_digest(digest)
+        if digest is not None
+        else repo.find_versions_by_content(signature or "")
+    )
+    return LookupMatch(digest=digest, signature=signature, matches=_refs(rows))
 
 
 @router.get("", response_model=Page[ModuleCard], dependencies=[Depends(rate_limit("search"))])
@@ -102,22 +113,52 @@ def list_groups() -> list[GroupInfo]:
     return GROUPS
 
 
-@router.get("/lookup")
-def lookup_by_digest(repo: RepoDep, digest: str) -> dict:
-    """Find published versions whose artifact matches `digest` (the content identity, SPEC §6).
+@router.get("/lookup", response_model=LookupMatch, dependencies=[Depends(rate_limit("search"))])
+def lookup(
+    repo: RepoDep, digest: Optional[str] = None, signature: Optional[str] = None
+) -> LookupMatch:
+    """Find published versions by artifact digest **or** by content signature. Exactly one.
 
-    Lets a publisher check whether an already-compiled module is on the registry before
-    re-uploading. Returns `{matches: [{namespace, name, version, yanked}]}` (empty if none).
+    Two identities, because they answer different questions and only one of them can answer the
+    question a publisher actually has:
+
+    * `digest` names the **compiled bytes** (SPEC §6) — "is this exact artifact published". It moves
+      when the same spec is recompiled against a different reference, and it embeds the module name,
+      so it moves on a rename too.
+    * `signature` names the **authored data** — "is this module already published, under any name,
+      compiled against any reference". This is what publish gates `409 duplicate_content` on, so it
+      is the pre-check that can predict a rejection. A client computes it locally with
+      `just_dna_compiler.compiler.content_signature(spec_dir)` — no upload and no recompile — which
+      is what makes a pre-flight check possible at all.
+
+    Anonymous, like the rest of the catalog reads: a content signature is not a secret, and someone
+    about to publish a duplicate should not need an account to find that out.
     """
-    return {"digest": digest, "matches": _digest_matches(repo, digest)}
+    if (digest is None) == (signature is None):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, detail="lookup_needs_one_key"
+        )
+    return _lookup_one(repo, digest=digest, signature=signature)
 
 
-@router.post("/lookup")
-def lookup_batch(repo: RepoDep, settings: SettingsDep, body: DigestLookup) -> dict:
-    """Batch variant of digest lookup — classify many local modules in one request (capped at
-    `lookup_batch_max`). `{results: [{digest, matches: [...] }]}`."""
+@router.post(
+    "/lookup", response_model=LookupBatchResponse, dependencies=[Depends(rate_limit("search"))]
+)
+def lookup_batch(
+    repo: RepoDep, settings: SettingsDep, body: LookupBatch
+) -> LookupBatchResponse:
+    """Batch lookup — classify a whole local corpus in one request.
+
+    Digests and signatures may be mixed in one call, which is usually what you want: a client
+    holding both compiled modules and unpublished spec directories can ask about all of them at
+    once. Each list is independently capped at `lookup_batch_max`.
+    """
     digests = body.digests[: settings.lookup_batch_max]
-    return {"results": [{"digest": d, "matches": _digest_matches(repo, d)} for d in digests]}
+    signatures = body.signatures[: settings.lookup_batch_max]
+    return LookupBatchResponse(
+        results=[_lookup_one(repo, digest=d, signature=None) for d in digests]
+        + [_lookup_one(repo, digest=None, signature=s) for s in signatures]
+    )
 
 
 @router.get("/{namespace}/{name}", response_model=ModuleDetail)

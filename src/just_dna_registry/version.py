@@ -4,14 +4,15 @@ Server/client version exchange + the compatibility guard.
 A client that downloads a server-compiled artifact (and re-verifies its `artifact.digest`), or
 publishes a spec the server recompiles, has to agree with the server on the **contract**
 (`just-dna-format`) version. Across a format MAJOR — or, while the format is still `0.x`, across a
-MINOR — the parquet column set and therefore `artifact.digest` change (the 0.2→0.3 bump is exactly
-this), so a mismatched client/server pair produces cryptic digest / catalog-shape collisions rather
-than a clear error. This module lets each side advertise its versions and turns an incompatible pair
-into an actionable message.
+MINOR — the parquet column set and therefore `artifact.digest` change (the 0.4→0.5 bump is exactly
+this: `variant_key` was re-baselined onto the VRS allele id, so every module recompiled under 0.5
+gets a new digest), so a mismatched client/server pair produces cryptic digest / catalog-shape
+collisions rather than a clear error. This module lets each side advertise its versions and turns an
+incompatible pair into an actionable message.
 
 Lives in the light (client) tier: it imports only `pydantic` + `just_dna_format.identity`, both
-already present wherever the client runs. `just-dna-compiler` is server-only, so its version is
-reported as None on a client.
+already present wherever the client runs. `just-dna-compiler` ships in the `compiler` and `server`
+extras rather than the base install, so its version is reported as None on a bare client.
 """
 
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -62,7 +63,7 @@ def contract_compatible(server_format: Optional[str], client_format: Optional[st
     """Whether two `just-dna-format` versions can safely exchange compiled artifacts.
 
     Rule: same MAJOR, and while MAJOR is 0 (pre-1.0) also the same MINOR — a 0.x minor is a breaking
-    contract change (the parquet schema / `artifact.digest` move, e.g. 0.2→0.3). Unknown on either
+    contract change (the parquet schema / `artifact.digest` move, e.g. 0.4→0.5). Unknown on either
     side (None) is treated as compatible: don't block on missing information."""
     if not server_format or not client_format:
         return True

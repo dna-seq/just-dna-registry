@@ -6,23 +6,26 @@ DB, and issue API keys / namespaces for the static-key auth model.
 import json
 import secrets
 from pathlib import Path
+from typing import Optional
 
 import httpx
 import typer
 import uvicorn
 from just_dna_format.manifest import ModuleManifest
+from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_registry.config import Settings, get_settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
-from just_dna_registry.startup import legacy_db_message
+from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
 from just_dna_registry.services.upgrade import (
+    VersionUpgradePlan,
     is_latest_version,
-    plan_version_upgrade,
+    prepare_version_upgrade,
     upgrade_version,
 )
 from just_dna_registry.storage.base import StorageBackend
@@ -398,22 +401,40 @@ def revalidate(
     check_pmids: bool = typer.Option(
         False, "--check-pmids", help="Also verify each study PMID resolves at NCBI (network)"
     ),
+    strict_check: bool = typer.Option(
+        False, "--strict-check", help="Grade mode-ladder findings at strict severity (cheap)"
+    ),
+    recompile_check: bool = typer.Option(
+        False,
+        "--recompile-check",
+        help="Enrich + compile strict for real, to see what a strict publish would refuse (slow)",
+    ),
 ) -> None:
     """Re-run the current contract's `validate_spec` over every published version's stored spec.
 
     Finds modules that a `just-dna-format` bump would now reject. Published artifacts are immutable
     and untouched; with `--set-flag` failing versions are marked `needs_upgrade` so listings surface
-    them and an upgrade (re-publish as a new PATCH) can be scheduled. See docs/UPGRADE.md."""
+    them and an upgrade (re-publish as a new PATCH) can be scheduled. See docs/UPGRADE.md.
+
+    **Before flipping a deployment to strict publishes**, run `--recompile-check`: it enriches and
+    compiles each version exactly as a publish would, so `strict_blocked` tells you precisely which
+    modules a flip would stop accepting — one report rather than a stream of 422s from confused
+    publishers. `--strict-check` is the cheap approximation: it catches the mode-ladder findings but
+    not the unresolved-position gate, which only a real compile can see."""
     settings = get_settings()
     conn = connect(settings.db_path)
     init_db(conn)  # idempotent: ensures the needs_upgrade column exists on a pre-0.5.0 DB
     repo = Repository(conn)
     storage = _storage(settings)
-    counts = {"ok": 0, "upgradable": 0, "needs_upgrade": 0, "superseded": 0, "skipped": 0}
+    counts = {"ok": 0, "upgradable": 0, "needs_upgrade": 0, "strict_blocked": 0,
+              "superseded": 0, "skipped": 0}
     for row in repo.list_all_versions(namespace):
         ns, name, ver = row["namespace"], row["name"], row["version"]
         manifest = ModuleManifest.model_validate_json(row["manifest_json"])
-        status, messages = revalidate_version(storage, ns, name, ver, manifest)
+        status, messages = revalidate_version(
+            storage, ns, name, ver, manifest,
+            settings=settings, strict_check=strict_check, recompile_check=recompile_check,
+        )
 
         pmid_note = ""
         if check_pmids:
@@ -430,13 +451,15 @@ def revalidate(
 
         # Mask a drifted OLD version once a newer one supersedes it: it's immutable and the module's
         # latest is what an upgrade targets, so it isn't actionable (and must not drive a re-publish).
-        if status in ("upgradable", "needs_upgrade") and not is_latest_version(repo, ns, name, ver):
+        if status in ("upgradable", "needs_upgrade", "strict_blocked") and not is_latest_version(
+            repo, ns, name, ver
+        ):
             status = "superseded"
             messages = [f"superseded by a newer version ({row['latest_version']}); not actionable"]
 
         counts[status] += 1
         marker = {"ok": "✓", "upgradable": "⇧", "needs_upgrade": "✗",
-                  "superseded": "·", "skipped": "–"}[status]
+                  "strict_blocked": "⊘", "superseded": "·", "skipped": "–"}[status]
         typer.echo(f"{marker} {ns}/{name}@{ver} [{status}]{pmid_note}")
         for msg in messages[:5]:
             typer.echo(f"    {msg}")
@@ -446,10 +469,27 @@ def revalidate(
 
     typer.echo(
         f"\n{counts['ok']} ok, {counts['upgradable']} upgradable, "
-        f"{counts['needs_upgrade']} needs_upgrade, {counts['superseded']} superseded, "
-        f"{counts['skipped']} skipped"
+        f"{counts['needs_upgrade']} needs_upgrade, {counts['strict_blocked']} strict_blocked, "
+        f"{counts['superseded']} superseded, {counts['skipped']} skipped"
         + ("" if set_flag else "  (report only; pass --set-flag to persist)")
     )
+
+
+def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
+    """One-line summary of what a re-publish of this version would change."""
+    bits: list[str] = []
+    if prep.variants_plan.needed:
+        bits.append(
+            f"{prep.variants_plan.upgradable_rows}/{prep.variants_plan.total_rows} row(s) back-populated"
+        )
+    if prep.dropped:
+        dropped = sum(len(c) for c in prep.dropped.values())
+        bits.append(f"{dropped} column(s)/key(s) trimmed")
+    if prep.needs_contract_recompile:
+        bits.append("0.5 recompile (digest moves: variant_key re-baselined)")
+    if not bits:  # only a schema recompile is left
+        bits.append("schema recompile (no content change)")
+    return ", ".join(bits)
 
 
 @app.command()
@@ -460,20 +500,43 @@ def upgrade(
         False, "--apply/--dry-run",
         help="Actually re-publish upgraded versions (default: dry-run, report only)",
     ),
+    force: bool = typer.Option(
+        False, "--force", "--recompile",
+        help="Recompile the latest to the current contract even with no 0.3 drift (a non-lossy "
+             "schema migration); also required to enable the lossy --trim",
+    ),
+    trim: bool = typer.Option(
+        False, "--trim",
+        help="Drop columns the current contract rejects so a legacy spec compiles (LOSSY — discards "
+             "data); requires --force",
+    ),
+    limit: int = typer.Option(
+        0, "--limit", help="Stop after this many versions (0 = no limit). Batch a large migration."
+    ),
 ) -> None:
-    """Back-populate the additive 0.3 axes (direction/stat_significance/clin_sig) and re-publish.
+    """Migrate published versions to the current `just-dna-format` contract and re-publish as a PATCH.
 
-    For every published version whose `variants.csv` still carries only the legacy `state`/ClinVar
-    booleans, applies the format's `VariantRow.upgraded()` derivation and — with `--apply` —
-    re-publishes the result as the next PATCH through the normal server-side compile path. The
-    predecessor is never mutated and stays fetchable. Dry-run by default. See docs/UPGRADE.md."""
+    Automatic: back-populates the additive 0.3 axes (direction/stat_significance/clin_sig) for any
+    version whose `variants.csv` still carries only the legacy `state`/booleans. `--force`
+    (`--recompile`) additionally re-emits an already-on-contract module in the current parquet schema
+    (non-lossy). `--trim` drops columns 0.4 now forbids (old schemas only warned) so a stale spec
+    compiles — LOSSY, so it requires `--force`. A version with such columns and no `--trim` is
+    reported *blocked*. Re-publish runs the full server-side compile path; the predecessor is never
+    mutated. Dry-run by default. See docs/UPGRADE.md."""
+    if trim and not force:
+        raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
     conn = connect(settings.db_path)
     init_db(conn)
     repo = Repository(conn)
     storage = _storage(settings)
-    planned = upgraded = 0
+    planned = upgraded = blocked = 0
+    # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
+    # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
     for row in repo.list_all_versions(namespace):
+        if limit and (planned + upgraded) >= limit:
+            typer.echo(f"\n(stopping at --limit {limit}; re-run to continue)")
+            break
         ns, name, ver = row["namespace"], row["name"], row["version"]
         if module is not None and name != module:
             continue
@@ -482,26 +545,41 @@ def upgrade(
         if not is_latest_version(repo, ns, name, ver):
             continue
         manifest = ModuleManifest.model_validate_json(row["manifest_json"])
+        prep = prepare_version_upgrade(storage, ns, name, ver, manifest, trim=trim)
+        if prep is None:  # spec inputs not retrievable (legacy import)
+            continue
+        if prep.blocked:
+            detail = "; ".join(f"{f}: {', '.join(c)}" for f, c in prep.blocked.items())
+            typer.echo(f"✗ {ns}/{name}@{ver}: contract rejects ({detail}) — "
+                       f"re-run with --trim --force to drop them")
+            blocked += 1
+            continue
+        if not prep.would_act(recompile=force):
+            continue
         if not apply:
-            plan = plan_version_upgrade(storage, ns, name, ver, manifest)
-            if plan is not None and plan.needed:
-                planned += 1
-                typer.echo(f"⇧ {ns}/{name}@{ver}: {plan.upgradable_rows}/{plan.total_rows} row(s) "
-                           f"would upgrade → next PATCH")
+            planned += 1
+            typer.echo(f"⇧ {ns}/{name}@{ver}: {_describe_upgrade(prep, recompile=force)} → next PATCH")
             continue
         result = upgrade_version(
             repo=repo, storage=storage, settings=settings,
             namespace=ns, name=name, version=ver, manifest=manifest,
+            recompile=force, trim=trim, prepared=prep,
         )
         if result is not None:
             new_version, _ = result
             upgraded += 1
-            typer.echo(f"✓ {ns}/{name}@{ver} → {new_version} (0.3 upgrade published)")
+            typer.echo(
+                f"✓ {ns}/{name}@{ver} → {new_version} ({_describe_upgrade(prep, recompile=force)})"
+            )
+            typer.echo(f"    digest {manifest.artifact.digest[:23]}… → {result[1].artifact.digest[:23]}…")
 
+    blocked_note = f", {blocked} blocked (need --trim --force)" if blocked else ""
     if apply:
-        typer.echo(f"\n{upgraded} version(s) upgraded and re-published")
+        typer.echo(f"\n{upgraded} version(s) upgraded and re-published{blocked_note}")
     else:
-        typer.echo(f"\n{planned} version(s) would upgrade  (dry-run; pass --apply to publish)")
+        typer.echo(
+            f"\n{planned} version(s) would upgrade{blocked_note}  (dry-run; pass --apply to publish)"
+        )
 
 
 @app.command("revoke-key")
@@ -524,3 +602,295 @@ def revoke_account(account: str, yes: bool = typer.Option(False, "--yes", "-y"))
 
 if __name__ == "__main__":
     app()
+
+
+# ── 0.11 operator commands ────────────────────────────────────────────────────
+
+
+@app.command("warm-caches")
+def warm_caches(
+    ensembl: bool = typer.Option(True, "--ensembl/--no-ensembl"),
+    clinvar: bool = typer.Option(True, "--clinvar/--no-clinvar"),
+    constraint: bool = typer.Option(
+        False, "--constraint/--no-constraint", help="gnomAD gene constraint (only the metrics pass)"
+    ),
+    pgx: bool = typer.Option(
+        False, "--pgx/--no-pgx",
+        help="The licence-gated PGx snapshots (cpic, clinpgx) — only the `?pgx=` check reads them",
+    ),
+    use: Optional[str] = typer.Option(
+        None, "--use",
+        help=(
+            "Declared use for the gated snapshots: unstated | non_commercial | commercial. "
+            "Downloading is *taking* the data, so the terms apply here. Defaults to "
+            "REGISTRY_DECLARED_USE."
+        ),
+    ),
+    apply: bool = typer.Option(False, "--apply/--dry-run"),
+) -> None:
+    """Provision the reference snapshots enrichment needs, from HuggingFace Hub.
+
+    **Run this before pointing a deployment at 0.11.** Publishing now enriches before it compiles,
+    and with strict compiles on, a server holding no snapshot cannot publish an rsID-authored module
+    at all — it refuses rather than emitting a partial artifact.
+
+    The dry run (the default) reports what the *running server* would find, using the same explicit
+    cache paths and the same resolver, so it doubles as a health check. `--apply` downloads what is
+    missing: hundreds of megabytes, minutes.
+
+    Two groups, because they gate different things. **Resolution** (ensembl, clinvar, constraint)
+    decides whether a publish works. **PGx** (cpic, clinpgx — `--pgx`) is what makes a *hosted*
+    `?pgx=` check legitimate rather than merely possible: without a cache the only alternatives are
+    fetching a source that forbids sale live, per request, on the operator's own acceptance, or
+    skipping the check. Their rate figures are per IP, so a server multiplies its callers onto one
+    allowance. Tiny by comparison — CPIC is ~256 KB.
+
+    **`--use` applies to the PGx pair and to nothing else.** Under a data-usage policy the terms are
+    accepted when the data is *taken*, and a download is taking it, so `unstated` skips them and
+    `commercial` refuses. The resolution snapshots never ask: none of Ensembl, ClinVar or gnomAD
+    forbids sale.
+
+    **PharmVar is absent on purpose.** Its bulk data comes down under a key its terms §2 make
+    personal and non-transferable, so upstream publishes nothing to pull and offers no
+    `ensure_pharmvar_snapshot`. Build it once yourself — `just-dna-enricher pharmvar build --out
+    <dir>` — and set `REGISTRY_PHARMVAR_CACHE`.
+    """
+    settings = get_settings()
+    from just_dna_registry.services.enrich import (
+        GATED_REFERENCES,
+        PGX_REFERENCES,
+        RESOLUTION_REFERENCES,
+        available_references,
+        configured_caches,
+        enricher_available,
+    )
+
+    # `create_app` does this at boot, and this command runs without one. It matters most here:
+    # `huggingface_hub` reads `HF_TOKEN` and knows nothing of the `REGISTRY_` prefix, and the two
+    # licence-gated PGx mirrors are private — so without the export a configured token is invisible
+    # and the pull fails with 401 rather than with anything that names the cause.
+    export_enricher_credentials(settings)
+
+    if not enricher_available():
+        typer.secho(
+            "just-dna-enricher is not installed — run `uv sync --extra server`.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    from just_dna_enricher.download import (
+        ensure_clinpgx_snapshot,
+        ensure_clinvar_snapshot,
+        ensure_constraint_snapshot,
+        ensure_cpic_snapshot,
+        ensure_snapshot,
+    )
+    from just_dna_enricher.licensing import (
+        CLINPGX_TERMS,
+        CPIC_TERMS,
+        LicenseRefusal,
+        check_declared_use,
+    )
+
+    # Hyphens accepted, and normalized here rather than in the API. A CLI flag is a human interface
+    # and `--use non-commercial` is the spelling every enricher command documents — including inside
+    # the licence messages printed below, which are upstream's words. An HTTP query parameter is a
+    # machine interface, so `/check?declared_use=` stays strict and 422s: there the wrong spelling is
+    # a caller bug, and guessing at a value that decides whether a no-sale source is touched is the
+    # last place to be lenient.
+    declared = (use or settings.declared_use).replace("-", "_")
+    if declared not in VALID_DECLARED_USE:
+        typer.secho(
+            f"--use must be one of {sorted(VALID_DECLARED_USE)} (hyphens accepted), got {use!r}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
+
+    wanted = {
+        "ensembl": ensembl, "clinvar": clinvar, "constraint": constraint,
+        "cpic": pgx, "pharmvar": pgx, "clinpgx": pgx,
+    }
+    # `ensure_*` takes only the cache path; the fetcher is `None` where nothing is published.
+    fetchers = {
+        "ensembl": ensure_snapshot,
+        "clinvar": ensure_clinvar_snapshot,
+        "constraint": ensure_constraint_snapshot,
+        "cpic": ensure_cpic_snapshot,
+        "clinpgx": ensure_clinpgx_snapshot,
+        "pharmvar": None,
+    }
+    terms = {"cpic": CPIC_TERMS, "clinpgx": CLINPGX_TERMS}
+
+    configured = configured_caches(settings)
+    present = available_references(settings)
+    missing: list[str] = []
+    for group, names in (("resolution", RESOLUTION_REFERENCES), ("pgx", PGX_REFERENCES)):
+        typer.secho(f"\n{group}:", bold=True)
+        for name in names:
+            if not wanted[name]:
+                typer.echo(f"  – {name}: skipped")
+            elif present[name] is not None:
+                typer.echo(f"  ✓ {name}: {present[name]}")
+            elif fetchers[name] is None:
+                # Not a failure to report as one: there is nothing to download, ever.
+                typer.secho(
+                    f"  ✗ {name}: absent, and never published — build it with "
+                    f"`just-dna-enricher {name} build --out <dir>`, then set "
+                    f"REGISTRY_{name.upper()}_CACHE",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.secho(f"  ✗ {name}: not provisioned", fg=typer.colors.YELLOW)
+                missing.append(name)
+
+    if not missing:
+        typer.secho("\nEvery requested snapshot that can be pulled is present.", fg=typer.colors.GREEN)
+        return
+    if not apply:
+        typer.echo(
+            f"\n{len(missing)} snapshot(s) missing: {', '.join(missing)}. "
+            f"Re-run with --apply to download (this takes a while and a lot of disk)."
+        )
+        raise typer.Exit(code=1)
+
+    failures = 0
+    for name in missing:
+        if name in GATED_REFERENCES:
+            # Checked before the download, not after: refusing here means nothing was taken, which
+            # is the whole point of gating at acquisition.
+            try:
+                reason = check_declared_use(terms[name], declared)
+            except LicenseRefusal as exc:
+                typer.secho(f"✗ {name}: {exc}", fg=typer.colors.RED, err=True)
+                failures += 1
+                continue
+            if reason is not None:
+                # Upstream's own wording, unedited — it names the source, its licence and the policy
+                # URL, and it is the text a reader will find again in the enricher's output.
+                typer.secho(f"– {name}: skipped — {reason}", fg=typer.colors.YELLOW)
+                continue
+        typer.echo(f"downloading {name} …")
+        try:
+            path = fetchers[name](configured[name])
+        except Exception as exc:  # noqa: BLE001 — one snapshot failing must not sink the rest
+            # Broad on purpose, and mirroring the enricher's own `cache pull`. The reachable causes
+            # are a dataset that is not published yet, an HF outage, a 429, a full disk and an
+            # expired token — several of which surface from deep inside `fsspec` as types this
+            # module has no business knowing. What an operator needs is which snapshot failed and
+            # why, then for the other five to carry on; a traceback here would bury both.
+            typer.secho(f"✗ {name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
+            looks_like_auth = "401" in str(exc) or "not found" in str(exc).lower()
+            if name in GATED_REFERENCES and looks_like_auth:
+                # These two mirrors are private, precisely because they mirror sources that forbid
+                # sale — so anonymous access is refused rather than throttled, and a 401 reads as
+                # "no such dataset". Say which it is, because the fix is a token and not a rebuild.
+                typer.secho(
+                    "   the licence-gated mirrors are private: set REGISTRY_HF_TOKEN (or HF_TOKEN) "
+                    "to an account with access, or build this snapshot locally with "
+                    f"`just-dna-enricher {name} build --out <dir>`.",
+                    fg=typer.colors.YELLOW, err=True,
+                )
+            failures += 1
+            continue
+        typer.secho(f"✓ {name}: {path}", fg=typer.colors.GREEN)
+
+    if failures:
+        typer.secho(
+            f"\n{failures} snapshot(s) could not be provisioned. The rest are usable — a missing "
+            f"resolution snapshot degrades publishing, a missing PGx one only skips `?pgx=` legs.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(code=1)
+
+
+@app.command("rederive-signatures")
+def rederive_signatures(
+    namespace: str = typer.Option(None, "--namespace", "-n"),
+    apply: bool = typer.Option(False, "--apply/--dry-run"),
+    allow_merges: bool = typer.Option(
+        False,
+        "--allow-merges",
+        help="Proceed even when re-derivation makes two published modules collide",
+    ),
+) -> None:
+    """Recompute every version's content signature under the compiler's canonical algorithm (0.11).
+
+    0.11 replaced the registry's own manifest-inputs Merkle root with
+    `just_dna_compiler.compiler.content_signature`, which hashes the authored rows as parsed rather
+    than as bytes — so it survives a reformat, a row reorder, and a recompile against a different
+    reference. The new value cannot be derived from a manifest, so this reads each version's CSVs
+    back out of storage.
+
+    **Required after upgrading.** Until it runs, versions predating 0.5 carry an empty signature and
+    simply drop out of the dedup gate: publishing stays safe (nothing false-positives), but a genuine
+    re-list of old data under a new name would not be caught, and the signature lookup endpoint would
+    not find them.
+    """
+    settings = get_settings()
+    repo = _open_existing_db(settings)
+    storage = _storage(settings)
+
+    from just_dna_registry.services.signatures import (
+        apply_rederivation,
+        collision_report,
+        plan_rederivation,
+    )
+
+    changes = plan_rederivation(repo, storage, namespace=namespace)
+    if not changes:
+        typer.echo("no versions to re-derive")
+        return
+
+    marker = {"unchanged": "·", "derived": "+", "moved": "⇧", "moved_build": "⇧", "skipped": "–"}
+    counts: dict[str, int] = {k: 0 for k in ("unchanged", "derived", "moved", "moved_build", "skipped")}
+    for change in changes:
+        counts[change.bucket] += 1
+        if change.bucket == "unchanged":
+            continue
+        note = ""
+        if change.bucket == "moved_build":
+            note = f"  (genome_build={change.genome_build}; the build is now part of the content)"
+        elif change.bucket == "skipped":
+            note = f"  ({change.error})"
+        typer.echo(f"{marker[change.bucket]} {change.module} [{change.bucket}]{note}")
+
+    splits, merges = collision_report(changes)
+    if splits:
+        typer.secho(
+            f"\n{len(splits)} split(s) — these modules no longer share a signature:",
+            fg=typer.colors.YELLOW,
+        )
+        for old, modules in splits:
+            typer.echo(f"    {old[:23]}… → {', '.join(modules)}")
+        typer.echo(
+            "    Benign, but worth knowing: anything previously refused as `duplicate_content` "
+            "against one of these is now publishable."
+        )
+    if merges:
+        typer.secho(
+            f"\n{len(merges)} MERGE(s) — distinct published modules now share a signature:",
+            fg=typer.colors.RED,
+        )
+        for new, modules in merges:
+            typer.echo(f"    {new[:23]}… ← {', '.join(modules)}")
+        typer.echo(
+            "    The dedup gate will refuse the next version of all but one of each group. "
+            "Review before proceeding."
+        )
+
+    typer.echo(
+        "\n" + ", ".join(f"{n} {k}" for k, n in counts.items() if n)
+        + ("" if apply else "  (dry run; pass --apply to write)")
+    )
+    if not apply:
+        return
+    if merges and not allow_merges:
+        typer.secho(
+            "\nRefusing to apply: re-derivation would make already-published modules collide. "
+            "Review the merges above, then re-run with --allow-merges.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    written = apply_rederivation(repo, changes)
+    typer.secho(f"\nwrote {written} signature(s)", fg=typer.colors.GREEN)

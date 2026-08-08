@@ -46,6 +46,13 @@ def _make_manifest(
         FileEntry(name=n, sha256=sha256_bytes(data), size=len(data))
         for n, data in files.items()
     ]
+    # Distinct per-module data inputs so each seed gets its own name-independent content signature
+    # (mirrors real compiled manifests; keeps the dedup projection meaningful in tests).
+    input_bytes = {"variants.csv": f"{namespace}/{name}@{version}:inputs".encode()}
+    inputs = [
+        FileEntry(name=n, sha256=sha256_bytes(data), size=len(data))
+        for n, data in input_bytes.items()
+    ]
     manifest = ModuleManifest(
         identity=Identity(
             namespace=namespace,
@@ -69,6 +76,7 @@ def _make_manifest(
             categories=categories,
         ),
         compilation=Compilation(compile_success=True, compiled_by="marketplace-server"),
+        inputs=inputs,
         artifact=Artifact(digest=artifact_digest(entries), files=entries),
     )
     return manifest, files

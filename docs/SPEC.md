@@ -416,7 +416,41 @@ acceptable MVP alternative; presigned scales better for large parquet.)
 }
 ```
 
-Errors: `409 version_exists` (immutability), `403 not_namespace_member`, `422 invalid_version`.
+Errors: `409 version_exists` (immutability), `409 duplicate_content` (the same module data is
+already published under a different `(namespace, name)` — keyed on the name-independent
+`content_signature`, since the name is baked into the compiled parquets so `artifact.digest` can't
+detect a rename), `403 not_namespace_member`, `422 invalid_version`, `422 compile_failed`,
+`422 enrich_failed`, `413 upload_too_large`, `422 unsafe_filename` / `too_many_files`.
+
+Since 0.11 the server **enriches then compiles strict**: the enricher resolves rsIDs into
+`resolution.csv` and the compiler consumes that file, refusing to emit a partial artifact when a
+variant is left without a genomic position. A `422 compile_failed` from an unresolved position
+carries both halves of the explanation — the compiler names the variants, the registry says why its
+enricher could not place them and what would fix it.
+
+### 8.8 Pre-flight — `POST .../validate` and `POST .../check`
+
+The publish dry run, split by cost. `/validate` is offline: the real compiler over the uploaded spec,
+returning findings, stats, the content signature, and any versions already built from identical data.
+`/check` adds the network tier's cross-checks and returns `would_publish`.
+
+Both live under `{ns}/{name}` although nothing is published and the module need not exist: three of
+the four common publish rejections are namespace-scoped (`403`, `409 duplicate_content`,
+`422 name_mismatch`), so a path without a namespace would be systematically optimistic about the very
+thing these exist to predict. Both require `PUBLISH` on the namespace.
+
+**A finding is a `200`.** A spec that would be rejected comes back with `valid: false` and the
+reasons; only a request no spec directory can be assembled from is a 4xx. `/check` answers
+`503 enrichment_unavailable` when the operator has provisioned no reference snapshot.
+
+### 8.9 Content identity pre-check — `GET /modules/lookup?signature=`
+
+`content_signature` is the compiler's canonical hash of the *authored rows* — normalized, with
+`defaults:` folded in and the declared build included — so it is independent of the module name, the
+reference it was compiled against, and any metadata strip. That is what makes it the dedup identity
+where `artifact.digest` (a byte-reproducibility identity) cannot be, and why a client can compute it
+locally with `just-dna-compiler` without uploading or recompiling. Exposing it as a lookup is what
+lets a UI pre-check a duplicate before spending a publish.
 
 ### 8.7 Finalize — `POST .../versions/{v}/finalize`
 

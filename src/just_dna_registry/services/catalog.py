@@ -11,11 +11,14 @@ from just_dna_format.manifest import ModuleManifest
 from just_dna_registry import groups
 from just_dna_registry.config import API_PREFIX
 from just_dna_registry.db.repository import Repository
+from just_dna_registry.db.facets import is_trusted
 from just_dna_registry.models.api import (
     CardStats,
+    LicensingInfo,
     ModuleCard,
     ModuleDetail,
     Page,
+    ResolutionInfo,
     VersionSummary,
 )
 
@@ -44,6 +47,65 @@ def _featured(repo: Repository, row: sqlite3.Row) -> bool:
         return bool(row["featured"])
     flags = repo.namespace_flags(row["namespace"])
     return bool(flags["featured"]) if flags else False
+
+
+def _resolution_from_manifest(manifest: Optional[ModuleManifest]) -> ResolutionInfo:
+    """The trust facet, from a manifest. Used on the card, where the manifest is already loaded."""
+    if manifest is None:
+        return ResolutionInfo()
+    compilation = manifest.compilation
+    alleles = compilation.vrs_alleles
+    return ResolutionInfo(
+        mode=compilation.resolution_mode,
+        fully_resolved=compilation.fully_resolved,
+        trusted=is_trusted(manifest),
+        vrs_alleles=alleles,
+        vrs_alleles_identified=compilation.vrs_alleles_identified,
+        vrs_complete=(compilation.vrs_alleles_identified == alleles) if alleles else None,
+        sources=list(compilation.resolution_sources),
+        signature=compilation.resolution_signature,
+    )
+
+
+def _resolution_from_row(row: sqlite3.Row) -> ResolutionInfo:
+    """The trust facet, from the projected columns — no manifest parse.
+
+    The version list renders one of these per row, so it must not reparse `manifest_json` N times.
+    `resolution_signature`/`sources` are deliberately absent here: they are payload rather than
+    filters, so they stay in the manifest and surface on the detail endpoint's inline copy.
+    """
+    keys = row.keys()
+    if "trusted" not in keys:
+        return ResolutionInfo()
+    alleles = int(row["vrs_alleles"] or 0)
+    identified = int(row["vrs_identified"] or 0)
+    return ResolutionInfo(
+        mode=row["resolution_mode"],
+        fully_resolved=bool(row["fully_resolved"]),
+        trusted=None if row["trusted"] is None else bool(row["trusted"]),
+        vrs_alleles=alleles,
+        vrs_alleles_identified=identified,
+        vrs_complete=(identified == alleles) if alleles else None,
+    )
+
+
+def _licensing(manifest: Optional[ModuleManifest]) -> LicensingInfo:
+    """What the module's sources permit. Tri-state throughout: `None` means undetermined, and an
+    undetermined permission has not been shown to exist."""
+    sources = manifest.sources if manifest else None
+    if sources is None:
+        return LicensingInfo()
+    return LicensingInfo(
+        commercial_use=sources.commercial_use,
+        redistribution=sources.redistribution,
+        share_alike_layers=list(sources.share_alike_layers),
+        noncommercial_layers=list(sources.noncommercial_layers),
+        nonredistributable_layers=list(sources.nonredistributable_layers),
+        unknown_terms_sources=list(sources.unknown_terms_sources),
+        licenses=list(sources.licenses),
+        attributions=list(sources.attributions),
+        declared_uses=list(sources.declared_uses),
+    )
 
 
 def _card(repo: Repository, row: sqlite3.Row, starred_by: Optional[int] = None) -> ModuleCard:
@@ -90,6 +152,8 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: Optional[int] = None) 
         curated=reviews["highlighted_count"] > 0,
         author_funding_url=funding["author_funding_url"],
         org_funding_url=funding["org_funding_url"],
+        resolution=_resolution_from_manifest(manifest),
+        licensing=_licensing(manifest),
     )
 
 
@@ -101,6 +165,7 @@ def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSumm
         yanked=bool(row["yanked"]),
         signed=_version_signed(row),
         needs_upgrade=bool(row["needs_upgrade"]) if "needs_upgrade" in row.keys() else False,
+        resolution=_resolution_from_row(row),
         downloads=int(row["downloads"]) if "downloads" in row.keys() else 0,
         created_at=row["created_at"],
         changelog=row["changelog"],

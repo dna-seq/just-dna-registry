@@ -107,6 +107,32 @@ def test_publish_invalid_spec_returns_422(client: TestClient, api_key: str) -> N
     assert "detail" in resp.json()
 
 
+def test_publish_rejects_duplicate_content_under_other_name(
+    client: TestClient, api_key: str
+) -> None:
+    # Identical variant/study data under a *different* name must be refused (409 duplicate_content),
+    # naming where it already lives. The module name is baked into the compiled parquets, so
+    # `artifact.digest` differs across names — the check keys on the name-independent data-input
+    # signature instead. The registry recompiles both, so that signature is server-produced/trusted.
+    first = _publish(client, api_key, "just-dna-seq", "coronary", "1.0.0")
+    assert first.status_code == 201
+
+    dup = _publish(client, api_key, "just-dna-seq", "cardio", "1.0.0")
+    assert dup.status_code == 409
+    detail = dup.json()["detail"]
+    assert detail["error"] == "duplicate_content"
+    assert "just-dna-seq/coronary@1.0.0" in detail["errors"][0]
+
+
+def test_publish_allows_same_content_new_version_same_module(
+    client: TestClient, api_key: str
+) -> None:
+    # A digest collision under the *same* `(namespace, name)` is fine — a later version whose
+    # content happens to be unchanged is a legitimate republish, not a cross-name duplicate.
+    assert _publish(client, api_key, "just-dna-seq", "coronary", "1.0.0").status_code == 201
+    assert _publish(client, api_key, "just-dna-seq", "coronary", "1.0.1").status_code == 201
+
+
 def test_publish_name_mismatch_returns_422(client: TestClient, api_key: str) -> None:
     # module_spec.yaml says name=coronary but the path says lipids.
     resp = client.post(
