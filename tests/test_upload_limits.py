@@ -9,14 +9,23 @@ since it was written — so a part named `../../../x` escaped the temp directory
 `test_traversal_escapes_without_the_guard` demonstrates the escape against the unguarded code rather
 than asserting the fix in the abstract, so the test would have failed on 0.10 and does not merely
 restate the implementation.
+
+The 0.11.1 half is the *expansion* bound and the two transfer forms. 0.11 bounded the compressed
+size of an archive and nothing about what it became on disk, and it gave `/versions/import` an
+archive form that `/validate` and `/check` did not have — so the large ClinVar panels (34-180 MiB
+authored, 2-10 MB packed) could be published but never rehearsed. `test_a_large_spec_is_refused_raw_
+and_accepted_packed` is that blocker, reproduced and closed.
 """
 
+import io
+import tarfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from just_dna_registry.api.app import create_app
+from just_dna_registry.client import RegistryClient, RegistryError, pack_spec
 from just_dna_registry.config import Settings
 from just_dna_registry.services.publish import PublishError, reject_unsafe_relpath
 
@@ -148,6 +157,195 @@ def test_oversized_archive_is_413(tmp_path: Path) -> None:
     )
     assert resp.status_code == 413
     assert resp.json()["detail"]["error"] == "upload_too_large"
+
+
+# ── Expansion, and the two transfer forms (0.11.1) ────────────────────────────
+
+
+def _spec_tar(*extra: tuple[str, bytes], prefix: str = "") -> bytes:
+    """A real spec archive: the three core files, plus whatever the caller adds."""
+    members = [
+        ("module_spec.yaml", _YAML.encode()),
+        ("variants.csv", _VARIANTS.encode()),
+        ("studies.csv", _STUDIES.encode()),
+        *extra,
+    ]
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members:
+            info = tarfile.TarInfo(prefix + name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def test_a_highly_compressible_archive_expands_far_past_its_transfer_size() -> None:
+    """The premise of the bound, measured rather than asserted.
+
+    A transfer bound says nothing about disk: this archive is a rounding error on the wire and
+    tens of megabytes extracted. Through 0.11 that ratio was entirely unchecked.
+    """
+    blob = _spec_tar(("big.csv", b"x" * (32 * 1024 * 1024)))
+    assert len(blob) < 64 * 1024  # compressed: trivially under any sane transfer bound
+    with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
+        assert sum(m.size for m in tar.getmembers()) > 32 * 1024 * 1024  # extracted: not
+
+
+def test_import_refuses_an_over_expanding_archive(tmp_path: Path) -> None:
+    client = _app(tmp_path, max_extracted_bytes=1024)
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions/import",
+        data={"version": "1.0.0"},
+        files={"archive": ("m.tar.gz", _spec_tar(("big.csv", b"x" * 65536)), "application/gzip")},
+        headers=_AUTH,
+    )
+    assert resp.status_code == 413
+    assert resp.json()["detail"]["error"] == "archive_too_large"
+
+
+def test_nothing_is_written_when_expansion_is_refused(tmp_path: Path) -> None:
+    """Refused before a byte lands — the check reads member headers, it does not extract-then-count."""
+    client = _app(tmp_path, max_extracted_bytes=1024)
+    client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions/import",
+        data={"version": "1.0.0"},
+        files={"archive": ("m.tar.gz", _spec_tar(("big.csv", b"x" * 65536)), "application/gzip")},
+        headers=_AUTH,
+    )
+    assert client.get("/api/v1/modules/just-dna-seq/coronary").status_code == 404
+    assert not list((tmp_path / "a").rglob("big.csv"))
+
+
+def _stats(endpoint: str, body: dict) -> dict:
+    """`/validate` returns the report; `/check` nests it under `validation`."""
+    return (body if endpoint == "validate" else body["validation"])["stats"]
+
+
+@pytest.mark.parametrize("endpoint", ["validate", "check"])
+def test_preflight_accepts_an_archive(tmp_path: Path, endpoint: str) -> None:
+    """The fix: both dry runs take the same compressed form `/versions/import` takes."""
+    client = _app(tmp_path, enrich_enabled=False)
+    resp = client.post(
+        f"/api/v1/modules/just-dna-seq/coronary/{endpoint}",
+        params={"offline": True},  # zero egress: the archive form is the subject, not the network
+        files={"archive": ("spec.tar.gz", _spec_tar(), "application/gzip")},
+        headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    assert _stats(endpoint, resp.json())["variant_count"] == 1
+
+
+@pytest.mark.parametrize("endpoint", ["validate", "check"])
+def test_preflight_accepts_an_archive_with_a_directory_prefix(tmp_path: Path, endpoint: str) -> None:
+    """`tar czf spec.tar.gz spec/` is what a human types; the module root is found inside."""
+    client = _app(tmp_path, enrich_enabled=False)
+    resp = client.post(
+        f"/api/v1/modules/just-dna-seq/coronary/{endpoint}",
+        params={"offline": True},
+        files={"archive": ("spec.tar.gz", _spec_tar(prefix="spec/"), "application/gzip")},
+        headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    assert _stats(endpoint, resp.json())["variant_count"] == 1
+
+
+def test_preflight_refuses_both_forms_at_once(tmp_path: Path) -> None:
+    client = _app(tmp_path)
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/validate",
+        files=_parts() + [("archive", ("spec.tar.gz", _spec_tar(), "application/gzip"))],
+        headers=_AUTH,
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "ambiguous_upload"
+
+
+def test_a_large_spec_is_refused_raw_and_accepted_packed(tmp_path: Path) -> None:
+    """The reported blocker, end to end.
+
+    A spec whose authored bytes exceed the transfer bound is a `413` sent raw — correct, and what
+    the panels hit — and goes through compressed, on the *validation* route that previously had no
+    compressed form at all. Same spec, same server, same bound: only the wire form differs.
+    """
+    filler = ("notes.csv", b"n" * 8192)
+    client = _app(tmp_path, max_upload_bytes=4096, enrich_enabled=False)
+
+    raw = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/validate",
+        files=_parts(filler),
+        headers=_AUTH,
+    )
+    assert raw.status_code == 413
+    assert raw.json()["detail"]["error"] == "upload_too_large"
+
+    packed_bytes = _spec_tar(filler)
+    assert len(packed_bytes) < 4096  # the same spec, under the same bound, compressed
+    packed = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/validate",
+        files={"archive": ("spec.tar.gz", packed_bytes, "application/gzip")},
+        headers=_AUTH,
+    )
+    assert packed.status_code == 200, packed.text
+    assert packed.json()["stats"]["variant_count"] == 1
+
+
+def _spec_on_disk(tmp_path: Path, *extra: tuple[str, bytes]) -> Path:
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML)
+    (spec / "variants.csv").write_text(_VARIANTS)
+    (spec / "studies.csv").write_text(_STUDIES)
+    for name, data in extra:
+        (spec / name).write_bytes(data)
+    return spec
+
+
+def test_sdk_pack_is_the_way_through_the_transfer_bound(tmp_path: Path) -> None:
+    """The client half of the fix, against the real server.
+
+    A route method the caller cannot reach is not parity, so this asserts the whole path: the same
+    `RegistryClient.validate` over the same directory is a `413` raw and a `200` packed.
+    """
+    client = _app(tmp_path, max_upload_bytes=4096, enrich_enabled=False)
+    spec = _spec_on_disk(tmp_path, ("notes.csv", b"n" * 8192))
+    sdk = RegistryClient(
+        "http://testserver", token="mk_live_testkey",
+        transport=client._transport, check_version=False,
+    )
+    try:
+        with pytest.raises(RegistryError) as refused:
+            sdk.validate("just-dna-seq", "coronary", spec)
+        assert refused.value.status_code == 413
+
+        report = sdk.validate("just-dna-seq", "coronary", spec, pack=True)
+        assert report.stats.variant_count == 1
+    finally:
+        sdk.close()
+
+
+def test_sdk_sends_an_archive_path_as_an_archive(tmp_path: Path) -> None:
+    """Handing the client a `.tar.gz` sends it as one — no re-packing, no directory walk."""
+    client = _app(tmp_path, max_upload_bytes=4096, enrich_enabled=False)
+    packed = tmp_path / "spec.tar.gz"
+    packed.write_bytes(_spec_tar(("notes.csv", b"n" * 8192)))
+    sdk = RegistryClient(
+        "http://testserver", token="mk_live_testkey",
+        transport=client._transport, check_version=False,
+    )
+    try:
+        assert sdk.validate("just-dna-seq", "coronary", packed).stats.variant_count == 1
+    finally:
+        sdk.close()
+
+
+def test_pack_spec_excludes_compiled_outputs(tmp_path: Path) -> None:
+    """`pack_spec` reuses `gather_spec_files`, so a parquet sitting beside the spec is not shipped —
+    the server recompiles, and uploading its own output back would be nonsense the size of the data."""
+    spec = _spec_on_disk(tmp_path)
+    (spec / "weights.parquet").write_bytes(b"PAR1")
+    (spec / "manifest.json").write_text("{}")
+    with tarfile.open(fileobj=io.BytesIO(pack_spec(spec))) as tar:
+        assert set(tar.getnames()) == {"module_spec.yaml", "variants.csv", "studies.csv"}
 
 
 def test_the_bounds_do_not_reject_a_normal_publish(tmp_path: Path) -> None:

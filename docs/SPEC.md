@@ -301,7 +301,7 @@ unsigned, and verification behaves exactly as before.
 
 ## 8. Interface contract (REST)
 
-Base URL: `https://registry.dna-seq.org/api/v1`. All bodies JSON unless noted. List
+Base URL: `https://module-registry.just-dna.life/api/v1`. All bodies JSON unless noted. List
 responses paginate with `?page`, `?per_page` (max 100) → `{items, total, page, per_page}`.
 
 ### 8.1 Endpoint table

@@ -89,8 +89,18 @@ stale wrapper.
   - `403 not_namespace_member` — the bearer token's `namespaces` must include the path `{ns}`.
   - `422 invalid_version` / `422` with `errors[]`/`warnings[]`/`info[]` from `ValidationResult` on a
     bad spec; `422 digest_mismatch` when a prebuilt upload disagrees with a sandbox re-compile.
-  - `413 upload_too_large` — the request body exceeds `max_upload_bytes`. Distinct from
-    `422 too_many_variants`, which is a legal body asking for too much *work*.
+  - `413 upload_too_large` — the bytes on the wire exceed `max_upload_bytes`. Distinct from
+    `422 too_many_variants`, which is a legal body asking for too much *work*, and from
+    `413 archive_too_large`, where the archive *expands* past `max_extracted_bytes`.
+    **`max_upload_bytes` mirrors the deployment's HAProxy request-body cap** — it exists so an
+    oversized body gets our structured error instead of a severed connection. It is not a knob to
+    turn when something does not fit; raising it above the proxy's limit only makes the failure
+    opaque. Send the spec compressed instead.
+    **Every spec route takes both wire forms** — loose `files=` parts or one compressed `archive=`.
+    They are not interchangeable conveniences: a 180 MiB spec is a `413` raw and 10 MB packed, so a
+    route offering only the raw form silently excludes the largest modules. Giving `/versions/import`
+    an archive form while `/validate` and `/check` had none is what made the ClinVar panels
+    publishable but impossible to rehearse. A new upload route accepts both, or it is unfinished.
   - `503 enrichment_unavailable` (+ `missing[]`) — the network tier cannot run **at all** (today:
     `just-dna-enricher` is not installed). **No `Retry-After`**: retrying does not help until an
     operator changes the deployment. 503 over 501 (the feature is implemented) and over 424

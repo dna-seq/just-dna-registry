@@ -50,7 +50,8 @@ use an object.
 | `409` | `last_owner` | removing a namespace's only owner |
 | `409` | `duplicate_content` | the same authored data is already published under a different `(ns, name)` |
 | `409` | `account_taken` / `email_taken` | self-registration collision |
-| `413` | `{ "error": "upload_too_large", ... }` | the multipart body exceeds `max_upload_bytes` |
+| `413` | `{ "error": "upload_too_large", ... }` | the bytes on the wire exceed `max_upload_bytes` — summed multipart parts, or an archive's compressed size. Fix: send the spec as an `archive=` part instead |
+| `413` | `{ "error": "archive_too_large", ... }` | the archive *expands* past `max_extracted_bytes`, measured from its member headers before anything is written. Compressing harder does not fix this one |
 | `422` | `invalid_version` | version isn't SemVer `MAJOR.MINOR.PATCH` |
 | `422` | `invalid_install_id` / `invalid_account` | bad proof-of-work / account name at registration |
 | `422` | `lookup_needs_one_key` | `/modules/lookup` got neither or both of `digest`/`signature` |
@@ -122,8 +123,16 @@ need not exist** — `{name}` is the name you intend to publish under. Requires 
 nothing is stored, but the real compiler runs over your CSVs, which is the same server CPU a publish
 spends.
 
-Multipart `files=` exactly as for publish, minus `version`. Query: `?strict=` (default **true** —
-a dry run whose default disagrees with the publish it predicts is a trap).
+Multipart `files=` exactly as for publish, minus `version` — **or** a single `archive=` part
+(`.tar.gz` / `.zip`), the same form `/versions/import` takes. Send one or the other; both together
+is `422 ambiguous_upload`. Query: `?strict=` (default **true** — a dry run whose default disagrees
+with the publish it predicts is a trap).
+
+The archive form is not a convenience. `max_upload_bytes` bounds what crosses the wire and mirrors
+the deployment's HAProxy request-body cap, so it is not a number to raise — a spec whose authored
+CSVs exceed it (the ClinVar panels: 34–180 MiB) is a `413` sent raw and fine sent packed, 2–10 MB.
+Before 0.11.1 only the publish routes accepted an archive, so those modules could be published but
+never rehearsed.
 
 ```json
 {
@@ -145,6 +154,8 @@ pre-check. Rate bucket `validate` (60/h).
 The full dry run: everything `/validate` does, plus what only the network tier can see — an authored
 reference allele against the actual genome, `clin_sig` against ClinVar, rsIDs dbSNP has merged away,
 GA4GH allele-identity coverage.
+
+Body: `files=` or `archive=`, exactly as `/validate` — see there for why the compressed form exists.
 
 Query: `?strict=` `?offline=` `?frequencies=` `?literature=` `?identifiers=` `?acmg=` `?pgx=`
 `?declared_use=`.

@@ -171,8 +171,30 @@ class Settings(BaseSettings):
     # and eutils keep their higher defaults, and a value below a client's own is a no-op.
     http_retry_attempts: int = 5
 
-    # Upload bounds, applied to every multipart spec upload (publish, import, validate, check).
+    # Upload bounds, applied to every spec upload (publish, import, validate, check).
+    #
+    # Two numbers because there are two costs, and conflating them is what let the ClinVar panels be
+    # *published* but not *rehearsed*. `max_upload_bytes` bounds the bytes that cross the wire —
+    # summed multipart part sizes, or an archive's compressed size — and is checked from the spooled
+    # sizes before anything is read. `max_extracted_bytes` bounds what an archive expands to, read
+    # from the member headers before a single file is written.
+    #
+    # So a 180 MiB spec is legal via a 10 MiB archive on every route and illegal as a 180 MiB raw
+    # multipart body on all of them. That is the intended shape: the raw route pays 180 MiB of
+    # transfer for the same work, and every route now agrees about it.
+    #
+    # 25 MiB is NOT arbitrary — it mirrors the HAProxy request-body cap in front of the deployment,
+    # so the registry refuses an oversized body with its own structured `413 upload_too_large`
+    # instead of letting the proxy cut the connection with something a client cannot parse. Raising
+    # it past what HAProxy accepts does not raise the real ceiling; it just moves the failure
+    # upstream and makes it opaque. Change the proxy first, and only then this. That constraint is
+    # exactly why the fix for the large panels is the archive form, not a bigger number.
     max_upload_bytes: int = 25 * 1024 * 1024
+    # Deliberately not `max_upload_bytes`: until 0.11.1 `_extract_archive` had no expansion bound at
+    # all, so the archive route accepted 25 MiB compressed and wrote out however much that became.
+    # Reusing the transfer bound here would have closed the hole by breaking the one route the large
+    # panels publish through.
+    max_extracted_bytes: int = 512 * 1024 * 1024
     max_spec_files: int = 64
 
     # Politeness credentials for the enricher's NCBI / Europe PMC calls. Both OPTIONAL: the key only

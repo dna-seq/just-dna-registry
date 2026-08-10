@@ -6,6 +6,44 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.11.1] — 2026-08-10
+
+### The dry runs now accept what the publish accepts
+
+`POST /versions/import` has always taken a compressed spec archive; `/validate` and `/check` took
+only loose multipart parts. Since `max_upload_bytes` bounds the bytes on the wire, that split meant
+a large module could be **published but never rehearsed**: the three ClinVar panels are 34–180 MiB
+authored, so the raw form is a `413` on every route, and the compressed form existed on exactly the
+routes that write. A dry run that cannot accept the input the publish accepts predicts nothing.
+
+- **Both pre-flight routes take `archive=`** (`.tar.gz` / `.zip`), resolved through the same guarded
+  extraction the import route uses, including a nested module root so `tar czf spec.tar.gz spec/`
+  works. Sending `files=` and `archive=` together is `422 ambiguous_upload`.
+- **SDK + CLI**: `RegistryClient.validate(…, pack=True)` / `.check(…, pack=True)` compress a spec
+  directory client-side, and either method accepts a path that already *is* an archive.
+  `registry-client validate|check … --pack` is the same thing from the shell. Packing reuses
+  `gather_spec_files`, so compiled parquets and `manifest.json` are still never uploaded.
+- **Measured, not asserted**: packed, the panels are 2.2 MB (cancer), 1.8 MB (cardio) and 10.2 MB
+  (pathogenic) — all comfortably inside the unchanged 25 MiB bound.
+
+**`max_upload_bytes` stays at 25 MiB, and that is the point.** It mirrors the HAProxy request-body
+cap in front of the deployment, so the registry answers an oversized body with its own structured
+`413 upload_too_large` rather than letting the proxy cut the connection with something no client can
+parse. Raising it does not raise the real ceiling — it moves the failure upstream and makes it
+opaque. The proxy's limit is the constraint; the archive form is how a 180 MiB spec gets under it.
+
+### Archive expansion is bounded (was: not at all)
+
+0.11 added `max_upload_bytes` and checked it against an archive's *compressed* size, then extracted
+whatever that became. Compression ratio is unbounded, so the archive route was the one path where a
+25 MiB body could write arbitrarily much to disk — and widening it to two more routes without a
+bound would have made that worse.
+
+- New `max_extracted_bytes` (default **512 MiB**), summed from zip/tar member headers **before** any
+  file is written, so a refusal leaves nothing behind. Over it → `413 archive_too_large`.
+- Deliberately a separate knob from `max_upload_bytes`: reusing the transfer bound would have closed
+  the hole by breaking the one route the large panels publish through (180 MiB extracted).
+
 ## [0.11.0] — 2026-08-08
 
 Adopts `just-dna-format` **0.5.0** plus `just-dna-compiler` / `just-dna-enricher` **0.5.1**, and with

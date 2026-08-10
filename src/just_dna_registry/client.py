@@ -3,7 +3,9 @@ HTTP client for the registry API — powers the `registry-client` CLI and live i
 tests. Depends only on `httpx` + the `just-dna-format` contract (for verify-then-install).
 """
 
+import io
 import logging
+import tarfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -21,6 +23,48 @@ _log = logging.getLogger("registry.client")
 # Spec inputs a publisher uploads; compiled outputs are produced server-side, never uploaded.
 _SKIP_UPLOAD_SUFFIXES: frozenset[str] = frozenset({".parquet"})
 _SKIP_UPLOAD_NAMES: frozenset[str] = frozenset({"manifest.json"})
+
+
+_ARCHIVE_SUFFIXES: tuple[str, ...] = (".tar.gz", ".tgz", ".zip")
+
+
+def is_archive(path: Path) -> bool:
+    """Whether `path` names a spec archive rather than a spec directory."""
+    name = Path(path).name.lower()
+    return any(name.endswith(suffix) for suffix in _ARCHIVE_SUFFIXES)
+
+
+def pack_spec(spec_dir: Path) -> bytes:
+    """Tar+gzip a spec directory into the archive form the upload routes accept.
+
+    For a spec whose raw parts exceed the server's transfer bound this is the only way through: the
+    ClinVar panels are 34–180 MiB authored and 1.8–10.2 MB compressed. Deterministic (no mtimes,
+    no owners) so the same spec packs to the same bytes.
+    """
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
+        for rel, data in gather_spec_files(spec_dir):
+            info = tarfile.TarInfo(rel)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def spec_upload(spec_dir: Path, *, pack: bool) -> list[tuple[str, tuple[str, bytes, str]]]:
+    """Build the multipart payload for a spec: loose `files` parts, or one `archive` part.
+
+    One place decides the wire form, so `validate`, `check` and any future pre-flight cannot
+    disagree about it.
+    """
+    spec_dir = Path(spec_dir)
+    if is_archive(spec_dir):
+        return [("archive", (spec_dir.name, spec_dir.read_bytes(), "application/gzip"))]
+    if pack:
+        return [("archive", ("spec.tar.gz", pack_spec(spec_dir), "application/gzip"))]
+    return [
+        ("files", (rel, data, "application/octet-stream"))
+        for rel, data in gather_spec_files(spec_dir)
+    ]
 
 
 def gather_spec_files(spec_dir: Path) -> list[tuple[str, bytes]]:
@@ -337,22 +381,23 @@ class RegistryClient:
         return self.lookup_by_signature(self.content_signature(spec_dir))
 
     def validate(
-        self, namespace: str, name: str, spec_dir: Path, *, strict: bool = True
+        self, namespace: str, name: str, spec_dir: Path, *, strict: bool = True, pack: bool = False
     ) -> ValidationReport:
         """Validate a spec server-side without publishing it. Writes nothing.
 
         The module need not exist; `name` is the name you intend to publish under. A spec that would
         be rejected still returns normally, with `valid=False` and the reasons — findings are data,
         not exceptions.
+
+        `spec_dir` may be a directory or a `.tar.gz`/`.zip` archive. `pack=True` compresses a
+        directory client-side, which is what a spec larger than the server's transfer bound needs —
+        the raw parts are refused `413` at that size while the archive sails through.
         """
         self.assert_compatible()
         resp = self._http.post(
             f"/modules/{namespace}/{name}/validate",
             params={"strict": strict},
-            files=[
-                ("files", (rel, data, "application/octet-stream"))
-                for rel, data in gather_spec_files(spec_dir)
-            ],
+            files=spec_upload(spec_dir, pack=pack),
         )
         return ValidationReport.model_validate(self._json(resp))
 
@@ -370,8 +415,12 @@ class RegistryClient:
         acmg: bool = False,
         pgx: bool = False,
         declared_use: Optional[str] = None,
+        pack: bool = False,
     ) -> CheckReport:
         """The full publish dry run: validation plus what the server's network tier finds.
+
+        `spec_dir` may be a directory or a `.tar.gz`/`.zip` archive; `pack=True` compresses a
+        directory client-side. Use it for a spec too large to send raw — see `validate`.
 
         Blocks for as long as the server takes — minutes with `frequencies=True`, which is paced at
         roughly six seconds per twenty variants. The client's 600s default timeout covers the
@@ -401,10 +450,7 @@ class RegistryClient:
                 "literature": literature, "identifiers": identifiers, "acmg": acmg, "pgx": pgx,
                 **({"declared_use": declared_use} if declared_use else {}),
             },
-            files=[
-                ("files", (rel, data, "application/octet-stream"))
-                for rel, data in gather_spec_files(spec_dir)
-            ],
+            files=spec_upload(spec_dir, pack=pack),
         )
         return CheckReport.model_validate(self._json(resp))
 

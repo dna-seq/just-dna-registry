@@ -303,6 +303,12 @@ if __name__ == "__main__":
 # ── Pre-flight (0.11) ─────────────────────────────────────────────────────────
 
 
+_PACK_HELP: str = (
+    "Compress the spec client-side and send one archive. Needed for a spec whose raw parts exceed "
+    "the server's transfer bound (the ClinVar panels: 34-180 MiB raw, 2-10 MB packed)."
+)
+
+
 def _echo_findings(report) -> None:
     for line in report.errors:
         typer.secho(f"  ✗ {line}", fg=typer.colors.RED)
@@ -320,12 +326,16 @@ def validate(
     strict: bool = typer.Option(
         True, "--strict/--no-strict", help="Grade findings under the mode publish compiles in"
     ),
+    pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
     url: Optional[str] = UrlOpt,
     token: Optional[str] = TokenOpt,
 ) -> None:
-    """Validate a spec directory server-side, without publishing. Exits 1 when it would be rejected."""
+    """Validate a spec directory server-side, without publishing. Exits 1 when it would be rejected.
+
+    `spec_dir` may also be a `.tar.gz`/`.zip` archive, in which case it is sent as-is.
+    """
     with _client(url, token, need_token=True) as c:
-        report = c.validate(namespace, name, spec_dir, strict=strict)
+        report = c.validate(namespace, name, spec_dir, strict=strict, pack=pack)
     _echo_findings(report)
     typer.echo(
         f"  {report.stats.variant_count} variant(s), {report.stats.gene_count} gene(s)"
@@ -368,6 +378,7 @@ def check(
         help="unstated | non-commercial | commercial. Every PGx source forbids sale, so without a "
              "declaration each is skipped rather than queried.",
     ),
+    pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
     url: Optional[str] = UrlOpt,
     token: Optional[str] = TokenOpt,
 ) -> None:
@@ -382,7 +393,7 @@ def check(
             report = c.check(
                 namespace, name, spec_dir, strict=strict, offline=offline,
                 frequencies=frequencies, literature=literature, identifiers=identifiers,
-                acmg=acmg, pgx=pgx,
+                acmg=acmg, pgx=pgx, pack=pack,
                 # The CLI spells it with a hyphen (matching `just-dna-enricher --use`); the column
                 # vocabulary uses an underscore. Normalize here so a hand-typed flag cannot 422.
                 declared_use=use.replace("-", "_") if use else None,

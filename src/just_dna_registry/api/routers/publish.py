@@ -63,6 +63,9 @@ AccountDep = Annotated[Account, Depends(require_account)]
 _PUBLISH_ERROR_STATUS: dict[str, int] = {
     "duplicate_content": status.HTTP_409_CONFLICT,
     "upload_too_large": status.HTTP_413_CONTENT_TOO_LARGE,
+    # Same family as `upload_too_large` — too much payload — so the same status. Distinct name
+    # because the fix is different: this one is not solved by compressing harder.
+    "archive_too_large": status.HTTP_413_CONTENT_TOO_LARGE,
 }
 
 
@@ -306,6 +309,34 @@ async def import_archive(
 # purpose: a dry run whose default disagrees with the publish it is predicting is a trap.
 
 
+async def _preflight_uploads(
+    files: list[UploadFile], archive: Optional[UploadFile], settings: Settings
+) -> dict[str, bytes]:
+    """Accept a spec as loose multipart parts **or** as one compressed archive, and return the same
+    `{name: bytes}` either way.
+
+    The archive form is why this exists. `/versions/import` has always taken one, so a 180 MiB spec
+    could be published as a 10 MiB `.tar.gz` — but the dry runs took only raw parts, which the
+    transfer bound refuses at that size. The rehearsal has to accept whatever the publish accepts or
+    it is not a rehearsal.
+    """
+    named = [f for f in files if f.filename]
+    if archive is not None and archive.filename and named:
+        raise publish_service.PublishError(
+            "ambiguous_upload",
+            errors=["send either `files` or `archive`, not both"],
+        )
+    if archive is not None and archive.filename:
+        uploads = await publish_service.collect_archive(archive, settings)
+    else:
+        uploads = await publish_service.collect_uploads(files, settings)
+    if not any(f in uploads for f in REQUIRED_SPEC_FILES):
+        raise publish_service.PublishError(
+            "missing_spec_files", errors=[f"missing: {f}" for f in REQUIRED_SPEC_FILES]
+        )
+    return uploads
+
+
 def _preflight_spec_dir(uploads: dict[str, bytes], tmp: str) -> Path:
     """Materialize an upload into a spec directory. Names are already containment-checked."""
     spec_dir = Path(tmp) / "spec"
@@ -327,10 +358,14 @@ async def validate_spec_endpoint(
     account: AccountDep,
     namespace: str,
     name: str,
-    files: Annotated[list[UploadFile], File()],
+    files: Annotated[list[UploadFile], File()] = [],
+    archive: Annotated[Optional[UploadFile], File()] = None,
     strict: bool = Query(True, description="Grade findings under the mode publish compiles in"),
 ) -> ValidationReport:
     """Validate a spec server-side without publishing it. Writes nothing; the module need not exist.
+
+    Send the spec as loose `files` parts or as a single `archive` (`.tar.gz` / `.zip`), exactly as
+    `/versions/import` takes one. A spec too large to send raw is still rehearsable compressed.
 
     Offline and fast: no network, no compile, no artifact. Alongside the findings it returns the
     spec's content signature and any versions already built from identical data, so a publisher sees
@@ -344,11 +379,7 @@ async def validate_spec_endpoint(
     """
     require_capability(repo, account, namespace, Capability.PUBLISH)
     try:
-        uploads = await publish_service.collect_uploads(files, settings)
-        if not any(f in uploads for f in REQUIRED_SPEC_FILES):
-            raise publish_service.PublishError(
-                "missing_spec_files", errors=[f"missing: {f}" for f in REQUIRED_SPEC_FILES]
-            )
+        uploads = await _preflight_uploads(files, archive, settings)
         return await run_in_threadpool(_validate_worker, repo, settings, uploads, name, strict)
     except publish_service.PublishError as exc:
         raise _publish_http_error(exc)
@@ -377,7 +408,8 @@ async def check_spec(
     account: AccountDep,
     namespace: str,
     name: str,
-    files: Annotated[list[UploadFile], File()],
+    files: Annotated[list[UploadFile], File()] = [],
+    archive: Annotated[Optional[UploadFile], File()] = None,
     strict: bool = Query(True, description="Grade findings under the mode publish compiles in"),
     offline: bool = Query(False, description="Clamp to the server's local caches; zero egress"),
     frequencies: bool = Query(False, description="gnomAD frequencies — online only, ~6s/20 variants"),
@@ -397,6 +429,9 @@ async def check_spec(
     ),
 ) -> CheckReport:
     """The full publish dry run: validation plus what the network tier finds.
+
+    Takes the spec as loose `files` parts or as a single compressed `archive`, the same two forms
+    the publish routes take — a spec that only fits the wire compressed is still rehearsable.
 
     Checks nothing can catch offline — an authored reference allele against the actual genome, a
     `clin_sig` against ClinVar, an rsID dbSNP has merged away, GA4GH allele identity coverage — and
@@ -446,11 +481,7 @@ async def check_spec(
                     f"{declared_use!r}"
                 ],
             )
-        uploads = await publish_service.collect_uploads(files, settings)
-        if not any(f in uploads for f in REQUIRED_SPEC_FILES):
-            raise publish_service.PublishError(
-                "missing_spec_files", errors=[f"missing: {f}" for f in REQUIRED_SPEC_FILES]
-            )
+        uploads = await _preflight_uploads(files, archive, settings)
 
         # Acquired here, in the coroutine, so queued callers do not each occupy an anyio worker and
         # exhaust the threadpool; released by the worker's own `finally`, because a run that blows

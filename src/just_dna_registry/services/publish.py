@@ -52,7 +52,7 @@ from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.services.enrich import enrich_spec, unresolved_hint
 from just_dna_registry.services.ingest import ingest_manifest, now_iso
-from just_dna_registry.specfiles import REQUIRED_SPEC_FILES, SPEC_YAML
+from just_dna_registry.specfiles import REQUIRED_SPEC_FILES, SPEC_YAML, is_spec_file
 from just_dna_registry.storage.base import StorageBackend, version_key
 
 _REVERSE_MARKER: str = "weights.parquet"  # a legacy compiled module has this but no spec
@@ -175,6 +175,56 @@ async def collect_uploads(files: list[Any], settings: Settings) -> dict[str, byt
     return {f.filename: await f.read() for f in named}
 
 
+async def collect_archive(archive: Any, settings: Settings) -> dict[str, bytes]:
+    """Read a spec archive upload into the same `{relative-name: bytes}` shape `collect_uploads`
+    returns, so a pre-flight route can accept either form and know nothing about which it got.
+
+    This exists because `/versions/import` accepted a compressed spec while `/validate` and `/check`
+    did not, which made the large ClinVar panels publishable but impossible to rehearse: the raw
+    multipart body is 180 MiB against a 25 MiB transfer bound, and the compressed form the publish
+    route takes had no counterpart on the dry-run routes. A dry run that cannot accept what the
+    publish accepts predicts nothing.
+
+    Only recognized spec files are returned. A legacy parquet-only archive is *not* reversed here —
+    that is a publish concern (`import_archive`), and reverse-engineering an artifact to validate it
+    would report on a spec the caller never wrote.
+    """
+    size = archive.size or 0
+    if size > settings.max_upload_bytes:
+        raise PublishError(
+            "upload_too_large",
+            errors=[
+                f"{size} bytes uploaded; the limit is {settings.max_upload_bytes} "
+                f"({settings.max_upload_bytes // (1024 * 1024)} MiB)"
+            ],
+        )
+    data = await archive.read()
+    with tempfile.TemporaryDirectory() as tmp:
+        extracted = Path(tmp) / "extracted"
+        extracted.mkdir()
+        _extract_archive(data, extracted, settings)
+        root = _module_root(extracted)
+        if not (root / SPEC_YAML).is_file():
+            raise PublishError(
+                "no_module_content",
+                errors=[f"archive contains no {SPEC_YAML}; a dry run needs an authored spec"],
+            )
+        uploads: dict[str, bytes] = {}
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root).as_posix()
+            if is_spec_file(rel) or rel.startswith("logs/"):
+                uploads[rel] = path.read_bytes()
+        if len(uploads) > settings.max_spec_files:
+            raise PublishError(
+                "too_many_files",
+                errors=[f"{len(uploads)} spec files in archive; the limit is "
+                        f"{settings.max_spec_files}"],
+            )
+        return uploads
+
+
 def reject_unsafe_relpath(name: str) -> None:
     """Refuse a spec-file name that would write outside the spec directory.
 
@@ -270,7 +320,7 @@ def import_archive(
             with tempfile.TemporaryDirectory() as tmp:
                 extracted = Path(tmp) / "extracted"
                 extracted.mkdir()
-                _extract_archive(archive, extracted)
+                _extract_archive(archive, extracted, settings)
                 root = _module_root(extracted)
                 is_spec = (root / "module_spec.yaml").is_file()
                 action.log(message_type="archive_extracted", mode="spec" if is_spec else "reverse",
@@ -517,8 +567,29 @@ def amend_logo(
 # ── Archive helpers ─────────────────────────────────────────────────────────────
 
 
-def _extract_archive(data: bytes, dest: Path) -> None:
-    """Safely extract a zip or tar.gz archive into `dest` (guards path traversal)."""
+def _reject_expansion(total: int, settings: Settings) -> None:
+    """Refuse an archive that expands past `max_extracted_bytes`.
+
+    Checked from the member headers, before a byte is written: a compression ratio is unbounded, so
+    the transfer bound says nothing about what lands on disk. Without this the archive route was the
+    one place a 25 MiB body could become an arbitrarily large extraction.
+    """
+    if total > settings.max_extracted_bytes:
+        raise PublishError(
+            "archive_too_large",
+            errors=[
+                f"archive expands to {total} bytes; the limit is {settings.max_extracted_bytes} "
+                f"({settings.max_extracted_bytes // (1024 * 1024)} MiB)"
+            ],
+        )
+
+
+def _extract_archive(data: bytes, dest: Path, settings: Settings) -> None:
+    """Safely extract a zip or tar.gz archive into `dest`.
+
+    Guards path traversal (always did) and expansion (0.11.1). Both are checked across every member
+    before anything is written, so a refusal leaves nothing behind.
+    """
     buf = io.BytesIO(data)
     if zipfile.is_zipfile(buf):
         buf.seek(0)
@@ -527,11 +598,18 @@ def _extract_archive(data: bytes, dest: Path) -> None:
             for member in zf.namelist():
                 if not (dest / member).resolve().is_relative_to(root):
                     raise PublishError("unsafe_archive", errors=[f"path escapes archive: {member}"])
+            # `file_size` is the declared uncompressed size from the central directory. A lying
+            # header is not a bypass: it can only *understate* what `extractall` then writes, and
+            # the transfer bound already caps how much compressed input exists to inflate.
+            _reject_expansion(sum(i.file_size for i in zf.infolist()), settings)
             zf.extractall(dest)
         return
     buf.seek(0)
     try:
         with tarfile.open(fileobj=buf, mode="r:*") as tf:
+            # tar has no central directory, so this walks the headers — decompressing the stream
+            # without writing files. Bounded by `max_upload_bytes` on the compressed input.
+            _reject_expansion(sum(m.size for m in tf.getmembers() if m.isfile()), settings)
             tf.extractall(dest, filter="data")  # 'data' filter blocks traversal/special files
     except tarfile.TarError as exc:
         raise PublishError("bad_archive", errors=[f"not a valid zip or tar.gz: {exc}"])
