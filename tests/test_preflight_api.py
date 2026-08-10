@@ -268,6 +268,42 @@ def test_a_missing_snapshot_offline_degrades_with_a_reason(tmp_path: Path) -> No
     assert "warm-caches" in notes  # what an operator would do about it
 
 
+def test_an_empty_conflict_list_says_which_empty_it_is(tmp_path: Path) -> None:
+    """`clin_sig_conflicts: []` must not be readable as "checked, all clear" when nothing was checked.
+
+    These caches are empty directories, so the cross-check has no ClinVar snapshot to compare
+    against and cannot run. Before enricher 0.5.2 the report was indistinguishable from a real pass:
+    an empty list, no reason, and a `would_publish: true` beside it. The token is asserted rather
+    than just the prose, because that is what a CI job branches on.
+    """
+    code, body = _check(_app(tmp_path), offline=True)
+    assert code == 200, body
+    enrichment = body["enrichment"]
+    assert enrichment["clin_sig_conflicts"] == []
+    assert enrichment["clin_sig_not_checked"] == "no_snapshot"
+    notes = " ".join(enrichment["notes"])
+    assert "clin_sig cross-check did not run" in notes
+    assert "unchecked, not clean" in notes
+    # Unchecked is not a defect in the module: the operator owns this, so the publish still stands.
+    assert body["would_publish"] is True
+
+
+def test_an_operator_disabled_check_is_reported_to_the_publisher(tmp_path: Path) -> None:
+    """`not_requested` is reported here even though the enricher's own CLI suppresses it.
+
+    There it echoes the author's `--no-verify-clinsig` back at them. Here it is a server setting the
+    publisher cannot see, so silence would be the one thing it must never mean.
+    """
+    client = _app(tmp_path, enrich_verify_clinsig=False)
+    code, body = _check(client, offline=True)
+    assert code == 200, body
+    enrichment = body["enrichment"]
+    assert enrichment["clin_sig_not_checked"] == "not_requested"
+    notes = " ".join(enrichment["notes"])
+    assert "REGISTRY_ENRICH_VERIFY_CLINSIG=false" in notes
+    assert "not a clean bill of health" in notes
+
+
 def test_503_only_when_the_tier_is_genuinely_absent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

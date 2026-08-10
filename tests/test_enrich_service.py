@@ -28,7 +28,9 @@ from just_dna_registry.services.enrich import (
     PULLABLE_REFERENCES,
     REFERENCE_NAMES,
     RESOLUTION_REFERENCES,
+    _render_notes,
     available_references,
+    clin_sig_skip_note,
     configured_caches,
     unresolved_hint,
     vrs_coverage,
@@ -178,6 +180,68 @@ def test_available_references_ignores_ambient_state_when_configured(
     monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", "/another/place")
     settings = Settings(ensembl_cache=tmp_path / "empty")
     assert available_references(settings)["ensembl"] is None
+
+
+# ── A check that did not run ──────────────────────────────────────────────────
+
+
+def test_a_check_that_ran_adds_no_note() -> None:
+    """`None` means it genuinely ran, and a clean pass must stay silent or the note means nothing."""
+    assert clin_sig_skip_note(None) is None
+
+
+def test_each_skip_reason_reaches_whoever_can_act_on_it() -> None:
+    """The two machine tokens name a *deployment* state, so they are translated, not passed through.
+
+    A publisher reading `no_snapshot` cannot act on the word; `warm-caches` is the operator's move and
+    the env var is the operator's switch. Both lines also have to deny the reading they exist to
+    prevent — that an empty conflict list was a pass.
+    """
+    disabled = clin_sig_skip_note("not_requested")
+    assert "REGISTRY_ENRICH_VERIFY_CLINSIG=false" in disabled
+    assert "not a clean bill of health" in disabled
+
+    absent = clin_sig_skip_note("no_snapshot")
+    assert "warm-caches" in absent
+    assert "unchecked, not clean" in absent
+
+
+def test_the_tautology_reason_is_passed_through_as_written() -> None:
+    """The third reason is prose from the enricher, and it names the pins that matched.
+
+    Translating it would drop exactly the part a publisher needs in order to agree with the skip, so
+    this side only prefixes it.
+    """
+    reason = (
+        "this module declares it was drafted from the very snapshot the check reads "
+        "(release 2026-07-01), so every authored clin_sig is a copy of the value it would be "
+        "compared against"
+    )
+    note = clin_sig_skip_note(reason)
+    assert note == f"clin_sig cross-check did not run: {reason}"
+
+
+def test_the_publish_path_never_renders_conflicts_without_the_skip() -> None:
+    """The prose the publish path emits carries the skip beside the conflicts it qualifies.
+
+    `_render_notes` feeds a failed publish's `warnings`, where an unqualified empty conflict list is
+    the same misinformation the report field fixes.
+    """
+
+    @dataclass
+    class _Result:  # the fields of `just_dna_enricher.enrich.EnrichmentResult` this reads
+        ref_mismatches: list
+        clin_sig_conflicts: list
+        clin_sig_not_checked: str | None
+        stale_rsids: list
+        par_twins_dropped: list
+
+    notes = _render_notes(
+        _Result([], [], "no_snapshot", [], [])
+    )
+    assert any("clin_sig cross-check did not run" in n for n in notes)
+    # ...and a check that ran contributes nothing, so the absence of a line is itself the signal.
+    assert _render_notes(_Result([], [], None, [], [])) == []
 
 
 # ── Actionability of the failure ──────────────────────────────────────────────

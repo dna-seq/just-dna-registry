@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.11.1"
+version = "0.11.2"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,10 +21,12 @@ dependencies = [
 # publisher can pre-check dedup before spending a publish. Only the compiler tier is needed for
 # that — no network tier, no FastAPI.
 # `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41). `just-dna-format` stays at
-# 0.5.0 on purpose — 0.5.1 was a two-package network-tier cut that touched no model, parquet or
-# manifest field, which is what made it legal inside the closed 0.5 digest window.
+# 0.5.0 on purpose — neither 0.5.1 nor 0.5.2 was a schema cut: both were two-package network-tier
+# releases that touched no model, parquet column or manifest field, which is what made them legal
+# inside the closed 0.5 digest window. Floor is 0.5.2 for the `--no-resolve`-discards-the-table
+# warning, which is the only compiler-side change this tier can observe.
 compiler = [
-    "just-dna-compiler>=0.5.1",
+    "just-dna-compiler>=0.5.2",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -39,11 +41,13 @@ server = [
     "huggingface-hub>=0.34.0",
     "pyjwt>=2.10.0",
     "pyyaml>=6.0.2",
-    # `>=0.5.1` is a hard floor, not a preference: the server reads `EnrichmentResult.vrs` (RM40),
-    # passes `offline=` to the dosage pass (RM39), and hands `cpic_cache`/`pharmvar_cache` plus
-    # `offline=` to `enrich_pgx` (RM38). None of those exists in 0.5.0.
-    "just-dna-compiler>=0.5.1",
-    "just-dna-enricher>=0.5.1",
+    # `>=0.5.2` is a hard floor, not a preference: the server reads `EnrichmentResult.vrs` (RM40)
+    # and `.clin_sig_not_checked` (S4, 0.5.2), passes `offline=` to the dosage pass (RM39), and hands
+    # `cpic_cache`/`pharmvar_cache` plus `offline=` to `enrich_pgx` (RM38). None of those exists in
+    # 0.5.0, and `clin_sig_not_checked` is a 0.5.2 attribute this tier reads unguarded — on 0.5.1 the
+    # report would claim a cross-check that never ran.
+    "just-dna-compiler>=0.5.2",
+    "just-dna-enricher>=0.5.2",
 ]
 
 [build-system]

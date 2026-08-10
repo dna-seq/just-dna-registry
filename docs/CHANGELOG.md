@@ -6,6 +6,48 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.11.2] — 2026-08-10
+
+Adopts `just-dna-compiler` / `just-dna-enricher` **0.5.2**. `just-dna-format` stays at **0.5.0**:
+like 0.5.1, this was a two-package network-tier release that touched no model, parquet column or
+manifest field, which is what makes it patch-legal inside the closed 0.5 digest window. Nothing about
+a published artifact's identity changes, so no republish and no reindex.
+
+### An empty `clin_sig_conflicts` now says which empty it is
+
+`clin_sig_conflicts: []` meant two opposite things — "compared everything, nothing disagreed" and
+"never compared" — rendered identically, with `would_publish: true` beside them. A deployment with no
+ClinVar snapshot, or with `REGISTRY_ENRICH_VERIFY_CLINSIG=false`, was reporting a clean cross-check it
+had never run.
+
+- **`enrichment.clin_sig_not_checked`** on `/check`: `null` when the check ran, else `not_requested`,
+  `no_snapshot`, or the enricher's prose for a module that declares it was drafted from the very
+  snapshot the check reads (making the comparison a value against itself, and its zero structurally
+  guaranteed). Structured, because a CI job needs a token to compare rather than a sentence to match.
+- **The same reason in prose** on `enrichment.notes`, and on a failed publish's `warnings` — rendered
+  from one helper beside the conflicts it qualifies, so the two can never diverge.
+- **`not_requested` is reported here although the enricher's own CLI suppresses it.** There it is the
+  author's `--no-verify-clinsig` echoed back; here it is a server setting the publisher cannot see.
+- Never counts against `would_publish`, and must not start to: a check the *operator* disabled or has
+  no snapshot for is not a defect in the module.
+
+### What came for free from 0.5.2
+
+- **The ClinVar panels are publishable in bounded time.** A batch coordinate lookup was
+  `(chrom=? AND start=? AND ref=? AND alt=?) OR …`, which DuckDB cannot fold into a hash probe, so it
+  scanned every row per allele — upstream measured a 297-gene panel at two hours and 12% CPU, which
+  reads as a deadlock, against 0.21s for the temp-table join that replaced it. This is the tier the
+  publish path's threadpool worker and `enrich_timeout_seconds` were sized against.
+- **The tautology skip is where most of that check's cost was**: upstream measured 27.1s → 2.6s on a
+  7,818-row provider-drafted panel, for a zero that was never evidence.
+- `--no-resolve` with a `resolution.csv` present now warns instead of succeeding with no coordinate on
+  any row. The registry always passes `resolve_with_ensembl=True`, so this cannot fire here; the floor
+  is 0.5.2 anyway, since it is the only compiler-side change this tier could observe.
+- `_cache_dir` loads `.env` itself, fixing a first-resolve-in-the-process asymmetry the registry was
+  structurally immune to (`config.py` loads `.env` at import). `available_references` passes
+  `load_dotenv_file=False`, which no longer covers the whole ladder; the docstring now says so rather
+  than claiming a suppression that is no longer complete.
+
 ## [0.11.1] — 2026-08-10
 
 ### The dry runs now accept what the publish accepts

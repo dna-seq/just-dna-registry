@@ -231,7 +231,8 @@ the validation findings and decides whether unresolved positions count against `
   "validation": { "…as above…" },
   "enrichment": {
     "mode": "best_effort", "offline": true,
-    "unresolved": [], "ref_mismatches": [], "clin_sig_conflicts": [], "stale_rsids": [],
+    "unresolved": [], "ref_mismatches": [], "clin_sig_conflicts": [],
+    "clin_sig_not_checked": null, "stale_rsids": [],
     "vrs": {"alleles": 57, "identified": 55, "complete": false,
             "unmintable_reasons": {"indel/MNV: needs the reference sequence": 2}},
     "sources": ["cache"]
@@ -246,6 +247,15 @@ the validation findings and decides whether unresolved positions count against `
 publish it predicts. `unmintable_reasons` is the half that tells a publisher whether to act: an indel
 with no sequence proxy, or a build with no refget table, is the tier's own limit and no authored edit
 clears it, so a shortfall never counts against `would_publish`.
+
+**`clin_sig_not_checked` is the field to read before believing `clin_sig_conflicts: []`.** An empty
+conflict list means two opposite things — "compared everything, nothing disagreed" and "never
+compared" — and only one of them is reassuring. `null` means the check genuinely ran. Otherwise it is
+`not_requested` (the operator set `REGISTRY_ENRICH_VERIFY_CLINSIG=false`), `no_snapshot` (no ClinVar
+snapshot on this deployment — `registry warm-caches --apply`), or prose saying the module declares it
+was drafted from the very snapshot the check reads, which makes the comparison a value against itself
+and its zero structurally guaranteed. The same reason appears in prose on `notes`. None of them
+counts against `would_publish`: a check the *operator* disabled is not a defect in the module.
 
 `would_publish` is the field a CI job should branch on — it is derived server-side so the
 strict-publish contract lives in one place.

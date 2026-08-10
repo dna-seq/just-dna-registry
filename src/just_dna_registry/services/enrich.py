@@ -243,7 +243,14 @@ def available_references(settings: Settings) -> dict[str, Optional[Path]]:
     build the arguments `enrich()` is called with (see `configured_caches` for why). Resolves through
     the same ladder the enricher would, so what this reports is what a run would find.
 
-    `load_dotenv_file=False` because `config.py` already loaded it.
+    `load_dotenv_file=False` because `config.py` already loaded it — and since enricher 0.5.2 that
+    flag no longer suppresses the whole of it: `_cache_dir` now calls `load_env()` itself, which the
+    flag does not reach. Harmless here, and it is the *fix* for a bug this caller was structurally
+    immune to. Each `resolve_*_reference` receives its `default_*_cache_dir()` as an argument, so the
+    default was computed before the ladder's own `load_env()` ran — meaning the first resolve in a
+    process read platformdirs and every later one read `.env`. We never saw it because `config.py`
+    loads `.env` at import, long before any of this. `override=False` throughout, so a real
+    environment variable still wins and the setting we pass still takes precedence over both.
 
     Never downloads: that is `registry warm-caches`, deliberately not a request-path concern.
     """
@@ -303,6 +310,39 @@ def vrs_coverage(mint: Any) -> VrsCoverage:
     )
 
 
+def clin_sig_skip_note(reason: Optional[str]) -> Optional[str]:
+    """Turn `EnrichmentResult.clin_sig_not_checked` into a line for a publisher, or `None`.
+
+    Exists because an empty `clin_sig_conflicts` is ambiguous in the one direction that matters:
+    "compared everything, nothing disagreed" and "never compared" render identically, and only the
+    first is reassuring. Enricher 0.5.2 (S4) supplies the reason; this tier's job is to say it in
+    terms of *this deployment*, since a publisher cannot see the server's settings.
+
+    Which is why `not_requested` is reported here and deliberately **not** by the enricher's own CLI.
+    There it is the author's own `--no-verify-clinsig` echoed back at them, so it is noise; here it is
+    `REGISTRY_ENRICH_VERIFY_CLINSIG=false`, a choice the operator made and the publisher has no way
+    to observe. Suppressing it would hand back a silence that reads as a clean check.
+
+    The tautology reason arrives as prose rather than a token, and is passed through as written — it
+    names the pins that matched, which is the part a publisher needs in order to agree with it.
+    """
+    if reason is None:
+        return None
+    if reason == "not_requested":
+        return (
+            "clin_sig cross-check did not run: this deployment has it switched off "
+            "(REGISTRY_ENRICH_VERIFY_CLINSIG=false), so no authored clin_sig was compared against "
+            "ClinVar. An empty conflict list here is not a clean bill of health."
+        )
+    if reason == "no_snapshot":
+        return (
+            "clin_sig cross-check did not run: no ClinVar snapshot is provisioned on this "
+            "deployment, so no authored clin_sig was compared. Run `registry warm-caches --apply` "
+            "to make the check possible. An empty conflict list here means unchecked, not clean."
+        )
+    return f"clin_sig cross-check did not run: {reason}"
+
+
 def _render_notes(result: Any) -> list[str]:
     """Flatten an `EnrichmentResult`'s findings into one line each.
 
@@ -310,6 +350,9 @@ def _render_notes(result: Any) -> list[str]:
     line names the shift when the enricher established one, because a `+1` shift is almost always a
     wrong `start` rather than a wrong `ref` — the single most expensive authoring mistake in the
     format, and one that passes every offline gate.
+
+    The clin_sig *skip* is here beside the clin_sig *conflicts* on purpose: the two are mutually
+    exclusive and a reader of one needs the other, so they are never rendered from separate places.
     """
     notes: list[str] = []
     for mismatch in result.ref_mismatches:
@@ -330,6 +373,9 @@ def _render_notes(result: Any) -> list[str]:
             f"ClinVar says {conflict.clinvar!r} ({conflict.confidence})"
             + (" — opposed calls" if conflict.opposed else "")
         )
+    skipped = clin_sig_skip_note(result.clin_sig_not_checked)
+    if skipped:
+        notes.append(skipped)
     for status in result.stale_rsids:
         current = f" (now {status.current})" if status.current else ""
         notes.append(f"rsID {status.rsid} is {status.state}{current}")
@@ -632,7 +678,9 @@ def _would_publish(validation: ValidationReport, enrichment: EnrichmentReport) -
 
     `unresolved` only blocks under strict, which is the one place `?strict=` reaches the enrichment
     half of the report. Ref mismatches and withdrawn rsIDs block in both modes. Clin-sig conflicts
-    and VRS shortfalls never block.
+    and VRS shortfalls never block — nor does `clin_sig_not_checked`, and it must not start to: a
+    check the *operator* disabled or has no snapshot for is not a defect in the module, and failing
+    a publish over it would make a publisher answer for a deployment they cannot configure.
     """
     return (
         validation.valid
@@ -713,6 +761,13 @@ def _run_enrichment_passes(
             f"no local snapshot for {', '.join(missing)}; resolution used the live APIs instead, "
             f"which is slower. `registry warm-caches --apply` makes this offline-capable."
         )
+    # Said in prose as well as in the field below, and not folded into the missing-snapshot lines
+    # above even when it duplicates one. Those explain why *resolution* degraded; this says a named
+    # check produced no verdict, which is a different claim about a different empty list — and the
+    # one a reader is most likely to mistake for a pass.
+    skipped_clinsig = clin_sig_skip_note(result.clin_sig_not_checked)
+    if skipped_clinsig:
+        notes.append(skipped_clinsig)
 
     report = EnrichmentReport(
         mode=result.mode,
@@ -734,6 +789,9 @@ def _run_enrichment_passes(
             )
             for c in result.clin_sig_conflicts
         ],
+        # Structured, beside the prose copy appended to `notes` above: a CI job branching on "was my
+        # clin_sig actually checked" needs a token it can compare, not a sentence it has to match.
+        clin_sig_not_checked=result.clin_sig_not_checked,
         stale_rsids=[
             StaleRsidEntry(
                 rsid=s.rsid, state=s.state, current=s.current, fatal=s.is_fatal

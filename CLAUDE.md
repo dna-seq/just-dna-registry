@@ -167,7 +167,16 @@ Four rules that each cost a bug to learn:
   a *snapshot* client was injected, which is not egress.
 - **A pass that could not run reports why, and never reports clean.** `unchecked` ≠ `clean` and
   `not_covered` ≠ `not_found`; an ACMG check with no list read must say `checked: 0`, not zero
-  mismatches. Each pass carries its own `warnings` for exactly this.
+  mismatches. Each pass carries its own `warnings` for exactly this. **An empty list is the trap** —
+  it is the one shape where "nothing was wrong" and "nothing was checked" render identically, so
+  every empty collection this tier publishes needs a sibling field saying which it is.
+  `clin_sig_conflicts` had no such field until enricher 0.5.2 gave it `clin_sig_not_checked`; a
+  deployment with no ClinVar snapshot was reporting a cross-check it never ran, `would_publish: true`
+  beside it. Note the divergence from the enricher's own CLI: it suppresses `not_requested` (there it
+  is the author's `--no-verify-clinsig` echoed back), and we must not, because here the switch is
+  `REGISTRY_ENRICH_VERIFY_CLINSIG` and the publisher cannot see the server's settings. **And a skip is
+  never a publish gate**: the reasons are all operator-side, and failing a publish over one would make
+  a publisher answer for a deployment they cannot configure.
 - **The two callers want opposite things from a full gate, so there are two lanes.** `/check` is
   interactive: `try_acquire`, `503` on a full gate, because queueing behind a paced run turns a fast
   rejection into a slow timeout. Publish is idle: `acquire_idle`, no deadline, deferring to

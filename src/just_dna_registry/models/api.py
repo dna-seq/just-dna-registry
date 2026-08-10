@@ -571,6 +571,19 @@ class EnrichmentReport(BaseModel):
     unresolved: list[str] = Field(default_factory=list)
     ref_mismatches: list[RefMismatchEntry] = Field(default_factory=list)
     clin_sig_conflicts: list[ClinSigConflictEntry] = Field(default_factory=list)
+    #: Read this **before** believing an empty `clin_sig_conflicts` (enricher 0.5.2 / S4).
+    clin_sig_not_checked: Optional[str] = Field(
+        default=None,
+        description=(
+            "Why the ClinVar clin_sig cross-check did not run, or null when it did. An empty "
+            "`clin_sig_conflicts` means two opposite things on its own — 'compared everything, "
+            "nothing disagreed' and 'never compared' — so a client must not read the first without "
+            "checking this. Reasons: `not_requested` (the operator disabled it), `no_snapshot` (no "
+            "ClinVar snapshot on this deployment), or prose saying the module declares it was "
+            "drafted from the very snapshot the check reads, which makes the comparison a value "
+            "against itself and its zero structurally guaranteed."
+        ),
+    )
     stale_rsids: list[StaleRsidEntry] = Field(default_factory=list)
     par_twins_dropped: list[str] = Field(
         default_factory=list, description="Y pseudoautosomal spellings folded onto their X twin"
