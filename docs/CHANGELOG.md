@@ -23,6 +23,11 @@ and it is why a test subtree in production is not a workable answer.
 
 - **`REGISTRY_MODE`** = `prod` (default) | `test`. An unknown value **refuses to boot** — falling back
   either way is invisible from a running server, and one direction arms a delete endpoint on production.
+- **`registry serve --mode prod|test`** as a convenience over the env var. It works by *exporting*
+  `REGISTRY_MODE`, because uvicorn imports the app in the worker — under `--reload` a separate process —
+  where it builds its own settings from the environment; handing a value to a `Settings` object in the
+  CLI would configure the CLI and nothing that serves a request. Omitting the flag leaves an operator's
+  existing `REGISTRY_MODE` untouched.
 - **Default port follows the mode**: prod 8000, polygon 8100. A hundred apart so a misdirected client
   gets a connection refusal instead of the wrong catalog answering on a plausible port.
 - **Production refuses test data** at both doors: publishing into a `test-`prefixed namespace, publishing

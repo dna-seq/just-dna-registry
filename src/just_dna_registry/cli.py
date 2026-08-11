@@ -4,6 +4,7 @@ DB, and issue API keys / namespaces for the static-key auth model.
 """
 
 import json
+import os
 import secrets
 from pathlib import Path
 from typing import Optional
@@ -15,7 +16,7 @@ from just_dna_format.manifest import ModuleManifest
 from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_registry.backup import create_backup, list_backups, restore_backup
-from just_dna_registry.config import DEFAULT_PORTS, Settings, get_settings
+from just_dna_registry.config import DEFAULT_PORTS, VALID_MODES, Settings, get_settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
@@ -90,12 +91,34 @@ def _guard(settings: Settings, *, reason: str, backup: bool) -> None:
 def serve(
     host: str = "127.0.0.1",
     port: int = typer.Option(None, help="Default: 8000 in prod mode, 8100 in test mode"),
+    mode: str = typer.Option(
+        None, "--mode", help="prod | test — overrides REGISTRY_MODE for this process"
+    ),
     reload: bool = False,
 ) -> None:
-    """Run the API server. The port defaults per `REGISTRY_MODE`: prod 8000, test (polygon) 8100.
+    """Run the API server. The port defaults per mode: prod 8000, test (polygon) 8100.
 
     One number apart rather than adjacent so a client pointed at the wrong instance gets a connection
-    refusal instead of the wrong catalog answering on a plausible port."""
+    refusal instead of the wrong catalog answering on a plausible port.
+
+    `--mode` is a convenience over `REGISTRY_MODE`, and it works by **setting that variable** rather
+    than by handing a value to the app. It has to: uvicorn imports the application by string, so
+    `create_app()` runs in the worker and builds its own `Settings` from the environment — and with
+    `--reload` that worker is a whole other process. Mutating a `Settings` object here would configure
+    the CLI and nothing that serves a request. Exporting `REGISTRY_MODE` before `uvicorn.run` is what
+    reaches both, because a subprocess inherits it.
+
+    A deployment should still set `REGISTRY_MODE` in its unit file or compose env. The flag is for a
+    local polygon on a developer's machine, where remembering an export per shell is the annoying part.
+    """
+    if mode is not None:
+        normalized = mode.strip().lower()
+        if normalized not in VALID_MODES:
+            raise typer.BadParameter(f"--mode must be one of {sorted(VALID_MODES)}, got: {mode!r}")
+        os.environ["REGISTRY_MODE"] = normalized
+        # `get_settings` is `lru_cache`d, so anything that read settings earlier in this process holds
+        # the pre-flag value. Cleared here so this process agrees with the worker it is about to start.
+        get_settings.cache_clear()
     settings = get_settings()
     resolved = port if port is not None else DEFAULT_PORTS[settings.mode]
     typer.echo(f"mode={settings.mode} listening on {host}:{resolved}")

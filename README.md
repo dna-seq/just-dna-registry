@@ -60,6 +60,14 @@ uv run registry serve --host 0.0.0.0                 # port 8000 (prod) / 8100 (
 on it. An unrecognised value refuses to boot rather than guessing, because a typo resolving to `test`
 would arm a delete endpoint on production data.
 
+```bash
+REGISTRY_MODE=test uv run registry serve     # how a deployment sets it (unit file / compose env)
+uv run registry serve --mode test            # same thing for a local polygon; exports the variable
+```
+
+`--mode` *sets* `REGISTRY_MODE` rather than passing a value inward, because uvicorn imports the app in
+the worker (a separate process under `--reload`) where it builds its own settings from the environment.
+
 | | production | polygon (`REGISTRY_MODE=test`) |
 |---|---|---|
 | default port | 8000 | 8100 |

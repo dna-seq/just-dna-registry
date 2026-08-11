@@ -6,6 +6,7 @@ switch whose effect is only asserted in one direction is half a switch — and t
 usually "production still refuses".
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -217,3 +218,69 @@ def test_deleting_a_missing_version_is_a_404_not_a_silent_success(tmp_path: Path
         "/api/v1/modules/test-sandbox/nope/versions/1.0.0", headers=_AUTH
     ).status_code == 404
     assert polygon.delete("/api/v1/modules/test-sandbox/nope", headers=_AUTH).status_code == 404
+
+
+# ── Setting the mode from the CLI ──────────────────────────────────────────────
+
+
+def test_serve_mode_flag_exports_the_env_var_the_worker_will_read(monkeypatch) -> None:
+    """`--mode test` has to reach a *different process*, so it works by exporting REGISTRY_MODE.
+
+    uvicorn imports the app by string, so `create_app()` runs in the worker and builds its own
+    `Settings` from the environment — and with `--reload` that worker is a separate process entirely.
+    Handing a value to a `Settings` object here would configure the CLI and nothing that serves a
+    request, which is a bug that would look like the flag being ignored at runtime only.
+    """
+    import uvicorn as uvicorn_module
+
+    from just_dna_registry import cli
+    from just_dna_registry.config import get_settings
+
+    monkeypatch.delenv("REGISTRY_MODE", raising=False)
+    get_settings.cache_clear()
+    captured: dict = {}
+    monkeypatch.setattr(uvicorn_module, "run", lambda *a, **kw: captured.update(kw))
+
+    try:
+        cli.serve(host="127.0.0.1", port=None, mode="test", reload=False)
+        assert os.environ["REGISTRY_MODE"] == "test"   # what the worker will actually read
+        assert captured["port"] == DEFAULT_PORTS["test"]  # and the port followed the flag
+        assert get_settings().is_test_instance is True    # this process agrees with the worker
+    finally:
+        monkeypatch.delenv("REGISTRY_MODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_serve_rejects_an_unknown_mode_before_starting_anything(monkeypatch) -> None:
+    """A typo fails at the CLI with the valid values named, rather than deep in a worker import."""
+    import typer
+    import uvicorn as uvicorn_module
+
+    from just_dna_registry import cli
+
+    started: list = []
+    monkeypatch.setattr(uvicorn_module, "run", lambda *a, **kw: started.append(kw))
+    with pytest.raises(typer.BadParameter) as excinfo:
+        cli.serve(host="127.0.0.1", port=None, mode="testing", reload=False)
+    assert "prod" in str(excinfo.value) and "test" in str(excinfo.value)
+    assert started == []  # nothing was launched
+
+
+def test_no_flag_leaves_the_environment_alone(monkeypatch) -> None:
+    """Omitting `--mode` must not stamp a value: a deployment sets REGISTRY_MODE in its unit file, and
+    the CLI silently exporting `prod` over it would override the operator's own configuration."""
+    import uvicorn as uvicorn_module
+
+    from just_dna_registry import cli
+    from just_dna_registry.config import get_settings
+
+    monkeypatch.setenv("REGISTRY_MODE", "test")
+    get_settings.cache_clear()
+    captured: dict = {}
+    monkeypatch.setattr(uvicorn_module, "run", lambda *a, **kw: captured.update(kw))
+    try:
+        cli.serve(host="127.0.0.1", port=None, mode=None, reload=False)
+        assert os.environ["REGISTRY_MODE"] == "test"      # untouched
+        assert captured["port"] == DEFAULT_PORTS["test"]  # and honoured
+    finally:
+        get_settings.cache_clear()
