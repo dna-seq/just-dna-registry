@@ -388,9 +388,35 @@ an explicit guard:
   `fully_resolved=True` beside zero subjects self-evidently vacuous with no consumer reading prose.
   Kept separate from S8's `checks_run`/`checks_skipped` (RM43/RM45) on upstream's argument that
   resolution is not a verification pass, so a row count does not belong in a map of which checks ran.
-  Two things to do on the **next compiler floor bump**, both noted at `UNJOINABLE_MARKER`: import
-  upstream's new `compiler.UNJOINABLE_PHRASE` instead of holding the literal (absent from 0.5.3), and
-  when RM44 itself lands, delete the constant and its pinning test.
+  **Half done in 0.13**: the compiler 0.5.4 floor let `db/facets.py` import `compiler.UNJOINABLE_PHRASE`
+  instead of holding the literal, so the two spellings can no longer drift apart. The prose coupling
+  itself remains until RM44, and so does the test that drives a real publish through the real compiler —
+  an import cannot tell us the warning still fires and still reaches `manifest.compilation.warnings`.
+  When RM44 lands, delete the facet and the test.
+
+## 0.13 — compiler/enricher 0.5.4 adoption ✅
+
+- **`unreachable_rsids`: a failed lookup is no longer reported as an absence.** Enricher 0.5.4 (S20)
+  splits `resolve_rsid`'s old `([], None)` into "asked, no GRCh38 locus" and "could not ask", so the
+  registry can too. On `/check` as a field and in `notes`; on the publish path it retargets the strict
+  refusal's hint from three remedies that assume a faulty spec or cache to the only correct one, which is
+  to try again. `would_publish` is unchanged — a strict publish against an unreachable Ensembl really
+  does refuse.
+- **`gene_loci` / `gene_loci_not_checked` on `?identifiers=true`.** Enricher 0.5.4 (S24) compares a row's
+  `gene` against the chromosome its own variant sits on — a relationship that can be false while both
+  halves are true, which is how a real symbol beside an invented rsID passed every check we had. Moves
+  `clean`, never `would_publish`, on the same rule as the rest of that pass.
+- **The trust facet imports the phrase it used to spell** (`compiler.UNJOINABLE_PHRASE`, S13 — see 0.11.3
+  above for the half that is still owed).
+- **Corrected, not added**: `PacingGate` is thread-safe upstream now (S15), and the fix names this
+  server's shared-bundle-on-a-threadpool as the arrangement that provoked it. Three comments claimed
+  `enrich_max_concurrency = 1` is what makes sharing the bundle *correct*; that was true through 0.5.3 and
+  is now wrong. The default stays 1 — the IP-scoped budget it protects has not changed, and concurrent
+  runs now interleave on one shared pace rather than going faster — but it is a latency choice.
+- **Free from upstream**: a `.csv` one edit from a real table name now warns instead of being silently
+  ignored, a binning table with no grounding evidence anywhere warns, and a hand-declared `literature`
+  source row stops being reported as unused — which had been advising authors to delete the exact row the
+  compile licence gate reads.
 
 ## Next registry version (post-0.11)
 
@@ -401,6 +427,28 @@ an explicit guard:
   `/check` already reports all of it. The fix is to carry them on the publish response; the deeper half
   (a *downloader* can never learn which checks ran, because the manifest records none of it) needs a
   format field and is filed upstream as S8 in `just-dna-format` `docs/CONSUMER_SUGGESTIONS.md`.
+- **A real `GET /api/v1/stats`** (open; minor — surfaced while answering **S4**).
+  `RegistryClient.catalog_stats()` aggregates downloads/stars/views/reviews/genes/variants by
+  **paging the entire catalog** — its own docstring says "there is no dedicated stats endpoint, so
+  this rolls up the card fields". N requests for one answer, and it degrades as the catalog grows.
+  The repair is one SQL aggregate behind an endpoint with `catalog_stats()` rewired onto it; the
+  method's signature and returned keys can stay exactly as they are, so a consumer sees nothing but
+  latency. Deliberately kept **off** `/health`, which stays cheap, unauthenticated and probeable:
+  these are heavier, and the scoped forms (`namespace=`, `group=`) belong on a real route with an
+  SDK method and a parity row rather than in a liveness body.
+- **Publish the client surface as an enumerated contract** (open; minor — **S2** from
+  `just-module-creator`, options 1 and 2). 0.13 shipped the cheap half: a `Client surface:` line per
+  release and a normative-version stamp on both reference docs. The larger ask is a contract
+  enumerated independently of the package version — "contract v1: these methods, these payloads,
+  this error vocabulary; spoken by client ≥x, served by server ≥y" — so a consumer pins the contract
+  and ignores releases that do not move it. Worth noting that the enumeration already exists and is
+  machine-checked: `_WRAPPED_ROUTES` in `tests/test_client_sdk.py` pairs every route with its client
+  method across *both* modes and fails when one gains a route the other lacks. What is missing is
+  publishing it in a form a consumer can read, and a versioning axis of its own. The second is the
+  commitment: a contract version that is not the package version is a promise to keep it stable
+  across package releases, and breaking that is worse than never having offered it. Marking methods
+  public-vs-internal in code (their option 2) is the cheaper half and could land first — though not
+  via `__all__`, which this repo avoids.
 - **Retire Eliot → stdlib `logging`.** (Carried over; still pending.)
 - **Redis-backed limiter *and* concurrency gate.** Both are process-local today, so with two replicas
   every limit is 2× — and gnomAD pacing in particular does not survive horizontal scaling without a
@@ -408,6 +456,18 @@ an explicit guard:
 - **An async job queue for `/check`**, if the synchronous form proves too slow in practice. Deferred
   deliberately: it is a whole subsystem (jobs table, runner, TTL, SDK polling) and the sync form with
   a 300s cap covers the offline and small-online cases, which is most of them.
+- **Page or sample the *online* variant tier** (open; medium — the second option in **S1** from
+  `just-module-creator`). 0.13 answered the rest of that item: offline runs lost the ceiling
+  entirely, the `422` now carries the module-level verdict, and `/validate` composes it into
+  `would_publish_module_level`. What is left is the case where a large panel wants the checks only
+  live upstreams can do — a reference allele against the genome, a `clin_sig` against ClinVar —
+  which no amount of restructuring makes cheap: at ~6s per twenty subjects a 40k-variant panel is
+  over three hours of pure pacing against a budget we cannot buy our way out of. So the repair is
+  not a bigger ceiling but a partial answer with its coverage stated (`checked: n of m`, sampled or
+  paged), and a partial answer nobody is waiting on is a job, not a request — which is why this sits
+  behind the queue above rather than beside it. Sampling additionally needs a rule for what a clean
+  sample licenses a caller to conclude; without one it is a `would_publish` that means less than it
+  says, which is the failure 0.13 was fixing.
 - **gnomAD gene-constraint enrichment** (`enrich_gene_metrics`) on the publish path, once the
   constraint snapshot is routinely provisioned.
 

@@ -24,6 +24,7 @@ cache paths, projection, cost guards — is covered without any of it.
 
 import socket
 from pathlib import Path
+from typing import Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -214,6 +215,37 @@ def test_published_as_predicts_the_duplicate_rejection(tmp_path: Path) -> None:
     assert dup.json()["detail"]["error"] == "duplicate_content"
 
 
+def test_the_module_level_verdict_composes_the_three_gates(tmp_path: Path) -> None:
+    """S1: one branchable field for the publish gates that do not scale with the variant count.
+
+    Walked gate by gate rather than asserted once, because the field's whole value is that it agrees
+    with what publish would actually answer: a spec that will not validate, a name the path does not
+    match (`422 name_mismatch`), and data already published (`409 duplicate_content`).
+    """
+    client = _app(tmp_path, compile_strict=False)
+    assert _validate(client)["would_publish_module_level"] is True
+
+    assert _validate(client, studies=_BAD_STUDIES)["would_publish_module_level"] is False
+
+    mismatch = client.post(
+        "/api/v1/modules/just-dna-seq/something-else/validate", files=_parts(), headers=_AUTH
+    )
+    assert mismatch.json()["would_publish_module_level"] is False
+
+    assert (
+        client.post(
+            "/api/v1/modules/just-dna-seq/coronary/versions",
+            data={"version": "1.0.0"},
+            files=_parts(),
+            headers=_AUTH,
+        ).status_code
+        == 201
+    )
+    after = _validate(client)
+    assert after["valid"] is True and after["published_as"]
+    assert after["would_publish_module_level"] is False, "a valid spec can still be undeployable"
+
+
 def test_validate_requires_publish_capability(tmp_path: Path) -> None:
     client = _app(tmp_path)
     assert client.post("/api/v1/modules/just-dna-seq/coronary/validate", files=_parts()).status_code == 401
@@ -226,11 +258,17 @@ def test_validate_requires_publish_capability(tmp_path: Path) -> None:
 # ── /check ─────────────────────────────────────────────────────────────────────
 
 
-def _check(client: TestClient, **params) -> tuple[int, dict]:
+def _check(client: TestClient, *, spec: Optional[dict] = None, **params) -> tuple[int, dict]:
+    """POST `/check` with `params` as the query string and `spec` overriding the uploaded parts.
+
+    `spec` is a separate argument rather than another `**params` key on purpose: everything in `params`
+    goes on the query string, so a spec override smuggled in there would be ignored by the server and
+    silently checked against the default module instead.
+    """
     resp = client.post(
         "/api/v1/modules/just-dna-seq/coronary/check",
         params=params,
-        files=_parts(**{k: v for k, v in params.pop("_spec", {}).items()}) if False else _parts(),
+        files=_parts(**(spec or {})),
         headers=_AUTH,
     )
     return resp.status_code, resp.json()
@@ -492,6 +530,75 @@ def test_an_rsid_only_module_reports_what_it_could_not_place(tmp_path: Path) -> 
     assert body["enrichment"]["unresolved"], "an rsID with no snapshot cannot be placed"
     # Unresolved positions block a *strict* publish, so the dry run must say so.
     assert body["would_publish"] is False
+    # And this is the case that shows why the module-level field is not `would_publish` under
+    # another name: nothing module-level is wrong here, and the publish still fails. A caller who
+    # read the weaker field as the stronger one would have shipped an upload doomed by the tier
+    # only `/check` runs.
+    assert body["validation"]["would_publish_module_level"] is True
+
+
+def test_an_ensembl_that_never_answered_is_unchecked_rather_than_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S20, driven through the real `enrich()` with only the socket replaced.
+
+    The two cases this separates are indistinguishable in `unresolved`, and they call for opposite
+    responses: an rsID Ensembl says it has no GRCh38 locus for is a fact about the identifier, while one
+    Ensembl never answered about is a fact about the run. Before enricher 0.5.4 the second was reported
+    as the first — `resolve_rsid` fused a failed request into `([], None)` — and a consumer auditing
+    machine-written rsIDs put two published variants in the fabricated pile because of it.
+
+    The resolver here fails the way a 5xx or a timeout fails, which is the only part of the path a test
+    can honestly stand in for; everything downstream is the real thing, including the decision not to
+    write a `not_found` row claiming Ensembl was asked.
+    """
+    from types import SimpleNamespace
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _UnreachableEnsembl:
+        def resolve_rsid(self, rsid: str) -> tuple[None, None]:
+            return None, None  # could not ask — never `([], None)`, which would mean "asked, nothing"
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        enrich_service,
+        "shared_lookup_clients",
+        lambda: SimpleNamespace(
+            ensembl=_UnreachableEnsembl(), ontology=None, gnomad=None, eutils=None,
+            europepmc=None, crossref=None,
+        ),
+    )
+    resp = _app(tmp_path, enrich_verify_ref=False).post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": False, "strict": True},
+        files=_parts(variants=_VARIANTS_RSID_ONLY),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    e = resp.json()["enrichment"]
+
+    assert e["unreachable_rsids"] == ["rs4244285"]
+    # It is a *reason* behind an unresolved key, not a replacement for it: the key genuinely has no
+    # position, so strict still refuses. What changes is what the publisher is told to do about it.
+    assert e["unresolved"] == ["rs4244285"]
+    assert resp.json()["would_publish"] is False
+    assert any("unchecked rather than established" in note for note in e["notes"])
+    assert any("Re-run" in note for note in e["notes"])
+
+
+def test_an_offline_run_reports_no_unreachable_rsids(tmp_path: Path) -> None:
+    """Nothing was asked, so nothing can be unanswered — the field is empty for the same reason
+    `unresolved` is full. Pinned because "empty" here must mean "no failed request", never "no failure
+    detected": the offline path asks Ensembl nothing at all."""
+    code, body = _check(
+        _app(tmp_path), offline=True, spec={"variants": _VARIANTS_RSID_ONLY}
+    )
+    assert code == 200, body
+    assert body["enrichment"]["unresolved"] == ["rs4244285"]
+    assert body["enrichment"]["unreachable_rsids"] == []
 
 
 def test_an_invalid_spec_short_circuits_before_enrichment(tmp_path: Path) -> None:
@@ -510,10 +617,66 @@ def test_an_invalid_spec_short_circuits_before_enrichment(tmp_path: Path) -> Non
     assert body["would_publish"] is False
 
 
-def test_a_module_over_the_variant_cap_is_refused_before_spending(tmp_path: Path) -> None:
-    code, body = _check(_app(tmp_path, enrich_max_variants=0), offline=True)
+def test_an_online_module_over_the_variant_cap_is_refused_before_spending(tmp_path: Path) -> None:
+    """The cap still refuses the run it is about: paced, per-subject, outbound.
+
+    Nothing egresses here despite `offline=false` — the refusal lands before the enricher is
+    reached, which is the whole point of a pre-flight bound, and the `no_network` tripwire would
+    fail this test if it did not.
+    """
+    code, body = _check(_app(tmp_path, enrich_max_variants=0), offline=False)
     assert code == 422
     assert body["detail"]["error"] == "too_many_variants"
+
+
+def test_a_refused_online_check_still_answers_the_module_level_half(tmp_path: Path) -> None:
+    """S1: the server has the module-level verdict in hand when it refuses, and used to bin it.
+
+    Demonstrated as the inversion it caused: an *invalid* spec over the ceiling has always come back
+    `200` with a full report (`invalid_spec` short-circuits earlier), so the ceiling withheld the
+    check on exactly the specs that pass it. Both now carry a verdict.
+    """
+    client = _app(tmp_path, enrich_max_variants=0)
+    code, body = _check(client, offline=False)
+    assert code == 422
+    detail = body["detail"]
+    assert detail["error"] == "too_many_variants", "the code a client branches on is unchanged"
+    assert detail["subject_count"] == 1 and detail["limit"] == 0
+    # The half that does not scale with the variant count, answered rather than withheld.
+    assert detail["would_publish_module_level"] is True
+    assert detail["validation"]["valid"] is True
+    assert detail["validation"]["content_signature"], "dedup is foreseeable above the ceiling too"
+    # The message has to say what to do next; `/validate` and offline are the two ways through.
+    assert "offline=true" in detail["errors"][0] and "/validate" in detail["errors"][0]
+
+
+def test_a_module_level_rejection_is_visible_above_the_ceiling(tmp_path: Path) -> None:
+    """A name mismatch is a `422 name_mismatch` at publish and needs no variant work to see."""
+    client = _app(tmp_path, enrich_max_variants=0)
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": False},
+        files=_parts(yaml=_YAML.replace("name: coronary", "name: something_else")),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["validation"]["name_matches_path"] is False
+    assert detail["would_publish_module_level"] is False
+
+
+def test_the_variant_cap_does_not_apply_to_a_run_that_cannot_egress(tmp_path: Path) -> None:
+    """S1: the bound is about paced outbound requests, and an offline run makes none.
+
+    A ClinVar-scale panel is the case that motivated it — refused in zero time by a ceiling whose
+    stated cost model (~6s per twenty subjects against gnomAD's IP-scoped budget) does not describe
+    an offline run at all. Offline CPU stays bounded by `enrich_timeout_seconds` and the gate.
+    """
+    code, body = _check(_app(tmp_path, enrich_max_variants=0), offline=True)
+    assert code == 200, body
+    assert body["skipped_reason"] is None, "it ran; it was not skipped with a reason"
+    assert body["enrichment"] is not None
+    assert body["would_publish"] is True
 
 
 def test_vrs_coverage_is_counted_per_allele(tmp_path: Path) -> None:
@@ -655,6 +818,114 @@ def test_the_identifier_pass_grades_traits_and_genes_without_gating_publish(
     assert ident["checked_traits"] == 1 and ident["checked_genes"] == 1
     assert ident["clean"] is False
     assert body["would_publish"] is True
+
+
+def _ontology_placing_the_gene_on(chromosome: Optional[str]):
+    """A stand-in HGNC/OLS4 client that approves every symbol and puts it on `chromosome`.
+
+    `location` is a cytogenetic band because that is what HGNC serves and what `GeneStatus.chromosome`
+    parses — passing a bare contig would test a parse the real answer never takes. `None` stands for the
+    records where HGNC carries no location at all, which is the "could not compare" case.
+    """
+    from just_dna_enricher.identifiers import GeneStatus, TraitStatus
+
+    class _Ontology:
+        def trait(self, curie: str) -> TraitStatus:
+            return TraitStatus(curie=curie, state="current", label="obesity")
+
+        def gene(self, symbol: str) -> GeneStatus:
+            return GeneStatus(
+                symbol=symbol,
+                state="approved",
+                current=symbol,
+                location=f"{chromosome}q12.2" if chromosome else None,
+            )
+
+    return _Ontology()
+
+
+def test_a_gene_on_another_chromosome_is_a_finding_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S24: the row's `gene` against the chromosome the row's own variant sits on.
+
+    A question neither existing field asks. `stale_genes` asks whether HGNC approves the symbol — it
+    does — and `unresolved` asks whether the variant has a position — it has one. Both halves are true
+    and the *relationship* between them is false, which is exactly the shape a generated citation takes:
+    a real gene name beside an rs number that resolves because dbSNP is dense enough that almost any
+    number hits something.
+
+    `clean` folds it in, and `would_publish` deliberately does not: a publish never runs this pass, so
+    reporting it as a blocker would predict a rejection that will not happen.
+    """
+    from types import SimpleNamespace
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    monkeypatch.setattr(
+        enrich_service,
+        "shared_lookup_clients",
+        lambda: SimpleNamespace(
+            ontology=_ontology_placing_the_gene_on("16"), gnomad=None, ensembl=None,
+            eutils=None, europepmc=None, crossref=None,
+        ),
+    )
+    # The variant is authored on chromosome 10; HGNC puts its gene on 16.
+    resp = _app(tmp_path, enrich_verify_ref=False).post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": False, "identifiers": True},
+        files=_parts(),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    ident = body["enrichment"]["identifiers"]
+
+    assert len(ident["gene_loci"]) == 1
+    finding = ident["gene_loci"][0]
+    assert "CYP2C19" in finding and "10" in finding and "16" in finding
+    # The comparison ran, so the sibling field must stay silent — this is the half that makes an empty
+    # `gene_loci` readable in the other direction.
+    assert ident["gene_loci_not_checked"] is None
+    assert ident["stale_genes"] == []  # a different axis, and it really is approved here
+    assert ident["clean"] is False
+    assert body["would_publish"] is True
+
+
+def test_an_uncomparable_gene_locus_says_so_rather_than_reporting_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The empty-list trap, on the newest field to have one.
+
+    With no chromosome from HGNC there is nothing to compare against, and `gene_loci: []` then means
+    "never compared" while rendering identically to "compared everything, nothing disagreed". The
+    sibling reason is the only thing that separates them, so it is asserted here rather than assumed —
+    the same rule `clin_sig_not_checked` exists for.
+    """
+    from types import SimpleNamespace
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    monkeypatch.setattr(
+        enrich_service,
+        "shared_lookup_clients",
+        lambda: SimpleNamespace(
+            ontology=_ontology_placing_the_gene_on(None), gnomad=None, ensembl=None,
+            eutils=None, europepmc=None, crossref=None,
+        ),
+    )
+    resp = _app(tmp_path, enrich_verify_ref=False).post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": False, "identifiers": True},
+        files=_parts(),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    ident = resp.json()["enrichment"]["identifiers"]
+
+    assert ident["gene_loci"] == []
+    assert ident["gene_loci_not_checked"], "an unchecked comparison must not read as a clean one"
+    assert "chromosome" in ident["gene_loci_not_checked"]
 
 
 def test_a_pgx_only_module_gets_a_literature_note_not_a_failure(tmp_path: Path) -> None:

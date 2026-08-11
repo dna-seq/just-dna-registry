@@ -3,7 +3,15 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Base URL:** `https://module-registry.just-dna.life`
+- **Normative for:** registry **0.13.x**, API `v1`. Written against the server at that version; a
+  deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
+  schema below is exact for a server in that range rather than indicative, so a consumer does not
+  have to write defensive code against shapes we already specified (S2).
+- **Base URL:** `https://module-registry.just-dna.life` (production; the polygon is
+  `module-polygon.just-dna.life`). Ask the host which it is — `GET /health` reports `mode`.
+  `module-marketplace.just-dna.life` is a **former** name from before the 0.9 rename, kept as a
+  legacy domain and used in no current documentation. If you meet it somewhere, it is old, not a
+  third deployment.
 - **API prefix:** `/api/v1` (health lives at the root, `/health`)
 - **Interactive docs:** `/docs` (Swagger UI), `/openapi.json`
 - **Content types:** responses are JSON unless noted; publish/import use `multipart/form-data`;
@@ -79,7 +87,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 
 | # | Method | Path | Auth | Purpose |
 |---|---|---|---|---|
-| 1 | GET | `/health` | — | Liveness |
+| 1 | GET | `/health` | — | Liveness + `mode`, uptime, gate occupancy, catalog counts |
 | 2 | GET | `/api/v1/modules` | — | List / search (card grid) |
 | 3 | GET | `/api/v1/modules/lookup?digest=` | — | Find versions by artifact digest |
 | 4 | GET | `/api/v1/modules/{ns}/{name}` | — | Module detail |
@@ -110,7 +118,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 29 | GET | `/api/v1/modules/lookup?digest=\|signature=` | — | Find published versions by compiled digest **or** content signature |
 | 30 | POST | `/api/v1/modules/lookup` | — | Batch lookup; body `{digests: [], signatures: []}` |
 | 31 | POST | `/api/v1/auth/tokens` | api key | Exchange a static key for a short-lived JWT |
-| 32 | GET | `/api/v1/version` | — | The server's API + `just-dna-format` contract versions |
+| 32 | GET | `/api/v1/version` | — | The server's API + `just-dna-format` contract versions, and its `mode` |
 | 33 | POST | `/api/v1/orgs` … | bearer | Org create / members / role / settings / namespaces |
 | 34 | GET/PUT/DELETE | `/api/v1/modules/{ns}/{name}[/versions/{v}]/reviews` | bearer (writes) | Reviews and audits |
 | 35 | DELETE | `/api/v1/modules/{ns}/{name}/versions/{v}` | bearer | Hard-delete a version — **test instance only**, `405` on prod (0.12) |
@@ -144,12 +152,26 @@ never rehearsed.
   "stats": {"variant_count": 42, "gene_count": 3, "genes": ["…"], "categories": ["…"]},
   "content_signature": "sha256:…",
   "name_matches_path": true,
-  "published_as": []
+  "published_as": [],
+  "would_publish_module_level": true
 }
 ```
 
 `info` is what the server rewrote and accepted; `published_as` is the `409 duplicate_content`
 pre-check. Rate bucket `validate` (60/h).
+
+**`would_publish_module_level` (0.13)** composes the three publish gates that do not scale with the
+variant count — `valid` under `strict`, `name_matches_path`, and an empty `published_as` — into the
+one field a CI job can branch on here. It is derived server-side, from the same expression
+`/check` builds `would_publish` on, so the two cannot drift.
+
+It is deliberately **not** `would_publish`, and the distinction is the point rather than pedantry:
+this endpoint never runs the network tier, so `true` means *nothing module-level blocks a publish*,
+never *a publish would succeed*. A reference-allele mismatch or a withdrawn rsID still refuses one,
+and only `/check` can see those. Reading the weaker field as the stronger one is how a caller ships
+an upload that was already doomed — an empty finding list and an unrun check render identically,
+which is why the name says what it quantifies over. What it buys you is that it has **no ceiling and
+costs no egress**, so it answers for a panel far too large to check online (S1).
 
 ### 28. `POST /api/v1/modules/{ns}/{name}/check`
 
@@ -181,6 +203,18 @@ here: they are checked inside `enrich()` and land on `enrichment.stale_rsids`, b
 belongs on `resolution.csv`'s own columns. A CURIE in an ontology this tier has no route for comes
 back under `unchecked` rather than as a finding. **Nothing it reports moves `would_publish`** — a
 publish does not run this pass, so a finding predicts nothing about one.
+
+Since 0.13 the same pass answers a second question: **does a row's `gene` name the chromosome the row's
+own variant sits on?** `gene_loci` carries one line per row where it does not. This is a different axis
+from `stale_genes`, which asks only whether HGNC still approves the symbol — a row can pair an approved
+symbol with a variant on another chromosome and satisfy every other check, since both halves are true
+and only the relationship between them is false. That is the shape a machine-written citation fails in:
+a real gene name beside an invented rs number, which resolves anyway because dbSNP is dense enough that
+almost any number hits something. Chromosome granularity only, deliberately — a row may legitimately
+name a distal regulatory target (`rs1421085` sits in an *FTO* intron and acts on *IRX3*/*IRX5*), and a
+pseudoautosomal gene's X/Y disagreement is a spelling rather than a contradiction. `gene_loci_not_checked`
+says why the comparison did not run, on the same contract as `clin_sig_not_checked`; an rsID-only row is
+compared using the `resolution.csv` the run just produced, and nothing is fetched for it.
 
 `?pgx=true` cross-checks authored PGx assertions against PharmVar, CPIC, ClinPGx and ClinGen dosage.
 **Provision its snapshots if you host this endpoint.** Without them the only alternatives are fetching
@@ -233,7 +267,8 @@ the validation findings and decides whether unresolved positions count against `
   "validation": { "…as above…" },
   "enrichment": {
     "mode": "best_effort", "offline": true,
-    "unresolved": [], "ref_mismatches": [], "clin_sig_conflicts": [],
+    "unresolved": [], "unreachable_rsids": [],
+    "ref_mismatches": [], "clin_sig_conflicts": [],
     "clin_sig_not_checked": null, "stale_rsids": [],
     "vrs": {"alleles": 57, "identified": 55, "complete": false,
             "unmintable_reasons": {"indel/MNV: needs the reference sequence": 2}},
@@ -249,6 +284,15 @@ the validation findings and decides whether unresolved positions count against `
 publish it predicts. `unmintable_reasons` is the half that tells a publisher whether to act: an indel
 with no sequence proxy, or a build with no refget table, is the tier's own limit and no authored edit
 clears it, so a shortfall never counts against `would_publish`.
+
+**`unreachable_rsids` (0.13) is the field to read before believing `unresolved`.** `unresolved` names
+keys with no position and says nothing about why, so it reads as "no such locus" even when the truth is
+that nothing came back: through enricher 0.5.3 a failed Ensembl request and an Ensembl that answered
+"no GRCh38 locus" were the same result. They now differ, and only one of them may resolve on a re-run.
+Always empty on `?offline=true`, where nothing was asked. It does **not** soften `would_publish` — under
+`?strict=true` an unresolved key still refuses, because the publish really would refuse — but a `false`
+verdict beside a non-empty `unreachable_rsids` means *re-run*, not *go author coordinates*. The same
+reason appears in prose on `notes`, and on the publish path in the `422`'s hint.
 
 **`clin_sig_not_checked` is the field to read before believing `clin_sig_conflicts: []`.** An empty
 conflict list means two opposite things — "compared everything, nothing disagreed" and "never
@@ -268,7 +312,18 @@ by IP against a published 10-per-60s budget — there is no API key to raise it 
 `?frequencies=true` can take minutes. Rate bucket `enrich` (5/h) *plus* a process-wide concurrency
 gate (`enrich_max_concurrency`, default 1) — the bucket bounds one caller, the gate bounds the
 server. An invalid spec short-circuits before any of it is spent (`skipped_reason: "invalid_spec"`),
-and a module over `enrich_max_variants` is refused with `422 too_many_variants`. That cap counts
+and a module over `enrich_max_variants` is refused with `422 too_many_variants`.
+
+**That ceiling bounds pacing, so since 0.13 it applies to online runs only.** `?offline=true` issues
+no outbound request for it to bound, and measured with the suite's socket tripwire armed an offline
+run costs ~5s at 40,000 subjects, linear — under 2% of `enrich_timeout_seconds`, which together with
+the concurrency gate is what actually bounds offline CPU. So a panel too large to check online is
+still checkable against whatever snapshots the deployment holds. And an online refusal is no longer
+empty-handed: the `422` body carries `subject_count`, `limit`, the full `validation` report and
+`would_publish_module_level`, all of which the server had computed before refusing. The `error` code
+is unchanged, so a client branching on it is unaffected.
+
+The cap counts
 **enrichment subjects**, not `variants.csv` rows: the enricher also asks about `pharm_variants.csv`,
 `haplotypes.csv` and `heteroplasmy.csv`, so a PGx module with no `variants.csv` is not a module with
 nothing to enrich. It is an upper bound — subjects are de-duplicated by `variant_key` downstream, so a
@@ -294,7 +349,33 @@ about to publish a duplicate should not need an account to find that out.
 ---
 
 ### 1. `GET /health`
-`200 → {"status": "ok"}`. No prefix, no auth.
+No prefix, no auth. Liveness, and since 0.13 enough to run a deployment from without opening a shell.
+
+```json
+{
+  "status": "ok",
+  "version": "0.13.0",
+  "mode": "prod",
+  "storage": "local",
+  "uptime_seconds": 84213.5,
+  "enrichment": {"active": 0, "queued": 0, "limit": 1},
+  "catalog": {"modules": 12, "versions": 31, "yanked": 2, "namespaces": 4}
+}
+```
+
+- **`mode`** is `prod` or `test`. It is the field that says *which deployment answered*, and it
+  exists because with both instances live the two were otherwise byte-identical here. `GET
+  /api/v1/version` reports it too; `RegistryClient(expect_mode=…)` asserts it.
+- **`enrichment`** is the process-wide gate: permits in use, publishes queued behind them, and the
+  ceiling (`enrich_max_concurrency`). `active == limit` is what a caller meets as
+  `503 enrichment_busy`.
+- **`catalog`** counts only what a reader could already enumerate through the listing routes —
+  account and key counts are deliberately **not** here, since this endpoint is unauthenticated.
+  `versions` includes yanked ones, with `yanked` beside it rather than subtracted out.
+- **`status` is `degraded`, not a 5xx, when the catalog cannot be counted.** `catalog` is then
+  `null` and `degraded_reason` names the failure. A liveness probe that fails on a sick database
+  tells a balancer to pull a process that is still serving, and withholds the diagnosis exactly
+  when it is wanted. Probe on the **HTTP status**; read `status` to decide whether to page someone.
 
 ### 2. `GET /api/v1/modules`
 List/search the catalog (one **card** per module, its latest non-yanked version).
@@ -687,7 +768,7 @@ lowercase hex, `sha256:`-prefixed. A downloader verifies with `just_dna_format.v
 ## Deployment modes, and the two routes only a test instance serves (0.12)
 
 `REGISTRY_MODE` selects `prod` (default) or `test`. Production is
-`module-marketplace.just-dna.life`; the **polygon** is `module-polygon.just-dna.life` (default port
+`module-registry.just-dna.life`; the **polygon** is `module-polygon.just-dna.life` (default port
 8100 against production's 8000). An unrecognised mode refuses to boot.
 
 Three behaviours differ, and nothing else does:

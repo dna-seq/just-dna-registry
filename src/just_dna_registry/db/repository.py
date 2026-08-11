@@ -992,6 +992,25 @@ class Repository:
         ).fetchall()
         return rows, total
 
+    def catalog_counts(self) -> dict[str, int]:
+        """What the catalog holds, for `/health` (S4). Four `COUNT(*)`s, no join and no scan of rows.
+
+        Deliberately only facts a reader could already enumerate through `GET /modules` and the
+        namespace routes — `/health` is unauthenticated, so it is not the place to start publishing
+        numbers that were previously private. Account and key counts are absent for that reason and
+        should stay absent. `versions` counts every version including yanked ones, with `yanked`
+        beside it rather than subtracted out, because "how many are hidden" is its own question.
+        """
+        def one(sql: str) -> int:
+            return int(self.conn.execute(sql).fetchone()["n"])
+
+        return {
+            "modules": one("SELECT COUNT(*) AS n FROM modules"),
+            "versions": one("SELECT COUNT(*) AS n FROM versions"),
+            "yanked": one("SELECT COUNT(*) AS n FROM versions WHERE yanked = 1"),
+            "namespaces": one("SELECT COUNT(*) AS n FROM namespaces"),
+        }
+
     # ── Moderation & key ops ────────────────────────────────────────────────
 
     def set_namespace_flags(

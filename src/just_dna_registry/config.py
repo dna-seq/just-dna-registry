@@ -168,17 +168,27 @@ class Settings(BaseSettings):
     # process, which is the only thing that bounds our outbound rate. The upstreams are
     # unauthenticated and throttle by IP — gnomAD publishes a 10-per-60s budget and offers no API key
     # at any price — so exceeding it gets THIS SERVER throttled, for every user at once.
-    # `enrich_max_concurrency > 1` also races the enricher's `PacingGate` (a plain dataclass with no
-    # lock) and multiplies our egress rate against gnomAD's stated budget — raise it deliberately.
+    # `enrich_max_concurrency > 1` used to *race* the enricher's `PacingGate` and so multiply our egress
+    # rate; enricher 0.5.4 (S15) made the gate thread-safe, and this server sharing one client bundle
+    # across a threadpool is what surfaced that. So raising this no longer breaks the pacing — but it
+    # still does not buy throughput, because the pace is shared: two concurrent runs interleave on the
+    # same spacing and each takes about twice as long. It is now a latency/queue-depth knob, and 1 stays
+    # the default because the aggregate budget it protects is unchanged.
     enrich_max_concurrency: int = 1
     # `/check` only. Publish is deliberately NOT bounded by this: it is unattended, it has already
     # been queued behind every interactive caller, and a deadline on it would convert a slow upstream
     # into a lost upload. See `enrich_idle_*` below.
     enrich_timeout_seconds: float = 300
-    # Refuse an enrichment dry run over a module this large before spending anything on it:
+    # Refuse an ONLINE enrichment dry run over a module this large before spending anything on it:
     # 500 / 20 * 6s is already ~150s of pure pacing for the frequency pass. `/check` only, for the
     # same reason as the timeout — and because publish never runs the frequency pass, which is the
     # expensive one this bound is really about.
+    #
+    # It does not apply to `?offline=true`, which makes no outbound request for it to bound (S1).
+    # Measured on the suite's own spec with the socket tripwire armed: 40,000 subjects offline in
+    # 5.1s, linear from 100 — so applying it there refused, in zero time, a run costing under 2% of
+    # `enrich_timeout_seconds`. Offline CPU is bounded by that timeout and by the gate above, which
+    # are the bounds designed for it; a subject count is a proxy for pacing and nothing else.
     enrich_max_variants: int = 500
 
     # --- The idle lane: how publish yields to `/check` -------------------------------------------

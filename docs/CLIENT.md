@@ -5,6 +5,13 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
+**Normative for:** client **0.13.x** against a server speaking API `v1`. Every method signature and
+payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
+optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
+keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
+any method whose signature moved, so a consumer can answer "did this release touch anything I call?"
+without reading the release (S2).
+
 ## Install
 
 ```bash
@@ -305,11 +312,32 @@ and any versions already built from identical data. It writes nothing and the mo
 `name` is the name you intend to publish under. It defaults to `--strict`, matching what publish
 compiles with; a dry run whose default disagrees with the publish it predicts is a trap.
 
+Its `would_publish_module_level` (0.13) is the branchable field for callers that cannot pay for the
+network tier: the publish gates that do not scale with the variant count — validity, the name↔path
+match, the dedup claim — composed server-side from the same expression `check` builds `would_publish`
+on, so the two cannot drift. **It is not `would_publish`.** `true` means nothing module-level blocks
+a publish; a reference mismatch or a withdrawn rsID can still refuse one, and only `check` looks. Its
+value is that it has no ceiling and costs no egress, so it answers for panels far too large to check
+online, which is the case that motivated it.
+
 **`check`** adds what only the network tier can see: an authored reference allele against the actual
 genome, `clin_sig` against ClinVar, rsIDs dbSNP has merged away, GA4GH allele-identity coverage, and
 optionally gnomAD frequencies (`--frequencies`), citations (`--literature`), ACMG SF membership
 (`--acmg`) and the PGx nomenclature cross-check (`--pgx`). It exits 0 only when the server says it
 `would_publish`.
+
+Two of its answers are about what could *not* be established, and both print as their own line since
+0.13. `unreachable_rsids` names rsIDs live Ensembl never answered about — they appear in `unresolved`
+too, but an unanswered request is a re-run rather than an authoring fix, so do not go writing
+coordinates for a variant on the strength of an unresolved list alone. And `--identifiers` now also
+compares each row's `gene` against the chromosome its own variant sits on: a real symbol beside an
+invented rsID satisfies every other check, because both halves are true and only the relationship is
+false. When that comparison could not run, the report says so instead of coming back empty.
+
+The server's variant ceiling bounds outbound pacing, so it applies to **online** runs only: `--offline`
+has no ceiling and answers everything the deployment's snapshots can. Above it an online run is
+refused, and the refusal prints the module-level verdict the server computed before stopping rather
+than a bare `HTTP 422`.
 
 `--pgx` needs `--use`. Every PGx upstream (PharmVar, CPIC, ClinPGx, ClinGen) is CC BY-SA *plus* a
 no-sale clause, so without a declaration each is skipped rather than queried — the registry will not

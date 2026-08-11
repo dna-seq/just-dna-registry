@@ -105,6 +105,26 @@ class VersionMismatchError(RegistryError):
         self.client = client
 
 
+class ModeMismatchError(RegistryError):
+    """The server is not the deployment the caller said they were aiming at.
+
+    Raised before the first request that could spend anything, because this is the one mistake the
+    service cannot undo: a publish that lands on production burns a version number and claims the
+    data's `content_hash` globally, and `yank` releases neither. The delete verb that would repair it
+    exists only on the polygon — which is the same fact from the other side.
+    """
+
+    def __init__(self, *, expected: str, actual: Optional[str], base_url: str) -> None:
+        seen = actual or "nothing (a server older than 0.13 does not report its mode)"
+        super().__init__(
+            409,
+            f"{base_url} reports mode {seen}, but this client was told to expect {expected!r}. "
+            f"Refusing before anything is spent.",
+        )
+        self.expected = expected
+        self.actual = actual
+
+
 class RegistryClient:
     """Thin sync client over the registry REST API."""
 
@@ -115,6 +135,7 @@ class RegistryClient:
         timeout: float = 600.0,  # publishes recompile server-side; large modules take minutes
         transport: Optional[httpx.BaseTransport] = None,
         check_version: bool = True,
+        expect_mode: Optional[str] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.local_version = VersionInfo.local()
@@ -135,6 +156,16 @@ class RegistryClient:
         )
         self._check_version = check_version
         self._compat_checked = False  # guard runs once per client, lazily
+        # `prod` | `test` | None. Asserted lazily beside the version guard rather than in `__init__`,
+        # so constructing a client still costs no request — and checked against what the *server*
+        # says, never against the hostname, which is the second source of truth this exists to avoid.
+        #
+        # It therefore fires on the same calls `assert_compatible` already guards: publish, import,
+        # download, validate, check, is_published. That is the set that exchanges artifacts or spends
+        # a version number, which is the set worth refusing. Cheap reads (`whoami`, listings) are not
+        # guarded and do not need to be — landing one on the wrong instance costs nothing and undoes
+        # itself. Call `assert_compatible()` directly to settle the question up front.
+        self._expect_mode = expect_mode
 
     def close(self) -> None:
         self._http.close()
@@ -156,12 +187,31 @@ class RegistryClient:
         return VersionInfo.model_validate(self._json(resp))
 
     def assert_compatible(self) -> None:
-        """Fail fast if the server and this client are contract-incompatible. Runs once per client;
-        a no-op when `check_version=False`. A server too old to report its version can't be checked,
-        so it only warns."""
-        if not self._check_version or self._compat_checked:
+        """Fail fast if the server is not one this client should be talking to. Runs once per client.
+
+        Two guards over one `/version` fetch. The contract check is a no-op when
+        `check_version=False`, and a server too old to report its version cannot be checked, so it
+        only warns. The **mode** check runs whenever `expect_mode` was given, independently of
+        `check_version` — the two answer different questions, and someone who turned off the version
+        guard has not thereby consented to publishing on an unidentified instance.
+
+        An unreported mode is a failure rather than a pass: a caller who asked for the deployment to
+        be verified is worse off believing it was than knowing it could not be. That direction is
+        also the cheap one, since the remedy is upgrading the server, while the other direction's
+        failure mode is an irreversible publish.
+        """
+        if self._compat_checked or (not self._check_version and self._expect_mode is None):
             return
         server = self.server_version()
+        if self._expect_mode is not None and (server is None or server.mode != self._expect_mode):
+            raise ModeMismatchError(
+                expected=self._expect_mode,
+                actual=server.mode if server else None,
+                base_url=self.base_url,
+            )
+        if not self._check_version:
+            self._compat_checked = True
+            return
         if server is None:
             _log.warning(
                 "server does not report its version (pre-0.7.1); skipping the compatibility guard"
@@ -406,6 +456,13 @@ class RegistryClient:
         `spec_dir` may be a directory or a `.tar.gz`/`.zip` archive. `pack=True` compresses a
         directory client-side, which is what a spec larger than the server's transfer bound needs —
         the raw parts are refused `413` at that size while the archive sails through.
+
+        `report.would_publish_module_level` is the one field to branch on when you want a verdict
+        without paying for the network tier: the publish gates that do not scale with the variant
+        count, composed server-side so a caller never reimplements them. It has no ceiling and costs
+        no egress. It is **not** `would_publish` — `true` means nothing module-level blocks a
+        publish, not that one would succeed, since only `check()` runs the tier that can still
+        refuse on a reference mismatch or a withdrawn rsID.
         """
         self.assert_compatible()
         resp = self._http.post(
@@ -449,6 +506,13 @@ class RegistryClient:
         `declared_use` (`unstated` | `non_commercial` | `commercial`) — every PGx upstream forbids
         sale, so on the server's default each is skipped with a reason rather than queried. Pass
         `non_commercial` to run them.
+
+        The server's variant ceiling applies to **online** runs only, since it bounds paced outbound
+        requests and an `offline=True` run makes none — so a panel too large to check online is
+        still checkable against the server's snapshots. Over the ceiling you get
+        `RegistryError(422, {"error": "too_many_variants", ...})`, whose detail carries the
+        `validation` report and `would_publish_module_level` the server had already computed, so a
+        refusal still answers the module-level half without a second upload.
 
         Raises `RegistryError(503, {"error": "enrichment_unavailable", ...})` when the server's
         network tier cannot run at all (`just-dna-enricher` is not installed there) — retrying is

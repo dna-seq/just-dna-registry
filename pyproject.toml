@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.12.0"
+version = "0.13.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -20,14 +20,19 @@ dependencies = [
 # compute a spec's content identity locally, without uploading and without recompiling, so a
 # publisher can pre-check dedup before spending a publish. Only the compiler tier is needed for
 # that — no network tier, no FastAPI.
-# `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41). `just-dna-format` stays at
-# 0.5.0 on purpose — neither 0.5.1 nor 0.5.2 was a schema cut: both were two-package network-tier
-# releases that touched no model, parquet column or manifest field, which is what made them legal
-# inside the closed 0.5 digest window. Floor is 0.5.3 for the positional-joinability warning, which
-# `validate_spec` emits and this tier reports verbatim — on 0.5.2 a `/validate` of an rsid-authored PGx
-# module comes back clean about a table that joins to no VCF.
+# `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41). Floor is now **0.5.4**, for
+# `compiler.UNJOINABLE_PHRASE`: `db/facets.py` imports it rather than spelling the fragment, so this is
+# a hard floor and not a preference — on 0.5.3 the import is an `ImportError` at startup.
+#
+# `just-dna-format` stays at 0.5.0 on purpose, and 0.5.4 did not change that even though upstream
+# bumped format to the shared number. That bump was for *legibility* — "a 0.5.4 compiler naming a 0.5.0
+# schema is a version pair nobody can read" — not a schema cut: no model, parquet column or manifest
+# field moved in 0.5.1→0.5.4, which is what kept them all legal inside the closed 0.5 digest window.
+# `version.contract_compatible` says the same thing structurally (same major.minor interoperates), so a
+# 0.5.0 client still exchanges artifacts with a 0.5.4 server and raising this floor would break that
+# for nothing.
 compiler = [
-    "just-dna-compiler>=0.5.3",
+    "just-dna-compiler>=0.5.4",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -42,14 +47,20 @@ server = [
     "huggingface-hub>=0.34.0",
     "pyjwt>=2.10.0",
     "pyyaml>=6.0.2",
-    # `>=0.5.3` is a hard floor, not a preference: the server reads `EnrichmentResult.vrs` (RM40)
-    # and `.clin_sig_not_checked` (S4, 0.5.2), passes `offline=` to the dosage pass (RM39), and hands
-    # `cpic_cache`/`pharmvar_cache` plus `offline=` to `enrich_pgx` (RM38). None of those exists in
-    # 0.5.0, and `clin_sig_not_checked` is a 0.5.2 attribute this tier reads unguarded. 0.5.3 adds the
-    # positional-joinability warning the catalog's trust facet now consults, and puts
-    # `heteroplasmy.csv` in the enricher's subject list — on 0.5.2 such a module enriches to nothing.
-    "just-dna-compiler>=0.5.3",
-    "just-dna-enricher>=0.5.3",
+    # `>=0.5.4` is a hard floor, not a preference. Each of these is read unguarded, and every one of
+    # them is an attribute or a name that simply does not exist on the release below it: `.vrs` (RM40,
+    # 0.5.1), `.clin_sig_not_checked` (S4, 0.5.2), `offline=` on the dosage pass (RM39, 0.5.1),
+    # `cpic_cache`/`pharmvar_cache` on `enrich_pgx` (RM38, 0.5.1), `heteroplasmy.csv` in the enricher's
+    # subject list (0.5.3), the positional-joinability warning the trust facet consults (0.5.3), and now
+    # from 0.5.4: `EnrichmentResult.unreachable_rsids` (S20), `IdentifierReport.gene_loci` /
+    # `.gene_loci_not_checked` (S24), and `compiler.UNJOINABLE_PHRASE` (S13).
+    #
+    # 0.5.4 also makes `PacingGate` thread-safe (S15), which is the one item here the registry does not
+    # *read* — it repairs a race this server was the reported cause of, since a shared bundle across a
+    # threadpool is exactly the arrangement the enricher's own docstring recommends. See
+    # `services/enrich.py::shared_lookup_clients` and `enrich_max_concurrency` in `config.py`.
+    "just-dna-compiler>=0.5.4",
+    "just-dna-enricher>=0.5.4",
 ]
 
 [build-system]

@@ -130,6 +130,7 @@ class PublishError(Exception):
         errors: list[str] | None = None,
         warnings: list[str] | None = None,
         info: list[str] | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(detail)
         self.detail = detail
@@ -139,6 +140,11 @@ class PublishError(Exception):
         # dropped from the authored block, or that `module.version: v2` was coerced to `2.0.0`.
         # Carried so a publisher sees what the server changed about their spec, not just why it lost.
         self.info = info or []
+        # Structured, already-JSON-safe fields for a refusal that has more to say than prose — the
+        # variant ceiling carries the module-level verdict it computed before refusing. Additive by
+        # construction: the router lets the four fixed keys above win a collision, so a client
+        # branching on `error`/`errors` cannot be broken by anything put here.
+        self.extra = extra or {}
 
 
 async def collect_uploads(files: list[Any], settings: Settings) -> dict[str, bytes]:

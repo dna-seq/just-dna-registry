@@ -96,6 +96,42 @@ def test_an_empty_test_prefix_is_refused() -> None:
         Settings(test_data_prefix="   ")
 
 
+# ── The mode over the wire (0.13, S3) ─────────────────────────────────────────
+
+
+def test_both_ops_endpoints_report_the_mode(tmp_path: Path) -> None:
+    """S3: a rehearsal has to be able to prove which instance answered, before it spends anything.
+
+    Both endpoints, because they serve different callers: `/health` needs no token and is what an
+    operator or a proxy check curls, `/api/v1/version` is what the SDK already fetches for its
+    contract guard. Asserted as the two modes disagreeing, not as one literal, so a hardcoded
+    constant could not pass this.
+    """
+    seen = {}
+    for mode in ("prod", "test"):
+        client = _client(tmp_path / mode, mode)
+        health = client.get("/health").json()
+        version = client.get("/api/v1/version").json()
+        assert health["mode"] == version["mode"], "one deployment cannot answer two modes"
+        seen[mode] = health["mode"]
+    assert seen == {"prod": "prod", "test": "test"}
+
+
+def test_the_reported_mode_agrees_with_the_delete_verb(tmp_path: Path) -> None:
+    """The property the field stands in for: the consumer was inferring mode from the route table.
+
+    If the advertised mode and the mounted routes could disagree, the field would be worse than the
+    probe it replaces — so the two are asserted together rather than separately.
+    """
+    for mode, deletes_mounted in (("prod", False), ("test", True)):
+        client = _client(tmp_path / f"agree-{mode}", mode)
+        assert client.get("/health").json()["mode"] == mode
+        resp = client.delete(
+            "/api/v1/modules/test-sandbox/burner/versions/1.0.0", headers=_AUTH
+        )
+        assert (resp.status_code != 405) is deletes_mounted
+
+
 # ── Production refuses test data ──────────────────────────────────────────────
 
 
@@ -247,7 +283,11 @@ def test_serve_mode_flag_exports_the_env_var_the_worker_will_read(monkeypatch) -
         assert captured["port"] == DEFAULT_PORTS["test"]  # and the port followed the flag
         assert get_settings().is_test_instance is True    # this process agrees with the worker
     finally:
-        monkeypatch.delenv("REGISTRY_MODE", raising=False)
+        # `os.environ.pop`, NOT `monkeypatch.delenv`. `cli.serve` sets this behind monkeypatch's
+        # back, so a delenv here would *record* "test" as the value to restore and teardown would
+        # put it back — leaking a polygon default into every test that runs after this file, which
+        # is how `create_app` on default Settings silently gained the delete routes.
+        os.environ.pop("REGISTRY_MODE", None)
         get_settings.cache_clear()
 
 

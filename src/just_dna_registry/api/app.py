@@ -64,6 +64,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         close_lookup_clients()
 
     app = FastAPI(title="just-dna-registry", version=__version__, lifespan=lifespan)
+    # Stamped at construction rather than at first request, and monotonic rather than wall-clock, so
+    # `uptime_seconds` on `/health` survives an NTP step and cannot go backwards.
+    started_monotonic = time.monotonic()
 
     conn = connect(settings.db_path)
     init_db(conn)
@@ -82,7 +85,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         quiet_seconds=settings.enrich_idle_quiet_seconds,
         poll_seconds=settings.enrich_idle_poll_seconds,
     )
-    server_versions = VersionInfo.local()
+    # `local()` reads installed package metadata, which cannot know the deployment mode — that is a
+    # property of this process's settings, so it is stamped on here.
+    server_versions = VersionInfo.local().model_copy(update={"mode": settings.mode})
 
     @app.middleware("http")
     async def _trace_requests(request: Request, call_next):
@@ -124,7 +129,36 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/health", tags=["ops"])
     def health() -> dict:
-        return {"status": "ok", "version": __version__, "storage": settings.storage_backend}
+        """Liveness, plus enough to run the box from without opening a shell (S4).
+
+        `mode` is here as well as on `/api/v1/version` because this is the endpoint an operator or a
+        proxy check curls, and it needs no token. A rehearsal that cannot observe which instance
+        answered cannot prove it is not about to spend a version number on production (S3) — and
+        with both deployments live, the two answered byte-identical payloads until this field.
+
+        **A failing catalog degrades this response rather than failing it.** Liveness that 500s when
+        the DB is unhappy tells a load balancer to pull a process that is still serving every read
+        it has, and it withholds the diagnosis exactly when it is most wanted. So `status` becomes
+        `degraded`, `catalog` becomes null, and the reason is named. This is the one place in this
+        codebase where swallowing an exception is the point rather than a smell — the endpoint's job
+        is to report, and an endpoint that reports by failing reports nothing.
+        """
+        body: dict = {
+            "status": "ok",
+            "version": __version__,
+            "storage": settings.storage_backend,
+            "mode": settings.mode,
+            "uptime_seconds": round(time.monotonic() - started_monotonic, 1),
+            "enrichment": app.state.enrichment_gate.occupancy(),
+        }
+        try:
+            body["catalog"] = app.state.repo.catalog_counts()
+        except Exception as exc:  # noqa: BLE001 — see the docstring; reporting beats propagating
+            _request_log.warning("health: catalog counts unavailable: %s", exc)
+            body["status"] = "degraded"
+            body["catalog"] = None
+            body["degraded_reason"] = f"catalog unavailable: {type(exc).__name__}"
+        return body
 
     @app.get(f"{API_PREFIX}/version", tags=["ops"], response_model=VersionInfo)
     def version() -> VersionInfo:

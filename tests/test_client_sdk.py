@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from test_import import _bare_parquet_zip
 
 from just_dna_registry import client_cli
-from just_dna_registry.client import RegistryClient
+from just_dna_registry.client import ModeMismatchError, RegistryClient
 
 _NS, _NAME, _VER = "just-dna-seq", "coronary", "1.0.0"
 
@@ -145,6 +145,8 @@ async def test_validate_returns_a_typed_report(sdk, tmp_path) -> None:
     assert report.valid is True and report.strict is True
     assert report.stats.variant_count == 1
     assert report.content_signature is not None
+    # The ceiling-free branchable field (S1). Typed through the SDK, not just present on the wire.
+    assert report.would_publish_module_level is True
 
 
 async def test_check_returns_a_typed_report(sdk, tmp_path) -> None:
@@ -157,7 +159,62 @@ async def test_check_returns_a_typed_report(sdk, tmp_path) -> None:
 
 async def test_health_is_wrapped(sdk) -> None:
     """Mounted outside `/api/v1`, which is why it went unwrapped until 0.11."""
-    assert (await asyncio.to_thread(sdk.health))["status"] == "ok"
+    health = await asyncio.to_thread(sdk.health)
+    assert health["status"] == "ok"
+    assert health["mode"] == "prod", "the test app builds default Settings, which are production"
+    # S4's ops fields ride through untyped on purpose — `/health` is a dict, not a contract model.
+    assert set(health["catalog"]) == {"modules", "versions", "yanked", "namespaces"}
+    assert set(health["enrichment"]) == {"active", "queued", "limit"}
+
+
+async def test_expect_mode_refuses_the_wrong_deployment(app, api_key, tmp_path) -> None:
+    """S3: the guard that makes a rehearsal target verifiable rather than merely declared.
+
+    The failure it exists for is the one the service cannot undo — a publish aimed at the polygon
+    that lands on production spends a version number and claims the data's `content_hash` globally,
+    and there is no delete verb there to take it back. So it has to raise before the first request
+    that could spend anything, not after.
+    """
+    tc = TestClient(app)  # default Settings — a production instance
+    spec = _write_spec(tmp_path)
+
+    aiming_at_the_polygon = RegistryClient(
+        "http://testserver", token=api_key, transport=tc._transport, expect_mode="test"
+    )
+    # Up front, and again on a call that would have spent something — the guard is worth nothing if
+    # it only answers when asked directly.
+    with pytest.raises(ModeMismatchError) as caught:
+        await asyncio.to_thread(aiming_at_the_polygon.assert_compatible)
+    assert caught.value.expected == "test" and caught.value.actual == "prod"
+    with pytest.raises(ModeMismatchError):
+        await asyncio.to_thread(lambda: aiming_at_the_polygon.validate(_NS, _NAME, spec))
+    aiming_at_the_polygon.close()
+
+    correct = RegistryClient(
+        "http://testserver", token=api_key, transport=tc._transport, expect_mode="prod"
+    )
+    assert (await asyncio.to_thread(lambda: correct.validate(_NS, _NAME, spec))).valid is True
+    correct.close()
+
+
+async def test_expect_mode_survives_check_version_being_off(app, api_key) -> None:
+    """The two guards answer different questions, so silencing one must not silence the other.
+
+    A caller who turned off the contract check has not thereby agreed to publish on an instance
+    whose identity nobody established. An older server that cannot report a mode fails the same way,
+    for the same reason: asking for verification and getting silence is not a pass.
+    """
+    tc = TestClient(app)
+    client = RegistryClient(
+        "http://testserver",
+        token=api_key,
+        transport=tc._transport,
+        check_version=False,
+        expect_mode="test",
+    )
+    with pytest.raises(ModeMismatchError):
+        await asyncio.to_thread(client.assert_compatible)
+    client.close()
 
 
 async def test_issue_jwt_token_is_wrapped(sdk, api_key) -> None:

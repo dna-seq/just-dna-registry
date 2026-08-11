@@ -12,7 +12,7 @@ from pathlib import Path
 
 from just_dna_format.manifest import ModuleManifest
 
-from just_dna_registry.db.facets import UNJOINABLE_MARKER, is_trusted, version_facets
+from just_dna_registry.db.facets import UNJOINABLE_PHRASE, is_trusted, version_facets
 
 logger = logging.getLogger("registry.db")
 
@@ -303,7 +303,7 @@ def _migrate_0_11_3_trust(conn: sqlite3.Connection) -> None:
     * any row carrying the positional-joinability warning and not already `0`. The `LIKE` is a cheap
       prefilter over `manifest_json`, not the decision: `is_trusted` re-derives from the parsed
       manifest, so this stays the single derivation and cannot drift from the publish path. It is
-      bound from `UNJOINABLE_MARKER` rather than spelled again here, so the prefilter cannot go
+      bound from `UNJOINABLE_PHRASE` rather than spelled again here, so the prefilter cannot go
       looking for one string while the verdict keys off another.
 
     Deliberately narrow rather than a whole-catalog re-projection. Rows this release did not affect
@@ -315,7 +315,7 @@ def _migrate_0_11_3_trust(conn: sqlite3.Connection) -> None:
          WHERE (trusted = 1 AND resolution_mode IS NULL)
             OR (manifest_json LIKE ? AND (trusted IS NULL OR trusted != 0))
         """,
-        (f"%{UNJOINABLE_MARKER}%",),
+        (f"%{UNJOINABLE_PHRASE}%",),
     ).fetchall()
     if not rows:
         return

@@ -8,6 +8,7 @@ implementation anywhere is a catalog that filters differently from how it indexe
 
 from typing import Any, Optional
 
+from just_dna_compiler.compiler import UNJOINABLE_PHRASE
 from just_dna_format.manifest import ModuleManifest
 
 
@@ -25,34 +26,39 @@ def predates_resolution_contract(manifest: ModuleManifest) -> bool:
     return manifest.content_signature is None
 
 
-#: The factual core of the compiler's positional-joinability warning (compiler 0.5.3). Matched as a
-#: substring because the sentence around it names a table and two counts.
-#:
-#: Prose-coupled, which is not where this belongs. Reported upstream as S13 and **accepted**: the fix
-#: is one additive integer on `Compilation` — how many rows resolution was applied to — which makes
-#: `fully_resolved=True` beside zero subjects self-evidently vacuous with no prose anywhere. It is
-#: tracked as **RM44**, targeted at format **0.6**, and deliberately *not* folded into S8's
-#: `checks_run`/`checks_skipped` (RM43/RM45): resolution is not a verification pass, so a row count
-#: does not belong in a map of which checks ran. Until then the warning is the only *durable* record —
-#: it rides in `manifest.compilation.warnings`, which is what `is_trusted` can still see at reindex
-#: time, when the spec directory is long gone.
-#:
-#: **Two follow-ups for whoever next bumps the compiler floor.** Upstream has since promoted this
-#: fragment to `just_dna_compiler.compiler.UNJOINABLE_PHRASE` and pinned it on their side too, so once
-#: a release carries it this literal becomes `from just_dna_compiler.compiler import UNJOINABLE_PHRASE`
-#: and the drift risk goes away entirely — it is absent from 0.5.3, which is why it is still spelled
-#: out here. Only this *fragment* is frozen upstream; the rest of the sentence is free to change, so
-#: never widen the match. When RM44 lands, delete both this constant and its pinning test.
-#:
-#: Meanwhile two things keep the coupling honest: a test compiles a real rsid-authored spec through the
-#: real compiler and asserts this fires, so an upstream reword breaks the build instead of silently
-#: re-granting trust; and the miss direction is `None` ("cannot say"), never `True`.
-UNJOINABLE_MARKER = "have no chrom+start"
-
-
 def joins_nothing_positionally(manifest: ModuleManifest) -> bool:
-    """Whether the compiler reported a table in this version that no VCF can join by position."""
-    return any(UNJOINABLE_MARKER in w for w in manifest.compilation.warnings)
+    """Whether the compiler reported a table in this version that no VCF can join by position.
+
+    Keyed on `UNJOINABLE_PHRASE` — the factual core of the compiler's positional-joinability warning,
+    **imported from the compiler since 0.5.4 rather than spelled out here**. Matched as a substring
+    because the sentence around it names a table and two counts.
+
+    Still prose-coupled, which is not where this belongs — but the *drift* half of that coupling is
+    gone, and that is what the floor bump bought. Reported upstream as S13 and accepted twice over: the
+    fragment is frozen on their side as a named constant whose own docstring names this consumer, so a
+    reword is now a deliberate act with someone to tell rather than a silent re-granting of trust to
+    modules that annotate nothing. Through 0.11.x this module carried the literal because 0.5.3 had no
+    constant to import.
+
+    The structural fix is still owed and still upstream's: one additive integer on `Compilation` — how
+    many rows resolution was applied to — which makes `fully_resolved=True` beside zero subjects
+    self-evidently vacuous with no prose anywhere. Tracked as **RM44**, targeted at format **0.6**, and
+    deliberately *not* folded into S8's `checks_run`/`checks_skipped` (RM43/RM45): resolution is not a
+    verification pass, so a row count does not belong in a map of which checks ran. Until then the
+    warning is the only *durable* record — it rides in `manifest.compilation.warnings`, which is what
+    `is_trusted` can still see at reindex time, when the spec directory is long gone. When RM44 lands,
+    delete this function and its pinning test.
+
+    Only the fragment is frozen; the rest of the sentence is free to change, so never widen the match.
+    Two things still keep the coupling honest: a test compiles a real rsid-authored spec through the
+    real compiler and asserts this fires — an import proves the *spelling* agrees, not that the warning
+    still reaches the manifest — and the miss direction is `None` ("cannot say"), never `True`.
+
+    That import is what makes this module server-tier, and it costs nothing: every caller
+    (`db/schema.py`, `db/repository.py`, `services/catalog.py`) already needs the compiler, and no
+    client path reaches here.
+    """
+    return any(UNJOINABLE_PHRASE in w for w in manifest.compilation.warnings)
 
 
 def is_trusted(manifest: ModuleManifest) -> Optional[bool]:

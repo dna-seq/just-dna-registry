@@ -76,6 +76,9 @@ def _publish_http_error(exc: "publish_service.PublishError") -> HTTPException:
     return HTTPException(
         code,
         detail={
+            # Spread first, so the four fixed keys win any collision and no refusal can redefine
+            # the shape every client branches on.
+            **exc.extra,
             "error": exc.detail,
             "errors": exc.errors,
             "warnings": exc.warnings,
@@ -375,6 +378,12 @@ async def validate_spec_endpoint(
     A spec that would be rejected still comes back **200** — `valid: false` with the reasons. Only a
     request we cannot assemble a spec directory from is a 4xx.
 
+    `would_publish_module_level` composes the publish gates that do not scale with the variant
+    count into the one field a CI job can branch on here. It has no ceiling and costs no egress,
+    which is what makes it the answer for a panel too large to check online. It is deliberately not
+    called `would_publish`: this endpoint never runs the network tier, so a `true` means nothing
+    module-level blocks a publish, not that one would succeed.
+
     Requires `PUBLISH` on `{namespace}`: it writes nothing, but it runs the real compiler over
     arbitrary uploaded CSVs, which is the same server CPU a publish spends.
     """
@@ -441,6 +450,12 @@ async def check_spec(
     **Expensive, and the cost is the operator's.** gnomAD is paced at roughly six seconds per twenty
     variants, so this can legitimately take minutes; it is the tightest rate bucket in the service
     and is additionally capped to `enrich_max_concurrency` runs process-wide.
+
+    `enrich_max_variants` bounds that pacing, so it bounds **online** runs only: `?offline=true` has
+    no ceiling, because it issues no request for a ceiling to bound. Above it an online run is
+    `422 too_many_variants`, and that body carries the `validation` report plus
+    `would_publish_module_level` — the half the server had already computed before refusing, so the
+    refusal still answers what it can rather than binning it.
 
     The enricher always runs in `best_effort`, whatever `?strict=` says: strict enrichment *raises*,
     and an endpoint whose purpose is to report cannot run in a mode that refuses to finish. `strict`

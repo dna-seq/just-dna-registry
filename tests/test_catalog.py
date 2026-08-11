@@ -1,5 +1,6 @@
 """Read/catalog + download endpoint contract tests (SPEC §8.1–§8.5, §13)."""
 
+import sqlite3
 from typing import Callable
 
 import pytest
@@ -25,6 +26,49 @@ def test_health(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert body["version"]  # reported from package metadata, surfaces the live build
     assert body["storage"] in {"local", "hf"}
+    assert body["mode"] in {"prod", "test"}
+    assert body["uptime_seconds"] >= 0
+    assert body["enrichment"] == {"active": 0, "queued": 0, "limit": 1}
+
+
+def test_health_counts_the_catalog(client: TestClient, seed: Callable[..., ModuleManifest]) -> None:
+    """S4: the numbers an operator would otherwise open a shell to get.
+
+    Asserted as a *delta* across a publish rather than against fixed totals, so it states the
+    relationship instead of hardcoding whatever a fixture happens to hold.
+    """
+    before = client.get("/health").json()["catalog"]
+
+    seed("just-dna-seq", "cardio_risk", "1.0.0", genes=["LPA"], categories=["cardio"],
+         created_at="2025-03-01T00:00:00Z")
+    after = client.get("/health").json()["catalog"]
+
+    assert after["modules"] == before["modules"] + 1
+    assert after["versions"] == before["versions"] + 1
+    assert after["yanked"] == before["yanked"], "a fresh publish is not yanked"
+
+
+def test_health_degrades_instead_of_failing_when_the_catalog_is_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Liveness that 500s pulls a process that is still serving, and hides the reason with it.
+
+    Injected on the repository rather than mocked at the route, so the real handler path — the one
+    that chooses between reporting and propagating — is what runs.
+    """
+    def boom() -> dict:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(client.app.state.repo, "catalog_counts", boom)
+
+    resp = client.get("/health")
+    assert resp.status_code == 200, "a sick catalog is a degraded report, not a dead endpoint"
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["catalog"] is None
+    assert "OperationalError" in body["degraded_reason"]
+    # The half that still works is still reported — that is what degrading is for.
+    assert body["mode"] in {"prod", "test"} and body["version"]
 
 
 def test_list_empty(client: TestClient) -> None:

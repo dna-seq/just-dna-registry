@@ -220,15 +220,22 @@ def test_a_module_that_joins_to_no_vcf_is_not_advertised_as_trusted(pgx_client) 
     assert card["resolution"]["fully_resolved"] is True
 
 
-def test_the_unjoinable_marker_still_matches_what_the_compiler_emits(pgx_client) -> None:
-    """The prose coupling in `facets.UNJOINABLE_MARKER`, pinned against the real compiler.
+def test_the_unjoinable_phrase_still_reaches_the_manifest(pgx_client) -> None:
+    """The prose coupling behind `is_trusted`, pinned against the real compiler.
 
     `is_trusted` reads a *warning string* because the manifest carries no structured record of which
     checks ran (asked for as S8 upstream, tracked there as RM43). That coupling is acceptable only
-    while a reword fails loudly instead of silently re-granting trust to modules that join to nothing
-    — which is what this asserts. If the compiler rephrases, fix the marker; do not delete the test.
+    while a break fails loudly instead of silently re-granting trust to modules that join to nothing.
+
+    What this test is for changed with the 0.5.4 floor. The phrase is now imported from
+    `just_dna_compiler.compiler.UNJOINABLE_PHRASE` (S13), so a *reword* can no longer desynchronize the
+    two spellings — and an import cannot tell us the warning is still emitted, still fires for an
+    rsid-only PGx module, and still survives into `manifest.compilation.warnings`, which is the only
+    copy a reindex can see. That is the whole chain this drives, through a real publish of a real
+    reference example. If it breaks, the facet has stopped seeing what the compiler says; do not delete
+    the test.
     """
-    from just_dna_registry.db.facets import UNJOINABLE_MARKER, joins_nothing_positionally
+    from just_dna_registry.db.facets import UNJOINABLE_PHRASE, joins_nothing_positionally
 
     resp = pgx_client.post(
         "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions",
@@ -237,7 +244,7 @@ def test_the_unjoinable_marker_still_matches_what_the_compiler_emits(pgx_client)
         headers={"Authorization": "Bearer mk_live_testkey"},
     )
     manifest = ModuleManifest.model_validate(resp.json())
-    emitted = [w for w in manifest.compilation.warnings if UNJOINABLE_MARKER in w]
+    emitted = [w for w in manifest.compilation.warnings if UNJOINABLE_PHRASE in w]
     assert emitted, manifest.compilation.warnings
     # The sentence names the table and both counts, which is what makes it worth surfacing verbatim.
     assert "haplotypes.csv" in emitted[0] and "106" in emitted[0]

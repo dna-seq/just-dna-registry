@@ -6,9 +6,194 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.13.0] — 2026-08-11
+
+Answers **S1**, **S2** and **S3** from `just-module-creator`, and **S4** from the operator, and adopts
+**compiler/enricher 0.5.4**. Nothing here changes a status code, an error `code`, or a field a client
+already reads.
+
+**Client surface: unchanged.** No `RegistryClient` method signature moved. Added: `expect_mode=` on
+the constructor (optional), `ValidationReport.would_publish_module_level`, `VersionInfo.mode`,
+`EnrichmentReport.unreachable_rsids`, `IdentifierCheck.gene_loci` and `.gene_loci_not_checked`.
+
+### compiler + enricher 0.5.4: two answers that used to be one, and a phrase we no longer spell
+
+The floor moves to `just-dna-compiler>=0.5.4` / `just-dna-enricher>=0.5.4` in the `server` extra and
+`just-dna-compiler>=0.5.4` in `compiler`. A hard floor: three of the four items below are attributes this
+tier now reads unguarded. `just-dna-format` deliberately stays at `>=0.5.0` — upstream bumped it to the
+shared number for legibility ("a 0.5.4 compiler naming a 0.5.0 schema is a version pair nobody can
+read"), not as a schema cut, so a 0.5.0 client still exchanges artifacts with a 0.5.4 server and
+`version.contract_compatible` still says so.
+
+- **An unreachable Ensembl is now `unreachable_rsids`, not silence (enricher S20).** `resolve_rsid`
+  used to fuse "asked, no GRCh38 locus" and "the request never completed" into one empty answer, so a
+  failed lookup was reported as a definite negative — and `loci: []` beside "Ensembl has no locus for
+  it" is exactly the fingerprint of a fabricated rsID. The consumer who found it put two published
+  variants (`rs6567160`, a long-standing *MC4R* BMI locus, and `rs13010010`) in the fabricated pile.
+  `enrichment.unreachable_rsids` on `/check` names them, `notes` says it in prose, and the publish
+  path's strict-refusal hint now says **re-publish** for this case instead of offering the three
+  remedies that assume somebody's spec or cache is at fault. It does not soften `would_publish`: a
+  strict publish against an Ensembl that will not answer really does refuse. What changes is that the
+  refusal no longer reads as an authoring defect.
+- **A gene that names another chromosome is its own finding (enricher S24).** `?identifiers=true` gains
+  `gene_loci` and `gene_loci_not_checked`. Previously the pass asked whether HGNC approves the symbol,
+  which is a different question — `FTO` is approved whatever variant sits beside it — so a row pairing a
+  real symbol with an rsID on another chromosome passed everything, both halves being individually true
+  and only the relationship false. Chromosome granularity only: a row may legitimately name a distal
+  regulatory target, and a pseudoautosomal X/Y disagreement is a spelling. It moves `clean` and, like
+  everything else in that pass, not `would_publish`.
+- **`db/facets.py` imports the phrase it used to spell** (`compiler.UNJOINABLE_PHRASE`, upstream S13).
+  The trust facet keys on a warning substring because the manifest carries no structured record of what
+  resolution was applied to (still owed, still upstream's, tracked as RM44 for format 0.6). Upstream now
+  freezes the fragment as a named constant whose docstring names this consumer, so a reword is a
+  deliberate act with someone to tell rather than a silent re-granting of trust to modules that annotate
+  nothing. The pinning test stays and its job narrows: an import proves the spellings agree, not that
+  the warning still fires and still reaches `manifest.compilation.warnings`.
+- **`PacingGate` is thread-safe upstream now (S15), and this server was the reported cause.** Sharing
+  one `LookupClients` bundle across a threadpool is what the enricher's own docstring advises, and the
+  gate read `last`, slept, then wrote it — so two threads could both skip the sleep and turn a 3/s
+  budget into 6/s. That removes the *correctness* reason `enrich_max_concurrency` defaults to 1; the
+  default stays 1 because the reason it protects — one shared, IP-scoped, unbuyable budget — has not
+  changed, and a second concurrent run now interleaves on the same pace rather than going faster. The
+  comments in `config.py`, `shared_lookup_clients` and `EnrichmentGate` that said the limit is what
+  makes sharing correct were true and are now wrong, so they say what is left instead.
+
+Two upstream changes arrive as new **validate/check warnings** with no code here: a `.csv` whose name is
+one edit from a real table (`varaints.csv` — previously silent, so the rows were dropped and the compile
+was green) and a binning table asserting thresholds with no `studies.csv` anywhere. Both are warnings in
+both modes and neither gates a publish. One warning also *stops*: a hand-declared `literature`-layer
+row in `sources.csv` is no longer reported as unused when the module carries `studies.csv`, which had
+been telling authors to delete the exact row the licence gate exists to read.
+
+### The ceiling withheld the check on exactly the modules that needed it (S1)
+
+Three repairs to the pre-publish dry run.
+
+### The ceiling bounds pacing, so it now bounds only the runs that egress
+
+`enrich_max_variants` exists because the paced passes cost ~6s per twenty subjects against gnomAD's
+IP-scoped budget — its own comment said so, and said publish is exempt "because publish never runs
+the frequency pass, which is the expensive one this bound is really about". It was nonetheless
+enforced unconditionally, including on `?offline=true`, which issues no request for it to bound.
+
+- **`?offline=true` has no ceiling.** Measured on the suite's own spec with the socket tripwire
+  armed: 40,000 enrichment subjects offline in **5.1s**, linear from 100 — the ceiling was refusing
+  in zero time a run costing under 2% of `enrich_timeout_seconds`. Offline CPU stays bounded by that
+  timeout and by `enrich_max_concurrency`, which are the bounds designed for it; a subject count is
+  a proxy for pacing and nothing else. So a ClinVar-scale panel is now checkable against whatever
+  snapshots a deployment holds, which is the configuration those panels were always going to use.
+- **Online runs are unchanged** — resolution still egresses per subject there, so the bound still
+  describes a real cost.
+- Loosening a refusal, so no client breaks; sized minor rather than patch because it changes what a
+  deployment does with a request it used to reject.
+
+### A refusal that still answers what it had computed
+
+`/check` runs `validation_report()` and *then* checks the ceiling, so the `422` was discarding a
+module-level verdict the server already held. The inversion this produced is the sharpest statement
+of S1: an **invalid** spec over the ceiling has always returned `200` with a full report
+(`invalid_spec` short-circuits earlier), so the ceiling withheld the check precisely on the specs
+that pass it.
+
+- **`422 too_many_variants` now carries `subject_count`, `limit`, the full `validation` report and
+  `would_publish_module_level`.** The `error` code and the status are untouched; the four fixed keys
+  of the error body win any collision, so a client branching on them cannot be affected.
+- The message names the two ways through — `offline=true`, or `/validate` — instead of only naming
+  the knob an author cannot turn. `registry-client check` prints all of it rather than `HTTP 422`.
+
+### `would_publish_module_level` on `/validate`
+
+The publish gates that do not scale with the variant count — the spec validates under `strict`,
+`module.name` matches the path, no version is already built from identical data — composed into one
+branchable field on a route with no ceiling and no egress. Derived from the same expression
+`_would_publish` builds on, so the two cannot drift; `registry-client validate` now exits on the
+server's verdict instead of its own fourth copy of those three gates.
+
+**It is deliberately not `would_publish`.** This is the trap the release turns on: a skip must never
+produce a positive verdict. `invalid_spec` is safe because it yields `would_publish: false`, but a
+`true` beside an unrun network tier is the empty-collection ambiguity `clin_sig_not_checked` was
+introduced to end, one level up. So the weaker question got a name that says what it quantifies over
+rather than a shared name and a caveat. `true` means nothing module-level blocks a publish, never
+that one would succeed — the tier only `/check` runs can still refuse on a reference mismatch or a
+withdrawn rsID.
+
+Paging or sampling the *online* variant tier — S1's second option — needs the async job queue and is
+tracked in [ROADMAP.md](ROADMAP.md#next-registry-version-post-011).
+
+### The deployment mode is now observable, and assertable (S3)
+
+`REGISTRY_MODE` governs every irreversible decision on the box, and nothing over the wire reported
+it. A client could only infer it from a hostname or by testing whether the polygon's `DELETE` routes
+happened to be mounted — inferring a deployment's identity from the shape of its route table.
+
+- **`mode` on `GET /health` and `GET /api/v1/version`.** One additive field on each; old clients
+  ignore it. Both, because they serve different callers: `/health` needs no token and is what an
+  operator or a proxy check curls, `/api/v1/version` is what the SDK already fetches for its
+  contract guard. A test asserts the advertised mode agrees with which routes are mounted — a field
+  that could disagree with the route table would be worse than the probe it replaces.
+- **`RegistryClient(..., expect_mode="test"|"prod")`** raises `ModeMismatchError` before the first
+  call that could spend anything, on the same six methods the contract guard already covers (publish,
+  import, download, validate, check, is_published). It checks what the *server* says, never the
+  hostname. Independent of `check_version`: someone who silenced the contract check has not thereby
+  agreed to publish on an unidentified instance. **A server that reports no mode fails the check** —
+  asking for verification and getting silence is not a pass, and that direction's remedy is a server
+  upgrade, while the other's is an irreversible publish.
+- The receipt half of S3's option 3 (the publish response naming the instance that stamped it) is
+  **not** in: the publish response *is* the manifest, so it needs either a format field or the
+  response-envelope change already queued in [ROADMAP.md](ROADMAP.md). Left for that work.
+
+### `/health` reports enough to run a deployment from (S4)
+
+Filed by the operator on bringing the polygon up, and the timing is the argument: with both instances
+live they answered **byte-identical** payloads — `{"status":"ok","version":"0.12.0","storage":"local"}`
+from production and from the polygon alike. Three fields, none of them the one that decides whether a
+publish can be undone.
+
+- **`mode`, `uptime_seconds`, `enrichment` and `catalog`** alongside the existing fields.
+  `enrichment` is the gate — `{active, queued, limit}` — so `503 enrichment_busy` is explicable from
+  outside instead of mysterious. `catalog` is `{modules, versions, yanked, namespaces}`, four indexed
+  `COUNT(*)`s. `uptime_seconds` is monotonic, so it survives an NTP step.
+- **Only publicly enumerable facts.** `/health` takes no token, so account and API-key counts are
+  deliberately absent and should stay absent — everything reported here is already reachable through
+  the listing routes. `versions` includes yanked ones with `yanked` beside it rather than subtracted
+  out, because "how many are hidden" is its own question.
+- **A sick catalog degrades the response instead of failing it**: `status: "degraded"`, `catalog:
+  null`, and `degraded_reason` naming the exception type. A liveness probe that 500s on a database
+  hiccup tells a balancer to pull a process that is still serving every read it has, and withholds
+  the diagnosis at the moment it is most wanted. Probe on the HTTP status; read `status` to decide
+  whether to page someone.
+
+### The client surface is legible without reading the release (S2)
+
+A consumer calling eight methods against a 35-endpoint API could only answer "did this release touch
+anything I call?" by reading the release or diffing the client — which for 0.9.1 → 0.12.0 cost them
+a full read to conclude nothing had moved. Verified here: none of those eight signatures has changed
+since the 0.9.0 rename.
+
+- **A `Client surface:` line per release**, at the top of the entry — *unchanged*, or the methods
+  whose signatures moved. A new method counts as unchanged: it breaks nobody. The convention is
+  recorded in [CLAUDE.md](../CLAUDE.md) so it cannot quietly lapse.
+- **Both reference docs are stamped** with the version range they are normative for. An unstamped
+  schema is what made a consumer write defensive code (`pick("version", "latest_version")`, tolerating
+  an `identity` key that does not exist) against a `ModuleCard` we had specified exactly.
+- **`module-marketplace.just-dna.life` is purged from the docs** in favour of
+  `module-registry.just-dna.life`, including from 0.12.0's own entry above, which named it as
+  production and sent a consumer looking for a third deployment. The retired names are now listed in
+  [CLAUDE.md](../CLAUDE.md) rather than merely deleted — a purge with no record is how a dead name
+  comes back. `compiled_by="marketplace-server"` is untouched and stays: it is baked into every
+  published manifest and clients verify against that literal.
+
+### Fixed
+
+- **`REGISTRY_MODE` leaked out of `tests/test_modes.py`** into every test module that ran after it,
+  because a `finally` used `monkeypatch.delenv` to undo an env var `cli.serve` had set behind
+  monkeypatch's back — so teardown *restored* it. Every later test therefore built its app on
+  polygon defaults, silently arming the delete routes on the fixture that documents itself as a
+  production instance. Found by asserting `/health` reports `prod` there.
+
 ## [0.12.0] — 2026-08-11
 
-Two deployments of one image: **production** (`module-marketplace.just-dna.life`) and the **polygon**
+Two deployments of one image: **production** (`module-registry.just-dna.life`) and the **polygon**
 (`module-polygon.just-dna.life`, `REGISTRY_MODE=test`). Plus the ops safety net that makes cleaning up
 after a test survivable.
 

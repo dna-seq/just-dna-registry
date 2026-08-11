@@ -348,8 +348,13 @@ def validate(
     if report.published_as:
         where = ", ".join(f"{v.namespace}/{v.name}@{v.version}" for v in report.published_as)
         typer.secho(f"  ✗ identical data already published as: {where}", fg=typer.colors.RED)
-    if report.valid and report.name_matches_path and not report.published_as:
-        typer.secho("✓ valid", fg=typer.colors.GREEN)
+    # The server's own verdict, not a fourth local copy of the three gates it composes: this exit
+    # code is a claim about what publish will do, so it has to come from the side that decides.
+    if report.would_publish_module_level:
+        typer.secho(
+            "✓ valid — nothing module-level blocks a publish (the network tier is `check`)",
+            fg=typer.colors.GREEN,
+        )
         return
     raise typer.Exit(code=1)
 
@@ -400,6 +405,34 @@ def check(
             )
         except RegistryError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if detail.get("error") == "too_many_variants":
+                # The refusal carries the module-level verdict the server computed before stopping,
+                # so print it rather than a bare "HTTP 422: {...}". Same reasoning as the 503 below:
+                # a dead end an author cannot navigate becomes a support ticket.
+                verdict = detail.get("would_publish_module_level")
+                typer.secho(
+                    f"✗ too large for an ONLINE check: {detail.get('subject_count')} enrichment "
+                    f"subject(s), limit {detail.get('limit')}.",
+                    fg=typer.colors.RED,
+                )
+                if verdict is not None:
+                    mark, colour = (
+                        ("✓", typer.colors.GREEN) if verdict else ("✗", typer.colors.RED)
+                    )
+                    typer.secho(
+                        f"  {mark} module-level checks (validity, name, dedup): "
+                        f"{'nothing blocks a publish' if verdict else 'a publish would be refused'}"
+                        f" — the network tier was not run, so this is not a `would publish`.",
+                        fg=colour,
+                    )
+                for line in detail.get("validation", {}).get("errors", []):
+                    typer.secho(f"  ✗ {line}", fg=typer.colors.RED)
+                typer.secho(
+                    "  Re-run with --offline for everything the server's snapshots can answer "
+                    "(no ceiling), or ask the operator to raise REGISTRY_ENRICH_MAX_VARIANTS.",
+                    fg=typer.colors.YELLOW,
+                )
+                raise typer.Exit(code=1)
             if detail.get("error") != "enrichment_unavailable":
                 raise
             # A bare "HTTP 503: {...}" here becomes a support ticket. Name the fix instead, for both
@@ -423,6 +456,15 @@ def check(
                 f"  ! {len(e.unresolved)} variant(s) unresolved: {', '.join(e.unresolved[:5])}",
                 fg=typer.colors.YELLOW,
             )
+        # Printed directly under the unresolved line, because it is what decides the response to it: an
+        # unanswered request is a re-run, not an authoring fix (S20).
+        if e.unreachable_rsids:
+            typer.secho(
+                f"  · live Ensembl could not be asked about {len(e.unreachable_rsids)} rsID(s) "
+                f"({', '.join(e.unreachable_rsids[:5])}) — unchecked, not absent. Re-run before "
+                f"authoring coordinates for them.",
+                fg=typer.colors.YELLOW,
+            )
         for m in e.ref_mismatches:
             shift = f" — likely a wrong `start`, off by {m.shift:+d}" if m.shift else ""
             typer.secho(
@@ -442,7 +484,17 @@ def check(
         if e.identifiers is not None:
             for line in e.identifiers.stale_traits + e.identifiers.stale_genes:
                 typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
+            # A gene naming a chromosome its own variant is not on (S24). Red where a stale symbol is
+            # yellow: a retired name still describes the right locus, while this says one of the two
+            # identifiers on the row is about something else entirely.
+            for line in e.identifiers.gene_loci:
+                typer.secho(f"  ✗ {line}", fg=typer.colors.RED)
             # Never asked is not answered-clean, so the two print differently on purpose.
+            if e.identifiers.gene_loci_not_checked:
+                typer.echo(
+                    f"  · gene/variant chromosome agreement was not checked: "
+                    f"{e.identifiers.gene_loci_not_checked}"
+                )
             for line in e.identifiers.unchecked:
                 typer.echo(f"  · {line}")
             for line in e.identifiers.warnings:

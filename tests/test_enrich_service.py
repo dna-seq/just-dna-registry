@@ -15,7 +15,7 @@ Three things worth pinning that no HTTP test reaches:
 
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -229,6 +229,29 @@ def test_every_subject_table_is_counted() -> None:
 # ── A check that did not run ──────────────────────────────────────────────────
 
 
+@dataclass
+class _Findings:
+    """The fields of `just_dna_enricher.enrich.EnrichmentResult` that `_render_notes` reads.
+
+    Mirrored rather than constructed because the real class is built by a network run: what is under test
+    is the *rendering* of a set of findings, and every finding shape here is one the enricher can
+    genuinely return. A field the enricher adds and this class lacks fails loudly at the attribute
+    access, which is the direction that matters — `_render_notes` reads unguarded on purpose, so that a
+    new finding cannot be silently dropped from a publisher's warnings.
+    """
+
+    ref_mismatches: list = field(default_factory=list)
+    clin_sig_conflicts: list = field(default_factory=list)
+    clin_sig_not_checked: str | None = None
+    stale_rsids: list = field(default_factory=list)
+    par_twins_dropped: list = field(default_factory=list)
+    unreachable_rsids: list = field(default_factory=list)
+
+
+def _findings(**over) -> _Findings:
+    return _Findings(**over)
+
+
 def test_a_check_that_ran_adds_no_note() -> None:
     """`None` means it genuinely ran, and a clean pass must stay silent or the note means nothing."""
     assert clin_sig_skip_note(None) is None
@@ -272,20 +295,24 @@ def test_the_publish_path_never_renders_conflicts_without_the_skip() -> None:
     the same misinformation the report field fixes.
     """
 
-    @dataclass
-    class _Result:  # the fields of `just_dna_enricher.enrich.EnrichmentResult` this reads
-        ref_mismatches: list
-        clin_sig_conflicts: list
-        clin_sig_not_checked: str | None
-        stale_rsids: list
-        par_twins_dropped: list
-
-    notes = _render_notes(
-        _Result([], [], "no_snapshot", [], [])
-    )
+    notes = _render_notes(_findings(clin_sig_not_checked="no_snapshot"))
     assert any("clin_sig cross-check did not run" in n for n in notes)
     # ...and a check that ran contributes nothing, so the absence of a line is itself the signal.
-    assert _render_notes(_Result([], [], None, [], [])) == []
+    assert _render_notes(_findings()) == []
+
+
+def test_the_publish_path_says_when_an_rsid_was_never_asked_about() -> None:
+    """S20, in the prose a failed publish carries.
+
+    `unresolved` counts keys with no position and is silent about why, so on its own it reads as "no
+    such locus" — the one reading a failed request cannot support. This line exists so a publisher
+    facing a strict refusal can tell whether to author coordinates or simply try again.
+    """
+    notes = _render_notes(_findings(unreachable_rsids=["rs6567160", "rs13010010"]))
+    assert len(notes) == 1
+    assert "rs6567160" in notes[0]
+    assert "unchecked rather than empty" in notes[0]
+    assert "Re-run" in notes[0]
 
 
 # ── Actionability of the failure ──────────────────────────────────────────────
@@ -299,6 +326,24 @@ def test_the_unresolved_hint_names_both_remedies() -> None:
     assert "2 variant(s) unresolved" in hint
     assert "warm-caches" in hint  # the operator's move
     assert "variants.csv" in hint  # the author's move
+
+
+def test_the_hint_does_not_send_the_author_after_an_upstream_failure() -> None:
+    """The third case, and the reason S20's distinction had to reach this function.
+
+    All three of the usual remedies — provision a snapshot, allow egress, author coordinates — assume
+    somebody's configuration or spec is at fault. When Ensembl was asked and never answered, none of
+    them applies and every one of them costs the publisher work on a variant that is perfectly
+    findable. So the advice for this case is only: try again.
+    """
+    outcome = EnrichOutcome(
+        ran=True, offline=False, unresolved=["rs6567160"], unreachable_rsids=["rs6567160"]
+    )
+    hint = unresolved_hint(outcome, Settings())
+    assert "rs6567160" in hint
+    assert "Re-publish" in hint
+    # The remedies that would be wrong here are absent, not merely de-emphasised.
+    assert "warm-caches" not in hint and "variants.csv" not in hint
 
 
 def test_the_hint_explains_a_skipped_enrichment_differently() -> None:

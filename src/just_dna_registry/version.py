@@ -47,6 +47,15 @@ class VersionInfo(BaseModel):
     compiler: Optional[str] = Field(
         default=None, description="just-dna-compiler version (server tier only; None on a client)"
     )
+    mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "`prod` or `test` — which deployment this is (server tier only; None on a client, and "
+            "None from a server older than 0.13). Reported because `REGISTRY_MODE` governs every "
+            "irreversible decision on the box and was otherwise only inferable from a hostname or "
+            "from whether the delete routes happen to be mounted."
+        ),
+    )
 
     @classmethod
     def local(cls) -> "VersionInfo":

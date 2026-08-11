@@ -355,6 +355,17 @@ class ValidationReport(BaseModel):
         default_factory=list,
         description="Versions already built from identical data — publish would 409 duplicate_content",
     )
+    would_publish_module_level: bool = Field(
+        default=False,
+        description=(
+            "The publish gates that do not scale with the variant count, composed into one field: "
+            "the spec validates under `strict`, `module.name` matches the path, and no version is "
+            "already built from identical data. **It is not `would_publish`.** It quantifies over "
+            "the module-level gates only, so `true` means 'nothing here blocks a publish', never "
+            "'a publish would succeed' — the network tier can still refuse one on a reference "
+            "mismatch or a withdrawn rsID, and only `/check` runs that tier."
+        ),
+    )
 
 
 class RefMismatchEntry(BaseModel):
@@ -561,9 +572,31 @@ class IdentifierCheck(BaseModel):
             "route to. Kept apart from the two above: never asked is not answered-clean"
         ),
     )
+    gene_loci: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Rows whose `gene` names a chromosome the row's own variant is not on (enricher 0.5.4 / "
+            "S24). A different question from `stale_genes`, which only asks whether HGNC approves the "
+            "symbol: here both halves are individually true and the *relationship* is false — the "
+            "signature of a machine-written citation, a real symbol beside an invented rsID that "
+            "resolves anyway because dbSNP is dense enough that almost any number hits something. "
+            "Chromosome granularity only, so a row naming a distal regulatory target is not accused"
+        ),
+    )
+    gene_loci_not_checked: Optional[str] = Field(
+        default=None,
+        description=(
+            "Why the comparison above did not run, or null when it did. Read it before believing an "
+            "empty `gene_loci`: HGNC may have returned no usable chromosome, or no row may have a "
+            "known one. Same contract as `EnrichmentReport.clin_sig_not_checked`"
+        ),
+    )
     clean: Optional[bool] = Field(
         default=None,
-        description="`null` when nothing was checked — clean out of zero identifiers says nothing",
+        description=(
+            "`null` when nothing was checked — clean out of zero identifiers says nothing. Folds in "
+            "`gene_loci`, so a gene/variant contradiction makes it false"
+        ),
     )
     skipped_offline: bool = False
     warnings: list[str] = Field(
@@ -582,6 +615,19 @@ class EnrichmentReport(BaseModel):
     mode: str = "best_effort"
     offline: bool = False
     unresolved: list[str] = Field(default_factory=list)
+    unreachable_rsids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "rsIDs live Ensembl could not be *asked* about — the request failed — so their absence is "
+            "unchecked rather than established (enricher 0.5.4 / S20). A subset of the reasons behind "
+            "`unresolved`, which is silent about why a key has no position: a row nothing could be "
+            "asked about and a row Ensembl genuinely has no locus for look identical there, and only "
+            "one of them may resolve on a re-run. Always empty offline, where nothing was asked at "
+            "all. It does not soften `would_publish`: under `?strict=true` an unresolved key still "
+            "refuses, because the publish really would refuse — but this says the refusal may be "
+            "transient and worth re-running rather than an authoring defect to go fix"
+        ),
+    )
     ref_mismatches: list[RefMismatchEntry] = Field(default_factory=list)
     clin_sig_conflicts: list[ClinSigConflictEntry] = Field(default_factory=list)
     #: Read this **before** believing an empty `clin_sig_conflicts` (enricher 0.5.2 / S4).

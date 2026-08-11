@@ -138,6 +138,11 @@ class EnrichOutcome:
     #: Ref mismatches, clin-sig conflicts, stale rsIDs and PAR drops, pre-rendered one per line.
     #: All are reported and never repaired, so they travel as prose rather than as a verdict.
     notes: list[str] = field(default_factory=list)
+    #: rsIDs live Ensembl could not be asked about (enricher 0.5.4 / S20). Structured beside the note
+    #: in `notes`, because `unresolved_hint` branches on it: the advice for "no snapshot, no egress" and
+    #: the advice for "Ensembl 5xx'd" have nothing in common, and the second is a re-run rather than a
+    #: fix. Always empty offline.
+    unreachable_rsids: list[str] = field(default_factory=list)
     #: The enricher's own `MintResult` (0.5.1 / RM40), or `None` when minting did not run — which is
     #: not the same as a coverage of zero, and the reason this is not two integers.
     vrs: Any = None
@@ -156,8 +161,17 @@ def shared_lookup_clients() -> Any:
     intended rate. Those limits are enforced by IP and gnomAD sells no key to raise them, so the
     consequence is the whole deployment being throttled — not the caller who overspent.
 
-    That sharing is only safe because `PacingGate` has no lock and `enrich_max_concurrency` defaults
-    to 1. Raising the concurrency races the gate; the setting says so.
+    **Sharing is now safe under concurrency, and it was not until enricher 0.5.4 (S15).** `PacingGate`
+    was a plain dataclass that read `last`, slept, then wrote it, so two threads could both find the
+    interval elapsed, both skip the sleep, and turn a published 3/s budget into 6/s — and this server,
+    following the enricher's own advice to hold one bundle, was the arrangement that provoked it.
+    Upstream now reserves each caller's slot under a lock and waits for it outside the lock, so N
+    threads get N slots spaced one interval apart. Behaviour on a single thread is unchanged.
+
+    That removes the *correctness* reason `enrich_max_concurrency` defaults to 1; it does not remove the
+    reason. The budget itself is per IP and shared, so a second concurrent run does not egress faster —
+    it waits its turn — which makes the limit a policy choice about latency rather than a race guard.
+    Left at 1 deliberately: see `EnrichmentGate` and the setting's own comment.
 
     **Every member is constructed here, and `LookupClients()` on its own is not a bundle.** Its
     docstring says the clients are "optional and lazily built", which is true of `lookup.py` — each
@@ -388,6 +402,8 @@ def _render_notes(result: Any) -> list[str]:
 
     The clin_sig *skip* is here beside the clin_sig *conflicts* on purpose: the two are mutually
     exclusive and a reader of one needs the other, so they are never rendered from separate places.
+    For the same reason the unreachable-rsID line sits immediately above the stale-rsID ones: they are
+    the two halves of what happened to an rsID, and one of them is "we never found out".
     """
     notes: list[str] = []
     for mismatch in result.ref_mismatches:
@@ -411,6 +427,18 @@ def _render_notes(result: Any) -> list[str]:
     skipped = clin_sig_skip_note(result.clin_sig_not_checked)
     if skipped:
         notes.append(skipped)
+    unreachable = list(result.unreachable_rsids)
+    if unreachable:
+        # Never folded into the unresolved count. That count says how many keys have no position; this
+        # says that for some of them nobody established there is none — the request failed. An
+        # empty-answer and a no-answer are indistinguishable in `unresolved`, and only one of them is
+        # worth re-running, which is the whole of S20.
+        notes.append(
+            f"{len(unreachable)} rsID(s) could not be asked of live Ensembl (the request failed, so "
+            f"the answer is unchecked rather than empty): {', '.join(unreachable[:5])}"
+            + (f" … ({len(unreachable)} total)" if len(unreachable) > 5 else "")
+            + ". Re-run before treating these as rsIDs Ensembl does not have."
+        )
     for status in result.stale_rsids:
         current = f" (now {status.current})" if status.current else ""
         notes.append(f"rsID {status.rsid} is {status.state}{current}")
@@ -506,6 +534,7 @@ def enrich_spec(
         offline=offline,
         fully_resolved=result.fully_resolved,
         unresolved=list(result.unresolved),
+        unreachable_rsids=list(result.unreachable_rsids),
         sources=list(result.sources),
         notes=_render_notes(result),
         vrs=result.vrs,
@@ -517,6 +546,10 @@ def enrich_spec(
             enrich_sources=outcome.sources,
             resolution_rows=len(result.rows),
             unresolved=len(outcome.unresolved),
+            # In the audit log beside the unresolved count, not folded into it: an operator reading why
+            # a publish refused needs to know whether the answer was "no locus" or "no reply", and the
+            # second is a fact about this deployment's egress rather than about the module.
+            unreachable_rsids=len(outcome.unreachable_rsids),
             vrs=(
                 f"{result.vrs.identified}/{result.vrs.alleles}" if result.vrs else "not minted"
             ),
@@ -531,11 +564,29 @@ def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
     offline enrichment against an unprovisioned cache. This supplies that half, so the 422 is
     actionable by whichever of the two people can act — the publisher (author coordinates) or the
     operator (provision a snapshot, or allow egress).
+
+    **There is a third case, and giving it the standard advice was wrong.** When Ensembl was asked and
+    never answered (enricher 0.5.4 / S20), nothing about the module, the cache or the egress policy is
+    at fault and none of the three remedies applies — the honest instruction is to re-run. Before 0.5.4
+    the registry could not tell that case apart from a genuine "Ensembl has no such locus", so it told
+    the publisher to go author coordinates for variants that are perfectly findable.
     """
     if not outcome.ran:
         return (
             f"no resolution table was produced ({outcome.skipped_reason}), so any variant authored "
             f"by rsID alone has no position."
+        )
+    if outcome.unreachable_rsids:
+        count = len(outcome.unreachable_rsids)
+        listed = ", ".join(outcome.unreachable_rsids[:5]) + (
+            f" … ({count} total)" if count > 5 else ""
+        )
+        return (
+            f"the enricher left {len(outcome.unresolved)} variant(s) unresolved, and live Ensembl "
+            f"could not be asked about {count} of the rsID(s) involved "
+            f"({listed}) — the request failed, so nothing established that those rsIDs have no "
+            f"locus. Re-publish before changing anything: this is most likely a transient upstream or "
+            f"network failure rather than a defect in the module."
         )
     where = settings.ensembl_cache or "the enricher's default cache location"
     return (
@@ -590,6 +641,12 @@ def validation_report(
         content_signature=signature,
         name_matches_path=stats.get("module_name") in (None, name),
         published_as=published_as,
+        # The publish gates that do not scale with the variant count, composed here so a caller gets
+        # one branchable field without reimplementing the contract — and so `_would_publish` below
+        # can build on it rather than restate it, which is what would let the two drift.
+        would_publish_module_level=(
+            result.valid and stats.get("module_name") in (None, name) and not published_as
+        ),
     )
 
 
@@ -680,15 +737,35 @@ def _dry_run_inner(
         )
 
     subject_count = enrichment_subject_count(validation.stats)
-    if subject_count > settings.enrich_max_variants:
+    # `not offline` is the whole of the condition, and it is the bound's own rationale applied
+    # honestly: this cap exists because the paced passes cost ~6s per twenty subjects against an
+    # IP-scoped budget, and an offline run makes no request at all. Measured on this suite's own
+    # spec, offline and with the socket tripwire armed: 40,000 subjects in 5.1s, linear from 100 —
+    # so the ceiling was refusing in zero time a run costing under 2% of `enrich_timeout_seconds`.
+    # CPU on the offline path stays bounded by that timeout and by the concurrency gate, which are
+    # the bounds designed for it; a subject count never was.
+    if not offline and subject_count > settings.enrich_max_variants:
         # 422 rather than 413: the request body is fine, the amount of *work* it asks for is not.
+        #
+        # The validation above is carried into the error body rather than discarded. The server has
+        # already computed the module-level verdict by this point, and throwing it away made the dry
+        # run answer specs that could not publish (`invalid_spec` short-circuits earlier, with a
+        # report) while refusing the ones that could.
         raise PublishError(
             "too_many_variants",
             errors=[
                 f"{subject_count} enrichment subject(s) exceeds the limit of "
-                f"{settings.enrich_max_variants}. Check a smaller module, or ask the operator to "
-                f"raise REGISTRY_ENRICH_MAX_VARIANTS."
+                f"{settings.enrich_max_variants} for an online check. Re-run with `offline=true`, "
+                f"which has no ceiling and answers everything a local snapshot can; POST "
+                f"/validate for the module-level verdict alone; or ask the operator to raise "
+                f"REGISTRY_ENRICH_MAX_VARIANTS."
             ],
+            extra={
+                "subject_count": subject_count,
+                "limit": settings.enrich_max_variants,
+                "validation": validation.model_dump(mode="json"),
+                "would_publish_module_level": validation.would_publish_module_level,
+            },
         )
 
     enrichment = _run_enrichment_passes(
@@ -716,11 +793,18 @@ def _would_publish(validation: ValidationReport, enrichment: EnrichmentReport) -
     and VRS shortfalls never block — nor does `clin_sig_not_checked`, and it must not start to: a
     check the *operator* disabled or has no snapshot for is not a defect in the module, and failing
     a publish over it would make a publisher answer for a deployment they cannot configure.
+
+    `unreachable_rsids` (S20) does not soften the strict verdict either, and that is the honest answer
+    rather than a kind one: this field predicts what a *publish* would do, and a publish under strict
+    against an Ensembl that will not answer really does refuse. What the field changes is the reading —
+    `false` here plus a non-empty `unreachable_rsids` means "re-run", not "go fix your spec" — which is
+    why the report says so in `notes` and `unresolved_hint` says so on the publish path.
+
+    The module-level half is `validation.would_publish_module_level` rather than a second copy of
+    those three gates, so the field `/validate` publishes cannot disagree with the verdict here.
     """
     return (
-        validation.valid
-        and validation.name_matches_path
-        and not validation.published_as
+        validation.would_publish_module_level
         and not enrichment.ref_mismatches
         and not any(s.fatal for s in enrichment.stale_rsids)
         and not (validation.strict and enrichment.unresolved)
@@ -803,11 +887,23 @@ def _run_enrichment_passes(
     skipped_clinsig = clin_sig_skip_note(result.clin_sig_not_checked)
     if skipped_clinsig:
         notes.append(skipped_clinsig)
+    # Said in prose as well as in the field, for the reader who is looking at an unresolved list and
+    # deciding what to do about it. Deliberately not merged with the missing-snapshot lines above: those
+    # say resolution took a slower route, this says a question came back with no answer at all.
+    if result.unreachable_rsids:
+        notes.append(
+            f"live Ensembl could not be reached for {len(result.unreachable_rsids)} rsID(s) "
+            f"({', '.join(result.unreachable_rsids[:5])}"
+            + (" …" if len(result.unreachable_rsids) > 5 else "")
+            + "), so their absence is unchecked rather than established. Re-run the check before "
+            "reading them as rsIDs Ensembl does not have, or before authoring coordinates for them."
+        )
 
     report = EnrichmentReport(
         mode=result.mode,
         offline=offline,
         unresolved=list(result.unresolved),
+        unreachable_rsids=list(result.unreachable_rsids),
         sources=list(result.sources),
         ref_mismatches=[
             RefMismatchEntry(
@@ -966,6 +1062,20 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
     route for comes back `unchecked` and is reported apart from both, because the enricher's own
     `clean` counts it as clean and it is not a statement about the module.
 
+    **Since enricher 0.5.4 this pass answers a second, sharper question (S24): does the row's `gene`
+    name the chromosome the row's own variant sits on?** Symbol currency and gene/variant agreement are
+    different axes — `FTO` is approved whatever variant is beside it — so a row pairing a real symbol
+    with an rsID on another chromosome passed every check this tier had. It is also the shape a
+    generated citation fails in, since dbSNP is dense enough that almost any invented rs number
+    resolves to something. Reported as `gene_loci`, never repaired: which of the two identifiers is
+    wrong is not knowable here.
+
+    That comparison works on this endpoint because of the ordering upstream: `enrich()` ran with
+    `write=True` just before, so `resolution.csv` is on disk beside the spec and an rsID-only row has a
+    chromosome to compare against. The pass reads that table and fetches nothing for it — a currency
+    check must not depend on a resolver. Without it the comparison would come back
+    `gene_loci_not_checked`, which is why that field is surfaced rather than dropped.
+
     Degrades on a transport failure rather than failing the dry run: OLS4 being down says nothing
     about the spec, and the other passes' findings are still worth returning.
     """
@@ -1011,11 +1121,19 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
             for g in report.stale_genes
         ],
         unchecked=unchecked,
+        gene_loci=[str(conflict) for conflict in report.gene_loci],
+        # The sibling field that says which kind of empty `gene_loci` is (S24, same contract as
+        # `clin_sig_not_checked`). Passed through as the enricher wrote it: the reasons name a missing
+        # HGNC chromosome or an absent resolution table, both of which are facts about the run rather
+        # than about this deployment's settings, so there is nothing for this tier to re-word.
+        gene_loci_not_checked=report.gene_loci_not_checked,
         # Scoped to what this pass asked. `IdentifierReport.clean` also folds in `rsids`, which this
         # call never populates (they are checked inside `enrich()` and reported as `stale_rsids`), so
-        # reading it would let one pass answer for another's field.
+        # reading it would let one pass answer for another's field. `gene_loci` *is* included — it is
+        # this pass's own finding, and upstream folded it into their `clean` in 0.5.4 for the same
+        # reason.
         clean=(
-            not (report.stale_traits or report.stale_genes)
+            not (report.stale_traits or report.stale_genes or report.gene_loci)
             if (report.traits or report.genes)
             else None
         ),
@@ -1254,8 +1372,12 @@ class EnrichmentGate:
        requests — exactly gnomAD's published 10-per-60s budget). Concurrent runs holding separate
        bundles egress at N× that. gnomAD is unauthenticated and throttles by IP, so the penalty lands
        on *this server* and everyone using it, and there is no key to buy a higher ceiling.
-    3. `PacingGate` is a plain dataclass with no lock, so a shared bundle across threads races it.
-       A limit of 1 is what makes sharing one bundle correct.
+    3. Latency. Since enricher 0.5.4 (S15) `PacingGate` is thread-safe — it reserves a slot under a
+       lock and waits outside it — so concurrent runs sharing one bundle no longer race it, and reason
+       3 stopped being "a limit of 1 is what makes sharing correct". What is left is that the pace is
+       shared: two concurrent runs interleave on the same 6-second spacing, so each takes roughly twice
+       as long rather than the pair going twice as fast. Raising the limit buys queue depth, not
+       throughput, and the two lanes below already order the queue by who is waiting.
 
     Deliberately **not** an `asyncio.Semaphore`. `asyncio.wait_for` cancels the await, not the
     thread — Python cannot kill a thread — so a run that blows its timeout keeps working. The permit
@@ -1302,6 +1424,17 @@ class EnrichmentGate:
         #: happens to wake first wins, so a publish can be overtaken indefinitely by later arrivals.
         self._next_ticket = 0
         self._waiting: set[int] = set()
+
+    def occupancy(self) -> dict[str, int]:
+        """A snapshot for `/health`: permits in use, publishes queued, and the ceiling.
+
+        Read under the lock and returned as plain ints, so a reporting caller cannot observe a
+        half-updated pair or retain anything that keeps mutating after it is serialized. It is a
+        snapshot in the honest sense — true when taken, stale immediately, which is all a health
+        endpoint ever offers.
+        """
+        with self._lock:
+            return {"active": self._active, "queued": len(self._waiting), "limit": self.limit}
 
     def try_acquire(self) -> bool:
         """Interactive: take a permit if one is free, else fail immediately. Never blocks."""

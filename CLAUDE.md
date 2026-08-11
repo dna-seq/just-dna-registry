@@ -115,6 +115,13 @@ stale wrapper.
 - **SDK parity is part of the endpoint.** Every REST endpoint is wrapped by a `RegistryClient` method
   **in the same patch** that adds it, and covered in `tests/test_client_sdk.py`. SDK↔API drift is
   what blocked webui publishing in 0.8.1; a route with no client method is an unfinished route.
+- **Every release carries a `**Client surface:**` line** — *unchanged*, or the methods whose
+  signatures moved. Consumers call a handful of methods against a 35-endpoint API, so "did this
+  release touch anything I call?" is their only real question, and without that line the sole way to
+  answer it is to read a release in full or diff the client (S2: 0.9.1 → 0.12.0 cost exactly that,
+  to conclude nothing had moved). A new method is *unchanged* for this purpose: it breaks nobody.
+  Both reference docs are likewise stamped with the version range they are normative for — an
+  unstamped schema is what makes a consumer write defensive code against a shape we specified exactly.
 - **Downloads** redirect (`302`) to presigned/CDN URLs; the API serves JSON, not artifact bytes.
 - **Auth**: Bearer tokens. Anonymous reads are allowed but throttled harder. Rate-limit with per-token
   buckets (publish 10/h, download 1000/h, search 60/min).
@@ -149,10 +156,14 @@ Four rules that each cost a bug to learn:
   compiler's strict gate refuse — it names the offending variants.
 - **One shared `LookupClients` per process, on *every* path that egresses.** The outbound pacing that
   keeps us inside gnomAD's and NCBI's limits lives on the client object, so per-request bundles egress
-  at N× the intended rate. That sharing is only safe because the concurrency gate defaults to 1
-  (`PacingGate` has no lock) — which means the two rules are one rule: **anything that takes the
-  shared bundle must also take a gate permit.** `/check` and the publish path both do; publish takes
-  it conditionally, since an offline publish reaches nothing and has nothing to serialize.
+  at N× the intended rate. **Anything that takes the shared bundle must also take a gate permit** —
+  `/check` and the publish path both do; publish takes it conditionally, since an offline publish
+  reaches nothing and has nothing to serialize. Through enricher 0.5.3 that was two rules welded into
+  one, because `PacingGate` had no lock and a limit above 1 would have *raced* it; 0.5.4 (S15) makes the
+  gate thread-safe, with this server's threadpool named as the arrangement that provoked the fix. So the
+  permit is now about the *budget*, not about the race: the pace is shared, so concurrent runs interleave
+  on one spacing rather than going faster, and `enrich_max_concurrency` stays 1 as a latency choice
+  rather than a correctness one.
   **And the bundle has to be *constructed*: bare `LookupClients()` is six `None`s.** Its docstring's
   "lazily built" describes `lookup.py`, whose functions do `clients.x or XClient()` and close what
   they made — nothing fills the dataclass. An empty bundle passes `None` into every `resolver=` /
@@ -176,7 +187,18 @@ Four rules that each cost a bug to learn:
   is the author's `--no-verify-clinsig` echoed back), and we must not, because here the switch is
   `REGISTRY_ENRICH_VERIFY_CLINSIG` and the publisher cannot see the server's settings. **And a skip is
   never a publish gate**: the reasons are all operator-side, and failing a publish over one would make
-  a publisher answer for a deployment they cannot configure.
+  a publisher answer for a deployment they cannot configure. Two more of these landed with 0.5.4, and
+  both are worth reading as the same lesson at a different altitude: `unreachable_rsids` beside
+  `unresolved` (S20 — a key with no position says nothing about whether anybody *asked*, and an
+  unanswered request reported as an absence is indistinguishable from a fabricated rsID), and
+  `gene_loci_not_checked` beside `gene_loci` (S24). The rule generalizes past collections: **a field
+  whose value can be produced by two opposite histories needs a sibling that says which happened.**
+- **A skip is not a gate, but a *transient* failure is not an authoring defect either.** The advice
+  attached to a refusal has to name the right actor. `unresolved` under strict really does refuse a
+  publish, so `would_publish` stays `false` — but when the cause is an Ensembl that never answered, all
+  three standard remedies (provision a snapshot, allow egress, author coordinates) send the publisher
+  after work on a variant that is perfectly findable. The verdict is unchanged and the *hint* changes:
+  re-run. Check `unresolved_hint` before adding a fourth remedy to that message.
 - **The two callers want opposite things from a full gate, so there are two lanes.** `/check` is
   interactive: `try_acquire`, `503` on a full gate, because queueing behind a paced run turns a fast
   rejection into a slow timeout. Publish is idle: `acquire_idle`, no deadline, deferring to
@@ -200,10 +222,27 @@ control: it is the only thing holding our aggregate rate inside a limit we canno
 
 ---
 
+## Former names — retired, not forgotten
+
+**"Marketplace" is a former name of this project.** It is recorded here rather than merely deleted,
+because a purge with no note is how a retired name comes back: the next person meets it in a legacy
+path or an old manifest, finds nothing explaining it, and reintroduces it as though it were current.
+
+| former | current | status |
+|---|---|---|
+| package `just-dna-marketplace` | `just-dna-registry` | renamed in 0.9.0 |
+| host `module-marketplace.just-dna.life` | `module-registry.just-dna.life` | retired; the old name is a legacy domain only |
+| on-disk `just-dna-marketplace/` | `just-dna-registry/` | renamed; a symlink keeps the old path resolving for siblings that hardcode it |
+| `compiled_by="marketplace-server"` | — | **deliberately kept.** It is baked into every published manifest and clients verify against that literal, so renaming it would invalidate the trust check on immutable data. Not a leftover |
+| default DB `data/marketplace.db` | `data/registry.db` | renamed in 0.9.0; `validate_db_path` still detects the orphan, so the old name must stay spelled out in `startup.py` |
+
+"Store" remains the app-store **UI** in the webui; the registry is this backend. Neither is "the
+marketplace".
+
 ## Deployment modes (0.12)
 
 `REGISTRY_MODE` is `prod` (default) or `test`. Two deployments of one image: production is
-`module-marketplace.just-dna.life`; the **polygon** is `module-polygon.just-dna.life`, default port
+`module-registry.just-dna.life`; the **polygon** is `module-polygon.just-dna.life`, default port
 +100 (8100). An unknown mode **refuses to boot** — a typo that resolved either way is invisible from a
 running server, and one direction arms a delete endpoint on production data.
 
@@ -248,6 +287,14 @@ running server, and one direction arms a delete endpoint on production data.
   separate question**: rows with no `chrom`+`start` match nothing in a VCF, it is legal and stays a
   warning in both modes (compiler 0.5.3), and it must never become a publish gate — the remedy is a
   compiler change (upstream RM43), not an authored edit.
+- **That facet reads a warning *string*, and the fragment is imported rather than spelled**
+  (`compiler.UNJOINABLE_PHRASE`, compiler 0.5.4 / upstream S13). The coupling exists because the manifest
+  carries no structured record of what resolution was applied to, and the warning is the only copy a
+  reindex can still see once the spec directory is gone. Two rules while it lasts: **never widen the
+  match** (only that fragment is frozen upstream; the sentence around it is free to improve), and keep
+  the test that drives a real publish through the real compiler — an import proves the two spellings
+  agree, not that the warning still fires and still reaches `manifest.compilation.warnings`. The
+  structural fix is RM44, targeted at format 0.6; when it lands, delete the facet and the test.
 - **Immutability + yank**: never mutate a published version's bytes. Yank sets `yanked=true` (drops it
   from default listings and `latest`) but keeps the manifest + artifact fetchable so existing installs
   keep verifying. Un-yank is allowed.
@@ -314,10 +361,49 @@ row/unique counts derived from inspecting data is not.
 
 ---
 
+## Consumer feedback is a conversation (the triage loop)
+
+`docs/CONSUMER_SUGGESTIONS.md` is an **inbox**, and every item in it gets a maintainer reply written back
+into the document beside the report. The runbook is **[docs/CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md)** —
+read it before answering one. Three dependency-free scripts run it:
+
+```
+.claude/triage-state.sh [--pending] [--next]    # the ledger; --next claims the next id
+.claude/triage-archive.sh S3 [--dry-run]        # move answered items, verifying the prose moved verbatim
+.claude/watch-suggestions.sh                    # debounced watcher, armed with the Monitor tool
+```
+
+- **The document is the state.** A reply carries `<!-- triaged: <version> · sha <12 hex> -->` holding a
+  fingerprint of the *consumer's* text only, so re-running after our own write is a no-op. Not git: the loop
+  must not commit, and a consumer may commit their own addition.
+- **Answered items move to `docs/CONSUMER_SUGGESTIONS_HISTORY.md`**, so an empty inbox means nothing is owed.
+  Ids are never reused, and `--next` computes the next one over **both** files — an empty inbox otherwise
+  invites a second `S1`.
+- **The consumer's prose is evidence: never edited, never re-wrapped**, not even when it is moved. Replies
+  are appended. That is why archiving is a tool's job and why it verifies each fingerprint survived.
+- **`new` never means "no work done".** Establish what already shipped (CHANGELOG, ROADMAP, `git log -S`)
+  before reproducing, and reproduce before classifying — upstream's first run found two of eleven items
+  already fixed.
+- **Legality sizes the release; severity only orders the queue inside it.** A severe finding fixed by a new
+  response field is minor; a trivial one fixed by renaming a query param is major. The table is in the
+  runbook, along with the four traps (immutability, the global `content_hash` claim, the lockstep
+  `just-dna-format` minor, and `REGISTRY_MODE` not being a repair).
+- **A fifth route exists here: upstream.** If the fix belongs to the manifest, compiler or enricher, restate
+  the item in *their* terms in `../just-dna-format/docs/CONSUMER_SUGGESTIONS.md` with an id from *their*
+  ledger — that file is the one writable path in a sibling repo, append-only, and never committed by us.
+  Forwarding our wording verbatim gets it triaged as somebody else's problem.
+
+The pattern is published as a gist (`gist.github.com/winternewt/54b94bda01812be937b892146d1bb254`) and the
+scripts here are that copy with the `INBOX` default repointed. A change to the *pattern* belongs in the gist
+too; a change to this repo's release table or routing does not. Sync is one-way and by hand.
+
+---
+
 ## Related repos
 
 Part of a multi-root ecosystem: `just-dna-lite` (main app + webui), `just-dna-pipelines`
 (compiler/discovery — this service's dependency), `just-prs`, `prepare-annotations`, `dna-seq`.
-Treat sibling repos as **read-only** unless the task explicitly targets them. This registry plugs
-into the existing `Source` discovery model as *just another source* (`registry://`), so existing
-HuggingFace/local modules keep working with zero migration.
+Treat sibling repos as **read-only** unless the task explicitly targets them — the one exception is
+`../just-dna-format/docs/CONSUMER_SUGGESTIONS.md`, which we append upstream items to (see above). This
+registry plugs into the existing `Source` discovery model as *just another source* (`registry://`), so
+existing HuggingFace/local modules keep working with zero migration.
