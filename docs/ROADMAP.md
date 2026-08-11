@@ -383,7 +383,10 @@ an explicit guard:
   reported 0 to a guard that then let every row through.
 - **Free from upstream**: `heteroplasmy.csv` joined the enricher's subject list.
 - **Still owed upstream**: the trust verdict keys off warning *prose* because the manifest records no
-  structured check state — S8 / RM43. When that field lands, `_UNJOINABLE_MARKER` goes away.
+  structured check state. Filed as **S13** in `just-dna-format` `docs/CONSUMER_SUGGESTIONS.md` (S8 and
+  upstream RM43 are the general case), asking for one additive integer — how many rows resolution was
+  applied to — which would make `fully_resolved=True` beside zero subjects self-evidently vacuous
+  without any consumer reading prose. When it lands, `UNJOINABLE_MARKER` and its pinning test go away.
 
 ## Next registry version (post-0.11)
 
