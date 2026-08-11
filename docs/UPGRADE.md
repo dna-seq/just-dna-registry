@@ -1,5 +1,34 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.12 deployment modes (operator note)
+
+**Existing production deployments need no change.** `REGISTRY_MODE` defaults to `prod`, and that is the
+strict side: production refuses `test-`prefixed data and serves no delete verb. An unrecognised value
+refuses to boot rather than guessing.
+
+**Standing up the polygon** (`module-polygon.just-dna.life`): same image, `REGISTRY_MODE=test`, its **own**
+`REGISTRY_DB_PATH` and artifact storage — never production's. It listens on **8100** by default (prod
+8000), a hundred apart so a misdirected client is refused rather than answered by the wrong catalog.
+`registry serve` prints the mode and, on a polygon, the three behaviours that differ.
+
+What the polygon does differently, and nothing else does: it accepts test-prefixed data, scopes
+`409 duplicate_content` to the publishing account, and serves `DELETE` on modules and versions
+(authenticated, namespace-scoped). Note the deliberate consequence — a polygon run cannot prove a
+*cross-account* duplicate would be refused on production.
+
+**Cleaning historical test data from production.** The new guard is prospective only: it refuses new
+test-prefixed publishes and does nothing about what is already in the catalog. Stop the server and run
+`registry purge-test-data` (a dry run) first, read the plan, then `--apply`. A prefix-matching module
+sitting in a *production* namespace is reported and skipped — it may be a real published module — and
+`--include-prod-namespaces` is the explicit opt-in. A production version authored by a purged account is
+kept and only loses its `published_by` pointer.
+
+**Backups now happen on their own.** Every destructive command snapshots the DB first, to
+`backups/registry-NNNNN-<utc>-<reason>.db` beside the DB (`REGISTRY_BACKUP_DIR` to move them). The index
+only counts up and never overwrites, so snapshots accumulate — put them somewhere with room, and prune
+deliberately. `registry list-backups` / `restore-backup`. A snapshot is the **index, not the artifacts**:
+restoring past a purge that removed artifact bytes gives rows pointing at storage keys that are gone.
+
 ## 0.11.3 trust re-projection (operator note — automatic)
 
 Nothing to run. Starting the server applies `_migrate_0_11_3_trust`, which re-projects the `trusted`

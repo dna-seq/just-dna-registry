@@ -182,6 +182,20 @@ class RegistryClient:
             raise RegistryError(resp.status_code, detail)
         return resp.json()
 
+    def _raise_for_status(self, resp: httpx.Response) -> None:
+        """`_json`'s error handling for a route that returns no body.
+
+        A `204` has nothing to parse, so calling `_json` on one would raise on the *success* path. Shares
+        the error extraction rather than duplicating it, so a failure from a bodiless endpoint reads the
+        same as any other (`RegistryError(status, detail)`).
+        """
+        if resp.status_code >= 400:
+            try:
+                detail = resp.json().get("detail", resp.text)
+            except Exception:
+                detail = resp.text
+            raise RegistryError(resp.status_code, detail)
+
     # ── Reads ─────────────────────────────────────────────────────────────────
 
     def list_modules(
@@ -635,6 +649,35 @@ class RegistryClient:
                 f"/modules/{namespace}/{name}/versions/{version}/yank", json={"yanked": False}
             )
         )
+
+    def delete_version(self, namespace: str, name: str, version: str) -> None:
+        """**Test instances only.** Hard-delete a version: rows, artifacts, and its content claim.
+
+        Not `yank`, and not a substitute for it. Yank is what production offers: the version stops being
+        listed but stays fetchable, so anyone who already installed it keeps verifying. This removes it,
+        which is only defensible where nothing downstream is entitled to keep working.
+
+        It exists so a rehearsal on the polygon (`REGISTRY_MODE=test`) is repeatable: a published version
+        is immutable and its authored data is claimed by a name-independent `content_hash` that yank does
+        **not** release, so without this every test publish permanently burns both a version number and
+        the right to publish that data under any other name.
+
+        Against a production registry the verb is not mounted at all, so this raises `405`. That is the
+        intended answer rather than a rough edge — a client cannot delete production data by pointing at
+        the wrong host.
+        """
+        self._raise_for_status(
+            self._http.delete(f"/modules/{namespace}/{name}/versions/{version}")
+        )
+
+    def delete_module(self, namespace: str, name: str) -> None:
+        """**Test instances only.** Hard-delete every version of a module, its artifacts and its claims.
+
+        The whole-module form because a rehearsal usually leaves several versions behind, and deleting
+        them one at a time is how a cleanup job half-finishes. See `delete_version` for why this exists
+        and why production answers `405`; on production, `yank` each version instead.
+        """
+        self._raise_for_status(self._http.delete(f"/modules/{namespace}/{name}"))
 
     # ── Social: stars & reviews ─────────────────────────────────────────────────
 

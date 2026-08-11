@@ -382,11 +382,15 @@ an explicit guard:
 - **The enrichment cost guard counts enrichment subjects**, not `variants.csv` rows. A PGx module
   reported 0 to a guard that then let every row through.
 - **Free from upstream**: `heteroplasmy.csv` joined the enricher's subject list.
-- **Still owed upstream**: the trust verdict keys off warning *prose* because the manifest records no
-  structured check state. Filed as **S13** in `just-dna-format` `docs/CONSUMER_SUGGESTIONS.md` (S8 and
-  upstream RM43 are the general case), asking for one additive integer — how many rows resolution was
-  applied to — which would make `fully_resolved=True` beside zero subjects self-evidently vacuous
-  without any consumer reading prose. When it lands, `UNJOINABLE_MARKER` and its pinning test go away.
+- **Answered upstream, and waiting on 0.6**: the trust verdict keys off warning *prose* because the
+  manifest records no structured check state. Filed as **S13**, confirmed, and tracked as **RM44** for
+  format **0.6** — one additive integer (how many rows resolution was applied to), which makes
+  `fully_resolved=True` beside zero subjects self-evidently vacuous with no consumer reading prose.
+  Kept separate from S8's `checks_run`/`checks_skipped` (RM43/RM45) on upstream's argument that
+  resolution is not a verification pass, so a row count does not belong in a map of which checks ran.
+  Two things to do on the **next compiler floor bump**, both noted at `UNJOINABLE_MARKER`: import
+  upstream's new `compiler.UNJOINABLE_PHRASE` instead of holding the literal (absent from 0.5.3), and
+  when RM44 itself lands, delete the constant and its pinning test.
 
 ## Next registry version (post-0.11)
 

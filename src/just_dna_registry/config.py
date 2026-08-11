@@ -10,6 +10,16 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator
+
+#: The two deployment modes. `test` is the polygon (`module-polygon.just-dna.life`); `prod` is the
+#: catalog everyone else installs from.
+VALID_MODES_PROD = "prod"
+VALID_MODES_TEST = "test"
+VALID_MODES = frozenset({VALID_MODES_PROD, VALID_MODES_TEST})
+
+#: Default listen port per mode: prod 8000, polygon +100. One number apart so a misdirected client
+#: gets a connection refusal rather than the wrong catalog answering on the right port.
+DEFAULT_PORTS: dict[str, int] = {VALID_MODES_PROD: 8000, VALID_MODES_TEST: 8100}
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
@@ -28,8 +38,32 @@ class Settings(BaseSettings):
         env_prefix="REGISTRY_", extra="ignore", populate_by_name=True
     )
 
+    # ── Deployment mode (0.12) ────────────────────────────────────────────────────────────────────
+    #: `prod` | `test`. Two deployments of one image: production refuses test-prefixed data outright,
+    #: and the polygon (test) instance gains the delete verb that makes a burner publish disposable.
+    #:
+    #: Defaults to `prod`, and that direction is deliberate. A missing or misspelled `REGISTRY_MODE`
+    #: must land on the *strict* side: an instance that silently believes it is a test box would mount
+    #: a delete endpoint on production data, where the opposite mistake only refuses a `test-` publish
+    #: on the polygon and is obvious within one request.
+    mode: str = "prod"
+    #: The prefix that marks test data, in the namespace/account spelling. Module names allow no
+    #: hyphens (`lowercase alphanumeric with underscores`), so the module form is derived rather than
+    #: configured twice — see `services.purge.module_name_prefix`.
+    test_data_prefix: str = "test-"
+
     # Catalog DB (SQLite for MVP; the DB is a projection of manifest.json).
     db_path: Path = Path("data/registry.db")
+
+    # Where `registry backup` and the automatic pre-destructive snapshots write. `None` = `backups/`
+    # beside `db_path`, which keeps a snapshot next to the thing it snapshots. The sequence only counts
+    # up and never overwrites (see `backup.next_index`), so this directory grows until an operator
+    # prunes it deliberately — pick a volume where that is fine.
+    backup_dir: Path | None = None
+    # Snapshot the DB before every destructive admin op. Off is supported (`--no-backup` per command,
+    # or this globally) for a scripted teardown where the DB is disposable anyway, but the default is
+    # on: the ops that call it are the irreversible ones.
+    auto_backup: bool = True
 
     # Artifact storage. `local` is the dev/test backend; `hf` (HuggingFace Hub) is the
     # production backend and is wired in a later milestone.
@@ -272,6 +306,35 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+
+    @property
+    def is_test_instance(self) -> bool:
+        """Whether this deployment is the polygon. Read this, never `mode == "test"` at call sites."""
+        return self.mode == VALID_MODES_TEST
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, v: str) -> str:
+        """Refuse an unknown mode at boot rather than defaulting it.
+
+        A typo (`REGISTRY_MODE=testing`) must not resolve to either mode: falling back to `prod` would
+        deny the polygon its delete verb with no explanation, and falling back to `test` would arm a
+        delete endpoint on production. Neither is discoverable from a running server, so the mistake
+        belongs at startup, where it is one line in the log and the process does not come up.
+        """
+        v = (v or "").strip().lower()
+        if v not in VALID_MODES:
+            raise ValueError(f"mode must be one of {sorted(VALID_MODES)}, got: {v!r}")
+        return v
+
+    @field_validator("test_data_prefix")
+    @classmethod
+    def _validate_test_prefix(cls, v: str) -> str:
+        """Never empty. An empty prefix makes the production guard match every publish."""
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("test_data_prefix must not be empty (it would match every module)")
+        return v
 
     @field_validator("declared_use")
     @classmethod

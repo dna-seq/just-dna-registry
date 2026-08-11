@@ -113,6 +113,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.include_router(modules.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)
     app.include_router(publish.router, prefix=API_PREFIX)
+    # The polygon's delete verb, and *only* there (0.12). Conditional mounting rather than a guard in
+    # the handler: on production these paths do not exist, so a client holding a valid token cannot
+    # delete published data even by accident — there is nothing listening to authorize.
+    if settings.is_test_instance:
+        app.include_router(publish.testops_router, prefix=API_PREFIX)
     app.include_router(namespaces.router, prefix=API_PREFIX)
     app.include_router(orgs.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)

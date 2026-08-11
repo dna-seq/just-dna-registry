@@ -425,6 +425,103 @@ class Repository:
         self.conn.execute("DELETE FROM namespace_members WHERE namespace = ?", (namespace,))
         self.conn.commit()
 
+    def namespaces_for_account(self, account_id: int) -> list[str]:
+        """Namespaces this account *owns* (the `namespaces.account_id` grant, not a membership)."""
+        return [
+            r["name"] for r in self.conn.execute(
+                "SELECT name FROM namespaces WHERE account_id = ? ORDER BY name", (account_id,)
+            ).fetchall()
+        ]
+
+    def versions_published_by(self, account_id: int) -> list[sqlite3.Row]:
+        """Every published version this account authored, wherever it lives.
+
+        The join back to `modules` is the point: an account's own namespaces are easy to find, but a
+        member of somebody else's namespace publishes *there*, and those rows are what make a naive
+        account deletion either fail on a foreign key or orphan `versions.published_by`.
+        """
+        return self.conn.execute(
+            "SELECT m.namespace, m.name, v.version FROM versions v "
+            "JOIN modules m ON m.id = v.module_id WHERE v.published_by = ? "
+            "ORDER BY m.namespace, m.name, v.version",
+            (account_id,),
+        ).fetchall()
+
+    def delete_account(self, account_id: int, *, disown_versions: bool = False) -> None:
+        """Hard-delete an account and every row that references it. Ops-only.
+
+        **The order is the whole function.** `connect()` sets `PRAGMA foreign_keys = ON` and six tables
+        reference `accounts(id)`, of which only `reviews` declares `ON DELETE CASCADE` — so deleting the
+        row first does not cascade, it *raises*, and the tempting fix (turning the pragma off for the
+        duration) trades a loud failure for a catalog full of dangling ids.
+
+        `versions.published_by` is the one that cannot simply be deleted alongside: the version may live
+        in a namespace this account does not own, and destroying somebody else's published module to
+        remove an account would be catastrophically wrong. It is nullable, so `disown_versions=True`
+        sets it to `NULL` — the version survives, having lost only the authorship pointer. Left `False`
+        the caller must delete or reassign those versions first, and this raises rather than guessing:
+        the choice belongs to whoever knows why the account is going.
+
+        Not exposed over HTTP, and not going to be. Account deletion is a maintenance-window act with a
+        snapshot behind it, which is exactly what the CLI wraps and a request handler cannot promise.
+        """
+        published = self.versions_published_by(account_id)
+        if published and not disown_versions:
+            where = ", ".join(f"{r['namespace']}/{r['name']}@{r['version']}" for r in published[:5])
+            more = f" (+{len(published) - 5} more)" if len(published) > 5 else ""
+            raise ValueError(
+                f"account {account_id} still has {len(published)} published version(s): {where}{more}. "
+                f"Delete or reassign them first, or pass disown_versions=True to keep the modules and "
+                f"drop only the authorship pointer."
+            )
+        if published:
+            self.conn.execute(
+                "UPDATE versions SET published_by = NULL WHERE published_by = ?", (account_id,)
+            )
+        # Memberships and grants before the account itself. `namespaces` is an ownership grant, so
+        # removing it frees the name for re-claiming rather than deleting anything under it — a caller
+        # who wants the modules gone calls `delete_module` first (the CLI purge does).
+        self.conn.execute("DELETE FROM namespace_members WHERE account_id = ?", (account_id,))
+        self.conn.execute("DELETE FROM org_members WHERE account_id = ? OR org_id = ?",
+                          (account_id, account_id))
+        self.conn.execute("DELETE FROM module_stars WHERE account_id = ?", (account_id,))
+        self.conn.execute("DELETE FROM namespaces WHERE account_id = ?", (account_id,))
+        self.conn.execute("DELETE FROM api_keys WHERE account_id = ?", (account_id,))
+        self.conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+        self.conn.commit()
+
+    def accounts_with_prefix(self, prefix: str) -> list[sqlite3.Row]:
+        """Accounts whose handle starts with `prefix`. Empty prefix returns nothing, never everything."""
+        if not prefix:
+            return []
+        return self.conn.execute(
+            "SELECT id, name, type FROM accounts WHERE name LIKE ? || '%' ORDER BY name", (prefix,)
+        ).fetchall()
+
+    def namespaces_with_prefix(self, prefix: str) -> list[str]:
+        """Namespaces whose name starts with `prefix`. Empty prefix returns nothing."""
+        if not prefix:
+            return []
+        return [
+            r["name"] for r in self.conn.execute(
+                "SELECT name FROM namespaces WHERE name LIKE ? || '%' ORDER BY name", (prefix,)
+            ).fetchall()
+        ]
+
+    def modules_with_prefix(self, prefix: str) -> list[sqlite3.Row]:
+        """Modules whose *own name* starts with `prefix`, in any namespace. Empty prefix returns nothing.
+
+        Separate from `namespaces_with_prefix` because the two catch different things: `test-panel` in a
+        production namespace is found here and nowhere else, and it is precisely the row a purge must
+        not remove without being told to.
+        """
+        if not prefix:
+            return []
+        return self.conn.execute(
+            "SELECT namespace, name FROM modules WHERE name LIKE ? || '%' ORDER BY namespace, name",
+            (prefix,),
+        ).fetchall()
+
     def find_versions_by_digest(self, digest: str) -> list[sqlite3.Row]:
         """Every published version whose artifact matches `digest` (the content identity)."""
         return self.conn.execute(
@@ -449,8 +546,10 @@ class Repository:
         """
         if not content_hash:
             return []
+        # `published_by` rides along for the polygon's within-account dedup scope (0.12): the caller
+        # filters on it, so selecting it here keeps that decision out of SQL and in one Python place.
         return self.conn.execute(
-            "SELECT m.namespace, m.name, v.version, v.yanked FROM versions v "
+            "SELECT m.namespace, m.name, v.version, v.yanked, v.published_by FROM versions v "
             "JOIN modules m ON m.id = v.module_id WHERE v.content_hash = ? AND v.content_hash != '' "
             "ORDER BY m.namespace, m.name, v.version",
             (content_hash,),

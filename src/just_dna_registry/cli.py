@@ -14,13 +14,15 @@ import uvicorn
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.vocab import VALID_DECLARED_USE
 
-from just_dna_registry.config import Settings, get_settings
+from just_dna_registry.backup import create_backup, list_backups, restore_backup
+from just_dna_registry.config import DEFAULT_PORTS, Settings, get_settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
 from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.services.pmid_check import verify_pmids
+from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
 from just_dna_registry.services.upgrade import (
     VersionUpgradePlan,
@@ -29,6 +31,7 @@ from just_dna_registry.services.upgrade import (
     upgrade_version,
 )
 from just_dna_registry.storage.base import StorageBackend
+from just_dna_registry.testdata import test_data_refusal
 from just_dna_registry.storage.local import LocalStorage
 
 app = typer.Typer(help="just-dna-registry admin CLI", no_args_is_help=True)
@@ -65,10 +68,44 @@ def _storage(settings: Settings) -> StorageBackend:
     raise typer.BadParameter(f"unsupported storage_backend {settings.storage_backend!r}")
 
 
+def _guard(settings: Settings, *, reason: str, backup: bool) -> None:
+    """Snapshot the catalog before a destructive op, and say where it went.
+
+    Called *after* the confirmation prompt and *before* the first mutation, so an aborted command
+    leaves no snapshot and an applied one always has exactly one. `backup=False` (per-command
+    `--no-backup`, or `REGISTRY_AUTO_BACKUP=false`) is honoured but announced — a silent opt-out of the
+    only undo in this CLI is not something an operator should discover afterwards from a diff.
+    """
+    if not (backup and settings.auto_backup):
+        typer.secho("! no pre-flight snapshot taken (auto-backup disabled)", fg=typer.colors.YELLOW)
+        return
+    snapshot = create_backup(settings, reason=reason)
+    if snapshot is None:
+        typer.echo("no existing DB to snapshot")
+    else:
+        typer.secho(f"snapshot: {snapshot}", fg=typer.colors.GREEN)
+
+
 @app.command()
-def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False) -> None:
-    """Run the API server."""
-    uvicorn.run("just_dna_registry.api.app:app", host=host, port=port, reload=reload)
+def serve(
+    host: str = "127.0.0.1",
+    port: int = typer.Option(None, help="Default: 8000 in prod mode, 8100 in test mode"),
+    reload: bool = False,
+) -> None:
+    """Run the API server. The port defaults per `REGISTRY_MODE`: prod 8000, test (polygon) 8100.
+
+    One number apart rather than adjacent so a client pointed at the wrong instance gets a connection
+    refusal instead of the wrong catalog answering on a plausible port."""
+    settings = get_settings()
+    resolved = port if port is not None else DEFAULT_PORTS[settings.mode]
+    typer.echo(f"mode={settings.mode} listening on {host}:{resolved}")
+    if settings.is_test_instance:
+        typer.secho(
+            "test instance: accepts test-prefixed data, scopes duplicate_content to the publisher, "
+            "and mounts DELETE on modules/versions.",
+            fg=typer.colors.YELLOW,
+        )
+    uvicorn.run("just_dna_registry.api.app:app", host=host, port=resolved, reload=reload)
 
 
 @app.command("init-db")
@@ -102,6 +139,13 @@ def issue_key(
         repo.set_account_profile(
             account_id, email=email, display_name=display_name, avatar_url=avatar_url
         )
+    for ns in namespace:
+        # Same rule as the HTTP claim route: production does not host test-prefixed namespaces, and the
+        # CLI is the other door into the same table. Checked per namespace before any is granted, so a
+        # mixed list does not half-apply.
+        refusal = test_data_refusal(ns, "", settings)
+        if refusal is not None:
+            raise typer.BadParameter(refusal)
     for ns in namespace:
         repo.add_namespace(ns, account_id)
     key = "mk_live_" + secrets.token_urlsafe(24)
@@ -146,6 +190,7 @@ def reset_db(
         True, "--keep-keys/--wipe-keys",
         help="Keep accounts + API keys (default), or wipe them too",
     ),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Wipe the catalog projection (modules, versions, stars, reviews) — a fresh start. Accounts +
     API keys are **kept** by default (so you don't lock yourself out); `--wipe-keys` clears them too.
@@ -155,6 +200,7 @@ def reset_db(
     typer.echo(f"This will permanently delete {scope} in {settings.db_path.resolve()}. Artifacts are untouched.")
     if typer.prompt("Type RESET to confirm") != "RESET":
         raise typer.Abort()
+    _guard(settings, reason="reset-db", backup=backup)
     conn = connect(settings.db_path)
     init_db(conn)
     Repository(conn).reset_catalog(keep_auth=keep_keys)
@@ -305,7 +351,8 @@ def set_funding(account: str, url: str = typer.Argument(..., help="Donation link
 
 @app.command("remove-module")
 def remove_module(
-    namespace: str, name: str, yes: bool = typer.Option(False, "--yes", "-y")
+    namespace: str, name: str, yes: bool = typer.Option(False, "--yes", "-y"),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Hard-delete a module (all versions + artifacts). Ops-only; not reversible, not yank."""
     settings = get_settings()
@@ -313,6 +360,7 @@ def remove_module(
     storage = _storage(settings)
     if not yes:
         typer.confirm(f"Hard-delete {namespace}/{name} and ALL its artifacts?", abort=True)
+    _guard(settings, reason=f"remove-module-{namespace}-{name}", backup=backup)
     versions = repo.delete_module(namespace, name)
     storage.remove(f"{namespace}/{name}")
     typer.echo(f"removed {namespace}/{name} ({len(versions)} version(s): {versions})")
@@ -320,7 +368,8 @@ def remove_module(
 
 @app.command("remove-version")
 def remove_version(
-    namespace: str, name: str, version: str, yes: bool = typer.Option(False, "--yes", "-y")
+    namespace: str, name: str, version: str, yes: bool = typer.Option(False, "--yes", "-y"),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Hard-delete a single version + its artifacts (not yank). Frees it for re-upload."""
     settings = get_settings()
@@ -328,6 +377,7 @@ def remove_version(
     storage = _storage(settings)
     if not yes:
         typer.confirm(f"Hard-delete {namespace}/{name}@{version} and its artifacts?", abort=True)
+    _guard(settings, reason=f"remove-version-{namespace}-{name}", backup=backup)
     if not repo.delete_version(namespace, name, version):
         typer.echo(f"not found: {namespace}/{name}@{version}")
         raise typer.Exit(code=1)
@@ -336,7 +386,10 @@ def remove_version(
 
 
 @app.command("remove-namespace")
-def remove_namespace(namespace: str, yes: bool = typer.Option(False, "--yes", "-y")) -> None:
+def remove_namespace(
+    namespace: str, yes: bool = typer.Option(False, "--yes", "-y"),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
+) -> None:
     """Hard-delete every module under a namespace + its artifacts, and free the namespace so a new
     key can claim it. Ops-only; nothing resurfaces."""
     settings = get_settings()
@@ -349,6 +402,7 @@ def remove_namespace(namespace: str, yes: bool = typer.Option(False, "--yes", "-
             "and free the namespace?",
             abort=True,
         )
+    _guard(settings, reason=f"remove-namespace-{namespace}", backup=backup)
     for module in modules:
         repo.delete_module(namespace, module["name"])
     repo.delete_namespace_grant(namespace)
@@ -902,3 +956,106 @@ def rederive_signatures(
 
     written = apply_rederivation(repo, changes)
     typer.secho(f"\nwrote {written} signature(s)", fg=typer.colors.GREEN)
+
+
+# ── 0.12 backup + test-data purge ─────────────────────────────────────────────
+
+
+@app.command("backup")
+def backup_command(
+    reason: str = typer.Option("manual", "--reason", help="Goes in the filename, so `ls` explains itself"),
+) -> None:
+    """Snapshot the catalog DB now. Safe: the rolling index only counts up and never overwrites."""
+    settings = get_settings()
+    snapshot = create_backup(settings, reason=reason)
+    if snapshot is None:
+        typer.echo(f"no DB to snapshot at {settings.db_path.resolve()}")
+        raise typer.Exit(code=1)
+    typer.secho(f"snapshot: {snapshot}", fg=typer.colors.GREEN)
+
+
+@app.command("list-backups")
+def list_backups_command() -> None:
+    """Snapshots, newest first, by rolling index."""
+    settings = get_settings()
+    found = list_backups(settings)
+    if not found:
+        typer.echo("no snapshots")
+        return
+    for path in found:
+        typer.echo(f"{path.name}\t{path.stat().st_size / 1_048_576:.1f} MiB")
+
+
+@app.command("restore-backup")
+def restore_backup_command(
+    snapshot: Path = typer.Argument(..., help="Snapshot file (see list-backups)"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Replace the live catalog DB with a snapshot. Snapshots the current DB first, always.
+
+    Artifacts are NOT restored — a snapshot is the index, not the bytes. Restoring past a purge that
+    removed artifacts gives rows pointing at storage keys that are gone; check `list-backups` timing
+    against what you deleted."""
+    settings = get_settings()
+    if not yes:
+        typer.confirm(f"Replace {settings.db_path.resolve()} with {snapshot}?", abort=True)
+    typer.echo(f"restored {restore_backup(settings, snapshot)}")
+
+
+@app.command("purge-test-data")
+def purge_test_data(
+    prefix: str = typer.Option(DEFAULT_PREFIX, "--prefix", help="What counts as test data"),
+    apply: bool = typer.Option(False, "--apply", help="Actually remove it (default is a dry run)"),
+    include_prod_namespaces: bool = typer.Option(
+        False, "--include-prod-namespaces",
+        help="Also remove prefix-matching modules that live in NON-test namespaces (dangerous)",
+    ),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Remove test accounts, namespaces and modules (+ orphans under them). Dry run by default.
+
+    Run it with the server stopped: it deletes artifacts and rows that an in-flight publish may be
+    holding, and SQLite gives no way to tell one is in progress.
+
+    A module whose *name* matches the prefix but which lives in a production namespace is reported and
+    **skipped** — it may be a real published module, and deleting it is unrecoverable. `--include-prod-
+    namespaces` opts in. A production version authored by a purged account is kept and only loses its
+    `published_by` pointer."""
+    settings = get_settings()
+    repo = _open_existing_db(settings)
+    plan = plan_purge(repo, prefix=prefix, include_prod_namespaces=include_prod_namespaces)
+
+    if not prefix.strip():
+        typer.secho("empty --prefix matches nothing (refusing to treat it as match-all)",
+                    fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    if plan.is_empty and not plan.modules_in_prod:
+        typer.echo(f"nothing matches {prefix!r}")
+        return
+
+    for line in plan.describe():
+        typer.echo("  " + line)
+    if plan.modules_in_prod and not include_prod_namespaces:
+        typer.secho(
+            f"\n{len(plan.modules_in_prod)} prefix-matching module(s) in production namespaces were "
+            f"SKIPPED — pass --include-prod-namespaces to remove them too.",
+            fg=typer.colors.YELLOW,
+        )
+    if not apply:
+        typer.echo(f"\ndry run — {len(plan.modules)} module(s) would be removed. Re-run with --apply.")
+        return
+
+    if not yes:
+        typer.confirm(
+            f"\nPermanently remove {len(plan.modules)} module(s), {len(plan.namespaces)} namespace(s) "
+            f"and {len(plan.accounts)} account(s) + their artifacts?",
+            abort=True,
+        )
+    _guard(settings, reason=f"purge-{prefix.strip('-') or 'test'}", backup=backup)
+    apply_purge(repo, _storage(settings), plan)
+    typer.secho(
+        f"purged {len(plan.modules)} module(s), {len(plan.namespaces)} namespace(s), "
+        f"{len(plan.accounts)} account(s); {len(plan.disowned_versions)} version(s) disowned",
+        fg=typer.colors.GREEN,
+    )

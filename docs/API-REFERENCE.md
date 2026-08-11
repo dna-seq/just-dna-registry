@@ -113,6 +113,8 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 32 | GET | `/api/v1/version` | — | The server's API + `just-dna-format` contract versions |
 | 33 | POST | `/api/v1/orgs` … | bearer | Org create / members / role / settings / namespaces |
 | 34 | GET/PUT/DELETE | `/api/v1/modules/{ns}/{name}[/versions/{v}]/reviews` | bearer (writes) | Reviews and audits |
+| 35 | DELETE | `/api/v1/modules/{ns}/{name}/versions/{v}` | bearer | Hard-delete a version — **test instance only**, `405` on prod (0.12) |
+| 36 | DELETE | `/api/v1/modules/{ns}/{name}` | bearer | Hard-delete every version — **test instance only** (0.12) |
 
 ---
 
@@ -679,3 +681,47 @@ The source-of-truth contract (from `just-dna-format`; the DB is a projection of 
 `inputs` and `logs` are hashed the same way but **not** part of that digest. All hashes are SHA-256,
 lowercase hex, `sha256:`-prefixed. A downloader verifies with `just_dna_format.verify_manifest`
 (see [CLIENT.md](CLIENT.md) / SPEC §5).
+
+---
+
+## Deployment modes, and the two routes only a test instance serves (0.12)
+
+`REGISTRY_MODE` selects `prod` (default) or `test`. Production is
+`module-marketplace.just-dna.life`; the **polygon** is `module-polygon.just-dna.life` (default port
+8100 against production's 8000). An unrecognised mode refuses to boot.
+
+Three behaviours differ, and nothing else does:
+
+| | production | polygon (`test`) |
+|---|---|---|
+| `test-`prefixed namespace / `test_`prefixed module | `422 test_data_on_prod` on publish **and** on `POST /namespaces` | accepted |
+| `409 duplicate_content` | considers every version, any account | scoped to the **publishing account** |
+| `DELETE` on a module / version | `405` (not mounted) | served |
+
+**Why the delete verb exists.** A published `(namespace, name, version)` is immutable, and its authored
+data is claimed by a name-independent `content_hash` that **`yank` does not release**. So on a single
+instance every rehearsal permanently burns a version number *and* the right to publish that data under
+any other name. On production that is correct — an installed module must keep verifying. On a test box
+it makes rehearsal single-use, which is what these routes fix.
+
+**On the dedup difference.** Within-account scoping keeps the gate exercised (your own rename is still
+refused) while stopping one tester's rehearsal from blocking another's. The cost is explicit: a polygon
+run cannot prove a *cross-account* duplicate would be refused in production.
+
+### 35. `DELETE /api/v1/modules/{ns}/{name}/versions/{version}`  *(bearer — test instance only)*
+
+Hard-delete one version: catalog rows, artifacts, and its content claim. `204` on success,
+`404 version_not_found` if it was not there, `405` on a production instance, `403` without namespace
+membership — authenticated and namespace-scoped exactly like publish, because the polygon answers on a
+public DNS name and "open" means the verb is available, not that it is unauthenticated.
+
+Not a substitute for `yank`, and production has no equivalent by design.
+
+### 36. `DELETE /api/v1/modules/{ns}/{name}`  *(bearer — test instance only)*
+
+The same, for every version of a module at once — a rehearsal usually leaves several behind, and
+deleting them one at a time is how a cleanup job half-finishes. `204`, or `404 module_not_found`.
+
+**SDK**: `RegistryClient.delete_version()` / `.delete_module()`. Always present, with no mode logic — a
+client cannot know a host's mode before asking, so the limitation is in the docstring rather than in the
+method's existence.

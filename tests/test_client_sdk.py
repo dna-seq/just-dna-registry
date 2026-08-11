@@ -286,6 +286,10 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("PUT", "/api/v1/orgs/{org}/members/{member}/role"): ("set_org_role",),
     ("POST", "/api/v1/orgs/{org}/namespaces"): ("create_org_namespace",),
     ("PATCH", "/api/v1/orgs/{org}/settings"): ("update_org_settings",),
+    # Mounted only on a test instance (`REGISTRY_MODE=test`), and covered here anyway — see
+    # `test_every_route_is_wrapped_by_a_client_method` for why the guard enumerates both modes.
+    ("DELETE", "/api/v1/modules/{namespace}/{name}/versions/{version}"): ("delete_version",),
+    ("DELETE", "/api/v1/modules/{namespace}/{name}"): ("delete_module",),
 }
 
 
@@ -297,13 +301,31 @@ def _server_routes(app) -> set[tuple[str, str]]:
     }
 
 
-def test_every_route_is_wrapped_by_a_client_method(app) -> None:
-    served = _server_routes(app)
+def test_every_route_is_wrapped_by_a_client_method(app, tmp_path) -> None:
+    """Every served route has a client method — **in both deployment modes**.
+
+    The `app` fixture is a production instance, and 0.12 added routes that only exist on the polygon
+    (`DELETE` on a module/version). Enumerating one mode would have let those ship unwrapped: the guard
+    would have passed while the SDK had no method for a live endpoint, which is exactly the drift that
+    blocked webui publishing in 0.8.1. So the union of both modes' routes is compared against the table,
+    and a mode-gated route is as much a route as any other.
+    """
+    from just_dna_registry.api.app import create_app
+    from just_dna_registry.config import Settings
+
+    polygon = create_app(Settings(
+        mode="test",
+        db_path=tmp_path / "polygon.db",
+        local_storage_dir=tmp_path / "polygon-artifacts",
+    ))
+    served = _server_routes(app) | _server_routes(polygon)
     assert served == set(_WRAPPED_ROUTES), (
         "unwrapped routes: "
         f"{sorted(served - set(_WRAPPED_ROUTES))}; routes that no longer exist: "
         f"{sorted(set(_WRAPPED_ROUTES) - served)}"
     )
+    # The polygon adds routes and never removes any: a mode must not be able to hide an endpoint.
+    assert _server_routes(app) < _server_routes(polygon)
 
 
 # The one query param the SDK deliberately spells as two methods rather than an argument: `format`
@@ -379,3 +401,77 @@ def test_preflight_query_flags_reach_the_cli_too(
     assert query_flags - {"declared_use"} <= cli_params, (
         f"CLI cannot send {sorted(query_flags - {'declared_use'} - cli_params)}"
     )
+
+
+# ── The delete verb: always on the client, only served by a polygon ────────────
+
+
+def test_the_client_always_offers_delete_and_names_the_limitation() -> None:
+    """The SDK is mode-free by design: the methods exist unconditionally.
+
+    A client cannot know what mode a host runs in until it asks, and gating the methods on a guess would
+    mean a `RegistryClient` that silently lacks a verb depending on where it was pointed. So both methods
+    are always present and the *docstring* carries the limitation — which this asserts, because an
+    undocumented `405` from a method that looks universal is the worst version of this.
+    """
+    for method in (RegistryClient.delete_version, RegistryClient.delete_module):
+        doc = method.__doc__ or ""
+        assert "Test instances only" in doc
+        assert "405" in doc          # what production actually answers
+        assert "yank" in doc.lower() # and what to use there instead
+
+
+def test_delete_round_trips_against_a_polygon(tmp_path) -> None:
+    """Driven through the real client against a real test-mode app, including the reason it exists:
+    after a delete the same *data* is publishable again, not merely the same version number."""
+    from just_dna_registry.api.app import create_app
+    from just_dna_registry.config import Settings
+
+    polygon = create_app(Settings(
+        mode="test",
+        db_path=tmp_path / "polygon.db",
+        local_storage_dir=tmp_path / "artifacts",
+        ensembl_cache=tmp_path / "empty",
+        clinvar_cache=tmp_path / "empty",
+        constraint_cache=tmp_path / "empty",
+    ))
+    repo = polygon.state.repo
+    account = repo.create_account("antonkulaga")
+    repo.add_namespace("test-sandbox", account)
+    repo.add_api_key("mk_live_testkey", account)
+
+    tc = TestClient(polygon)
+    with RegistryClient(
+        "http://testserver", token="mk_live_testkey", transport=tc._transport, check_version=False
+    ) as sdk:
+        def _spec(module_name: str) -> Path:
+            """A spec dir whose module name differs but whose authored rows are byte-identical.
+
+            `content_signature` is name-independent by design, so these two specs share a content claim —
+            which is what makes the last assertion in this test mean something."""
+            d = tmp_path / f"spec-{module_name}"
+            d.mkdir()
+            (d / "module_spec.yaml").write_text(
+                f"schema_version: \"1.0\"\nmodule:\n  name: {module_name}\n  title: B\n"
+                f"  report_title: B\n  description: A burner module for the delete round trip.\n"
+                f"genome_build: GRCh38\n"
+            )
+            (d / "variants.csv").write_text(
+                "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category\n"
+                "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19\n"
+            )
+            (d / "studies.csv").write_text(
+                "rsid,pmid,population,p_value,conclusion,study_design\nrs4244285,1,T,0.05,E,U\n"
+            )
+            return d
+
+        spec = _spec("burner")
+        sdk.publish("test-sandbox", "burner", "1.0.0", spec)
+        assert [v["version"] for v in sdk.versions("test-sandbox", "burner")["items"]] == ["1.0.0"]
+
+        assert sdk.delete_version("test-sandbox", "burner", "1.0.0") is None
+        # The version number is free again, and so is the content claim under a new name.
+        sdk.publish("test-sandbox", "burner", "1.0.0", spec)
+        sdk.delete_module("test-sandbox", "burner")
+        assert repo.get_module_row("test-sandbox", "burner") is None
+        sdk.publish("test-sandbox", "reused", "1.0.0", _spec("reused"))  # same data, no 409

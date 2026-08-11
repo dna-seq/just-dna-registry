@@ -28,14 +28,25 @@ def predates_resolution_contract(manifest: ModuleManifest) -> bool:
 #: The factual core of the compiler's positional-joinability warning (compiler 0.5.3). Matched as a
 #: substring because the sentence around it names a table and two counts.
 #:
-#: Prose-coupled, which is not where this belongs and is exactly what the registry asked the format
-#: for in `CONSUMER_SUGGESTIONS.md` S8 (upstream RM43): a structured `checks_run`/`checks_skipped` on
-#: the manifest would make this a field lookup. Until then the warning is the only *durable* record —
+#: Prose-coupled, which is not where this belongs. Reported upstream as S13 and **accepted**: the fix
+#: is one additive integer on `Compilation` — how many rows resolution was applied to — which makes
+#: `fully_resolved=True` beside zero subjects self-evidently vacuous with no prose anywhere. It is
+#: tracked as **RM44**, targeted at format **0.6**, and deliberately *not* folded into S8's
+#: `checks_run`/`checks_skipped` (RM43/RM45): resolution is not a verification pass, so a row count
+#: does not belong in a map of which checks ran. Until then the warning is the only *durable* record —
 #: it rides in `manifest.compilation.warnings`, which is what `is_trusted` can still see at reindex
-#: time, when the spec directory is long gone. Two things keep the coupling honest: a test compiles a
-#: real rsid-authored spec through the real compiler and asserts this fires, so an upstream reword
-#: breaks the build instead of silently re-granting trust; and the miss direction is `None`
-#: ("cannot say"), never `True`.
+#: time, when the spec directory is long gone.
+#:
+#: **Two follow-ups for whoever next bumps the compiler floor.** Upstream has since promoted this
+#: fragment to `just_dna_compiler.compiler.UNJOINABLE_PHRASE` and pinned it on their side too, so once
+#: a release carries it this literal becomes `from just_dna_compiler.compiler import UNJOINABLE_PHRASE`
+#: and the drift risk goes away entirely — it is absent from 0.5.3, which is why it is still spelled
+#: out here. Only this *fragment* is frozen upstream; the rest of the sentence is free to change, so
+#: never widen the match. When RM44 lands, delete both this constant and its pinning test.
+#:
+#: Meanwhile two things keep the coupling honest: a test compiles a real rsid-authored spec through the
+#: real compiler and asserts this fires, so an upstream reword breaks the build instead of silently
+#: re-granting trust; and the miss direction is `None` ("cannot say"), never `True`.
 UNJOINABLE_MARKER = "have no chrom+start"
 
 

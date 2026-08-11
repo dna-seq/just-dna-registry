@@ -20,6 +20,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -45,7 +46,7 @@ from just_dna_registry.permissions import Capability
 from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services import publish as publish_service
 from just_dna_registry.specfiles import REQUIRED_SPEC_FILES
-from just_dna_registry.storage.base import StorageBackend
+from just_dna_registry.storage.base import StorageBackend, version_key
 
 router = APIRouter(prefix="/modules", tags=["publish"])
 
@@ -607,3 +608,81 @@ def yank(
     if not repo.set_yanked(namespace, name, version, yanked):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version_not_found")
     return {"namespace": namespace, "name": name, "version": version, "yanked": yanked}
+
+
+# ── The polygon's delete verb (0.12) ──────────────────────────────────────────
+#
+# Mounted only when `mode == "test"` — see `api/app.py`. On production the verb is refused by the router
+# rather than by a handler (`405 Method Not Allowed`: the paths exist and serve GET/POST, so "method not
+# allowed" is the accurate answer, not "no such module"). That is the property worth having — a
+# misconfigured client cannot delete production data by presenting a valid token, because there is no
+# handler to authorize it.
+#
+# Why the polygon needs it. A published `(namespace, name, version)` is immutable and its authored data
+# is claimed by a name-independent `content_hash` that `yank` does not release — so on a test box every
+# rehearsal permanently burns both a version number and the right to publish that data anywhere else.
+# Without a delete verb the only cure is shell access and `registry remove-version`, which a CI job
+# driving the polygon over HTTPS does not have. That is the "strange situation of burner-tests".
+#
+# Authenticated and namespace-scoped, deliberately, even here. The polygon answers on a public DNS name,
+# so "open" means the verb is available, never that it is unauthenticated: the same bearer token and the
+# same `Capability.PUBLISH` that put the version there can take it away.
+
+
+#: A separate router so the mounting can be conditional — `app.py` includes it only on the polygon.
+#: Same prefix and tags, so the paths and the OpenAPI grouping are identical to the publish routes they
+#: sit beside; the only difference is that on production this router is never handed to the app.
+testops_router = APIRouter(prefix="/modules", tags=["publish"])
+
+
+def _require_test_instance(settings: Settings) -> None:
+    """Belt to the router's braces. The route is not mounted on production; if a future refactor mounts
+    it unconditionally, this turns that mistake into a 404 rather than a deleted catalog. Not reachable
+    today, and deliberately kept: the cost is four lines and the failure it guards is unrecoverable."""
+    if not settings.is_test_instance:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")
+
+
+@testops_router.delete("/{namespace}/{name}/versions/{version}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_version(
+    repo: RepoDep,
+    storage: StorageDep,
+    settings: SettingsDep,
+    account: AccountDep,
+    namespace: str,
+    name: str,
+    version: str,
+) -> Response:
+    """**Test instance only.** Hard-delete one version: rows, artifacts, and its content claim.
+
+    Not `yank`. Yank is the production answer — it withdraws a version while keeping it verifiable for
+    anyone who already installed it. This removes it, which is only defensible where nothing downstream
+    is entitled to keep working, and frees the `content_hash` so the same data can be published again.
+    """
+    _require_test_instance(settings)
+    require_capability(repo, account, namespace, Capability.PUBLISH)
+    if not repo.delete_version(namespace, name, version):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version_not_found")
+    storage.remove(version_key(namespace, name, version))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@testops_router.delete("/{namespace}/{name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_module(
+    repo: RepoDep,
+    storage: StorageDep,
+    settings: SettingsDep,
+    account: AccountDep,
+    namespace: str,
+    name: str,
+) -> Response:
+    """**Test instance only.** Hard-delete every version of a module, its artifacts, and its content
+    claims. The whole-module form exists because a rehearsal usually leaves several versions behind and
+    deleting them one at a time is how a cleanup job half-finishes."""
+    _require_test_instance(settings)
+    require_capability(repo, account, namespace, Capability.PUBLISH)
+    versions = repo.delete_module(namespace, name)
+    if not versions:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="module_not_found")
+    storage.remove(f"{namespace}/{name}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

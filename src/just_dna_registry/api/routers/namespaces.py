@@ -17,6 +17,7 @@ from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.models.api import AddMemberRequest, MemberEntry, MemberList
 from just_dna_registry.permissions import VALID_NS_ROLES, Capability
+from just_dna_registry.testdata import test_data_refusal
 
 router = APIRouter(prefix="/namespaces", tags=["namespaces"])
 
@@ -45,6 +46,15 @@ def claim(repo: RepoDep, settings: SettingsDep, account: AccountDep, body: Claim
     namespace = body.namespace
     if not is_valid_namespace(namespace):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="invalid_namespace")
+    # A production instance refuses to *create* test-prefixed namespaces as well as to publish into
+    # them (0.12). Blocking only the publish would leave the name claimed and the caller's quota spent
+    # on a namespace nothing can ever be pushed to.
+    refusal = test_data_refusal(namespace, "", settings)
+    if refusal is not None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"error": "test_data_on_prod", "errors": [refusal]},
+        )
 
     owner = repo.namespace_owner(namespace)
     if owner is not None:

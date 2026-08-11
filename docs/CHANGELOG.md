@@ -6,6 +6,76 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.12.0] — 2026-08-11
+
+Two deployments of one image: **production** (`module-marketplace.just-dna.life`) and the **polygon**
+(`module-polygon.just-dna.life`, `REGISTRY_MODE=test`). Plus the ops safety net that makes cleaning up
+after a test survivable.
+
+### Why a mode exists at all
+
+A published `(namespace, name, version)` is immutable, and its authored data is claimed by a
+name-independent `content_hash` that **`yank` does not release**. Measured, not assumed: publish to a
+sandbox namespace → publish the same data for real → `409 duplicate_content`; yank the sandbox copy →
+still `409`; hard-purge it → `201`. So on a single instance every rehearsal permanently burns both a
+version number and the right to publish that data under any other name. That is the burner-test trap,
+and it is why a test subtree in production is not a workable answer.
+
+- **`REGISTRY_MODE`** = `prod` (default) | `test`. An unknown value **refuses to boot** — falling back
+  either way is invisible from a running server, and one direction arms a delete endpoint on production.
+- **Default port follows the mode**: prod 8000, polygon 8100. A hundred apart so a misdirected client
+  gets a connection refusal instead of the wrong catalog answering on a plausible port.
+- **Production refuses test data** at both doors: publishing into a `test-`prefixed namespace, publishing
+  a `test_`prefixed module name, and *claiming* such a namespace (`422 test_data_on_prod`). Blocking only
+  the publish would leave the name claimed and the caller's quota spent on a dead namespace. `issue-key`
+  refuses it too — the CLI is the other way into the same table.
+- **Two spellings, one flag.** Namespaces and account handles allow hyphens; a module name is validated
+  `lowercase alphanumeric with underscores`, so `test-panel` is a `422` at publish and can never exist.
+  The prefix is normalised per identifier (`purge.module_name_prefix`) rather than configured twice.
+- **The polygon scopes `duplicate_content` to the publisher.** A shared test box has several people
+  rehearsing overlapping data, and blocking on someone else's rehearsal is noise. Within-account is kept
+  so the gate is still exercised. This is one contract with two behaviours, so a polygon run cannot prove
+  a *cross-account* duplicate would be refused in production — that stays covered by unit tests.
+- **`DELETE` on a module/version, polygon only.** Authenticated and namespace-scoped (the box answers on
+  public DNS, so "open" means available, not unauthenticated). Frees the version number *and* the content
+  claim. Production refuses it at the router with `405` — the paths exist for GET/POST, so "method not
+  allowed" is the accurate answer, and there is no handler to authorize.
+- **SDK**: `RegistryClient.delete_version()` / `.delete_module()`, always present and mode-free — a
+  client cannot know a host's mode before asking, so the limitation lives in the docstring instead.
+
+### Rolling backups, and a purge that reports before it removes
+
+- **`registry backup`** snapshots the catalog DB via SQLite's online-backup API (atomic against a live
+  writer). Filenames are `registry-00001-<utc>-<reason>.db`: a **rolling index that only counts up and
+  never overwrites**. Not a ring buffer — snapshot 3 is still snapshot 3 after snapshot 8 exists, and
+  deleting a middle one does not let the number be reused. They accumulate on purpose; pruning is a
+  separate, explicit act. `list-backups`, `restore-backup` (which snapshots what it replaces first).
+- **Automatic pre-flight snapshot** on every destructive op — `reset-db`, `remove-module`,
+  `remove-version`, `remove-namespace`, `purge-test-data` — taken after the confirmation and before the
+  first mutation. `--no-backup` / `REGISTRY_AUTO_BACKUP=false` is honoured but *announced*.
+- **`registry purge-test-data`**, dry run by default. Removes test accounts, namespaces, modules and the
+  orphans under them, in an order that respects the foreign keys.
+- **A prefix-matching module in a *production* namespace is reported and skipped** unless
+  `--include-prod-namespaces`. It may be a real published module with users; its name matching is not
+  consent to delete it.
+- **A production version authored by a purged account is kept and only disowned** (`published_by` →
+  `NULL`). The three options were: delete the module (catastrophic), fail the purge (a test account that
+  ever published to prod could never be removed), or keep the module. The third, reported in the plan.
+- **An empty prefix matches nothing**, guarded in the repository, the planner and the CLI. That is the one
+  bug that would make this command indistinguishable from `reset-db` on a live box.
+- New `delete_account` handles what a naive delete could not: `PRAGMA foreign_keys = ON` and six tables
+  reference `accounts(id)` with only `reviews` cascading, so the order *is* the function.
+
+### Also
+
+- **The parity guard now enumerates both modes.** It compared a production app's routes, so the polygon's
+  `DELETE` endpoints would have shipped unwrapped with the gate passing — exactly the drift that blocked
+  webui publishing in 0.8.1. It also asserts the polygon's route set is a strict superset, so a mode can
+  never hide an endpoint.
+- **Scope note**: `purge-test-data` does not become redundant now that production refuses test data. The
+  guard is prospective only; everything published before it existed, or while a box was still a polygon,
+  still has to be swept.
+
 ## [0.11.3] — 2026-08-11
 
 Adopts `just-dna-compiler` / `just-dna-enricher` **0.5.3**. `just-dna-format` stays at **0.5.0**.

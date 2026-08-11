@@ -54,6 +54,7 @@ from just_dna_registry.services.enrich import enrich_spec, unresolved_hint
 from just_dna_registry.services.ingest import ingest_manifest, now_iso
 from just_dna_registry.specfiles import REQUIRED_SPEC_FILES, SPEC_YAML, is_spec_file
 from just_dna_registry.storage.base import StorageBackend, version_key
+from just_dna_registry.testdata import duplicate_scope_account, test_data_refusal
 
 _REVERSE_MARKER: str = "weights.parquet"  # a legacy compiled module has this but no spec
 
@@ -383,11 +384,22 @@ def _finalize(
                 info=validation.info,
             )
 
+        # Production refuses test data outright (0.12). Checked here rather than at the route so every
+        # publish path shares it, and before the dedup/enrich/compile spend because a refusal this
+        # certain should cost nothing. The polygon accepts it — that is what the instance is for.
+        refusal = test_data_refusal(namespace, name, settings)
+        if refusal is not None:
+            action.log(message_type="test_data_on_prod", namespace=namespace, name=name)
+            raise PublishError("test_data_on_prod", errors=[refusal])
+
         # Dedup before the compile, not after. The signature is a hash of the authored rows — no
         # reference, no parquet build — so it is cheap and available now, and rejecting here saves a
         # duplicate the entire cost of enrich + compile. Same value the compiler will stamp onto
         # `manifest.content_signature`.
-        _reject_duplicate_content(repo, spec_dir, namespace, name, action)
+        _reject_duplicate_content(
+            repo, spec_dir, namespace, name, action,
+            scope_account=published_by if duplicate_scope_account(settings) else None,
+        )
 
         # The network tier, as a separate step ahead of the compile (CONSTITUTION Principle 2).
         # Writes `resolution.csv` into the spec dir; the compiler reads it from there.
@@ -493,7 +505,8 @@ def _finalize(
 
 
 def _reject_duplicate_content(
-    repo: Repository, spec_dir: Path, namespace: str, name: str, action: Any
+    repo: Repository, spec_dir: Path, namespace: str, name: str, action: Any,
+    *, scope_account: Optional[int] = None,
 ) -> str:
     """Refuse a republish of data already listed under a *different* `(namespace, name)`.
 
@@ -506,6 +519,13 @@ def _reject_duplicate_content(
     A collision under the *same* module (a later version with unchanged data) is fine and allowed.
     Returns the signature.
 
+    `scope_account` narrows the search to versions that account published, which is what the polygon
+    passes (`testdata.duplicate_scope_account`). On a shared test box a cross-account block is noise
+    about somebody else's rehearsal; within-account still exercises the gate, so a publisher meets their
+    own rename being refused here rather than for the first time on production. Production passes `None`
+    and considers every version, because a name-independent signature exists precisely to catch a
+    re-list under a new owner.
+
     Rows whose `content_hash` is empty are pre-0.5 and have not been re-derived yet
     (`registry rederive-signatures`); the repository filters them out rather than letting an empty
     string collide with itself and 409 every publish during the migration window.
@@ -514,6 +534,7 @@ def _reject_duplicate_content(
     elsewhere = [
         r for r in repo.find_versions_by_content(signature)
         if (r["namespace"], r["name"]) != (namespace, name)
+        and (scope_account is None or r["published_by"] == scope_account)
     ]
     if elsewhere:
         where = ", ".join(f"{r['namespace']}/{r['name']}@{r['version']}" for r in elsewhere)

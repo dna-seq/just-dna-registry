@@ -200,6 +200,32 @@ control: it is the only thing holding our aggregate rate inside a limit we canno
 
 ---
 
+## Deployment modes (0.12)
+
+`REGISTRY_MODE` is `prod` (default) or `test`. Two deployments of one image: production is
+`module-marketplace.just-dna.life`; the **polygon** is `module-polygon.just-dna.life`, default port
++100 (8100). An unknown mode **refuses to boot** — a typo that resolved either way is invisible from a
+running server, and one direction arms a delete endpoint on production data.
+
+- **The mode is a server concept only. Never gate the client on it.** `RegistryClient` always exposes
+  `delete_version`/`delete_module`; a client cannot know a host's mode before asking, and a method that
+  silently vanishes depending on where you pointed it is worse than a documented `405`.
+- **Why the mode exists**: a published version is immutable *and* its data is claimed by a
+  name-independent `content_hash` that **`yank` does not release**. So without a delete verb every
+  rehearsal permanently burns a version number and the right to publish that data under any other name.
+  A test subtree inside production cannot fix this — the claim is global, and only a hard purge frees it.
+- **Production refuses test data at every door** (publish, namespace claim, `issue-key`), and the two
+  identifier spellings differ: namespaces/handles take `test-`, module names take `test_` (they forbid
+  hyphens). One flag, normalised per identifier — never configure it twice.
+- **That guard is prospective only.** It does not clean what is already there, so `purge-test-data`
+  stays necessary. Do not describe one as making the other redundant.
+- **Anything destructive snapshots first** (`backup._guard` in the CLI). The rolling index only counts
+  up and never overwrites — it is not a ring buffer, and taking a backup must be the one safe act here.
+- **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
+  guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
+
+---
+
 ## Manifest & integrity (see SPEC §4–§6)
 
 - The `manifest.json` is the contract and the source of truth. Registry-level fields (`namespace`,
