@@ -6,6 +6,66 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.11.3] — 2026-08-11
+
+Adopts `just-dna-compiler` / `just-dna-enricher` **0.5.3**. `just-dna-format` stays at **0.5.0**.
+Digest-neutral upstream (all eleven reference examples recompile byte-identical), so no republish —
+but this release **does change a stored facet**, and ships a migration for it.
+
+### A module that joins to no VCF is no longer advertised as trusted
+
+Compiler 0.5.3 reports what a VCF cannot join: resolution is scoped to `variants.csv`, so an
+rsid-authored PGx or heteroplasmy table compiles clean, validates, publishes — and has a null
+`chrom`/`start` on every row, matching nothing. That finding exposed a defect on our side.
+
+`is_trusted` read `resolution_mode == "strict" or fully_resolved`. For a module with no
+`variants.csv`, `fully_resolved` is `all()` over an empty list — vacuously `True` — so the disjunction
+granted trust on an empty quantifier. Measured on the format's own reference examples:
+`pgx_slco1b1_simvastatin` (9 of 9 rows unplaced) and `cyp2c19_star_alleles` (106 of 106 `haplotypes.csv`
+rows carrying a `start` with no `chrom` — CPIC puts the position on `sequence_location` and the
+chromosome on `gene`, so there is no `chrom` column at all). Both were served under the fully-baked
+facet while annotating nothing.
+
+- **`trusted` is now three-valued in earnest.** `false` when the compiler reported any positional
+  table that joins by rsID only — checked *before* the mode, since `resolution_mode` and
+  `fully_resolved` both describe `variants.csv` alone and a module can resolve its SNP core perfectly
+  while shipping an unjoinable `haplotypes.csv`. `null` when nothing was ever resolved and no warning
+  was raised (a coordinate-authored PGx module is probably fine, and "probably" is not a verdict).
+  `true` otherwise, unchanged.
+- **Not blame.** rsid-only identity is legal by the format's own models, and 0.5.3 keeps it a warning
+  in both modes on purpose. The facet answers "can a consumer use this", and for the unjoinable part
+  the answer is no.
+- **Migration, not a republish.** The manifests are correct and immutable; only our reading of them
+  moved. `_migrate_0_11_3_trust` re-projects `trusted` for exactly the two affected populations, with
+  predicates that stop matching once fixed (idempotent without a marker table). `fully_resolved` is
+  left as the compiler stamped it — this reinterprets, it never edits.
+- **Prose-coupled, deliberately and visibly.** The verdict keys off the compiler's warning text,
+  because the manifest carries no structured record of which checks ran — the thing we asked upstream
+  for as S8 (tracked there as RM43). A test compiles a real spec through the real compiler and asserts
+  the marker still matches, so a reword breaks the build rather than silently re-granting trust.
+
+### The enrichment cost guard was blind to the module family that needed it
+
+`enrich_max_variants` counted `validation.stats.variant_count` — `variants.csv` and nothing else. The
+enricher has collected subjects from the PGx tables since 0.5 and from `heteroplasmy.csv` since 0.5.3,
+so a PGx module reported **0** subjects to a guard that then let every row through. Verified on
+`pgx_slco1b1_simvastatin`: `variant_count` absent, nine subjects.
+
+- `SpecStats.table_rows` now carries the compiler's per-table row counts, and
+  `enrichment_subject_count()` sums `variants.csv` plus each table the enricher actually asks about.
+- An upper bound on purpose: the enricher de-duplicates by `variant_key`, so a locus named in three
+  tables is counted three times and asked once. Over-counting costs a publisher a `422` they can
+  argue with; under-counting costs the deployment the rate limit it cannot buy back.
+- The `422 too_many_variants` message now says "enrichment subject(s)" rather than "variants".
+
+### Also
+
+- **Free from upstream**: `heteroplasmy.csv` joined the enricher's subject list, so such a module
+  resolves at all now (previously it enriched to nothing, and 0.5.3's new warning would have named a
+  gap no tool could close).
+- Incidental transitive bumps came with the lock refresh: **starlette 1.4.1 → 1.6.0**, platformdirs
+  4.11.0 → 4.11.2, typing-inspection 0.4.2 → 0.4.3. Full suite green on all of them.
+
 ## [0.11.2] — 2026-08-10
 
 Adopts `just-dna-compiler` / `just-dna-enricher` **0.5.2**. `just-dna-format` stays at **0.5.0**:

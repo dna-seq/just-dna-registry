@@ -1,5 +1,23 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.11.3 trust re-projection (operator note — automatic)
+
+Nothing to run. Starting the server applies `_migrate_0_11_3_trust`, which re-projects the `trusted`
+column for versions whose stored value was computed under the pre-0.11.3 rule. It reads
+`manifest_json` only — no storage, no network — which is why it is a migration rather than an ops
+command, and it is idempotent.
+
+**What visibly changes**: PGx and other table-only modules that previously showed as trusted now show
+`false` (the compiler reported a table no VCF can join by position) or `null` (nothing was ever
+resolved, so we have no verdict to offer). Nothing is republished and no `artifact.digest` moves —
+the manifests were always right, and only our reading of them was wrong. Expect the log line
+`0.11.3: re-projected `trusted` for N version(s).` once, then never again.
+
+If a module drops to `false` and you disagree, the fix is authored coordinates in the positional
+table (or upstream RM43, which would let the compiler apply `resolution.csv` to those tables) — not a
+registry setting. rsid-only identity stays legal and still publishes; the facet is a statement about
+joinability, not a gate.
+
 ## 0.11 reference caches + content-hash re-signing (operator note)
 
 0.11 adopts format/compiler/enricher **0.5**, and two of its changes need a deliberate act before the

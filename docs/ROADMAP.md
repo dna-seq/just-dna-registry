@@ -362,8 +362,38 @@ an explicit guard:
 - **Fixed**: multipart path traversal, missing upload bounds, the JWT rate-bucket collision, the
   PGx-only rejection, and the sidecar-dropping upgrade.
 
+## 0.11.2 — compiler/enricher 0.5.2 adoption ✅
+
+- **`clin_sig_not_checked` on the dry run and the publish path.** Enricher 0.5.2 (S4) ends the
+  ambiguity in `clin_sig_conflicts: []` — "compared everything, nothing disagreed" and "never
+  compared" no longer render identically. Surfaced as a structured token on `/check` and as prose on
+  `notes` / a failed publish's `warnings`. Never a publish gate: every reason is operator-side.
+- **Free from upstream**: the quadratic ClinVar probe is gone (a 297-gene panel went from ~2h to
+  seconds), and the tautological `clin_sig` cross-check on a provider-drafted panel is skipped with a
+  reason instead of spending 90% of the resolve time on a guaranteed zero.
+
+## 0.11.3 — compiler/enricher 0.5.3 adoption ✅
+
+- **The trust facet stopped believing an empty quantifier.** `fully_resolved` is `all()` over
+  `variants.csv`, so a table-only module got a vacuous `True` and the catalog served PGx modules that
+  join to no VCF under the fully-baked facet. `trusted` is now `false` on a positional-joinability
+  warning, `null` when nothing was ever resolved. Ships `_migrate_0_11_3_trust` to re-project stored
+  rows — the manifests were always right, only our reading moved.
+- **The enrichment cost guard counts enrichment subjects**, not `variants.csv` rows. A PGx module
+  reported 0 to a guard that then let every row through.
+- **Free from upstream**: `heteroplasmy.csv` joined the enricher's subject list.
+- **Still owed upstream**: the trust verdict keys off warning *prose* because the manifest records no
+  structured check state — S8 / RM43. When that field lands, `_UNJOINABLE_MARKER` goes away.
+
 ## Next registry version (post-0.11)
 
+- **A successful publish drops its enrichment findings.** `EnrichOutcome.notes` is read in exactly one
+  place — a *failed* compile's `warnings` (`services/publish.py`) — so on the happy path the ref-allele
+  result, the non-fatal stale rsIDs, the PAR drops and the new `clin_sig_not_checked` reason are
+  computed and discarded. The publisher is told least when the publish worked, which is backwards, and
+  `/check` already reports all of it. The fix is to carry them on the publish response; the deeper half
+  (a *downloader* can never learn which checks ran, because the manifest records none of it) needs a
+  format field and is filed upstream as S8 in `just-dna-format` `docs/CONSUMER_SUGGESTIONS.md`.
 - **Retire Eliot → stdlib `logging`.** (Carried over; still pending.)
 - **Redis-backed limiter *and* concurrency gate.** Both are process-local today, so with two replicas
   every limit is 2× — and gnomAD pacing in particular does not survive horizontal scaling without a

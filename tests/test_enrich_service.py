@@ -21,7 +21,9 @@ from pathlib import Path
 import pytest
 
 from just_dna_registry.config import Settings
+from just_dna_registry.models.api import SpecStats
 from just_dna_registry.services.enrich import (
+    ENRICHMENT_SUBJECT_TABLES,
     EnrichmentGate,
     enricher_available,
     EnrichOutcome,
@@ -32,6 +34,7 @@ from just_dna_registry.services.enrich import (
     available_references,
     clin_sig_skip_note,
     configured_caches,
+    enrichment_subject_count,
     unresolved_hint,
     vrs_coverage,
 )
@@ -180,6 +183,47 @@ def test_available_references_ignores_ambient_state_when_configured(
     monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", "/another/place")
     settings = Settings(ensembl_cache=tmp_path / "empty")
     assert available_references(settings)["ensembl"] is None
+
+
+# ── What the cost guard is actually counting ──────────────────────────────────
+
+
+def test_a_pgx_module_is_not_zero_subjects(tmp_path: Path) -> None:
+    """The bound has to count what `enrich()` asks about, not what `variants.csv` holds.
+
+    A PGx module has no `variants.csv` at all, so `variant_count` is `0` while the enricher collects a
+    subject per PGx row — the one module family whose row count the old guard could not see. Measured
+    against the format's own reference example rather than asserted: the numbers below come from the
+    compiler's `validate_spec`, so a change in what it reports fails here.
+    """
+    from just_dna_compiler.compiler import validate_spec
+
+    example = Path("/data/sources/just-dna-format/reference_examples/pgx_slco1b1_simvastatin")
+    if not example.is_dir():
+        pytest.skip("just-dna-format reference examples not checked out beside this repo")
+
+    raw = validate_spec(example).stats or {}
+    stats = SpecStats.model_validate(
+        {k: v for k, v in raw.items() if k in SpecStats.model_fields}
+    )
+    assert stats.variant_count == 0             # the old guard's entire input
+    assert stats.table_rows["pharm_variants.csv"] == 9
+    assert enrichment_subject_count(stats) == 9  # what the enricher would actually ask about
+
+
+def test_every_subject_table_is_counted() -> None:
+    """`variants.csv` plus each table the enricher collects from, and no double-count of the core."""
+    stats = SpecStats.model_validate(
+        {"variant_count": 5, "table_rows": {csv: 2 for csv in ENRICHMENT_SUBJECT_TABLES}}
+    )
+    assert enrichment_subject_count(stats) == 5 + 2 * len(ENRICHMENT_SUBJECT_TABLES)
+    # `heteroplasmy.csv` earns its place in the tuple: enricher 0.5.3 added it to `_collect_subjects`,
+    # and before that a heteroplasmy module both enriched to nothing and counted as nothing.
+    assert "heteroplasmy.csv" in ENRICHMENT_SUBJECT_TABLES
+    # A table the enricher never asks about must not inflate the bound into a spurious 422.
+    assert enrichment_subject_count(
+        SpecStats.model_validate({"variant_count": 1, "table_rows": {"diplotypes.csv": 9_000}})
+    ) == 1
 
 
 # ── A check that did not run ──────────────────────────────────────────────────

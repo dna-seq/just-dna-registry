@@ -310,6 +310,41 @@ def vrs_coverage(mint: Any) -> VrsCoverage:
     )
 
 
+#: The CSVs `just_dna_enricher.enrich._collect_subjects` asks about, besides `variants.csv`. Mirrored
+#: rather than imported because it is private there; the count below is a *bound*, so this erring on
+#: the generous side is the safe direction and a table we miss only under-counts.
+#:
+#: `heteroplasmy.csv` joined the list in enricher 0.5.3 — it had been left out with the same silence
+#: that made the whole family invisible here.
+ENRICHMENT_SUBJECT_TABLES: tuple[str, ...] = (
+    "pharm_variants.csv",
+    "haplotypes.csv",
+    "heteroplasmy.csv",
+)
+
+
+def enrichment_subject_count(stats: SpecStats) -> int:
+    """How many rows an `enrich()` on this spec would actually ask about.
+
+    Not `variant_count`, which counts `variants.csv` and nothing else. The enricher has collected
+    subjects from the PGx tables since 0.5 and from `heteroplasmy.csv` since 0.5.3, so a module with
+    no `variants.csv` reports `variant_count == 0` while handing the network tier every row it has —
+    measured on the format's own `pgx_slco1b1_simvastatin`: `variant_count` absent, nine subjects.
+
+    That made `enrich_max_variants` a guard the one module family most likely to need it slipped
+    straight past. The cap exists because these upstreams throttle by IP and gnomAD sells no key to
+    raise the limit, so an overspend throttles the whole deployment rather than the caller who caused
+    it — a bound that reads zero for a 7,000-row PGx panel is not a bound.
+
+    An upper bound, deliberately: the enricher de-duplicates subjects by `variant_key`, so a module
+    naming one locus across three tables is counted three times here and asked once. Over-counting
+    costs a publisher a `422` they can argue with; under-counting costs the deployment its rate limit.
+    """
+    return stats.variant_count + sum(
+        stats.table_rows.get(csv_name, 0) for csv_name in ENRICHMENT_SUBJECT_TABLES
+    )
+
+
 def clin_sig_skip_note(reason: Optional[str]) -> Optional[str]:
     """Turn `EnrichmentResult.clin_sig_not_checked` into a line for a publisher, or `None`.
 
@@ -644,13 +679,13 @@ def _dry_run_inner(
             ["just-dna-enricher is not installed on this server (it ships in the `server` extra)"]
         )
 
-    variant_count = validation.stats.variant_count
-    if variant_count > settings.enrich_max_variants:
+    subject_count = enrichment_subject_count(validation.stats)
+    if subject_count > settings.enrich_max_variants:
         # 422 rather than 413: the request body is fine, the amount of *work* it asks for is not.
         raise PublishError(
             "too_many_variants",
             errors=[
-                f"{variant_count} variants exceeds the enrichment limit of "
+                f"{subject_count} enrichment subject(s) exceeds the limit of "
                 f"{settings.enrich_max_variants}. Check a smaller module, or ask the operator to "
                 f"raise REGISTRY_ENRICH_MAX_VARIANTS."
             ],

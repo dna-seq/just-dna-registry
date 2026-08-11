@@ -266,7 +266,11 @@ by IP against a published 10-per-60s budget — there is no API key to raise it 
 `?frequencies=true` can take minutes. Rate bucket `enrich` (5/h) *plus* a process-wide concurrency
 gate (`enrich_max_concurrency`, default 1) — the bucket bounds one caller, the gate bounds the
 server. An invalid spec short-circuits before any of it is spent (`skipped_reason: "invalid_spec"`),
-and a module over `enrich_max_variants` is refused with `422 too_many_variants`.
+and a module over `enrich_max_variants` is refused with `422 too_many_variants`. That cap counts
+**enrichment subjects**, not `variants.csv` rows: the enricher also asks about `pharm_variants.csv`,
+`haplotypes.csv` and `heteroplasmy.csv`, so a PGx module with no `variants.csv` is not a module with
+nothing to enrich. It is an upper bound — subjects are de-duplicated by `variant_key` downstream, so a
+locus named in three tables counts three times here and is asked once.
 
 ### 29–30. `GET`/`POST /api/v1/modules/lookup`
 

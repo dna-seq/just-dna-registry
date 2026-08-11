@@ -17,6 +17,7 @@ from just_dna_compiler.compiler import (
     _PROVENANCE_FILE,
     _TABLE_KIND_CSVS,
 )
+from just_dna_format.manifest import ModuleManifest
 
 from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
@@ -152,8 +153,6 @@ def test_a_pgx_only_module_publishes_revalidates_and_upgrades(pgx_client) -> Non
     permanently un-upgradable. Driven against a real reference example rather than a hand-written
     fixture, so it is the compiler's judgement of completeness being tested, not ours.
     """
-    from just_dna_format.manifest import ModuleManifest
-
     from just_dna_registry.db.facets import is_trusted
     from just_dna_registry.services.revalidate import revalidate_version
     from just_dna_registry.services.upgrade import prepare_version_upgrade
@@ -168,11 +167,20 @@ def test_a_pgx_only_module_publishes_revalidates_and_upgrades(pgx_client) -> Non
     assert resp.status_code == 201, resp.text
     manifest = ModuleManifest.model_validate(resp.json())
 
-    # The trust rule is a DISJUNCTION and both halves matter: a variants-free module never gets a
-    # `resolution_mode`, so testing the mode alone would mark every PGx module untrusted.
+    # A variants-free module never gets a `resolution_mode`, and `fully_resolved` is then `all()` over
+    # an empty list — vacuously `True`, about a file that does not exist.
     assert manifest.compilation.resolution_mode is None
     assert manifest.compilation.fully_resolved is True
-    assert is_trusted(manifest) is True
+
+    # Through 0.11.2 this asserted `is_trusted() is True`, reading that vacuous flag as a verdict.
+    # It is not one *for this module*: all 106 `haplotypes.csv` rows carry a `start` with no `chrom`
+    # (CPIC publishes the position on `sequence_location` and the chromosome on `gene` — there is no
+    # `chrom` column at all), so nothing here joins to a VCF by position and the catalog was
+    # advertising it as fully-baked. Compiler 0.5.3 is what makes this visible, and the warning is
+    # the durable record of it.
+    assert manifest.compilation.fully_resolved is True  # still vacuously so
+    assert any("have no chrom+start" in w for w in manifest.compilation.warnings)
+    assert is_trusted(manifest) is False
 
     storage = pgx_client.app.state.storage
     status, _ = revalidate_version(storage, "just-dna-seq", name, "1.0.0", manifest)
@@ -183,6 +191,57 @@ def test_a_pgx_only_module_publishes_revalidates_and_upgrades(pgx_client) -> Non
     # The 0.5 sidecars survive the round trip. They are absent from `manifest.inputs` by design, so
     # carrying only what the manifest lists silently dropped them.
     assert {"resolution.csv", "sources.csv"} <= set(prep.files)
+
+
+def test_a_module_that_joins_to_no_vcf_is_not_advertised_as_trusted(pgx_client) -> None:
+    """The catalog column, not just the helper — a filter is what a consumer actually meets.
+
+    `trusted` is projected into `versions` on publish, so the defect this covers was not "a function
+    returned True" but "the catalog served a module that annotates nothing under the fully-baked
+    facet". Driven through a real publish of a real reference example, because the whole point is that
+    the compiler's judgement reaches the column.
+    """
+    resp = pgx_client.post(
+        "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions",
+        data={"version": "1.0.0"},
+        files=_pgx_parts(),
+        headers={"Authorization": "Bearer mk_live_testkey"},
+    )
+    assert resp.status_code == 201, resp.text
+    # From the projected column (the version list reads rows, never re-parsing the manifest)...
+    versions = pgx_client.get(
+        "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions"
+    ).json()["items"]
+    assert [v["resolution"]["trusted"] for v in versions] == [False]
+    # ...and from the manifest on the card, which is a second implementation that must agree.
+    card = pgx_client.get("/api/v1/modules").json()["items"][0]
+    assert card["resolution"]["trusted"] is False
+    # The vacuous flag is still reported as the compiler set it — this facet reinterprets, not edits.
+    assert card["resolution"]["fully_resolved"] is True
+
+
+def test_the_unjoinable_marker_still_matches_what_the_compiler_emits(pgx_client) -> None:
+    """The prose coupling in `facets.UNJOINABLE_MARKER`, pinned against the real compiler.
+
+    `is_trusted` reads a *warning string* because the manifest carries no structured record of which
+    checks ran (asked for as S8 upstream, tracked there as RM43). That coupling is acceptable only
+    while a reword fails loudly instead of silently re-granting trust to modules that join to nothing
+    — which is what this asserts. If the compiler rephrases, fix the marker; do not delete the test.
+    """
+    from just_dna_registry.db.facets import UNJOINABLE_MARKER, joins_nothing_positionally
+
+    resp = pgx_client.post(
+        "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions",
+        data={"version": "1.0.0"},
+        files=_pgx_parts(),
+        headers={"Authorization": "Bearer mk_live_testkey"},
+    )
+    manifest = ModuleManifest.model_validate(resp.json())
+    emitted = [w for w in manifest.compilation.warnings if UNJOINABLE_MARKER in w]
+    assert emitted, manifest.compilation.warnings
+    # The sentence names the table and both counts, which is what makes it worth surfacing verbatim.
+    assert "haplotypes.csv" in emitted[0] and "106" in emitted[0]
+    assert joins_nothing_positionally(manifest) is True
 
 
 def test_the_licensing_facet_surfaces_a_no_sale_clause(pgx_client) -> None:

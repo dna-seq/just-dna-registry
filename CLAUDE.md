@@ -213,6 +213,15 @@ control: it is the only thing holding our aggregate rate inside a limit we canno
     serialized with sorted keys and no whitespace, then hashed. This is the version's content identity.
 - **`compile_success` is trustworthy only when this server compiled it** (`compiled_by ==
   "marketplace-server"`). Treat foreign `compiled_by` or `false` as untrusted.
+- **A manifest flag scoped to one file is not a verdict about the module.** `fully_resolved`,
+  `resolution_mode` and the VRS counts all describe `variants.csv` **only**. A module without one gets
+  `fully_resolved=True` from an `all()` over an empty list, and reading that as trust is how the
+  catalog spent 0.11.x advertising PGx modules that join to no VCF as fully-baked (`db/facets.py`).
+  Before any new facet leans on a compile-time flag, ask what it quantifies over and what an empty
+  quantifier means — a table-only module is the case that finds out. **Positional joinability is the
+  separate question**: rows with no `chrom`+`start` match nothing in a VCF, it is legal and stays a
+  warning in both modes (compiler 0.5.3), and it must never become a publish gate — the remedy is a
+  compiler change (upstream RM43), not an authored edit.
 - **Immutability + yank**: never mutate a published version's bytes. Yank sets `yanked=true` (drops it
   from default listings and `latest`) but keeps the manifest + artifact fetchable so existing installs
   keep verifying. Un-yank is allowed.

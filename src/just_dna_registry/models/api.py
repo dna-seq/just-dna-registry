@@ -37,7 +37,12 @@ class ResolutionInfo(BaseModel):
     fully_resolved: bool = False
     trusted: Optional[bool] = Field(
         default=None,
-        description="`mode == strict or fully_resolved`. null = the version predates the contract",
+        description=(
+            "Whether this version is fully-baked. false when the compiler reported a table that no "
+            "VCF can join by position (rows with no chrom+start); otherwise `mode == strict or "
+            "fully_resolved`. null = we cannot say — the version predates the contract, or it has no "
+            "`variants.csv`, which makes `fully_resolved` an empty all() rather than a verdict."
+        ),
     )
     vrs_alleles: int = 0
     vrs_alleles_identified: int = 0
@@ -317,6 +322,14 @@ class SpecStats(CardStats):
 
     unique_rsids: int = 0
     module_name: Optional[str] = None
+    table_rows: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Rows per 0.4-family table CSV (`pharm_variants.csv`, `haplotypes.csv`, …). Separate from "
+            "`variant_count`, which counts `variants.csv` only — a PGx module has thousands of rows "
+            "and a `variant_count` of 0."
+        ),
+    )
 
 
 class ValidationReport(BaseModel):

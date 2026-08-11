@@ -6,10 +6,15 @@ The DB is a *projection* of each version's `manifest.json` (the source of truth)
 tables (`version_genes`, `version_categories`) for facet filters. SPEC §9.
 """
 
+import logging
 import sqlite3
 from pathlib import Path
 
 from just_dna_format.manifest import ModuleManifest
+
+from just_dna_registry.db.facets import UNJOINABLE_MARKER, is_trusted, version_facets
+
+logger = logging.getLogger("registry.db")
 
 SCHEMA: str = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -228,6 +233,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_content ON versions(content_hash)")
 
     _migrate_0_11_facets(conn, ver_cols)
+    _migrate_0_11_3_trust(conn)
 
     # 0.6.0 namespace membership: seed each existing single-owner namespace as an `owner` member,
     # so the new membership check (which supersedes single-owner) sees no disruption. Idempotent.
@@ -273,8 +279,6 @@ def _migrate_0_11_facets(conn: sqlite3.Connection, ver_cols: set[str]) -> None:
         if name not in ver_cols:
             conn.execute(f"ALTER TABLE versions ADD COLUMN {name} {decl}")
     if added:
-        from just_dna_registry.db.facets import version_facets
-
         for row in conn.execute("SELECT id, manifest_json FROM versions").fetchall():
             facets = version_facets(ModuleManifest.model_validate_json(row["manifest_json"]))
             conn.execute(
@@ -282,3 +286,43 @@ def _migrate_0_11_facets(conn: sqlite3.Connection, ver_cols: set[str]) -> None:
                 (*facets.values(), row["id"]),
             )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_trusted ON versions(trusted)")
+
+
+def _migrate_0_11_3_trust(conn: sqlite3.Connection) -> None:
+    """Re-project `trusted` where 0.11.3 changed the rule out from under a stored value.
+
+    A migration is required and a re-publish is not: the manifests are correct and immutable, only
+    our *reading* of them moved. `_migrate_0_11_facets` cannot do it — it backfills solely on the
+    columns' first appearance, so on any DB that has already migrated it will never fire again.
+
+    Two populations, and the predicates are written so each row stops matching once fixed, which is
+    what makes this idempotent without a marker table:
+
+    * `trusted = 1` with no `resolution_mode` — trust granted by `fully_resolved` being `all()` over a
+      `variants.csv` that does not exist. Becomes `False` (the compiler warned) or `NULL` (it did not).
+    * any row carrying the positional-joinability warning and not already `0`. The `LIKE` is a cheap
+      prefilter over `manifest_json`, not the decision: `is_trusted` re-derives from the parsed
+      manifest, so this stays the single derivation and cannot drift from the publish path. It is
+      bound from `UNJOINABLE_MARKER` rather than spelled again here, so the prefilter cannot go
+      looking for one string while the verdict keys off another.
+
+    Deliberately narrow rather than a whole-catalog re-projection. Rows this release did not affect
+    are not rewritten, so the migration cannot quietly repair — or quietly damage — anything else.
+    """
+    rows = conn.execute(
+        """
+        SELECT id, manifest_json FROM versions
+         WHERE (trusted = 1 AND resolution_mode IS NULL)
+            OR (manifest_json LIKE ? AND (trusted IS NULL OR trusted != 0))
+        """,
+        (f"%{UNJOINABLE_MARKER}%",),
+    ).fetchall()
+    if not rows:
+        return
+    for row in rows:
+        verdict = is_trusted(ModuleManifest.model_validate_json(row["manifest_json"]))
+        conn.execute(
+            "UPDATE versions SET trusted = ? WHERE id = ?",
+            (None if verdict is None else int(verdict), row["id"]),
+        )
+    logger.info("0.11.3: re-projected `trusted` for %d version(s).", len(rows))

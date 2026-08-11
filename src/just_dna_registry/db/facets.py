@@ -25,23 +25,69 @@ def predates_resolution_contract(manifest: ModuleManifest) -> bool:
     return manifest.content_signature is None
 
 
+#: The factual core of the compiler's positional-joinability warning (compiler 0.5.3). Matched as a
+#: substring because the sentence around it names a table and two counts.
+#:
+#: Prose-coupled, which is not where this belongs and is exactly what the registry asked the format
+#: for in `CONSUMER_SUGGESTIONS.md` S8 (upstream RM43): a structured `checks_run`/`checks_skipped` on
+#: the manifest would make this a field lookup. Until then the warning is the only *durable* record —
+#: it rides in `manifest.compilation.warnings`, which is what `is_trusted` can still see at reindex
+#: time, when the spec directory is long gone. Two things keep the coupling honest: a test compiles a
+#: real rsid-authored spec through the real compiler and asserts this fires, so an upstream reword
+#: breaks the build instead of silently re-granting trust; and the miss direction is `None`
+#: ("cannot say"), never `True`.
+UNJOINABLE_MARKER = "have no chrom+start"
+
+
+def joins_nothing_positionally(manifest: ModuleManifest) -> bool:
+    """Whether the compiler reported a table in this version that no VCF can join by position."""
+    return any(UNJOINABLE_MARKER in w for w in manifest.compilation.warnings)
+
+
 def is_trusted(manifest: ModuleManifest) -> Optional[bool]:
-    """Whether a consumer should treat this version as fully-baked. `None` = predates the contract.
+    """Whether a consumer should treat this version as fully-baked. `None` = we cannot say.
 
     The rule the format documents is a **disjunction**, and both halves are load-bearing:
     `resolution_mode == "strict" or fully_resolved`. Testing only the mode would mark every PGx-only
     module untrusted — `resolution_mode` is assigned inside the compiler's variants branch, so a
-    module with no `variants.csv` has `None` there while `fully_resolved` is vacuously true. Testing
-    only `fully_resolved` would miss a strict compile that resolved everything it was asked to.
+    module with no `variants.csv` has `None` there. Testing only `fully_resolved` would miss a strict
+    compile that resolved everything it was asked to.
 
-    Returns `None` rather than `False` for a pre-0.5 manifest. The distinction matters: `False` is a
-    verdict about a module, `None` is an admission that we cannot make one, and painting a whole
-    pre-existing catalogue scarlet on upgrade day would be the former standing in for the latter.
+    **But `fully_resolved` is `all()` over `variants.csv`, so for a table-only module it is vacuously
+    `True`** — and that half of the disjunction was granting trust on an empty quantifier. Measured on
+    the format's own `pgx_slco1b1_simvastatin` reference example: 9 of 9 `pharm_variants.csv` rows with
+    a null `chrom`/`start`, `resolution_mode=None`, `fully_resolved=True`, and this function returned
+    `True` for a module that joins to **no VCF at all** and therefore annotates nothing. Upstream
+    records the same defect (compiler 0.5.3, RM43) as recorded-not-fixed on their side, because the
+    remedy there is a compiler change; the facet is ours.
+
+    So the order below, and the first test is deliberately outside the disjunction entirely:
+
+    * the compiler said **any** positional table joins by rsID only → **`False`**. Checked before the
+      mode, not only in the vacuous branch, because `resolution_mode` and `fully_resolved` are both
+      statements about `variants.csv` alone: a module can resolve its SNP core perfectly and still
+      ship a `haplotypes.csv` that matches nothing. Not blame — rsid-only identity is legal, and 0.5.3
+      keeps it a warning in both modes on purpose — but this facet answers "can a consumer use this",
+      and for the unjoinable part the answer is no.
+    * nothing was ever resolved and no such warning → **`None`**. A coordinate-authored PGx module is
+      probably fine; "probably" is not a verdict, and we have no positive evidence to offer.
+    * a real strict compile, or a real `fully_resolved` over a real `variants.csv` → **`True`**.
+
+    `None` rather than `False` for a pre-0.5 manifest, on the same distinction: `False` is a verdict
+    about a module, `None` is an admission that we cannot make one, and painting a whole pre-existing
+    catalogue scarlet on upgrade day would be the former standing in for the latter.
     """
     if predates_resolution_contract(manifest):
         return None
     compilation = manifest.compilation
-    return compilation.resolution_mode == "strict" or compilation.fully_resolved
+    if joins_nothing_positionally(manifest):
+        return False
+    if compilation.resolution_mode == "strict":
+        return True
+    if compilation.resolution_mode is None:
+        # No `variants.csv`, so `fully_resolved` is an empty `all()` and says nothing on its own.
+        return None
+    return compilation.fully_resolved
 
 
 def version_facets(manifest: ModuleManifest) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.11.2"
+version = "0.11.3"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -23,10 +23,11 @@ dependencies = [
 # `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41). `just-dna-format` stays at
 # 0.5.0 on purpose — neither 0.5.1 nor 0.5.2 was a schema cut: both were two-package network-tier
 # releases that touched no model, parquet column or manifest field, which is what made them legal
-# inside the closed 0.5 digest window. Floor is 0.5.2 for the `--no-resolve`-discards-the-table
-# warning, which is the only compiler-side change this tier can observe.
+# inside the closed 0.5 digest window. Floor is 0.5.3 for the positional-joinability warning, which
+# `validate_spec` emits and this tier reports verbatim — on 0.5.2 a `/validate` of an rsid-authored PGx
+# module comes back clean about a table that joins to no VCF.
 compiler = [
-    "just-dna-compiler>=0.5.2",
+    "just-dna-compiler>=0.5.3",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -41,13 +42,14 @@ server = [
     "huggingface-hub>=0.34.0",
     "pyjwt>=2.10.0",
     "pyyaml>=6.0.2",
-    # `>=0.5.2` is a hard floor, not a preference: the server reads `EnrichmentResult.vrs` (RM40)
+    # `>=0.5.3` is a hard floor, not a preference: the server reads `EnrichmentResult.vrs` (RM40)
     # and `.clin_sig_not_checked` (S4, 0.5.2), passes `offline=` to the dosage pass (RM39), and hands
     # `cpic_cache`/`pharmvar_cache` plus `offline=` to `enrich_pgx` (RM38). None of those exists in
-    # 0.5.0, and `clin_sig_not_checked` is a 0.5.2 attribute this tier reads unguarded — on 0.5.1 the
-    # report would claim a cross-check that never ran.
-    "just-dna-compiler>=0.5.2",
-    "just-dna-enricher>=0.5.2",
+    # 0.5.0, and `clin_sig_not_checked` is a 0.5.2 attribute this tier reads unguarded. 0.5.3 adds the
+    # positional-joinability warning the catalog's trust facet now consults, and puts
+    # `heteroplasmy.csv` in the enricher's subject list — on 0.5.2 such a module enriches to nothing.
+    "just-dna-compiler>=0.5.3",
+    "just-dna-enricher>=0.5.3",
 ]
 
 [build-system]
