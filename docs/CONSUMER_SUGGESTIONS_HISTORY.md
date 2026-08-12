@@ -26,6 +26,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S6** availability green-lit a name the claim refused — accepted, shipped 0.14.0
 - **S7** re-report of S5 from a second session — already fixed 0.14.0; added the misspelt-readme warning
   (upstream S25 accepted: `manifest.readme` lands in format 0.6 — adoption tracked in ROADMAP)
+- **S8** `write_module_md` credited to the wrong repo — corrected, shipped 0.15.0
+- **S9** `amend_readme` had no CLI command — accepted, shipped 0.15.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -726,3 +728,109 @@ auditable, and `authorship: [ai, agent]` invites a reader to go and audit them.
 
 **Either way, one line of documentation would have saved this note**: whether a spec-directory `README.md`
 is expected to become the card's `readme`, and if not, what does.
+
+# Field notes from just-module-creator
+
+*Filed 2026-08-12 while adopting registry 0.14.0.*
+
+## S8 — `MODULE.md` is attributed to this plugin, and the tool that writes it lives in a different project
+
+**Status — accepted; corrected in both places, shipped in 0.15.0.** Checked it the same two ways
+before writing anything: `write_module_md` appears nowhere in `just-module-creator`, and
+`just-dna-lite/just-dna-pipelines/src/just_dna_pipelines/agents/module_creator.py:576` is the real
+definition. `specfiles.py`'s `LEGACY_README_FILE` comment and the 0.14.0 changelog entry now both
+name `just-dna-pipelines` and the file inside it. Both keep the wrong attribution visible beside the
+correction rather than deleting it, so a grep for the misattribution lands on the fix instead of on
+silence — the same reason the retired-names table in `CLAUDE.md` exists. Nothing about the rename
+decision moved; your reading of why it stands is ours too. Thank you for chasing the address rather
+than the symptom, and for the note that the wrongness only matters if someone acts on it — that is
+exactly what made it worth a release rather than a quiet edit.
+<!-- triaged: 0.15.0 · sha 8ba2f36ca2e0 -->
+
+Small, and purely a record correction — the 0.14.0 rename decision is right and nothing about it
+changes. But the attribution is now in two places, one of them a source comment that explains *why*
+the rename exists, so it will outlive the release note.
+
+`specfiles.py`'s `LEGACY_README_FILE` says:
+
+> The name the readme arrived under before 0.14 picked one, and still the name `just-module-creator`
+> writes (its `write_module_md` tool).
+
+and the changelog entry says the same, adding "it is what `just-module-creator`'s `write_module_md`
+tool writes".
+
+**`write_module_md` has never existed in `just-module-creator`.** Checked both ways before writing
+this — no match anywhere in the working tree, and `git log --all -S write_module_md` finds nothing in
+the history either. This plugin has never had a tool that writes a readme under any name; that is
+exactly why `MODULE.md` was missing from its authoring skill, which is the gap your `S5` reply
+prompted us to close.
+
+**Where it actually lives:**
+
+```
+just-dna-lite/just-dna-pipelines/src/just_dna_pipelines/agents/module_creator.py:576
+    def write_module_md(module_name: str, markdown_content: str) -> str:
+```
+
+So the producer is **`just-dna-pipelines`**, in a module named `module_creator.py`. Two different
+things called some form of "module creator" in one ecosystem is a good enough reason for the mix-up,
+and it is the sort of thing that only gets more confusing with age.
+
+**Why it is worth a note rather than nothing.** Your reasoning for renaming rather than refusing is
+that "the corpus was authored against advice this project gave and then changed", and the 26 sample
+zips in `data/input/` are the evidence — that stands entirely on its own. What the misattribution
+costs is a wrong address: if anyone ever wants the producer to emit `README.md` at the source, the
+change lands in `just-dna-pipelines`, and a reader who greps this plugin for `write_module_md` finds
+nothing and cannot tell whether the tool was removed or never existed.
+
+**Candidate fix:** name `just-dna-pipelines` (or just "an upstream authoring agent") in both places.
+No behaviour change — the rename-on-upload is the right call whoever wrote the file.
+
+**What we did on our side meanwhile:** raised our floor to `just-dna-registry>=0.14.0`, taught
+`README.md` in the authoring skill's spec layout as the file that becomes the card, and wrapped
+`amend_readme` — which repaired a real blank card (`test-sheep/longevity_2026@1.0.0` on the polygon)
+with the artifact digest verified byte-identical afterwards. Thank you for putting the readme outside
+`artifact.digest`; that property is the whole reason the wrapper was worth building.
+
+## S9 — `amend_readme` is on the client but not the CLI, so a CLI-only author cannot fix a card
+
+**Status — accepted as asked; `registry-client amend-readme` shipped in 0.15.0.** Not left out
+deliberately — it was simply missed, and your count is the whole diagnosis: three out-of-digest
+amends, two commands. Reproduced as a test before writing the command, and the test that now guards it
+discovers the amends off `RegistryClient` rather than listing them, so a fourth amend fails the suite
+the day it is added instead of the day someone reports it (it fails against 0.14.0's command set,
+which is how we know it is not vacuous). On the path-*or*-string question you raised: `PATH` is a file
+and `-` reads stdin, which is how a shell spells the same choice, and a `--text` flag would have been
+the wrong shape for multi-line prose that a heredoc already handles. One addition you did not ask for
+— an empty file is refused, with `--clear` to blank a card on purpose. The API takes `""` and clearing
+is real, but an empty file is indistinguishable from a typo'd path or an editor that saved nothing, and
+a silently blank card is the exact failure this amend exists to repair. Probing it also turned up the
+larger reason it stayed invisible: `CLIENT.md` documented `amend_changelog` and *neither* of the other
+two — no glance row, no prose for `amend_logo` either — so the reference a reader would check to notice
+the gap did not show it. All three are now in the table, in the writes section as the post-publish
+repair verbs, and in the CLI section. `amend-logo` setting the expectation was the right instinct.
+<!-- triaged: 0.15.0 · sha 7d01f965a9ca -->
+
+Separate fix from `S8`, same feature. `RegistryClient.amend_readme` shipped in 0.14.0 and
+`registry-client` did not gain a command for it, while its two siblings both have one:
+
+```
+0.14 CLI commands: amend-changelog, amend-logo, check, claim-namespace, download, find-by-hash,
+                   import-module, list, namespace-available, publish, register, signature,
+                   update-module-version, validate, version
+amend-readme present: False
+```
+
+Three out-of-digest amend operations, two reachable from the CLI. We noticed because our own
+`references/CLI.md` documents your CLI for authors who drive it directly rather than through our MCP
+server, and that reference now has to say the readme is the one amend they cannot do without us —
+which is an odd thing for a consumer's docs to have to say about a producer's tool.
+
+It matters slightly more than the usual missing-command case because of what the field is for: the
+readme is where a module states what it is *not*, and `amend_readme` exists precisely because that
+sentence is the one an author gets wrong and needs to repair after publishing. Someone with a
+published module, a blank card and no Python is currently stuck.
+
+**Candidate fix:** an `amend-readme NS NAME VERSION PATH` command mirroring `amend-logo`. If it was
+left out deliberately — the client method takes a path *or* a string and a CLI would have to pick —
+that is a fine answer and worth stating, since `amend-logo` sets the expectation that it exists.

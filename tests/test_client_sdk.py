@@ -8,8 +8,11 @@ no stubbed HTTP layer."""
 
 import asyncio
 import inspect
+import io
+from pathlib import Path
 
 import pytest
+import typer
 from fastapi.testclient import TestClient
 from test_import import _bare_parquet_zip
 
@@ -465,6 +468,90 @@ def test_preflight_query_flags_reach_the_cli_too(
     assert query_flags - {"declared_use"} <= cli_params, (
         f"CLI cannot send {sorted(query_flags - {'declared_use'} - cli_params)}"
     )
+
+
+# ── The post-publish repair verbs must all be reachable without Python (S9) ───
+
+
+def _cli_commands() -> set[str]:
+    return {
+        info.name or info.callback.__name__.replace("_", "-")
+        for info in client_cli.app.registered_commands
+    }
+
+
+def test_every_amend_is_reachable_from_the_cli() -> None:
+    """The amends are the only way to repair a published version, so a Python-less author needs all
+    of them. `amend_readme` shipped in 0.14.0 with no command while `amend-changelog` and
+    `amend-logo` both had one, which left exactly one repair — the card prose, the field a module
+    uses to say what it is *not* — unreachable from a shell (S9).
+
+    Discovered off `RegistryClient` rather than listed, so a fourth amend fails this on the day it is
+    added instead of on the day a consumer reports it."""
+    amends = {name for name in dir(RegistryClient) if name.startswith("amend_")}
+    assert amends >= {"amend_changelog", "amend_logo", "amend_readme"}  # discovery still works
+    commands = _cli_commands()
+    missing = sorted(m for m in amends if m.replace("_", "-") not in commands)
+    assert missing == [], f"no `registry-client` command for {missing}"
+
+
+def _cli_bound_to(app, api_key: str, monkeypatch) -> None:
+    """Point `registry-client`'s client factory at an in-process app, ignoring --url/--token."""
+    transport = TestClient(app)._transport
+    monkeypatch.setattr(
+        client_cli,
+        "_client",
+        lambda url, token, need_token=False: RegistryClient(
+            "http://testserver", token=api_key, transport=transport, check_version=False
+        ),
+    )
+
+
+async def test_cli_amend_readme_sets_the_card_from_a_file(app, api_key, seed, tmp_path, monkeypatch):
+    """The command driven end to end against the real routes — the reproduction for S9."""
+    _seed_module(seed)
+    _cli_bound_to(app, api_key, monkeypatch)
+    prose = "# Coronary\n\nCandidate findings only; not a diagnosis.\n"
+    readme = tmp_path / "README.md"
+    readme.write_text(prose)
+
+    await asyncio.to_thread(
+        client_cli.amend_readme, _NS, _NAME, _VER, readme, clear=False, url=None, token=None
+    )
+
+    tc = TestClient(app)
+    assert tc.get(f"/api/v1/modules/{_NS}/{_NAME}").json()["readme"] == prose
+
+
+async def test_cli_amend_readme_reads_stdin_and_refuses_an_empty_file(
+    app, api_key, seed, tmp_path, monkeypatch
+):
+    """`-` is how the CLI answers the client method's path-*or*-string shape; an empty file is
+    refused because a blank card is the failure the amend exists to repair, not a plausible edit."""
+    _seed_module(seed)
+    _cli_bound_to(app, api_key, monkeypatch)
+    piped = "Candidates only. The PMID 29165669 association was NOT significant.\n"
+    monkeypatch.setattr(client_cli.sys, "stdin", io.StringIO(piped))
+
+    await asyncio.to_thread(
+        client_cli.amend_readme, _NS, _NAME, _VER, Path("-"), clear=False, url=None, token=None
+    )
+    tc = TestClient(app)
+    assert tc.get(f"/api/v1/modules/{_NS}/{_NAME}").json()["readme"] == piped
+
+    blank = tmp_path / "README.md"
+    blank.write_text("   \n")
+    with pytest.raises(typer.BadParameter):
+        await asyncio.to_thread(
+            client_cli.amend_readme, _NS, _NAME, _VER, blank, clear=False, url=None, token=None
+        )
+    # …and the prose that was there is still there.
+    assert tc.get(f"/api/v1/modules/{_NS}/{_NAME}").json()["readme"] == piped
+
+    await asyncio.to_thread(
+        client_cli.amend_readme, _NS, _NAME, _VER, None, clear=True, url=None, token=None
+    )
+    assert tc.get(f"/api/v1/modules/{_NS}/{_NAME}").json()["readme"] == ""
 
 
 # ── The delete verb: always on the client, only served by a polygon ────────────

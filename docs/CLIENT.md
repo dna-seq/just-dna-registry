@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.15.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -61,6 +61,8 @@ export REGISTRY_TOKEN=mk_live_…
 | Publish (archive) | `import_module(ns, name, v, archive)` | `import-module` | bearer |
 | Bump a version | *(`get_module` + `publish`)* | `update-module-version` | bearer |
 | Amend changelog | `amend_changelog(ns, name, v, text, append=)` | `amend-changelog` | bearer |
+| Amend logo | `amend_logo(ns, name, v, logo_path)` | `amend-logo` | bearer |
+| Amend readme (card prose) | `amend_readme(ns, name, v, path_or_text)` | `amend-readme` | bearer |
 
 ---
 
@@ -135,6 +137,19 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
   display metadata: the build decides the identity key, so a GRCh37 archive with no `manifest.json`
   must declare it or it is reversed as the format's GRCh38 default, minting `variant_key`s for a
   base the module never carried. See API-REFERENCE §import.
+
+**The three amends** are the only way to repair a *published* version, and all three are
+out-of-digest: the artifact, its `artifact.digest` and any signature over it stay untouched, so
+neither the version number nor the `content_hash` claim moves. Each needs amend rights (own version
+for a member, any for admin+).
+
+- **`amend_changelog(namespace, name, version, changelog, *, append=False) -> dict`** — replace (or
+  append to) a version's changelog.
+- **`amend_logo(namespace, name, version, logo_path) -> dict`** — replace the version's logo image.
+- **`amend_readme(namespace, name, version, readme) -> dict`** — replace the module card's prose.
+  Takes a `Path` **or** the markdown text: a tool usually has the file, a human fixing one sentence
+  has the string. `""` blanks the card. This is the amend that matters most — the readme is where a
+  module says what it is *not*, and `description` is one sentence that cannot carry a caveat.
 
 ### Identity & profile (token)
 
@@ -262,6 +277,20 @@ registry-client import-module NS NAME VERSION ARCHIVE.zip \
 Publishes from a zip/tar.gz. Display flags apply only to legacy parquet-only archives.
 `--genome-build` is not one of them: it decides the identity key, and a bare parquet archive that
 carries no `manifest.json` and is not GRCh38 needs it declared.
+
+### `amend-changelog` / `amend-logo` / `amend-readme`  *(token)*
+```bash
+registry-client amend-changelog NS NAME VERSION "text" [--append]
+registry-client amend-logo      NS NAME VERSION ./logo.png
+registry-client amend-readme    NS NAME VERSION ./README.md
+registry-client amend-readme    NS NAME VERSION -            # read the markdown from stdin
+registry-client amend-readme    NS NAME VERSION --clear       # blank the card, said out loud
+```
+Post-publish repair, all out-of-digest: no version bump, no new `content_hash`. `amend-readme`
+landed in 0.15.0 (S9) — the client method had shipped a release earlier, which left a CLI-only
+author with a blank card and nothing to run. It takes a file, or `-` for stdin, which is how a shell
+spells the method's path-*or*-text argument; an empty file is refused, because that is
+indistinguishable from a typo'd path and a blank card is the thing being repaired.
 
 ### `update-module-version`  *(token)*
 ```bash

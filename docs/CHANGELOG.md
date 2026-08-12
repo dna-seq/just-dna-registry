@@ -6,6 +6,54 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.15.0] — 2026-08-12
+
+Answers **S8** and **S9** from `just-module-creator`, both about 0.14.0's readme work: one wrong
+address in a comment, and the one amend a shell could not reach.
+
+**Client surface: unchanged.** No method signature moved and no method was added. `registry-client`
+gained `amend-readme`.
+
+### `amend_readme` is now a CLI command too (S9)
+
+`RegistryClient.amend_readme` shipped in 0.14.0 and `registry-client` did not gain a command, while
+`amend-changelog` and `amend-logo` both had one. Three post-publish repairs, two reachable from a
+shell — and the missing one is the readme, which is where a module says what it is *not* and the
+field the amend exists for. Someone with a published module, a blank card and no Python had nothing
+to run.
+
+- **`registry-client amend-readme NS NAME VERSION PATH`**, mirroring `amend-logo`: out of
+  `artifact.digest`, no version bump, no second `content_hash`.
+- **`PATH` may be `-`, which reads stdin.** The client method takes a path *or* the text, and this is
+  how a shell spells that; a `--text` flag would have been the wrong shape for multi-line prose the
+  shell can already pipe.
+- **An empty file is refused, and `--clear` blanks a card deliberately.** The API takes `""` and
+  clearing is a real operation, but an empty file is indistinguishable from a typo'd path or an
+  editor that saved nothing — and a silently blank card is the exact failure this amend repairs.
+- **A test discovers the amends off `RegistryClient`** rather than listing them, so a fourth amend
+  fails the suite the day it is added instead of the day a consumer reports it. The command is also
+  driven end to end against the real routes (file, stdin, empty, `--clear`).
+- **[CLIENT.md](CLIENT.md) documented `amend_changelog` and neither of the others** — no glance row
+  and no prose for `amend_logo` or `amend_readme`, which is most of why the gap was invisible. All
+  three are now in the table, in the writes section as the post-publish repair verbs, and in the CLI
+  section.
+
+### `write_module_md` belongs to `just-dna-pipelines`, not to `just-module-creator` (S8)
+
+A record correction, reported by the plugin it was attributed to. `specfiles.py`'s
+`LEGACY_README_FILE` comment and the 0.14.0 entry above both said `MODULE.md` is "what
+`just-module-creator`'s `write_module_md` tool writes". That tool has never existed in that plugin —
+no match in its tree, none in its history. It is
+`just-dna-pipelines`' `agents/module_creator.py::write_module_md`, and two things called some form of
+"module creator" is the whole of the mix-up.
+
+Nothing about the rename decision changes: the 26 sample zips in `data/input/` still carry
+`MODULE.md`, and renaming rather than refusing is still the call. What the misattribution cost was an
+address — anyone wanting the *producer* to emit `README.md` at the source would have grepped the
+wrong repo, and found nothing that tells them whether the tool was removed or never existed. Both
+places now name `just-dna-pipelines`, and both keep the wrong name visible next to the correction so
+a grep for it lands on this rather than on silence.
+
 ## [0.14.0] — 2026-08-12
 
 Answers **S5**, **S6** and **S7** from `just-module-creator`, and turns the production test-data ban
@@ -33,7 +81,9 @@ storage under the version key, and the card stayed `""` either way.
   the layout entry below.)
 - **`MODULE.md` is renamed rather than tolerated**, which is the half that decides whether any of
   this reaches the existing corpus. Every one of the 26 sample zips in `data/input/` ships a
-  `MODULE.md` — it is what `just-module-creator`'s `write_module_md` tool writes — so settling on
+  `MODULE.md` — it is what the upstream authoring agent writes (`write_module_md` in
+  `just-dna-pipelines`, `agents/module_creator.py`; this line credited the `just-module-creator`
+  plugin until **S8** corrected it) — so settling on
   `README.md` without a rename would have left the entire published corpus with a blank card and
   charged each author a republish for a name *we* changed. An upload carrying both keeps its
   `README.md`; the legacy file is carried unchanged and a warning says why.

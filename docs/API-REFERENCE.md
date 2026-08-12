@@ -3,7 +3,8 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x**, API `v1`. Written against the server at that version; a
+- **Normative for:** registry **0.14.x–0.15.x**, API `v1` (0.15 added no route; it wrapped an
+  existing one in the CLI). Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).

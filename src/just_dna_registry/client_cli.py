@@ -2,11 +2,12 @@
 `registry-client` — a test/ops CLI for the registry API.
 
 Points at a running server via `--url` (or `$REGISTRY_URL`) and authenticates publish/update
-with `--token` (or `$REGISTRY_TOKEN`). Commands: list, download, publish, find-by-hash,
-update-module-version.
+with `--token` (or `$REGISTRY_TOKEN`). `--help` lists the commands; the enumeration that used to sit
+here went stale twice, and a partial list of commands reads as a complete one.
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -281,6 +282,53 @@ def amend_logo(
         result = c.amend_logo(namespace, name, version, logo)
     logo_entry = result.get("logo") or {}
     typer.echo(f"✓ {namespace}/{name}@{version} logo updated → {logo_entry.get('name')}")
+
+
+@app.command("amend-readme")
+def amend_readme(
+    namespace: str,
+    name: str,
+    version: str,
+    readme: Optional[Path] = typer.Argument(
+        None, help="Markdown file with the card prose, or `-` to read it from stdin"
+    ),
+    clear: bool = typer.Option(
+        False, "--clear", help="Blank the card instead of setting prose (no PATH)"
+    ),
+    url: Optional[str] = UrlOpt,
+    token: Optional[str] = TokenOpt,
+) -> None:
+    """Replace a published version's readme — the prose on its card (out of the digest, no bump).
+
+    The one amend that had no command until 0.15 (S9), which left an author with a published module,
+    a blank card and no Python with nothing to run. It is the amend that matters most: the readme is
+    where a module says what it is *not*.
+
+    `RegistryClient.amend_readme` takes a path *or* the text, and a shell has both too, so `PATH` is
+    a file and `-` is stdin (`… amend-readme ns name 1.0.0 - <<'EOF'`). Not a `--text` flag: prose is
+    multi-line and the shell already has a way to hand a command multi-line input.
+
+    An empty file is refused rather than obeyed. Blanking a published card is a real operation — the
+    API takes `""` — but it is indistinguishable from a typo'd path or an editor that saved nothing,
+    and a silently blank card is the exact failure `amend_readme` exists to repair, so it needs
+    `--clear` said out loud.
+    """
+    if clear and readme is not None:
+        raise typer.BadParameter("pass either a PATH or --clear, not both")
+    if not clear and readme is None:
+        raise typer.BadParameter("provide a PATH (or `-` for stdin), or --clear to blank the card")
+    text = ""
+    if readme is not None:
+        text = sys.stdin.read() if str(readme) == "-" else readme.read_text(encoding="utf-8")
+        if not text.strip():
+            raise typer.BadParameter(
+                f"{readme} is empty — pass --clear if blanking the card is what you meant"
+            )
+    with _client(url, token, need_token=True) as c:
+        result = c.amend_readme(namespace, name, version, text)
+    prose = result.get("readme") or ""
+    shape = f"{len(prose)} chars" if prose else "cleared"
+    typer.echo(f"✓ {namespace}/{name}@{version} readme updated ({shape})")
 
 
 @app.command("update-module-version")

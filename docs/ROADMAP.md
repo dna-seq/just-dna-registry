@@ -484,6 +484,27 @@ an explicit guard:
   says, which is the failure 0.13 was fixing.
 - **gnomAD gene-constraint enrichment** (`enrich_gene_metrics`) on the publish path, once the
   constraint snapshot is routinely provisioned.
+- **`licensing.csv` is dropped silently, and the card then advertises a permissive licence** (open;
+  found 2026-08-12 while running the suite for S8/S9, not reported by anyone). Upstream's RM51 made
+  `licensing.csv` a second accepted spelling of `sources.csv` and the PGx reference example was
+  rewritten onto it, so `tests/test_specfiles.py::test_the_licensing_facet_surfaces_a_no_sale_clause`
+  now **fails at HEAD** (verified in a clean worktree at `a903a88`, so it is not a regression from
+  this batch). It is worse than a red test: the file is not in `RECOGNIZED_SPEC_FILES`, so publish
+  never uploads it, and the compiled `sources` summary is left holding the *enricher's* single
+  Ensembl row — `commercial_use: True`, `licenses: ["Apache-2.0"]` — for a module whose real upstreams
+  carry a no-sale clause. A facet that means "permitted" is being produced by a history that only
+  means "nobody told us", which is the sibling-field rule from `CLAUDE.md` broken at the input stage
+  rather than the output one.
+  Two halves, and they separate cleanly. **Recognising the file is 0.6 lockstep work**: the installed
+  compiler is 0.5.4, so passing the bytes through would put them in front of a reader that does not
+  know the name, and the `SIGNATURE_INPUTS` disjointness question has to be answered deliberately
+  (`sources.csv` is not a signature input today — a second spelling must not become one by accident).
+  **Warning about it is not**: an uploaded file whose name is a known alias of a table we do read is
+  the `_README_LOOKALIKES` case (S7) at a different table, and a warning refuses nothing. Do the
+  warning first; it is the half that stops the silent version. The test also reaches into
+  `/data/sources/just-dna-format/reference_examples/`, so it tracks a sibling *working tree* and will
+  keep moving under us — worth pinning a copy or skipping on a shape it does not recognise, as part of
+  the same pass.
 
 ## Superseded (post-0.10)
 

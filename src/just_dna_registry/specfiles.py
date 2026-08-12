@@ -88,10 +88,14 @@ PROVENANCE_FILE: str = "provenance.json"
 #: the `409 duplicate_content` claim of the module it is a copy of.
 README_FILE: str = "README.md"
 
-#: The name the readme arrived under before 0.14 picked one, and still the name `just-module-creator`
-#: writes (its `write_module_md` tool). Renamed on upload rather than merely tolerated: the corpus
-#: was authored against advice this project gave and then changed, so refusing it — or silently
-#: dropping the prose, which is what happened until now — would charge the author for our rename.
+#: The name the readme arrived under before 0.14 picked one, and still the name the upstream
+#: authoring agent writes — `write_module_md` in `just-dna-pipelines`' `agents/module_creator.py`.
+#: (0.14 credited that tool to the `just-module-creator` plugin, which has never had it; two things
+#: called some form of "module creator" is the whole of the mix-up, and the address matters because
+#: emitting `README.md` at the source is a change to *pipelines* — S8.) Renamed on upload rather
+#: than merely tolerated: the corpus was authored against advice this project gave and then changed,
+#: so refusing it — or silently dropping the prose, which is what happened until now — would charge
+#: the author for our rename.
 LEGACY_README_FILE: str = "MODULE.md"
 
 #: Spellings that are obviously *meant* as the readme but are not one of the two names above, so the
