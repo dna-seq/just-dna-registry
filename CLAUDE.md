@@ -428,8 +428,14 @@ read it before answering one. Three dependency-free scripts run it:
 ```
 
 - **The document is the state.** A reply carries `<!-- triaged: <version> · sha <12 hex> -->` holding a
-  fingerprint of the *consumer's* text only, so re-running after our own write is a no-op. Not git: the loop
-  must not commit, and a consumer may commit their own addition.
+  fingerprint of the *consumer's* text only, so re-running after our own write is a no-op. Not git — a
+  consumer may commit their own addition, and "what changed on disk" is a different question from "what has
+  been answered".
+- **The loop commits as it goes** (standing instruction). One commit per answered batch, once the suite is
+  green and the item is archived, so a commit is a whole answer rather than a half-edited document. Stage
+  explicit paths, never `git add -A`: this loop routinely runs beside another session editing the same
+  tree. Never push, never tag, and never commit in a sibling repo — an upstream filing is appended and left
+  dirty for its own maintainer.
 - **Answered items move to `docs/CONSUMER_SUGGESTIONS_HISTORY.md`**, so an empty inbox means nothing is owed.
   Ids are never reused, and `--next` computes the next one over **both** files — an empty inbox otherwise
   invites a second `S1`.

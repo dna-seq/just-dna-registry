@@ -131,11 +131,15 @@ collapsed, so trailing whitespace and reflowing do not count as a change. Four v
 
 ### Why not git
 
-Two reasons, both fatal rather than aesthetic. The loop **must not commit** — that is the user's call, and
-this repo's `CLAUDE.md` says so — so a `HEAD` baseline would never advance and every run would re-triage
-everything. And a consumer may well commit their own addition, at which point `git diff HEAD` is empty and
-the loop sees nothing at all. `git diff` and `git log -p` stay useful for *reading what changed*;
-correctness never depends on them.
+A consumer may well commit their own addition, at which point `git diff HEAD` is empty and the loop sees
+nothing at all. Whoever commits, a `HEAD` baseline answers "what changed on disk", which is a different
+question from "what has been answered" — the two diverge the moment anyone edits either document for any
+other reason. `git diff` and `git log -p` stay useful for *reading what changed*; correctness never
+depends on them.
+
+**This argument used to rest on "the loop must not commit", and no longer does** — in this repo the loop
+now commits as it goes (see Step 5). Nothing about the ledger changed, because it never derived state from
+git in the first place; the premise did.
 
 The in-document ledger has properties no side-car state has: it works on an uncommitted tree (which is how
 `CONSUMER_SUGGESTIONS.md` arrived here — untracked), survives anyone's commits, travels with the repo, is
@@ -325,13 +329,19 @@ the write is rejected if one changed.
 
 - **Serial, one item at a time**, and read the roadmap off the file rather than from memory during a long
   pass.
-- **Run `uv run pytest -q` after each fix, and check the output for deprecation warnings** — a batch of
-  fixes is only safe to leave uncommitted because the suite stayed green throughout. A new route also needs
-  its `RegistryClient` method, its `tests/test_client_sdk.py` case and its API-REFERENCE row *in the same
-  pass*; the parity assertion is structural and will fail without them.
+- **Run `uv run pytest -q` after each fix, and check the output for deprecation warnings** — a green suite
+  is the precondition for the commit below, not a nicety. A new route also needs its `RegistryClient`
+  method, its `tests/test_client_sdk.py` case and its API-REFERENCE row *in the same pass*; the parity
+  assertion is structural and will fail without them.
 - **One [CHANGELOG.md](CHANGELOG.md) entry for the batch**, naming the items it answers. If it bumps the
   version, `uv lock` in the same change so the lock does not go dirty on the server's `uv sync`.
-- **Do not commit, do not push, do not publish.** Leave the tree dirty; that is the user's call.
+- **Commit as you go** (this repo, by the maintainer's standing instruction — it is a repo policy about who
+  commits, not part of the published pattern, so it does not sync to the gist). One commit per answered
+  batch, after the suite is green and the item is archived, so a commit is a whole answer rather than a
+  half-edited document. **Never `git add -A`** — stage the paths you touched and read `git status` first;
+  this loop routinely runs beside another session editing the same tree, and sweeping up its half-finished
+  work is the way to commit something nobody reviewed. **Still never push, never publish, never tag**, and
+  **never commit in a sibling repo** — an upstream filing is appended and left dirty for its own maintainer.
 - **Say what was skipped.** Leave an untriaged item `new` rather than writing a placeholder reply. An empty
   verdict is honest; a hedged one is not.
 - **A new item can arrive mid-pass.** Take it if the context is warm, or leave it `new` — but do not let it
