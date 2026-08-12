@@ -6,6 +6,121 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.14.0] — 2026-08-12
+
+Answers **S5**, **S6** and **S7** from `just-module-creator`, and turns the production test-data ban
+into an opt-in override at the operator's request.
+
+**Client surface: unchanged.** No existing method signature moved. Added: `amend_readme()`, an
+`allow_test_data=` keyword on `publish()` and `claim_namespace()`, `include_inputs=` and `layout=`
+keywords on `download()`, and two fields on the namespace availability response.
+
+### `readme` was declared, stored, returned — and never written (S5)
+
+Every module card was blank, and had been since the field was introduced. Confirmed with a
+`TestClient` probe before designing anything: `README.md` and `MODULE.md` both upload, both land in
+storage under the version key, and the card stayed `""` either way.
+
+- **Publish now projects `README.md` onto the module.** One recognised filename, and it is
+  `README.md` — the ecosystem default, and what the reporter tried first. `MODULE.md` was named by a
+  comment in `services/upgrade.py` *and* by this project's API reference, for two releases, with no
+  reader behind either; both are corrected.
+- **`README.md` joined `RECOGNIZED_SPEC_FILES`**, which is what makes `upgrade` carry it forward and
+  `revalidate` materialise it back out of storage — both rebuild a spec directory from that list and
+  would otherwise drop it. (An earlier draft of this entry said `/versions/import` filtered archives
+  through `is_spec_file` and so lost readmes the loose upload kept. It does not; `import_archive`
+  compiles the extracted root unfiltered. The filter is on the *dry-run* pair, and it is real — see
+  the layout entry below.)
+- **`MODULE.md` is renamed rather than tolerated**, which is the half that decides whether any of
+  this reaches the existing corpus. Every one of the 26 sample zips in `data/input/` ships a
+  `MODULE.md` — it is what `just-module-creator`'s `write_module_md` tool writes — so settling on
+  `README.md` without a rename would have left the entire published corpus with a blank card and
+  charged each author a republish for a name *we* changed. An upload carrying both keeps its
+  `README.md`; the legacy file is carried unchanged and a warning says why.
+- **A readme under any other spelling now warns instead of vanishing** (S7, filed independently
+  against 0.13.0 by a second `just-module-creator` session while S5 was being fixed). `readme.md`,
+  `Readme.md`, `README.txt` and a bare `README` come back as a warning naming `README.md` and
+  pointing at `amend_readme`, on `/validate`, `/check` and publish. Deliberately not renamed the way
+  `MODULE.md` is: we told authors to write `MODULE.md`, so repairing that is ours to do, but guessing
+  that `README.txt` meant the card would be inventing intent. Silent in both directions was the
+  reporter's phrasing and the right diagnosis — the silence is what got fixed.
+- **New `POST /modules/{ns}/{name}/versions/{v}/readme`** (+ `RegistryClient.amend_readme`), mirroring
+  the logo amend: out of `artifact.digest`, no version bump. That matters more here than for a logo —
+  a readme is where a module says what it is *not*, and a badly phrased caveat must be fixable without
+  burning a version number and a `content_hash` that `yank` would not release.
+- **A republish with no readme leaves the existing one alone** rather than blanking it. `None` means
+  "unchanged", `""` clears. The caller that would pass `None` is the one that knows nothing about
+  readmes — a future reindex walking manifests — and it must not wipe every card as a side effect.
+- **The half that is upstream's, stated rather than hidden:** the manifest has a `logo` field and no
+  `readme` field, so the prose reaches the catalog card and no further. `/files/{path}` and the tarball
+  are both built from what the manifest attests, which is exactly why the logo is fetchable and the
+  readme is not. Filed upstream as **S25**; a test pins the limitation so whoever lands the field
+  finds it.
+
+### A spec directory now says which files the author wrote
+
+A spec mixes two provenances and marks neither. `variants.csv` and `studies.csv` are authored;
+`resolution.csv` and the fact sidecars are `just-dna-enricher` output, and `sources.csv` is both —
+the author's rows with the enricher's merged in. An author reading the flat listing cannot tell which
+files are theirs to edit. The format says nothing about folders, so the layout is ours to pick.
+
+- **`derived/` on the way in, flattened before anything reads the spec.** A recognised spec file is
+  lifted to the root from *any* subdirectory, not only from `derived/` — producers already ship
+  `metadata/` and `enriched/` trees and accepting whichever arrived costs nothing, while blessing a
+  second name in the code would mean keeping it. `logs/` is the one subtree never touched: the
+  manifest records those paths verbatim, so hoisting one would rename a file the manifest attests.
+- **It cannot move a module's identity, and that is why it is safe to offer at all.**
+  `SIGNATURE_INPUTS` is entirely root-level, so nothing that may sit in `derived/` is in
+  `content_signature`. A test asserts the disjointness rather than trusting it. The same module
+  published flat and split is one module with one `409 duplicate_content` claim.
+- **Two paths claiming one root name is `422 ambiguous_spec_layout`**, never a guess. Only the author
+  knows which copy is current, and picking one silently publishes the wrong table under a signature
+  that looks perfectly valid.
+- **The dry runs predict it.** `normalize_spec` is called by `_finalize` and by both dry-run workers,
+  so `/validate` and `/check` report the renames on `info[]` and refuse the same conflicts — the S6
+  lesson applied to layout. Getting there needed the pre-flight's archive filter widened: it kept a
+  member only if the *full path* was a recognised spec file, so `derived/resolution.csv` and
+  `MODULE.md` were dropped before the normalisation could ever see them.
+- **`download(layout="split")` on the way out** (+ `--layout split`), applied **after**
+  `verify_manifest` and never before: the manifest attests flat names, so a tree split first is a
+  tree that fails to verify.
+- **`download(include_inputs=True)`** (+ `--with-inputs`), because the split had nothing to be about
+  otherwise: `/download` lists `artifact.files` only, so a downloaded module was the compiled
+  parquets and the authored CSVs stayed on the server. They are hash-checked against
+  `manifest.inputs` when fetched.
+- **What it still cannot separate, said plainly:** the manifest attests `logs`, `logo`, `provenance`
+  and the authored `inputs`, and *none* of the derived CSVs — only their parquets. So a downloader
+  cannot receive them at all, and `derived/` is created only when something lands in it. Filed
+  upstream as S26, together with the reason this layer is transport-only: the compiler discovers
+  authored tables at the spec root, so a separated tree is one `just-dna-compiler compile` refuses.
+
+### Production accepts test data when asked explicitly (operator request, and S6)
+
+`422 test_data_on_prod` was an absolute ban. It is now the **default**, with `allow_test_data=true`
+as the way through — a form field on publish and import, a body field on the namespace claim, and
+`--allow-test-data` on `issue-key`. Four doors, one rule, still in `testdata.py`.
+
+- **The default stays "refuse", deliberately.** The failure it prevents is silent and permanent: a
+  mistyped namespace spends a version number and a global `content_hash` that only a purge frees. The
+  cost of asking explicitly is one parameter; the cost of finding out afterwards is a purge.
+- **An accepted override always warns**, on the response and in the log, because production is then
+  holding test-prefixed data and nothing else would say so. The warning names
+  `registry purge-test-data`, which is the sharp edge here: the purge selects on exactly the prefix
+  that was waved through, so data kept on purpose is data a routine cleanup would remove. It lists
+  before it deletes, and that listing is the moment to notice.
+- **Refusal messages now name the parameter**, so the dead end is navigable.
+
+### The availability pre-flight stopped contradicting the claim (S6)
+
+`GET /namespaces/{ns}` reported `valid: true, available: true` for a `test-`prefixed name on
+production, which `POST /namespaces` then refused — a read-only check for an irreversible act
+reporting the opposite of what the act would do. It now carries `requires_allow_test_data` and a
+`warnings` list, and a test asserts the two endpoints agree.
+
+Deliberately **not** `valid: false`, which is what the report asked for: the policy moved underneath
+it in this same release, so the name genuinely *is* claimable there now. Flipping that field would
+have been the same contradiction rewritten backwards.
+
 ## [0.13.0] — 2026-08-11
 
 Answers **S1**, **S2** and **S3** from `just-module-creator`, and **S4** from the operator, and adopts

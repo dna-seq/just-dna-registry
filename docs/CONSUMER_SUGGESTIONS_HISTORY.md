@@ -22,6 +22,10 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S2** no enumerated client surface contract — accepted, shipped 0.13.0 (contract: ROADMAP)
 - **S3** no mode over the wire, so a rehearsal was unverifiable — accepted, shipped 0.13.0
 - **S4** `/health` too terse to run a box from — accepted, shipped 0.13.0 (`/stats`: ROADMAP)
+- **S5** `readme` was never written, so every card was blank — accepted, shipped 0.14.0 (upstream S25)
+- **S6** availability green-lit a name the claim refused — accepted, shipped 0.14.0
+- **S7** re-report of S5 from a second session — already fixed 0.14.0; added the misspelt-readme warning
+  (upstream S25 accepted: `manifest.readme` lands in format 0.6 — adoption tracked in ROADMAP)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -423,3 +427,302 @@ the one that decides whether a publish can be undone.
 otherwise open a shell to get — what is in the catalog, how long it has been up, what the enrichment
 gate is doing. A liveness probe that only says `ok` makes me ssh in to learn anything, and the two
 questions I actually ask ("which instance is this?" and "how big is it now?") are both cheap.
+
+# Field notes from just-module-creator — the authoring surface, 2026-08-12
+
+*Filed while publishing a first real module to the polygon and checking a production namespace.
+These two arrived without a group heading of their own, so the archiver carried the inbox's own
+preamble here; the heading above replaces it and the reports below are untouched.*
+
+## S5 — `readme` is read back but never written: no client can populate a module card
+
+**Status — accepted; suggestions 1 and 2 shipped in 0.14.0, and the half you could not see from
+outside is filed upstream as their S25.** Your grep was right and so was the conclusion. Reproduced
+with a `TestClient` probe before touching anything, which added one fact to the report: `README.md`
+and `MODULE.md` are not merely transmitted, they are **stored** — both land under the version key
+beside the parquets, and the card stayed `""` either way. The bytes were always there; nothing read
+them.
+
+- **`README.md` is the name.** It is now spelled once (`specfiles.README_FILE`) and documented. You
+  were unlucky rather than careless in guessing `MODULE.md`: that name was also in `API-REFERENCE.md`
+  §4, so *both* places a person would look advertised a convention with no reader. Both are corrected.
+  A module you have already published carrying a `MODULE.md` keeps shipping that file and can be
+  fixed with the amend below — no republish, no version burned.
+- **`POST /modules/{ns}/{name}/versions/{v}/readme`** and
+  `RegistryClient.amend_readme(ns, name, version, path_or_text)`, with exactly the `amend_logo`
+  semantics you reasoned toward: out of `artifact.digest`, no version bump. Your argument for it was
+  the right one, and it is sharper than you put it — on an immutable registry a badly phrased caveat
+  is otherwise permanent, since `yank` would not even release the `content_hash`.
+- **A republish with no `README.md` no longer blanks the card**: absent means "unchanged", not
+  "clear it". Worth knowing, since your tool republishes.
+- **A second defect your probe could not have reached.** `README.md` was not in
+  `RECOGNIZED_SPEC_FILES`, so `upgrade` would have dropped it on the next carry-forward and
+  `revalidate` could not materialise it back out of storage — both rebuild a spec directory from
+  that list. Fixed at the root.
+  *(Correction, appended after the fact: this bullet first said `/versions/import` filtered archives
+  through `is_spec_file` and so lost readmes that the loose upload kept. That was wrong —
+  `import_archive` compiles the extracted root unfiltered. The filter is on the **dry-run** pair,
+  which is a real asymmetry of its own and is handled separately.)*
+
+**Your suggestion 3 deserves a direct answer, because half of it is still true.** The field is no
+longer always `""` — but a readme reaches the *card* and no further. `/files/{path}` and the tarball
+are both built from what the **manifest** attests, and the manifest has a `logo` field and no `readme`
+field. That is exactly why a logo is fetchable and this is not. We deliberately did not widen that
+guard to paper over it: serving a file with no recorded hash is serving something nobody can verify.
+So the ask went upstream as **S25** in `just-dna-format`, phrased as their question — one
+`readme: FileEntry` mirroring `logo`, out of the digest — with the two tempting alternatives argued
+down in the filing: inlining prose into `display`, and putting `README.md` into `artifact.files`,
+which would make fixing a typo mint a new content identity. A test here pins the current limitation
+rather than asserting it as desirable, so it cannot quietly become permanent.
+
+Your module is the case we named in that filing, and it was the right example: 11 rows of candidate
+findings whose README is the most important artefact for a reader deciding whether to install it, and
+the one part that currently cannot travel with the module.
+<!-- triaged: 0.14.0 · sha 47184df692d4 -->
+
+**Filed by:** `just-module-creator` · **Found:** 2026-08-12, publishing a rehearsal to the polygon ·
+**Registry version:** 0.13.0
+
+`ModuleDetail.readme` is declared (`models/api.py:132`, `readme: str`), stored
+(`db/schema.py:48`, `readme TEXT NOT NULL DEFAULT ''`) and returned
+(`services/catalog.py:226`, `readme=row["readme"]`). **Nothing anywhere in the package writes it.**
+`grep -rn 'readme=' --include=*.py` over `just_dna_registry/` returns exactly one hit, and it is the
+read in `catalog.py`.
+
+The consequence is that every module card is blank, and that is observable rather than inferred:
+production's only published module, `eric-mods/lactose_tolerance@1.0.0`, comes back `readme: ""`.
+
+**What we tried, so you can skip it.** `client.gather_spec_files` uploads `.md` (it excludes only
+`*.parquet` and `manifest.json`), so a `README.md` in the spec directory *is* transmitted — it just
+lands nowhere. We then guessed at `MODULE.md`, on the strength of the comment at
+`services/upgrade.py:198` ("Everything else recognized (the logo, MODULE.md) is carried through as
+opaque bytes"), republished, and got `readme: ""` again. That comment is currently the only mention
+of a readme filename in the package, and it points at a convention with no reader.
+
+**The contrast that suggests the shape of the fix.** The logo has a dedicated out-of-digest amend
+endpoint — `RegistryClient.amend_logo(namespace, name, version, logo_path)`, documented as
+"out-of-digest, no version bump". A readme has exactly the same properties: it is prose about the
+module, it must not enter `artifact.digest`, and it should be correctable without burning a version
+on an immutable registry. There is no `amend_readme`.
+
+**Why it matters more than a cosmetic gap.** The card is where a module says what it is *not*. The
+module we published is 11 rows of explicitly *candidate* findings, most from a preprint, one with a
+published association that was **not significant** — and the README saying so in as many words is
+the single most important artefact for a reader deciding whether to install it. `description` is one
+sentence and cannot carry it. With no readme, the honest caveats stay on the author's disk while the
+catalog shows only a title, a gene list and a green `compile_success: true`, which reads as more
+confidence than the data supports.
+
+**Suggested fix, cheapest first:**
+
+1. Populate `readme` at publish from a recognised spec file, and *name the file in the docs* —
+   `MODULE.md` if that comment is the intended convention, `README.md` if you would rather follow
+   the ecosystem default. Either is fine; the current state, where both upload and neither is read,
+   is the one that cannot be worked around.
+2. Add `amend_readme` alongside `amend_logo`, same out-of-digest semantics, so a readme can be fixed
+   without a version bump.
+3. If a readme is deliberately *not* supported yet, drop `readme` from `ModuleDetail` or document it
+   as reserved. A field that is always `""` reads to a client as "this module has no readme" rather
+   than "this registry cannot store one", and we spent two publish cycles on that difference.
+
+## S6 — `namespace_available` green-lights on production a name the claim refuses with 422
+
+**Status — accepted and fixed in 0.14.0, but not the way you proposed, because the policy moved
+underneath the report in the same release.** Your diagnosis was exact — including which field was
+wrong and why `available: true` was right — and the fix you named (`test_data_refusal` inside the
+availability handler, as the fourth call site) is the one we applied. What changed is the verdict it
+produces.
+
+**The maintainer decided in the same pass that the test-data ban should not be absolute.** As of
+0.14.0 `allow_test_data=true` lets a `test-`prefixed namespace or `test_`prefixed module through on
+production: a form field on publish and import, a body field on the claim, `--allow-test-data` on
+`issue-key`. The default is unchanged — say nothing and you still get `422` — because the failure the
+guard prevents is silent and permanent, and a typo passes no flags. But the name is no longer illegal
+there, merely gated.
+
+That makes `valid: false` the wrong answer. It would have been true for about an hour, and then it
+would have been the same contradiction you filed, rewritten backwards: a pre-flight reporting a name
+as invalid on an instance that will accept it. So availability now answers:
+
+```
+{"namespace": "test-sheep", "valid": true, "available": true,
+ "requires_allow_test_data": true,
+ "warnings": ["namespace 'test-sheep' starts with 'test-', which this production instance does not
+               accept by default... If you mean it, resend with allow_test_data=true ..."]}
+```
+
+`requires_allow_test_data` is the machine-readable half, so you branch on that rather than parsing
+prose. A test asserts the two endpoints agree — the pre-flight refuses exactly when the claim refuses,
+and accepts exactly when it accepts — which is the property your report was really about and the one
+worth defending against the next policy change.
+
+**Two things worth carrying back to your tool.** The refusal message now names the parameter, so a
+caller who hits it can act without reading our docs. And there is a sharp edge in the new
+permissiveness that you should know before using it: `registry purge-test-data` selects on exactly the
+prefix that `allow_test_data` waves through, so data deliberately kept on production under a `test-`
+name is data a routine cleanup would remove. Every accepted override says so in its warning.
+
+**Your closing note is the part we would keep.** "`claim` refusing is the safe outcome, so nothing is
+lost but trust in the check; the same omission in the other direction would be far worse" — that is
+the right way to size a pre-flight bug, and it is why this landed as a fix rather than a roadmap item.
+<!-- triaged: 0.14.0 · sha fd2d9727be6e -->
+
+**Filed by:** `just-module-creator` · **Found:** 2026-08-12, checking a production namespace ·
+**Registry version:** 0.13.0
+
+On the **production** instance:
+
+```
+namespace_available("test-sheep")    -> {"valid": true, "available": true,
+                                         "message": "'test-sheep' is free. Claiming it is
+                                          irreversible ... so pick the name you want to keep."}
+namespace_available("test-longevity") -> {"valid": true, "available": true, ...}
+```
+
+Both are refused by `POST /namespaces` with `422 test_data_on_prod`, because
+`testdata.test_data_refusal` matches `settings.test_data_prefix` and
+`api/routers/namespaces.py:49` raises before the ownership check. So the read-only pre-flight for an
+irreversible operation reports the exact opposite of what that operation will do.
+
+**`valid` is the field that is wrong, not `available`.** The name is genuinely unclaimed, so
+`available: true` is correct. But `valid` reads as "this name is legal on this instance", and on a
+production instance a `test-`prefixed namespace is not — that is precisely what
+`is_test_namespace` decides. The two-field design is otherwise exactly right (a `422` on an illegal
+name is not the same answer as a name someone else owns); this is one rule missing from one of them.
+
+**Why this is worse than a normal pre-flight gap.** `namespace_available`'s whole contract is to make
+the irreversible claim a decision rather than a guess — our own tool description says so, and the
+server's own message says "Claiming is irreversible ... pick the name you want to keep". A caller who
+follows that advice on production is told to go ahead, and the reward is a `422` they were explicitly
+checking to avoid. `claim` refusing is the safe outcome, so nothing is lost but trust in the check;
+the same omission in the other direction would be far worse.
+
+**Suggested fix:** call `test_data_refusal(namespace, "", settings)` inside the availability handler
+and return `valid: false` with that message as the reason — the function already returns a sentence
+written for a human ("...which this production instance does not accept. Publish it to the test
+instance instead, or drop the prefix if it is real."), and it is the same one the claim will raise.
+Three call sites already share that rule (publish, claim route, CLI); this is the fourth that should.
+
+**Corroborating context:** we hit this while a user explicitly asked to publish to production under a
+`test-` prefix, believing the restriction was advisory. The availability check was the natural place
+to settle that, and it agreed with them.
+
+# Field notes from `just-module-creator`
+
+*2026-08-12 — filed while publishing an AI-authored module to the polygon.*
+
+## S7 — a `README.md` in the spec directory is uploaded and then never surfaces; `readme` stays `""`
+
+**Status — confirmed, and already fixed: this is the same defect your colleague filed as S5, which
+shipped in 0.14.0 shortly before this note arrived.** You were testing 0.13.0, where the diagnosis was
+exactly right. Upgrade and a `README.md` in the spec directory becomes the card's `readme`. Answering
+your three-way ambiguity directly, because that framing was the most useful thing in the report:
+
+1. **The server ignored it.** That was the truth in 0.13.0 — the field was declared, stored, returned,
+   and never written by anything. Not a different route you missed; there was no writer at all.
+2. **It wanted a different filename.** Also true, in a worse way than you guessed: `MODULE.md` was the
+   name this project's own docs and code comments advertised, and *nothing read that either*. 0.14.0
+   picked `README.md`, and `MODULE.md` is now **renamed on upload** with a note on the response rather
+   than dropped — your corpus was authored against advice we gave and then changed, so the rename is a
+   repair of our advice rather than a favour.
+3. **A per-module field a per-version publish should not touch.** No — and you were right to flag that
+   it needs a stated rule rather than a discovered one. It is module-level, fed by publish,
+   **last-publish-wins**, and a publish with *no* readme leaves the existing one alone instead of
+   blanking it. That is now written down in [API-REFERENCE.md](API-REFERENCE.md) §37 rather than left
+   to be inferred.
+
+`amend_readme` exists too (your second candidate), mirroring `amend_logo`: out of `artifact.digest`,
+no version bump. Your module can be fixed with it right now — no republish, no version burned.
+
+**Your third candidate is the part this note earned on its own, and it shipped today.** You were
+right that the failure was silent in *both* directions and that warning alone would be wrong. It is
+now a companion to the fix rather than a substitute: a file that is plainly meant as the readme under
+a name nothing reads — `readme.md`, `Readme.md`, `README.txt`, bare `README` — comes back as a warning
+naming `README.md` and pointing at `amend_readme`, on `/validate`, `/check` and publish. It is
+deliberately **not** renamed the way `MODULE.md` is: we told authors to write `MODULE.md`, so
+repairing that is ours to do, but guessing that `README.txt` meant the card would be inventing intent.
+
+**Two observations from your paste, since you may not have meant either.** `inputs` carrying only
+`module_spec.yaml`, `variants.csv` and `studies.csv` is correct and not related — that list is the
+compiler's *hashed input* set, and prose is deliberately outside it, which is exactly what lets a
+readme be amended without minting a new `artifact.digest`. And `gather_spec_files` is uploading your
+own `published.json` receipt on every publish, so each version's storage carries the receipt of the
+one before it. Harmless, but probably not what you intended.
+
+**One thing you should know that the fix does not cover.** A readme reaches the catalog *card* and no
+further: `/files/{path}` and the tarball are both built from what the **manifest** attests, and the
+manifest has a `logo` field and no `readme` field. So a reader who clones your module still gets the
+file from your spec directory, but a reader who downloads it from us does not. That half is upstream
+and is filed as **S25** in `just-dna-format`, with your case named in it — an AI-authored module whose
+readme is where the authoring decisions are auditable is the sharpest argument for the field, and we
+used it.
+<!-- triaged: 0.14.0 · sha 5a46787b3bd9 -->
+
+**What we ran.** Authored `assets/longevity_2026`, wrote a `README.md` into the spec directory, waited,
+then published:
+
+```
+registry_publish(namespace="test-sheep", name="longevity_2026", version="1.0.0",
+                 spec_dir="assets/longevity_2026", target="test")
+registry_get_module("test-sheep", "longevity_2026", target="test")
+```
+
+**What we expected.** The module card's `readme` field to carry the file. `gather_spec_files` advertises
+exactly this in its own docstring — *"Collect uploadable spec files (yaml/csv/**md**/logo + any logs)"* —
+and it does collect it; we checked directly:
+
+```
+>>> [n for n, _ in gather_spec_files(Path("assets/longevity_2026"))]
+['README.md', 'module_spec.yaml', 'published.json', 'resolution.csv',
+ 'sources.csv', 'studies.csv', 'variants.csv']
+```
+
+**What happened.** The publish succeeded and the read-back is correct in every other respect — same
+`artifact_digest` as our local strict compile, `fully_resolved: true`, `authorship` intact, `sources`
+notices all present. But:
+
+```json
+"readme": "",
+```
+
+and the version's `inputs` list carries only `module_spec.yaml`, `variants.csv` and `studies.csv`. The
+file was on disk 16 seconds before the publish, so this is not a write-after-publish race on our side.
+
+So the `.md` is uploaded, the server accepts it, and nothing shows it. From a client's position we cannot
+tell which of three things is true, and that ambiguity is really the report:
+
+1. the server ignores `README.md` and `readme` is set through some other route we could not find;
+2. the server wants a different filename (`readme.md`? `README`?) and silently drops what it got;
+3. it is a per-module field that a per-version publish is not expected to touch at all.
+
+We looked for a setter on `RegistryClient` and found none — there is `amend_changelog` and `amend_logo`,
+but no `amend_readme` and no `readme` argument on `publish`. `dir(RegistryClient)` has nothing matching.
+
+**What we did meanwhile.** Nothing, and deliberately nothing: there is no workaround that leaves the data
+honest. Folding the readme into `description` would misuse a one-sentence display field, and the module's
+own `README.md` stays in the spec directory where a reader who clones it will find it. The published card
+simply has no readme.
+
+**Why it matters more than it looks.** `registry_get_module` is documented as *"the best available worked
+example — the published spec of a real module is more instructive than any template"*, and our own skill
+sends authors there to learn. A readme is where a module says what it deliberately left out — which rows
+were dropped and why, which columns are empty by design rather than pending, how a licence pair was
+adjudicated. Our module's readme is 6.9 KB of exactly that, and none of it reaches a reader of the
+catalog. For an AI-authored module this is sharper still: the readme is where the authoring decisions are
+auditable, and `authorship: [ai, agent]` invites a reader to go and audit them.
+
+**Candidate fixes, and what is wrong with each.**
+
+- *Populate `readme` from an uploaded `README.md` at publish.* Simplest, matches what the uploader already
+  collects. The wrinkle: it is a module-level field fed by a version-level event, so two versions with
+  different readmes need a rule — last-publish-wins is probably right, but it should be stated rather
+  than discovered.
+- *Add `amend_readme`, mirroring `amend_logo`.* Explicit, and it sidesteps the version/module mismatch.
+  But it makes the readme a second thing to remember after publishing, and the file is already sitting in
+  the directory that was just uploaded.
+- *Reject or warn on an uploaded `.md` the server will not use.* Wrong on its own — it turns a silent
+  drop into a loud one without giving anybody a readme — but right as a companion to either fix above,
+  because the current failure is silent in both directions.
+
+**Either way, one line of documentation would have saved this note**: whether a spec-directory `README.md`
+is expected to become the card's `readme`, and if not, what does.

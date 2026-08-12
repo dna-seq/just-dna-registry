@@ -256,12 +256,66 @@ running server, and one direction arms a delete endpoint on production data.
 - **Production refuses test data at every door** (publish, namespace claim, `issue-key`), and the two
   identifier spellings differ: namespaces/handles take `test-`, module names take `test_` (they forbid
   hyphens). One flag, normalised per identifier — never configure it twice.
+- **Since 0.14 that refusal is a default, not a ban: `allow_test_data=true` proceeds anyway.** It is a
+  request field on publish/import, a body field on the namespace claim, and `--allow-test-data` on
+  `issue-key`. The default stays "refuse" because the failure it prevents is silent and permanent — a
+  mistyped namespace spends a version number and a global `content_hash` that only a purge frees —
+  while the cost of asking explicitly is one parameter. **An accepted override always warns**
+  (`testdata.accepted_anyway`), on the response and in the log, because production is then holding
+  test-prefixed data and nothing else would say so.
+- **The override and `purge-test-data` are aimed at the same prefix, and that is the sharp edge.**
+  Data deliberately kept on production under a `test-` name is data a routine purge would remove. The
+  purge lists before it deletes; that listing is the moment to notice. Say this whenever either is
+  documented — a reader who learns only one of them has the dangerous half.
 - **That guard is prospective only.** It does not clean what is already there, so `purge-test-data`
   stays necessary. Do not describe one as making the other redundant.
+- **A read-only pre-flight must predict the operation it precedes.** `GET /namespaces/{ns}` reported
+  `valid: true` for a name the claim then refused (S6). It now carries `requires_allow_test_data` and
+  a warning instead — *not* `valid: false`, because the name is genuinely claimable with the flag, and
+  flipping the field would be the same contradiction rewritten backwards.
 - **Anything destructive snapshots first** (`backup._guard` in the CLI). The rolling index only counts
   up and never overwrites — it is not a ring buffer, and taking a backup must be the one safe act here.
 - **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
   guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
+
+---
+
+## Spec layout (0.14) — the flat one is canonical, everything else is transport
+
+The compiler reads one flat directory, so that is the spec. `specfiles.plan_layout` normalizes an
+upload onto it and `services/publish.normalize_spec` applies the plan — called from `_finalize` and
+from **both** dry-run workers, because a dry run that normalizes differently from the publish it
+predicts is worse than one that does not normalize at all.
+
+- **The folder convention is ours; the format says nothing about folders.** `derived/` holds the
+  machine-written tables (`resolution.csv` + the fact sidecars) on the wire, in both directions. It
+  exists because a spec mixes two provenances and marks neither — and `sources.csv` is genuinely
+  both, the author's rows with the enricher's merged in.
+- **It is safe only because `SIGNATURE_INPUTS` is entirely root-level.** Nothing that may live in
+  `derived/` is in `content_signature`, so splitting a module cannot move its identity or its
+  `409 duplicate_content` claim. A test asserts the disjointness. **Check it again before putting
+  anything new in that folder** — the day a signature input becomes splittable, a downloaded module
+  stops being republishable as itself.
+- **Liberal in, strict out.** Any subdirectory is accepted on the way in (`metadata/`, `enriched/`,
+  whatever a producer already ships); only `derived/` is ever emitted. Two exceptions: `logs/` and a
+  top-level `*.log` are never moved, because the manifest attests those paths verbatim, and
+  unrecognized files stay exactly where they are, because the compiler tolerates unknown files as a
+  contract (S16 upstream) and a rule invented here would break it.
+- **One root name from two paths is `422 ambiguous_spec_layout`, never a guess.** Only the author
+  knows which copy is current, and picking one silently publishes the wrong table under a signature
+  that looks perfectly valid.
+- **`MODULE.md` is renamed to `README.md` on upload, not merely tolerated.** `README.md` is the one
+  name the card reads (S5), and `MODULE.md` is what this project advised for two releases and what
+  `just-module-creator` still writes — all 26 sample zips in `data/input/` carry one. Renaming is the
+  difference between a rename we made and a republish every author pays for. Both present → the real
+  name wins and the legacy file is carried untouched; overwriting prose the author wrote with prose
+  they did not is the one thing this pass must never do.
+- **The split cannot separate what a downloader never receives.** The manifest has fields for `logs`,
+  `logo`, `provenance` and the authored `inputs`, and none for the derived CSVs — only their
+  parquets are in `artifact.files`. So `download(layout="split")` creates `derived/` only when
+  something lands in it, and `download(include_inputs=True)` exists because `/download` lists
+  `artifact.files` alone. Filed upstream as **S26**, with the second half: the compiler discovers
+  authored tables at the spec root only, which is what keeps this layer transport-only.
 
 ---
 

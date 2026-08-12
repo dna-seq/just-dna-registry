@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.13.x**, API `v1`. Written against the server at that version; a
+- **Normative for:** registry **0.14.x**, API `v1`. Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).
@@ -123,6 +123,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 34 | GET/PUT/DELETE | `/api/v1/modules/{ns}/{name}[/versions/{v}]/reviews` | bearer (writes) | Reviews and audits |
 | 35 | DELETE | `/api/v1/modules/{ns}/{name}/versions/{v}` | bearer | Hard-delete a version — **test instance only**, `405` on prod (0.12) |
 | 36 | DELETE | `/api/v1/modules/{ns}/{name}` | bearer | Hard-delete every version — **test instance only** (0.12) |
+| 37 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/readme` | bearer | Replace the card's readme prose (metadata, out of digest) (0.14) |
 
 ---
 
@@ -448,7 +449,7 @@ check). `digest` is required. `200 →`
 `matches` is `[]` if none (not a 404).
 
 ### 4. `GET /api/v1/modules/{ns}/{name}`
-`200 → ModuleDetail` = the card **plus** `readme` (MODULE.md text), the **full** `stats.genes`, the
+`200 → ModuleDetail` = the card **plus** `readme` (the spec's `README.md`, see 37), the **full** `stats.genes`, the
 embedded `versions` array (`VersionSummary[]`, includes yanked), and `latest_manifest` (the full
 `ModuleManifest` inline). `404 module_not_found`. Each successful detail view increments the
 module's `views` counter (feeds `sort=popular`); with a bearer token the card's `starred_by_me`
@@ -493,7 +494,7 @@ Publish a new version. `multipart/form-data`:
 - `version` (form, required) — SemVer.
 - `changelog` (form, optional).
 - `files` (one or more file parts) — the **spec**: `module_spec.yaml` + `variants.csv` +
-  `studies.csv` required; `MODULE.md`, `logo.*`, and logs (`*.log`, `logs/*.log`) optional. Nested
+  `studies.csv` required; `README.md`, `logo.*`, and logs (`*.log`, `logs/*.log`) optional. Nested
   names are honored (`logs/reviewer.log`).
 
 Flow: ownership → version format → immutability → `validate_spec` → `enrich` → `compile_module`
@@ -501,7 +502,36 @@ Flow: ownership → version format → immutability → `validate_spec` → `enr
 The spec's `module.name` must equal the path `{name}` (`422 name_mismatch`).
 
 `201 →` the full `ModuleManifest`. Errors: `401`, `403 not_namespace_member`,
-`422 invalid_version`, `409 version_exists`, `422 {error: missing_spec_files|invalid_spec|compile_failed|name_mismatch}`.
+`422 invalid_version`, `409 version_exists`,
+`422 {error: missing_spec_files|invalid_spec|compile_failed|name_mismatch|ambiguous_spec_layout}`.
+
+#### Spec layout (0.14) — what may arrive, and from where
+
+The compiler reads one flat directory, so that is the canonical layout and the server normalises an
+upload onto it before reading anything. Two normalisations, both applied identically by `/versions`,
+`/versions/import`, `/validate` and `/check`, and both reported on the dry runs' `info[]`:
+
+- **A recognised spec file in a subdirectory is lifted to the root.** `derived/resolution.csv`
+  publishes exactly as `resolution.csv` does. `derived/` is the folder this registry emits (see
+  `--layout split` in [CLIENT.md](CLIENT.md)), but any folder name is accepted on the way in, because
+  producers already ship `metadata/` and `enriched/` trees and refusing them buys nothing.
+- **`MODULE.md` is renamed to `README.md`**, unless a `README.md` is also present — then the real
+  name wins, the legacy file is carried unchanged, and a warning says so.
+
+Two exceptions and one refusal:
+
+- **`logs/` is never flattened**, and neither is a top-level `*.log`. The manifest records those
+  paths verbatim, so hoisting one would rename a file the manifest attests.
+- **Unrecognised files stay exactly where they are**, at whatever depth. The compiler tolerates
+  unknown files by contract; a rule invented here would break it.
+- **One root name claimed by two paths is `422 ambiguous_spec_layout`**, listing both. Only the
+  author knows which copy is current, and picking one silently would publish the wrong table under a
+  signature that looks perfectly valid.
+
+**The folder cannot move a module's identity.** `content_signature` is computed over
+`module_spec.yaml`, `variants.csv`, `studies.csv` and the table-kind CSVs — all authored, all at the
+root — so nothing that may live in `derived/` is in it, and a spec published flat and the same spec
+published split are one module, with one `409 duplicate_content` claim between them.
 
 **Publish is the low-priority lane, and it has no deadline.** On a deployment that enriches online
 (`REGISTRY_ENRICH_OFFLINE=false`) it egresses through the same paced clients as `/check`, on the same
@@ -539,6 +569,9 @@ Publish from a **zip or tar.gz** archive (in-house packaging / legacy import). `
 A spec archive (contains `module_spec.yaml`) is recompiled directly; a legacy archive (only
 `weights.parquet`, no spec) is reverse-engineered via `reverse_module` then recompiled. Extraction
 is path-traversal-safe. Same guards/response as endpoint 10, plus `422 {error: unsafe_archive|bad_archive|no_module_content}`.
+The *Spec layout* rules under endpoint 10 apply here too, and this is where they matter most: a zip is
+how a subfoldered spec and a legacy `MODULE.md` usually arrive. A single wrapping directory is
+unwrapped as before; `derived/` (or any other subfolder) is flattened onto the root.
 
 **Declare `genome_build` for a non-GRCh38 legacy archive.** The build reaches a compiled module
 through `manifest.json` and no parquet column, so `reverse_module` recovers it from the archive's own
@@ -571,6 +604,26 @@ immutable and there is **no version bump**. Owner-only. `200 → {"namespace","n
 {"name","sha256","size"}}`. Errors: `401`, `403 not_namespace_member`, `404 version_not_found`,
 `422 invalid_logo` (bad extension). Cards expose the served logo as `logo_url`; consumers fall back
 to `icon`/`icon_set` when a module ships none.
+
+### 37. `POST /api/v1/modules/{ns}/{name}/versions/{v}/readme`  *(bearer)*
+Replace a module's **readme** — the prose on its card — as a multipart `readme` file (markdown).
+Out-of-digest metadata like the logo and the changelog, so the artifact, its digest and any signature
+over it stay immutable and there is **no version bump**. Amend rights (own version for a member, any
+for admin+). `200 → {"namespace","name","version","readme"}`. Errors: `401`,
+`403 not_namespace_member`, `404 version_not_found`.
+
+**Where a readme comes from in the first place:** publish reads `README.md` out of the uploaded spec
+and projects it onto the module. That is the *only* recognised filename — earlier revisions of this
+document and a comment in `services/upgrade.py` both named `MODULE.md`, but nothing ever read either,
+so 0.14 settled on the ecosystem default. **An uploaded `MODULE.md` is renamed to `README.md`** (see
+*Spec layout* under endpoint 10), so the corpus written against the old advice publishes with its
+prose intact; a module published *before* 0.14 still ships its `MODULE.md` as opaque bytes, and this
+endpoint is the fix that costs no version number.
+
+The readme is **module-level**, matching the card it feeds: a republish carries the newest spec's
+readme forward exactly as `title` does, and a spec with no `README.md` leaves existing prose alone
+rather than blanking it. It is out of `artifact.digest` **and** out of the content signature, so
+editing a caveat never mints a new content identity or trips `409 duplicate_content`.
 
 ### 21. `GET /api/v1/pubkey`
 The server's Ed25519 **public key** for verifying signed manifests (SPEC §5). `200 → {"algorithm":
@@ -668,13 +721,20 @@ install-id just issues a fresh key for its existing account.
 `422 invalid_account` (handle isn't a valid slug), `409 account_taken`.
 
 ### 15. `GET /api/v1/namespaces/{ns}`
-`200 → {"namespace": "alice-mods", "valid": true, "available": true}`. Public. `valid` reflects the
-slug rule (`^[a-z0-9][a-z0-9-]*$`); `available` is false once claimed.
+`200 → {"namespace", "valid", "available", "requires_allow_test_data", "warnings"}`. Public. `valid`
+reflects the slug rule (`^[a-z0-9][a-z0-9-]*$`); `available` is false once claimed.
+
+**`requires_allow_test_data` + `warnings` (0.14)** carry the rule the *claim* will apply, because
+this pre-flight used to contradict it: a `test-`prefixed name on production reported
+`valid: true, available: true` and then met `422 test_data_on_prod` — a read-only check for an
+irreversible act reporting the opposite of what the act would do (S6). It is a warning rather than
+`valid: false` because since 0.14 the name genuinely *is* claimable there, with `allow_test_data`.
 
 ### 16. `POST /api/v1/namespaces`  *(bearer)*
-Claim an available namespace for the caller's account. Body `{"namespace": "alice-mods"}`.
-`201 → {"namespace": "alice-mods", "owner": "alice", "already_owned": false}` (idempotent if you
-already own it → `already_owned: true`). Errors: `401`, `422 invalid_namespace`,
+Claim an available namespace for the caller's account. Body
+`{"namespace": "alice-mods", "allow_test_data": false}`.
+`201 → {"namespace": "alice-mods", "owner": "alice", "already_owned": false, "warnings": []}`
+(idempotent if you already own it → `already_owned: true`). Errors: `401`, `422 invalid_namespace`,
 `409 namespace_taken` (owned by someone else), `403 namespace_limit_reached` (account at
 `namespaces_per_account`, default 5).
 
@@ -775,7 +835,7 @@ Three behaviours differ, and nothing else does:
 
 | | production | polygon (`test`) |
 |---|---|---|
-| `test-`prefixed namespace / `test_`prefixed module | `422 test_data_on_prod` on publish **and** on `POST /namespaces` | accepted |
+| `test-`prefixed namespace / `test_`prefixed module | `422 test_data_on_prod` on publish **and** on `POST /namespaces` — **unless `allow_test_data=true`**, which accepts it with a warning (0.14) | accepted, no flag needed |
 | `409 duplicate_content` | considers every version, any account | scoped to the **publishing account** |
 | `DELETE` on a module / version | `405` (not mounted) | served |
 

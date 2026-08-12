@@ -604,14 +604,17 @@ def validation_report(
     strict: bool,
     *,
     normalized: Optional[list[str]] = None,
+    extra_warnings: Optional[list[str]] = None,
 ) -> ValidationReport:
     """The offline half of a dry run: validate, sign the content, and pre-check dedup.
 
     Shared by `/validate` (which stops here) and `/check` (which continues into the network tier).
 
-    `normalized` is what the server rewrote before validating. It is reported rather than hidden:
-    the point of a dry run is to predict a publish, and a publish that silently quotes your version
-    or drops your `namespace:` key is doing something the author should be able to see.
+    `normalized` is what the server rewrote before validating, and `extra_warnings` is what it
+    noticed but did not act on (a `MODULE.md` left alone because a `README.md` was also sent). Both
+    are reported rather than hidden: the point of a dry run is to predict a publish, and a publish
+    that silently quotes your version, drops your `namespace:` key or flattens your `derived/` folder
+    is doing something the author should be able to see.
     """
     result = validate_spec(spec_dir, IDENTITY_AUTHORITY_KEYS, strict=strict)
 
@@ -633,7 +636,7 @@ def validation_report(
         valid=result.valid,
         strict=strict,
         errors=list(result.errors),
-        warnings=list(result.warnings),
+        warnings=list(result.warnings) + list(extra_warnings or []),
         info=list(normalized or []) + list(result.info),
         stats=SpecStats.model_validate(
             {k: v for k, v in stats.items() if k in SpecStats.model_fields}
@@ -716,10 +719,13 @@ def _dry_run_inner(
     declared_use: str,
     started: float,
 ) -> CheckReport:
-    from just_dna_registry.services.publish import PublishError, normalize_module_block
+    from just_dna_registry.services.publish import PublishError, normalize_spec
 
-    normalized = normalize_module_block(spec_dir)
-    validation = validation_report(spec_dir, repo, name, strict, normalized=normalized)
+    normalization = normalize_spec(spec_dir)
+    validation = validation_report(
+        spec_dir, repo, name, strict,
+        normalized=normalization.info, extra_warnings=normalization.warnings,
+    )
 
     # The strongest cost guard in the design: a spec that cannot compile is not worth an outbound
     # request, and its findings are already the answer the caller needs.

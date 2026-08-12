@@ -14,15 +14,37 @@ from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import ModuleManifest, write_manifest
 
 from just_dna_registry.models.api import CheckReport, ValidationReport, VersionRef
+from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES
 from just_dna_registry.version import VersionInfo, compatibility_error
 
 API_PREFIX: str = "/api/v1"
 
+#: Dropped into `DERIVED_DIR` by `download(layout="split")`, because a folder that appears in a
+#: download and nowhere in the docs is a folder somebody deletes.
+#:
+#: Deliberately **not** named `README.md`: `plan_layout` hoists a recognized spec file out of any
+#: subdirectory, so a readme written here would be lifted to the root on the next upload and would
+#: either overwrite the module's own prose or collide with it.
+_DERIVED_NOTE_FILE: str = "WHERE-THIS-CAME-FROM.md"
+_DERIVED_NOTE: str = f"""\
+# {DERIVED_DIR}/
+
+The tables in here were written by `just-dna-enricher`, not by the module's author: rsID→coordinate
+resolution, gnomAD frequencies, gene metrics, citations, and the source records merged in beside
+whatever the author declared. The authored spec is the flat set beside this folder.
+
+The split is this registry's presentation of the module and nothing else depends on it. The manifest
+names every one of these files at the spec root, which is also where `just-dna-compiler` reads them,
+so a re-upload is flattened back automatically and `content_signature` is unaffected either way.
+"""
+
 _log = logging.getLogger("registry.client")
 
 # Spec inputs a publisher uploads; compiled outputs are produced server-side, never uploaded.
+# `WHERE-THIS-CAME-FROM.md` is this client's own note to a reader, written by `download(layout=
+# "split")` — uploading it back would publish our explanation as if the author had written it.
 _SKIP_UPLOAD_SUFFIXES: frozenset[str] = frozenset({".parquet"})
-_SKIP_UPLOAD_NAMES: frozenset[str] = frozenset({"manifest.json"})
+_SKIP_UPLOAD_NAMES: frozenset[str] = frozenset({"manifest.json", "WHERE-THIS-CAME-FROM.md"})
 
 
 _ARCHIVE_SUFFIXES: tuple[str, ...] = (".tar.gz", ".tgz", ".zip")
@@ -82,6 +104,34 @@ def gather_spec_files(spec_dir: Path) -> list[tuple[str, bytes]]:
             continue
         out.append((path.relative_to(spec_dir).as_posix(), path.read_bytes()))
     return out
+
+
+def split_derived(module_dir: Path) -> list[str]:
+    """Move a downloaded module's machine-written tables into `DERIVED_DIR`. Returns what moved.
+
+    Presentation only, and it runs **after** `verify_manifest`: the manifest names these files at the
+    root, so a tree split before verification is a tree that fails to verify. Re-uploading the split
+    tree is safe in the other direction — the server flattens it back, and none of these files is in
+    `SIGNATURE_INPUTS`, so the module's content identity does not move either way.
+
+    Today this moves less than it will: the derived CSVs are stored server-side but the manifest
+    attests none of them, so a downloader only receives what `artifact.files`/`inputs`/`logs` list.
+    Filed upstream (see `docs/CONSUMER_SUGGESTIONS.md` in `just-dna-format`); the folder is created
+    only when something actually lands in it.
+    """
+    module_dir = Path(module_dir)
+    derived_dir = module_dir / DERIVED_DIR
+    moved: list[str] = []
+    for name in DERIVED_FILES:
+        source = module_dir / name
+        if not source.is_file():
+            continue
+        derived_dir.mkdir(exist_ok=True)
+        source.replace(derived_dir / name)
+        moved.append(name)
+    if moved:
+        (derived_dir / _DERIVED_NOTE_FILE).write_text(_DERIVED_NOTE, encoding="utf-8")
+    return moved
 
 
 class RegistryError(RuntimeError):
@@ -333,9 +383,23 @@ class RegistryClient:
     def namespace_available(self, namespace: str) -> dict:
         return self._json(self._http.get(f"/namespaces/{namespace}"))
 
-    def claim_namespace(self, namespace: str) -> dict:
-        """Claim an available namespace for the token's account (bearer)."""
-        return self._json(self._http.post("/namespaces", json={"namespace": namespace}))
+    def claim_namespace(self, namespace: str, *, allow_test_data: bool = False) -> dict:
+        """Claim an available namespace for the token's account (bearer).
+
+        `allow_test_data=True` claims a `test-`prefixed name on a production instance, which is
+        refused by default with `422 test_data_on_prod`. The response then carries a `warnings`
+        entry saying so — production is holding test-prefixed data, and `registry purge-test-data`
+        selects on exactly that prefix.
+
+        `namespace_available()` predicts this: its `requires_allow_test_data` is the machine-readable
+        form of the same rule, so a caller can settle it before spending the claim.
+        """
+        return self._json(
+            self._http.post(
+                "/namespaces",
+                json={"namespace": namespace, "allow_test_data": allow_test_data},
+            )
+        )
 
     def _fetch_file(self, namespace: str, name: str, version: str, rel: str) -> bytes:
         resp = self._http.get(f"/modules/{namespace}/{name}/versions/{version}/files/{rel}")
@@ -358,12 +422,26 @@ class RegistryClient:
         dest: Path,
         *,
         include_logs: bool = True,
+        include_inputs: bool = False,
         public_key: Optional[str] = None,
+        layout: str = "flat",
     ) -> ModuleManifest:
         """Download a version's artifact (+ logs/logo/provenance) into `dest` and verify it.
 
         `version` may be `"latest"`. When `public_key` (base64 raw, pinned out-of-band) is given, the
-        manifest's Ed25519 signature over `artifact.digest` is enforced. Returns the verified manifest."""
+        manifest's Ed25519 signature over `artifact.digest` is enforced. Returns the verified manifest.
+
+        `include_inputs=True` also fetches the **authored** spec — `module_spec.yaml`, `variants.csv`
+        and the table CSVs — and hash-checks each against `manifest.inputs`. Off by default because
+        an installer wants the parquets and nothing else; on, this is the difference between a
+        downloaded artifact and a downloaded *module*, and it is what makes `layout` mean anything.
+
+        `layout="split"` moves the machine-written tables into `derived/` afterwards, so a reader can
+        tell the author's files from the enricher's. **Afterwards is the whole of the design:** the
+        manifest attests flat names, so verification runs on the flat tree and the split is applied
+        to a tree that has already been proven. Default `"flat"` — nothing existing changes."""
+        if layout not in {"flat", "split"}:
+            raise ValueError(f"layout must be 'flat' or 'split', got {layout!r}")
         self.assert_compatible()  # a format mismatch shows up as a digest failure — catch it first
         version = self.resolve_version(namespace, name, version)
         dest = Path(dest)
@@ -375,6 +453,11 @@ class RegistryClient:
         names = [f["name"] for f in listing["files"]]
         if include_logs:
             names += [e["name"] for e in self.logs(namespace, name, version)]
+        if include_inputs:
+            # `/download` lists `artifact.files` only, so the authored spec is reachable but never
+            # arrives unasked. Taken off the manifest rather than a second listing endpoint: these
+            # are the entries `check_inputs` verifies against, so one source decides both.
+            names += [e.name for e in manifest.inputs]
         if manifest.logo is not None:
             names.append(manifest.logo.name)
         if manifest.provenance is not None and manifest.provenance.file:
@@ -388,10 +471,13 @@ class RegistryClient:
             dest,
             manifest,
             check_logs=include_logs,
+            check_inputs=include_inputs,
             check_logo=manifest.logo is not None,
             check_provenance=manifest.provenance is not None,
             public_key=public_key,
         )
+        if layout == "split":
+            split_derived(dest)
         return manifest
 
     # ── Pre-flight: predict a publish before spending one ──────────────────────
@@ -535,9 +621,26 @@ class RegistryClient:
     # ── Publish ────────────────────────────────────────────────────────────────
 
     def publish(
-        self, namespace: str, name: str, version: str, spec_dir: Path, changelog: str = ""
+        self,
+        namespace: str,
+        name: str,
+        version: str,
+        spec_dir: Path,
+        changelog: str = "",
+        *,
+        allow_test_data: bool = False,
     ) -> ModuleManifest:
-        """Upload a spec directory and publish it as a new version (server-side recompile)."""
+        """Upload a spec directory and publish it as a new version (server-side recompile).
+
+        A `README.md` in `spec_dir` becomes the module's card prose; `amend_readme()` fixes it later
+        without a version bump.
+
+        `allow_test_data=True` publishes a `test-`prefixed namespace or `test_`prefixed module name
+        onto production, which is refused by default. Deliberate rather than convenient: what it
+        buys past the refusal is a version number and a global `content_hash` claim that only a
+        purge releases — and `registry purge-test-data` matches that prefix, so data kept here on
+        purpose is data a routine cleanup would remove.
+        """
         self.assert_compatible()
         files = [
             ("files", (rel, data, "application/octet-stream"))
@@ -545,7 +648,10 @@ class RegistryClient:
         ]
         resp = self._http.post(
             f"/modules/{namespace}/{name}/versions",
-            data={"version": version, "changelog": changelog},
+            data={
+                "version": version, "changelog": changelog,
+                "allow_test_data": str(allow_test_data).lower(),
+            },
             files=files,
         )
         return ModuleManifest.model_validate(self._json(resp))
@@ -600,6 +706,26 @@ class RegistryClient:
         resp = self._http.post(
             f"/modules/{namespace}/{name}/versions/{version}/logo",
             files={"logo": (logo_path.name, logo_path.read_bytes(), "application/octet-stream")},
+        )
+        return self._json(resp)
+
+    def amend_readme(
+        self, namespace: str, name: str, version: str, readme: "Path | str"
+    ) -> dict:
+        """Replace a published version's readme — the prose on the module's card.
+
+        Owner token; out-of-digest, no version bump, exactly like `amend_logo`. Takes a path to a
+        markdown file or the text itself, since both are natural here: a tool usually has the file,
+        a human fixing one sentence usually has the string.
+
+        The readme is the field where a module says what it is *not* — that its findings are
+        candidates, that an association was not significant. `description` is one sentence and
+        cannot carry that, which is why this is amendable at all on an otherwise immutable registry.
+        """
+        text = readme if isinstance(readme, str) else Path(readme).read_text(encoding="utf-8")
+        resp = self._http.post(
+            f"/modules/{namespace}/{name}/versions/{version}/readme",
+            files={"readme": ("README.md", text.encode("utf-8"), "text/markdown")},
         )
         return self._json(resp)
 

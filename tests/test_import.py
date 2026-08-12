@@ -285,3 +285,59 @@ def test_import_then_tarball_download(client: TestClient, api_key: str) -> None:
         members = set(tar.getnames())
     assert "manifest.json" in members
     assert "weights.parquet" in members
+
+
+# ── The corpus as it actually arrives (0.14) ──────────────────────────────────
+
+
+def test_a_real_agent_zip_keeps_its_prose_its_log_and_its_logo(
+    client: TestClient, api_key: str
+) -> None:
+    """`hepatic_fibrosis_v1.zip`, exactly as `just-module-creator` writes one.
+
+    Six files, three of which the format has no table for: `MODULE.md` (prose), `v1.log` (a 240 KB
+    agent transcript) and `logo.png`. Every sample zip in `data/input/` ships a `MODULE.md`, so
+    "the readme is called `README.md` now" without a rename would have silently blanked the card of
+    the entire existing corpus.
+
+    The log and the logo are asserted to be *out of* `artifact.digest` — a module's content identity
+    cannot depend on which run produced it, or the same data recompiled tomorrow would be a different
+    module and could not be published under any other name.
+    """
+    zip_path = _zip("hepatic_fibrosis_v1.zip")
+    name = _spec_name(zip_path)
+    resp = _import(client, api_key, name, zip_path)
+    assert resp.status_code == 201, resp.text
+    manifest = resp.json()
+
+    card = client.get(f"/api/v1/modules/just-dna-seq/{name}").json()
+    assert card["readme"].startswith("# Module:"), "MODULE.md reached the card"
+    assert {e["name"] for e in manifest["logs"]} == {"v1.log"}
+    assert manifest["logo"]["name"] == "logo.png"
+
+    base = f"/api/v1/modules/just-dna-seq/{name}/versions/1.0.0"
+    assert client.get(f"{base}/files/v1.log").status_code == 200
+    assert client.get(f"{base}/files/logo.png").status_code == 200
+
+    # `module.version: 1` is a YAML integer in this zip and the field is a freeform string; the
+    # registry quotes it rather than refusing, and stamps its own version regardless.
+    assert manifest["identity"]["version"] == "1.0.0"
+
+    # Same data, no log and no logo → same content identity. The proof that neither is in it.
+    with zipfile.ZipFile(zip_path) as zf:
+        stripped = io.BytesIO()
+        with zipfile.ZipFile(stripped, "w") as out:
+            for member in zf.namelist():
+                if member.endswith((".log", ".png")):
+                    continue
+                out.writestr(member, zf.read(member))
+    resp2 = client.post(
+        f"/api/v1/modules/just-dna-seq/{name}/versions/import",
+        data={"version": "1.0.1", "changelog": "no log, no logo"},
+        files={"archive": ("stripped.zip", stripped.getvalue(), "application/zip")},
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp2.status_code == 201, resp2.text
+    assert resp2.json()["content_signature"] == manifest["content_signature"]
+    assert resp2.json()["artifact"]["digest"] == manifest["artifact"]["digest"]
+    assert resp2.json()["logs"] == [] and resp2.json()["logo"] is None

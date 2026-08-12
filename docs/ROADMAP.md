@@ -420,6 +420,20 @@ an explicit guard:
 
 ## Next registry version (post-0.11)
 
+- **Adopt `manifest.readme` when format 0.6 lands** (open; minor — closes the upstream half of **S5**
+  and **S7**). Filed as their **S25** and *accepted as asked*: `readme: FileEntry | None` mirroring
+  `logo`, excluded from `artifact.digest` **and** `content_signature`, with
+  `verify_manifest(check_readme=True)` to re-hash it. Upstream explicitly endorsed keeping our
+  `/files/{path}` guard as it is — the fix was the missing attestation, not the refusal to serve
+  unhashed bytes — so adoption is: set the field on publish and on `amend_readme`, then let the
+  existing manifest-driven paths serve and pack it with no change to their rules. Two things to do in
+  the same pass: the DB projection becomes derivable from the manifest again (today `readme` is the
+  one column no manifest records, which is why `upsert_module(readme=None)` means "leave it"), and
+  `tests/test_v05.py::test_the_readme_reaches_the_card_but_not_a_downloader` is asserting a
+  limitation rather than a desired property — it is the test to rewrite, not to delete. Note their
+  `README_CANDIDATES` ladder resolves more spellings than our single `README_FILE`; decide
+  deliberately whether to widen ours to match or to keep warning (S7), because two different answers
+  to "which file is the readme" is exactly the drift this item exists to end.
 - **A successful publish drops its enrichment findings.** `EnrichOutcome.notes` is read in exactly one
   place — a *failed* compile's `warnings` (`services/publish.py`) — so on the happy path the ref-allele
   result, the non-fatal stale rsIDs, the PAR drops and the new `clin_sig_not_checked` reason are

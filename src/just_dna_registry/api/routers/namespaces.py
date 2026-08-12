@@ -17,7 +17,7 @@ from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.models.api import AddMemberRequest, MemberEntry, MemberList
 from just_dna_registry.permissions import VALID_NS_ROLES, Capability
-from just_dna_registry.testdata import test_data_refusal
+from just_dna_registry.testdata import accepted_anyway, override_hint, test_data_refusal
 
 router = APIRouter(prefix="/namespaces", tags=["namespaces"])
 
@@ -28,15 +28,36 @@ AccountDep = Annotated[Account, Depends(require_account)]
 
 class ClaimRequest(BaseModel):
     namespace: str
+    #: Claim a `test-`prefixed namespace on production deliberately (0.14). Default off, so the guard
+    #: still catches the typo it was built for; explicit, so holding test data in production is
+    #: something a caller says rather than something that happens.
+    allow_test_data: bool = False
 
 
 @router.get("/{namespace}")
-def availability(repo: RepoDep, namespace: str) -> dict:
-    """Whether a namespace is free to claim (public)."""
+def availability(repo: RepoDep, settings: SettingsDep, namespace: str) -> dict:
+    """Whether a namespace is free to claim (public).
+
+    `valid` is about the *name*, `available` about who holds it — two different refusals
+    (`422 invalid_namespace` vs `409 namespace_taken`), which is why they stay two fields.
+
+    **`warnings` is the third thing, and it exists because this pre-flight used to contradict the
+    operation it predicts (S6).** A `test-`prefixed name on production answered `valid: true,
+    available: true` and then met `422 test_data_on_prod` — the read-only check for an irreversible
+    act reporting the opposite of what the act would do.
+
+    It is a warning rather than `valid: false` — which is what the report asked for — because the
+    policy moved underneath it in the same release: since 0.14 such a name *is* claimable here, with
+    `allow_test_data=true`. Calling it invalid would be the same contradiction rewritten backwards.
+    """
+    warnings = [w for w in (test_data_refusal(namespace, "", settings),) if w]
     return {
         "namespace": namespace,
         "valid": is_valid_namespace(namespace),
         "available": repo.namespace_owner(namespace) is None,
+        # Machine-readable, so a caller branches on this rather than on the prose beside it.
+        "requires_allow_test_data": bool(warnings),
+        "warnings": [f"{w} {override_hint()}" for w in warnings],
     }
 
 
@@ -49,24 +70,35 @@ def claim(repo: RepoDep, settings: SettingsDep, account: AccountDep, body: Claim
     # A production instance refuses to *create* test-prefixed namespaces as well as to publish into
     # them (0.12). Blocking only the publish would leave the name claimed and the caller's quota spent
     # on a namespace nothing can ever be pushed to.
+    #
+    # Since 0.14 the refusal is overridable rather than absolute: it stays the default so a typo is
+    # still caught, and `allow_test_data=true` is how a caller who means it proceeds.
     refusal = test_data_refusal(namespace, "", settings)
+    warnings: list[str] = []
     if refusal is not None:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"error": "test_data_on_prod", "errors": [refusal]},
-        )
+        if not body.allow_test_data:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"error": "test_data_on_prod", "errors": [f"{refusal} {override_hint()}"]},
+            )
+        warnings.append(accepted_anyway(refusal))
 
     owner = repo.namespace_owner(namespace)
     if owner is not None:
         if int(owner["account_id"]) == account.id:
-            return {"namespace": namespace, "owner": account.name, "already_owned": True}
+            return {
+                "namespace": namespace, "owner": account.name, "already_owned": True,
+                "warnings": warnings,
+            }
         raise HTTPException(status.HTTP_409_CONFLICT, detail="namespace_taken")
 
     if repo.count_namespaces_for_account(account.id) >= settings.namespaces_per_account:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="namespace_limit_reached")
 
     repo.add_namespace(namespace, account.id)
-    return {"namespace": namespace, "owner": account.name, "already_owned": False}
+    return {
+        "namespace": namespace, "owner": account.name, "already_owned": False, "warnings": warnings,
+    }
 
 
 @router.get("/{namespace}/members", response_model=MemberList)

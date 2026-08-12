@@ -25,14 +25,51 @@ def is_test_module_name(name: str, settings: Settings) -> bool:
     return name.startswith(module_name_prefix(settings.test_data_prefix))
 
 
+#: The parameter that lets test data onto production deliberately (0.14). Spelled once, because it is
+#: a request field on two routes, a flag on the CLI, and a sentence in three error messages.
+OVERRIDE_PARAM: str = "allow_test_data"
+
+
+def override_hint() -> str:
+    """How to proceed anyway, appended to every refusal so the dead end is navigable."""
+    return (
+        f"If you mean it, resend with {OVERRIDE_PARAM}=true — production accepts test-prefixed data "
+        f"when it is asked explicitly."
+    )
+
+
+def accepted_anyway(finding: str) -> str:
+    """The warning a caller gets back when the override was used.
+
+    A refusal turned into a warning has to *stay* a warning: this lands on the response so the
+    publisher sees that production is now holding test-prefixed data, and so the fact appears in a
+    log rather than only in whoever's memory passed the flag.
+
+    It also names the purge, which is the sharp edge of this feature: `registry purge-test-data`
+    selects on exactly the prefix that was just waved through, so data kept here on purpose is data a
+    routine cleanup would remove. It lists what it will delete before deleting it — that listing is
+    the moment to notice.
+    """
+    return (
+        f"accepted on production by explicit request ({OVERRIDE_PARAM}=true): {finding} "
+        f"NOTE: `registry purge-test-data` matches this prefix, so a routine cleanup would remove it."
+    )
+
+
 def test_data_refusal(namespace: str, name: str, settings: Settings) -> str | None:
-    """Why production must refuse this `(namespace, name)`, or `None` when it is fine.
+    """Why production would refuse this `(namespace, name)`, or `None` when it is fine.
 
     Returns a message rather than raising: the publish path turns it into a `PublishError`, the
     namespace route into an `HTTPException`, and the CLI into a `BadParameter` — three shapes, one rule.
+    Since 0.14 it is also read by the *availability* pre-flight, which neither refuses nor warns but
+    reports (S6) — a fourth shape, and the reason this returns prose instead of raising.
 
-    Only production refuses. On the polygon this is exactly the data the instance exists to hold, and a
-    guard there would make the test box unable to test.
+    **This is the rule, not the verdict.** A caller passing `allow_test_data=true` proceeds anyway;
+    the finding then becomes a warning via `accepted_anyway`. Keeping the two apart is what lets one
+    rule serve a refusal, a warning and a pre-flight report without any of them re-deriving it.
+
+    Only production has anything to say here. On the polygon this is exactly the data the instance
+    exists to hold, and a guard there would make the test box unable to test.
     """
     if settings.is_test_instance:
         return None
@@ -40,12 +77,14 @@ def test_data_refusal(namespace: str, name: str, settings: Settings) -> str | No
     if is_test_namespace(namespace, settings):
         return (
             f"namespace {namespace!r} starts with {prefix!r}, which this production instance does not "
-            f"accept. Publish it to the test instance instead, or drop the prefix if it is real."
+            f"accept by default. Publish it to the test instance instead, or drop the prefix if it is "
+            f"real."
         )
     if is_test_module_name(name, settings):
         return (
             f"module name {name!r} starts with {module_name_prefix(prefix)!r}, which this production "
-            f"instance does not accept. Publish it to the test instance instead, or rename it."
+            f"instance does not accept by default. Publish it to the test instance instead, or rename "
+            f"it."
         )
     return None
 

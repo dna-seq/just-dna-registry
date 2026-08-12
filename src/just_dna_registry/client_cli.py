@@ -105,16 +105,30 @@ def download(
     version: str = typer.Argument(..., help="A version, or 'latest' for the current latest"),
     dest: Path = typer.Argument(..., help="Directory to extract into, or the .tar.gz path with --tarball"),
     tarball: bool = typer.Option(False, "--tarball", help="Fetch a single streamable tar.gz instead"),
+    with_inputs: bool = typer.Option(
+        False, "--with-inputs", help="Also fetch and hash-check the authored spec (CSVs + yaml)"
+    ),
+    layout: str = typer.Option(
+        "flat", "--layout",
+        help="flat (as the manifest names them) | split (machine-written tables under derived/)",
+    ),
     url: Optional[str] = UrlOpt,
 ) -> None:
     """Download a version's artifact (+ logs): verify-then-install, or a single tar.gz.
-    `version` accepts `latest`."""
+    `version` accepts `latest`.
+
+    `--with-inputs` adds the authored spec, which a bare download leaves behind — the listing is the
+    compiled parquets. `--layout split` then sorts the enricher's tables into `derived/`, once
+    verification has passed, so a reader can tell them from the author's. Re-uploading either layout
+    publishes the same module."""
     with _client(url, None) as c:
         if tarball:
             path = c.get_tarball(namespace, name, version, dest)
             typer.echo(f"✓ downloaded {namespace}/{name}@{version} → {path}")
             return
-        manifest = c.download(namespace, name, version, dest)
+        manifest = c.download(
+            namespace, name, version, dest, include_inputs=with_inputs, layout=layout
+        )
     typer.echo(f"✓ downloaded + verified {namespace}/{name}@{version} → {dest}")
     typer.echo(f"  digest {manifest.artifact.digest}")
     if manifest.logs:

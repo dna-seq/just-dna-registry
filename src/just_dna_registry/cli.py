@@ -32,7 +32,7 @@ from just_dna_registry.services.upgrade import (
     upgrade_version,
 )
 from just_dna_registry.storage.base import StorageBackend
-from just_dna_registry.testdata import test_data_refusal
+from just_dna_registry.testdata import accepted_anyway, test_data_refusal
 from just_dna_registry.storage.local import LocalStorage
 
 app = typer.Typer(help="just-dna-registry admin CLI", no_args_is_help=True)
@@ -148,6 +148,12 @@ def issue_key(
     display_name: str = typer.Option(None, "--display-name", help="Human display name"),
     avatar_url: str = typer.Option(None, "--avatar-url", help="Userpic (public http(s) URL)"),
     account_type: str = typer.Option("user", "--type", help="Account type: user|org"),
+    allow_test_data: bool = typer.Option(
+        False,
+        "--allow-test-data",
+        help="Grant a test-prefixed namespace on production deliberately (0.14). Off by default so "
+             "a typo is still refused.",
+    ),
 ) -> None:
     """Create an account (if needed), grant it namespaces, and print a fresh API key."""
     if account_type not in VALID_ACCOUNT_TYPES:
@@ -167,8 +173,11 @@ def issue_key(
         # CLI is the other door into the same table. Checked per namespace before any is granted, so a
         # mixed list does not half-apply.
         refusal = test_data_refusal(ns, "", settings)
-        if refusal is not None:
-            raise typer.BadParameter(refusal)
+        if refusal is None:
+            continue
+        if not allow_test_data:
+            raise typer.BadParameter(f"{refusal} Pass --allow-test-data to grant it anyway.")
+        typer.secho(accepted_anyway(refusal), fg=typer.colors.YELLOW)
     for ns in namespace:
         repo.add_namespace(ns, account_id)
     key = "mk_live_" + secrets.token_urlsafe(24)

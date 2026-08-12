@@ -351,6 +351,14 @@ Each of these was a bug in the loop upstream, not a hypothetical, and the script
   three items by name means a naive presence test reads three answered sections as new.
 - **The marker must not be hashed.** Marking a block-replied section puts a standalone comment in its body;
   when the fingerprint covered it, the section read `revised` from the instant it was marked.
+- **An item filed with no `# Field notes` group heading drags the document's own preamble into the
+  history file.** The archiver carries whatever `#` heading precedes a section, and a section with none
+  of its own inherits the inbox's H1 — so S5/S6 landed in the history under a second
+  `# Consumer suggestions` title, status block and all. Harmless to the fingerprints, which are
+  computed per `##` section and all verified afterwards, but wrong to read. Repair it by hand:
+  replace the copied preamble with a real group heading, then run the ledger **against the history
+  file** (`.claude/triage-state.sh docs/CONSUMER_SUGGESTIONS_HISTORY.md`) to prove the prose survived.
+  Cheaper habit: add the group heading in the inbox before archiving.
 - **Appending an item used to flip the previous one to `revised`.** A body runs to the next heading,
   so the `---` a consumer puts before their new section lands at the end of the *previous* one. Hit on
   the first run here: S2 and S3 arrived mid-pass and S1 reported `revised` against prose nobody had

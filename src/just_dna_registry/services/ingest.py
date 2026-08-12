@@ -25,14 +25,19 @@ def ingest_manifest(
     changelog: str = "",
     created_at: str | None = None,
     published_by: Optional[int] = None,
+    readme: Optional[str] = None,
 ) -> int:
     """
     Insert a published version into the projection and refresh the module's latest pointer.
     Returns the new version id. Assumes immutability was already checked upstream. `published_by`
     is the authoring account (RBAC own-scoping + author funding); None for seeds/legacy imports.
+
+    `readme` is the spec's `README.md` text, threaded through because the manifest has no field to
+    carry it (S5). `None` leaves any existing readme alone rather than clearing it — see
+    `Repository.upsert_module`.
     """
     stamp = created_at or now_iso()
-    module_id = repo.upsert_module(manifest, updated_at=stamp)
+    module_id = repo.upsert_module(manifest, updated_at=stamp, readme=readme)
     version_id = repo.insert_version(
         module_id, manifest, changelog=changelog, created_at=stamp, published_by=published_by
     )

@@ -195,7 +195,11 @@ def trim_unknown_columns(csv_text: str, model: type[BaseModel]) -> tuple[str, li
 # `normalize_module_block` removes those non-lossily at publish, so they are neither blocked nor
 # counted as a lossy trim here.
 #: The spec files whose *text* the trim/block pass rewrites. Everything else recognized (the logo,
-#: MODULE.md) is carried through as opaque bytes.
+#: `README.md`) is carried through as opaque bytes.
+#:
+#: This comment said `MODULE.md` until 0.14, and that was the package's only mention of a readme
+#: filename — a convention with no reader, which cost a consumer two publish cycles guessing at it
+#: (S5). The name is now `README.md` and `specfiles.README_FILE` is the one place it is spelled.
 _TEXT_SPECS: frozenset[str] = frozenset({SPEC_YAML}) | frozenset(_ROW_MODELS)
 
 

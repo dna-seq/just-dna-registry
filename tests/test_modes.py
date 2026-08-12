@@ -132,6 +132,112 @@ def test_the_reported_mode_agrees_with_the_delete_verb(tmp_path: Path) -> None:
         assert (resp.status_code != 405) is deletes_mounted
 
 
+# ── The override: production accepts test data when asked explicitly (0.14) ───
+#
+# The guard stopped being absolute and became a default. Every test below is about the same pair of
+# properties: a caller who says nothing still cannot put test data on production by accident, and a
+# caller who says so explicitly is not blocked from a thing they have a real reason to want.
+
+
+def test_the_default_is_still_a_refusal_and_the_message_names_the_way_through(
+    tmp_path: Path,
+) -> None:
+    """The half that must not regress. The guard exists for a typo, and a typo passes no flags."""
+    prod = _client(tmp_path, "prod")
+    refused = prod.post("/api/v1/modules/test-sandbox/burner/versions",
+                        data={"version": "1.0.0"}, files=_parts("burner"), headers=_AUTH)
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["error"] == "test_data_on_prod"
+    # A dead end an author cannot navigate is what makes a guard feel arbitrary.
+    assert "allow_test_data=true" in " ".join(refused.json()["detail"]["errors"])
+
+
+def test_prod_accepts_a_test_namespace_publish_when_asked_explicitly(tmp_path: Path) -> None:
+    prod = _client(tmp_path, "prod")
+    resp = prod.post(
+        "/api/v1/modules/test-sandbox/burner/versions",
+        data={"version": "1.0.0", "allow_test_data": "true"},
+        files=_parts("burner"),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_prod_accepts_a_test_prefixed_module_name_when_asked_explicitly(tmp_path: Path) -> None:
+    """The other spelling — `test_` with an underscore — goes through the same one flag."""
+    prod = _client(tmp_path, "prod")
+    resp = prod.post(
+        "/api/v1/modules/just-dna-seq/test_panel/versions",
+        data={"version": "1.0.0", "allow_test_data": "true"},
+        files=_parts("test_panel"),
+        headers=_AUTH,
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_claiming_a_test_namespace_on_prod_needs_the_flag_and_then_warns(tmp_path: Path) -> None:
+    """Accepted is not silent: production is now holding test-prefixed data and says so.
+
+    The warning names the purge on purpose — `purge-test-data` selects on exactly this prefix, so
+    data kept here deliberately is data a routine cleanup would remove.
+    """
+    prod = _client(tmp_path, "prod")
+    assert prod.post(
+        "/api/v1/namespaces", json={"namespace": "test-sheep"}, headers=_AUTH
+    ).status_code == 422
+    assert prod.app.state.repo.namespace_owner("test-sheep") is None
+
+    ok = prod.post(
+        "/api/v1/namespaces",
+        json={"namespace": "test-sheep", "allow_test_data": True},
+        headers=_AUTH,
+    )
+    assert ok.status_code == 201, ok.text
+    assert prod.app.state.repo.namespace_owner("test-sheep") is not None
+    warnings = " ".join(ok.json()["warnings"])
+    assert "allow_test_data=true" in warnings and "purge-test-data" in warnings
+
+
+def test_availability_warns_about_the_rule_the_claim_will_apply(tmp_path: Path) -> None:
+    """S6: the read-only pre-flight for an irreversible act used to report the opposite of it.
+
+    `available` stays `true` (nobody holds the name) and `valid` stays `true` (since 0.14 the name
+    genuinely is claimable here, with the flag) — the missing rule arrives as a warning plus a
+    machine-readable field, rather than by making one of the other two lie in a new direction.
+    """
+    prod = _client(tmp_path, "prod")
+    body = prod.get("/api/v1/namespaces/test-sheep").json()
+    assert body["available"] is True and body["valid"] is True
+    assert body["requires_allow_test_data"] is True
+    assert "allow_test_data=true" in " ".join(body["warnings"])
+
+    # And the pre-flight agrees with what the claim actually does, which is the whole point.
+    assert prod.post(
+        "/api/v1/namespaces", json={"namespace": "test-sheep"}, headers=_AUTH
+    ).status_code == 422
+    assert prod.post(
+        "/api/v1/namespaces",
+        json={"namespace": "test-sheep", "allow_test_data": True},
+        headers=_AUTH,
+    ).status_code == 201
+
+
+def test_availability_says_nothing_extra_for_an_ordinary_name(tmp_path: Path) -> None:
+    prod = _client(tmp_path, "prod")
+    body = prod.get("/api/v1/namespaces/longevity").json()
+    assert body["requires_allow_test_data"] is False and body["warnings"] == []
+
+
+def test_the_polygon_never_needed_the_flag(tmp_path: Path) -> None:
+    """On the test box this is the data the instance exists to hold, so there is nothing to wave."""
+    polygon = _client(tmp_path, "test")
+    body = polygon.get("/api/v1/namespaces/test-sheep").json()
+    assert body["requires_allow_test_data"] is False and body["warnings"] == []
+    assert polygon.post(
+        "/api/v1/namespaces", json={"namespace": "test-sheep"}, headers=_AUTH
+    ).status_code == 201
+
+
 # ── Production refuses test data ──────────────────────────────────────────────
 
 

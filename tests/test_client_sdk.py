@@ -14,7 +14,13 @@ from fastapi.testclient import TestClient
 from test_import import _bare_parquet_zip
 
 from just_dna_registry import client_cli
-from just_dna_registry.client import ModeMismatchError, RegistryClient
+from just_dna_registry.client import (
+    ModeMismatchError,
+    RegistryClient,
+    gather_spec_files,
+    split_derived,
+)
+from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES, plan_layout
 
 _NS, _NAME, _VER = "just-dna-seq", "coronary", "1.0.0"
 
@@ -318,6 +324,7 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
         "_fetch_file",
     ),
     ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/logo"): ("amend_logo",),
+    ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/readme"): ("amend_readme",),
     ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/yank"): ("yank", "unyank"),
     ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): ("reviews",),
     ("PUT", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): ("review",),
@@ -532,3 +539,89 @@ def test_delete_round_trips_against_a_polygon(tmp_path) -> None:
         sdk.delete_module("test-sandbox", "burner")
         assert repo.get_module_row("test-sandbox", "burner") is None
         sdk.publish("test-sandbox", "reused", "1.0.0", _spec("reused"))  # same data, no 409
+
+
+# ── Spec layout: `derived/` in, `derived/` out, one module either way ──────────
+
+
+async def test_a_derived_subfolder_publishes_as_the_flat_spec(sdk, tmp_path) -> None:
+    """The uploader flattens, so a legible tree and a compiler-shaped one are the same module.
+
+    `content_signature` is the assertion that matters: it is what `409 duplicate_content` gates on,
+    and none of the files that may sit in `derived/` is in `SIGNATURE_INPUTS` — which is exactly why
+    the folder is safe to offer at all.
+    """
+    (tmp_path / "flat").mkdir()
+    flat = _write_spec(tmp_path / "flat", name="layout")
+    (flat / "sources.csv").write_text("source,layer\nensembl,resolution\n")
+
+    (tmp_path / "split").mkdir()
+    split = _write_spec(tmp_path / "split", name="layout")
+    (split / "derived").mkdir()
+    (split / "derived" / "sources.csv").write_text("source,layer\nensembl,resolution\n")
+
+    flat_signature = await asyncio.to_thread(lambda: sdk.content_signature(flat))
+    published = await asyncio.to_thread(lambda: sdk.publish(_NS, "layout", _VER, split))
+    assert published.content_signature == flat_signature
+    assert {e.name for e in published.inputs} == {
+        "module_spec.yaml", "variants.csv", "studies.csv"
+    }, "the hoisted table has to reach the root the manifest names"
+
+
+async def test_download_split_separates_the_machine_written_tables(sdk, tmp_path) -> None:
+    """`layout="split"` is applied after verification, never before.
+
+    The manifest attests flat names, so a tree split first is a tree that fails to verify — and
+    `download` verifies unconditionally. Asserted by the fact that this call returns at all.
+    """
+    spec = _write_spec(tmp_path, name="split_dl")
+    await asyncio.to_thread(lambda: sdk.publish(_NS, "split_dl", _VER, spec))
+
+    dest = tmp_path / "dl"
+    await asyncio.to_thread(
+        lambda: sdk.download(_NS, "split_dl", _VER, dest, include_inputs=True, layout="split")
+    )
+    # A bare download is the compiled parquets and nothing else — `/download` lists `artifact.files`
+    # only — so `include_inputs` is what puts an authored set on disk for the split to be about.
+    assert (dest / "module_spec.yaml").is_file() and (dest / "variants.csv").is_file()
+    assert (dest / "weights.parquet").is_file()
+    assert (dest / "manifest.json").is_file()
+
+    bare = tmp_path / "bare"
+    await asyncio.to_thread(lambda: sdk.download(_NS, "split_dl", _VER, bare))
+    assert not (bare / "variants.csv").exists(), "unchanged default: artifact only"
+
+    with pytest.raises(ValueError, match="layout must be"):
+        await asyncio.to_thread(
+            lambda: sdk.download(_NS, "split_dl", _VER, dest, layout="derived")
+        )
+
+
+def test_split_and_flatten_are_inverses(tmp_path) -> None:
+    """The round-trip, at the level where both halves are actually visible today.
+
+    A downloader receives no derived CSV yet (the manifest attests none of them — filed upstream), so
+    this drives `split_derived` over a tree that has them and checks that the uploader's own planner
+    puts every one back exactly where it came from. If the two ever disagree, a downloaded module
+    stops being republishable.
+    """
+    module_dir = tmp_path / "module"
+    module_dir.mkdir()
+    for name in ("module_spec.yaml", "variants.csv", "studies.csv", *DERIVED_FILES):
+        (module_dir / name).write_text("x\n")
+    (module_dir / "logs").mkdir()
+    (module_dir / "logs" / "reviewer.log").write_text("reviewed\n")
+
+    assert set(split_derived(module_dir)) == set(DERIVED_FILES)
+    assert not (module_dir / "resolution.csv").exists()
+    assert (module_dir / DERIVED_DIR / "resolution.csv").is_file()
+
+    uploaded = dict(gather_spec_files(module_dir))
+    assert "derived/WHERE-THIS-CAME-FROM.md" not in uploaded, "our note is not the author's file"
+
+    plan = plan_layout(uploaded)
+    assert plan.conflicts == []
+    assert {src: dest for src, dest in plan.renames.items()} == {
+        f"{DERIVED_DIR}/{name}": name for name in DERIVED_FILES
+    }
+    assert "logs/reviewer.log" not in plan.renames, "the one subtree the manifest attests by path"

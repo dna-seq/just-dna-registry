@@ -163,6 +163,7 @@ async def publish(
     version: Annotated[str, Form()],
     files: Annotated[list[UploadFile], File()],
     changelog: Annotated[str, Form()] = "",
+    allow_test_data: Annotated[bool, Form()] = False,
 ) -> dict:
     """Publish a new version: validate + server-side recompile the uploaded spec, then index it.
 
@@ -205,6 +206,7 @@ async def publish(
             published_by=account.id,
             files=uploads,
             settings=settings,
+            allow_test_data=allow_test_data,
         )
     except publish_service.PublishError as exc:
         raise _publish_http_error(exc)
@@ -227,6 +229,7 @@ async def import_archive(
     version: Annotated[str, Form()],
     archive: Annotated[UploadFile, File()],
     changelog: Annotated[str, Form()] = "",
+    allow_test_data: Annotated[bool, Form()] = False,
     title: Annotated[Optional[str], Form()] = None,
     description: Annotated[Optional[str], Form()] = None,
     report_title: Annotated[Optional[str], Form()] = None,
@@ -294,6 +297,7 @@ async def import_archive(
                 "genome_build": genome_build,
             },
             settings=settings,
+            allow_test_data=allow_test_data,
         )
     except publish_service.PublishError as exc:
         raise _publish_http_error(exc)
@@ -400,9 +404,10 @@ def _validate_worker(
 ) -> ValidationReport:
     with tempfile.TemporaryDirectory() as tmp:
         spec_dir = _preflight_spec_dir(uploads, tmp)
-        normalized = publish_service.normalize_module_block(spec_dir)
+        normalization = publish_service.normalize_spec(spec_dir)
         return enrich_service.validation_report(
-            spec_dir, repo, name, strict, normalized=normalized
+            spec_dir, repo, name, strict,
+            normalized=normalization.info, extra_warnings=normalization.warnings,
         )
 
 
@@ -602,6 +607,52 @@ async def amend_logo(
         "namespace": namespace, "name": name, "version": version,
         "logo": manifest.logo.model_dump() if manifest.logo else None,
     }
+
+
+@router.post("/{namespace}/{name}/versions/{version}/readme")
+async def amend_readme(
+    repo: RepoDep,
+    storage: StorageDep,
+    account: AccountDep,
+    namespace: str,
+    name: str,
+    version: str,
+    readme: Annotated[UploadFile, File()],
+) -> dict:
+    """Replace a published version's readme — the prose on the module's card (S5).
+
+    Requires amend rights (own version for a member; any for admin+). Out-of-digest metadata, like
+    the logo and the changelog: the artifact, its digest and any signature over it stay immutable,
+    so no version bump is needed. That matters more here than for a logo — a readme is where a
+    module says what it is *not*, and a badly phrased caveat must be fixable without burning a
+    version number and a `content_hash` that `yank` would not release.
+
+    Sent as a file part rather than a JSON string: a readme is a document with newlines and non-ASCII
+    prose, and this is the same shape publish accepts it in.
+    """
+    require_capability(
+        repo, account, namespace, Capability.AMEND_ANY,
+        resource_author=repo.version_author(namespace, name, version),
+    )
+    raw = await readme.read()
+    try:
+        text = await run_in_threadpool(
+            publish_service.amend_readme,
+            repo=repo,
+            storage=storage,
+            namespace=namespace,
+            name=name,
+            version=version,
+            text=raw.decode("utf-8", errors="replace"),
+        )
+    except publish_service.PublishError as exc:
+        code = (
+            status.HTTP_404_NOT_FOUND
+            if exc.detail == "version_not_found"
+            else status.HTTP_422_UNPROCESSABLE_CONTENT
+        )
+        raise HTTPException(code, detail={"error": exc.detail, "errors": exc.errors})
+    return {"namespace": namespace, "name": name, "version": version, "readme": text}
 
 
 @router.post("/{namespace}/{name}/versions/{version}/yank")

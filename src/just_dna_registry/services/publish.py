@@ -47,14 +47,27 @@ from just_dna_format.manifest import (
 )
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_format.signing import sign_digest
+from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.services.enrich import enrich_spec, unresolved_hint
 from just_dna_registry.services.ingest import ingest_manifest, now_iso
-from just_dna_registry.specfiles import REQUIRED_SPEC_FILES, SPEC_YAML, is_spec_file
+from just_dna_registry.specfiles import (
+    README_FILE,
+    REQUIRED_SPEC_FILES,
+    SPEC_YAML,
+    LayoutPlan,
+    carries_spec_content,
+    plan_layout,
+)
 from just_dna_registry.storage.base import StorageBackend, version_key
-from just_dna_registry.testdata import duplicate_scope_account, test_data_refusal
+from just_dna_registry.testdata import (
+    accepted_anyway,
+    duplicate_scope_account,
+    override_hint,
+    test_data_refusal,
+)
 
 _REVERSE_MARKER: str = "weights.parquet"  # a legacy compiled module has this but no spec
 
@@ -221,7 +234,9 @@ async def collect_archive(archive: Any, settings: Settings) -> dict[str, bytes]:
             if not path.is_file():
                 continue
             rel = path.relative_to(root).as_posix()
-            if is_spec_file(rel) or rel.startswith("logs/"):
+            # Basename-aware, not name-exact: `derived/resolution.csv` and a legacy `MODULE.md` both
+            # have to survive this filter to reach `normalize_spec_layout` in `_preflight_spec_dir`.
+            if carries_spec_content(rel):
                 uploads[rel] = path.read_bytes()
         if len(uploads) > settings.max_spec_files:
             raise PublishError(
@@ -249,6 +264,66 @@ def reject_unsafe_relpath(name: str) -> None:
         raise PublishError("unsafe_filename", errors=[f"not a file path: {name!r}"])
 
 
+class SpecNormalization(BaseModel):
+    """Everything the server rewrote about an uploaded spec before reading it.
+
+    One return value for the two normalizations because they have one audience: a publisher asking
+    "what did the server change about what I sent?". `info` is `ValidationResult.info` grade —
+    accepted and noteworthy; `warnings` is for what the author probably did not mean.
+    """
+
+    info: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    layout: LayoutPlan = Field(default_factory=LayoutPlan)
+
+
+def normalize_spec(spec_dir: Path) -> SpecNormalization:
+    """Bring an uploaded spec dir onto the canonical layout and the current `module:` block.
+
+    The one entry point for both, called from exactly three places — `_finalize`, and the two dry-run
+    workers — because those three are the only places a spec directory is built from an upload, and
+    because a dry run that normalizes differently from the publish it predicts is worse than one that
+    does not normalize at all.
+
+    Layout first: `normalize_module_block` reads `module_spec.yaml` by name, and until the flatten
+    has run there is no guarantee the file is at the root.
+    """
+    layout = normalize_spec_layout(spec_dir)
+    return SpecNormalization(
+        info=layout.notes + normalize_module_block(spec_dir),
+        warnings=layout.warnings,
+        layout=layout,
+    )
+
+
+def normalize_spec_layout(spec_dir: Path) -> LayoutPlan:
+    """Flatten an uploaded spec tree onto the layout the compiler reads. Returns what it did.
+
+    The applier for `specfiles.plan_layout`; the planning is name-level and lives there so the
+    pre-flight and the publish cannot disagree about the answer. Raises `ambiguous_spec_layout`
+    (422) on a conflict.
+
+    Deliberately first — ahead of `normalize_module_block`, `validate_spec` and the signature — so
+    everything downstream sees one canonical layout and no other code in this package has to know
+    that a subfoldered upload is a thing that happens.
+    """
+    names = [p.relative_to(spec_dir).as_posix() for p in spec_dir.rglob("*") if p.is_file()]
+    plan = plan_layout(names)
+    if plan.conflicts:
+        raise PublishError("ambiguous_spec_layout", errors=plan.conflicts)
+    for source, dest in plan.renames.items():
+        (spec_dir / source).replace(spec_dir / dest)
+    # Deepest first, so `a/b/` empties before `a/` is considered. Cosmetic for the compile (which
+    # ignores stray directories) but not for storage: the carry-forward loop walks this tree, and an
+    # emptied `derived/` would otherwise be the one trace of a layout that no longer exists.
+    for directory in sorted(
+        (p for p in spec_dir.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True
+    ):
+        if not any(directory.iterdir()):
+            directory.rmdir()
+    return plan
+
+
 # ── Public entry points ───────────────────────────────────────────────────────
 
 
@@ -265,6 +340,7 @@ def publish_version(
     files: Mapping[str, bytes],
     published_by: Optional[int] = None,
     gate: Optional[Any] = None,
+    allow_test_data: bool = False,
 ) -> ModuleManifest:
     """Publish from individually-uploaded spec files.
 
@@ -289,7 +365,7 @@ def publish_version(
             return _finalize(
                 repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
                 version=version, changelog=changelog, owner=owner, published_by=published_by,
-                spec_dir=spec_dir,
+                spec_dir=spec_dir, allow_test_data=allow_test_data,
             )
     finally:
         if gate is not None:
@@ -308,6 +384,7 @@ def import_archive(
     owner: str,
     archive: bytes,
     display: Optional[dict] = None,
+    allow_test_data: bool = False,
     published_by: Optional[int] = None,
     gate: Optional[Any] = None,
 ) -> ModuleManifest:
@@ -340,7 +417,7 @@ def import_archive(
                 return _finalize(
                     repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
                     version=version, changelog=changelog, owner=owner, published_by=published_by,
-                    spec_dir=spec_dir,
+                    spec_dir=spec_dir, allow_test_data=allow_test_data,
                 )
     finally:
         if gate is not None:
@@ -362,14 +439,27 @@ def _finalize(
     owner: str,
     spec_dir: Path,
     published_by: Optional[int] = None,
+    allow_test_data: bool = False,
 ) -> ModuleManifest:
-    """Validate, enrich, recompile a prepared spec dir, store the version, and index it."""
+    """Validate, enrich, recompile a prepared spec dir, store the version, and index it.
+
+    `allow_test_data` waves a `test-`/`test_`prefixed identifier onto production deliberately (0.14).
+    Off by default, so the guard still catches the typo it was built for.
+    """
     with start_action(
         action_type="publish_finalize", namespace=namespace, name=name, version=version
     ) as action:
-        normalized = normalize_module_block(spec_dir)
-        if normalized:
-            action.log(message_type="normalized_module_block", changes=normalized)
+        # Layout and `module:` block, in that order, before anything reads the spec — so validation,
+        # the signature and the carry-forward into storage all see one canonical flat directory, and
+        # none of them has to know that a subfoldered or legacy-named upload is a thing that happens.
+        normalization = normalize_spec(spec_dir)
+        if normalization.info or normalization.warnings:
+            action.log(
+                message_type="normalized_spec",
+                renames=normalization.layout.renames,
+                info=normalization.info,
+                warnings=normalization.warnings,
+            )
 
         # Modeless on purpose, even though the compile below is strict. This pass exists to reject a
         # broken spec before spending enrichment on it; the strict-only findings are all judgements
@@ -386,17 +476,33 @@ def _finalize(
             raise PublishError(
                 "invalid_spec",
                 errors=validation.errors,
-                warnings=validation.warnings,
-                info=validation.info,
+                warnings=validation.warnings + normalization.warnings,
+                # What the server rewrote rides on the refusal too. A publisher whose `MODULE.md` was
+                # renamed and whose spec then failed for an unrelated reason should not have to guess
+                # which of the two happened.
+                info=normalization.info + validation.info,
             )
 
-        # Production refuses test data outright (0.12). Checked here rather than at the route so every
-        # publish path shares it, and before the dedup/enrich/compile spend because a refusal this
-        # certain should cost nothing. The polygon accepts it — that is what the instance is for.
+        # Production refuses test data by default (0.12), and since 0.14 the refusal is overridable
+        # rather than absolute. Checked here rather than at the route so every publish path shares it,
+        # and before the dedup/enrich/compile spend because a refusal this certain should cost
+        # nothing. The polygon accepts it regardless — that is what the instance is for.
+        #
+        # The default stays "refuse" because the failure it prevents is silent and permanent: a
+        # mistyped namespace puts test data in the production catalog, where the version number and
+        # the `content_hash` are spent and only a purge frees them. Asking for it explicitly is
+        # cheap; discovering it afterwards is not.
         refusal = test_data_refusal(namespace, name, settings)
         if refusal is not None:
-            action.log(message_type="test_data_on_prod", namespace=namespace, name=name)
-            raise PublishError("test_data_on_prod", errors=[refusal])
+            if not allow_test_data:
+                action.log(message_type="test_data_on_prod", namespace=namespace, name=name)
+                raise PublishError("test_data_on_prod", errors=[f"{refusal} {override_hint()}"])
+            # Logged rather than only returned: production is now holding test-prefixed data, and
+            # that should be findable later by someone reading logs, not only by whoever passed it.
+            action.log(
+                message_type="test_data_on_prod_allowed", namespace=namespace, name=name,
+                warning=accepted_anyway(refusal),
+            )
 
         # Dedup before the compile, not after. The signature is a hash of the authored rows — no
         # reference, no parquet build — so it is cheap and available now, and rejecting here saves a
@@ -454,8 +560,8 @@ def _finalize(
                 raise PublishError(
                     "compile_failed",
                     errors=errors,
-                    warnings=result.warnings + enriched.notes,
-                    info=validation.info,
+                    warnings=result.warnings + enriched.notes + normalization.warnings,
+                    info=normalization.info + validation.info,
                 )
 
             manifest = result.manifest
@@ -496,7 +602,17 @@ def _finalize(
             }
             key = version_key(namespace, name, version)
             storage.store_module(key, stored)
-            ingest_manifest(repo, manifest, changelog=changelog, published_by=published_by)
+            # The card's prose (S5). Read from what was actually stored rather than from the upload,
+            # so the projection and the bytes a downloader gets cannot disagree. Absent → `None`,
+            # which leaves an earlier version's readme in place instead of blanking the card.
+            readme_bytes = stored.get(README_FILE)
+            ingest_manifest(
+                repo,
+                manifest,
+                changelog=changelog,
+                published_by=published_by,
+                readme=readme_bytes.decode("utf-8", errors="replace") if readme_bytes else None,
+            )
             action.add_success_fields(
                 digest=manifest.artifact.digest,
                 content_signature=manifest.content_signature,
@@ -589,6 +705,39 @@ def amend_logo(
     )
     repo.set_version_manifest(namespace, name, version, manifest)
     return manifest
+
+
+def amend_readme(
+    *,
+    repo: Repository,
+    storage: StorageBackend,
+    namespace: str,
+    name: str,
+    version: str,
+    text: str,
+) -> str:
+    """Replace a published version's readme prose without a version bump.
+
+    Mirrors `amend_logo`: prose about a module is not its content, so it is out of
+    `artifact.digest` and swapping it leaves the content identity — and any signature over it —
+    intact. On an immutable registry that is the whole point: a caveat phrased badly must be
+    fixable without burning a version number and claiming a second `content_hash`.
+
+    **One asymmetry with the logo, and it is upstream's to close.** `amend_logo` records the swap on
+    `manifest.logo`, so the manifest stays the source of truth and the DB stays a projection of it.
+    The manifest has no readme field, so this writes the bytes to storage and the text to the
+    projection, and the manifest says nothing about either. Filed upstream (S5); when the field
+    lands this should set it and the projection becomes derivable again. Until then, storage is the
+    durable copy and the DB column is the cache — which is why publish reads it back out of
+    `stored` rather than trusting the upload.
+    """
+    if repo.get_manifest_json(namespace, name, version) is None:
+        raise PublishError("version_not_found")
+
+    key = version_key(namespace, name, version)
+    storage.store_module(key, {README_FILE: text.encode("utf-8")})
+    repo.set_module_readme(namespace, name, text)
+    return text
 
 
 # ── Archive helpers ─────────────────────────────────────────────────────────────

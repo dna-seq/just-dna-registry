@@ -24,7 +24,7 @@ The webui only adds: Reflex state + components, and the install/publish glue to 
 |---|---|---|
 | **Catalog grid** (cards) | `list_modules(q=, gene=, category=, genome_build=, owner=, license=, sort=, featured=, page=, per_page=)` | Card = `{namespace, name, title, description, icon, color, latest_version, stats, downloads, updated_at, featured}`. `featured` cards float to top → show a badge. Paginate on `total`. |
 | **Search / facet filters** | same, with query params | `sort` ∈ `name\|downloads\|recent`. Facets: `gene`, `category`, `genome_build`, `owner`, `license`. |
-| **Detail drawer** | `get_module(ns, name)` | Adds `readme` (MODULE.md), **full** `stats.genes`, `versions[]`, and inline `latest_manifest`. |
+| **Detail drawer** | `get_module(ns, name)` | Adds `readme` (README.md), **full** `stats.genes`, `versions[]`, and inline `latest_manifest`. |
 | **Version picker** | `versions(ns, name)` or `detail.versions` | Each `VersionSummary` has `compile_success`, `yanked`, `changelog`, `manifest_url`. |
 | **Install** | `download(ns, name, version, CUSTOM_MODULES_DIR/name)` | Fetches artifact (+logs), **verifies integrity** (raises `IntegrityError`), writes `manifest.json`. Then call the existing `register_custom_module` + `refresh_module_registry`. |
 | **Publish current module** | `publish(ns, name, version, spec_dir)` or `import_module(...)` | Needs a token (see onboarding). `publish` stamps the returned manifest back into the local spec dir. |

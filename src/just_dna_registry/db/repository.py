@@ -567,8 +567,20 @@ class Repository:
 
     # ── Ingest (manifest -> projection) ──────────────────────────────────────
 
-    def upsert_module(self, manifest: ModuleManifest, updated_at: str) -> int:
-        """Insert or update the module-level row from a manifest. Returns module id."""
+    def upsert_module(
+        self, manifest: ModuleManifest, updated_at: str, readme: Optional[str] = None
+    ) -> int:
+        """Insert or update the module-level row from a manifest. Returns module id.
+
+        `readme` is passed in rather than read off the manifest because the manifest has no field
+        for it — the logo does (`manifest.logo`), a readme does not, which is the upstream half of
+        S5. Until it gains one, the prose reaches the projection through this argument.
+
+        **`None` means "leave whatever is there", not "clear it".** That is the difference between a
+        re-ingest preserving a module's readme and silently blanking every card, and it matters
+        because the caller that would pass `None` is the one that does not know about readmes — a
+        future reindex walking manifests. `""` still clears, so clearing stays possible on purpose.
+        """
         ident = manifest.identity
         disp = manifest.display
         existing = self.get_module_row(ident.namespace, ident.name)
@@ -577,26 +589,40 @@ class Repository:
             # only updated_at (below), so created_at preserves the module's first-seen time.
             cur = self.conn.execute(
                 "INSERT INTO modules(namespace, name, title, description, icon, color, "
-                "genome_build, license, owner, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "genome_build, license, owner, readme, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     ident.namespace, ident.name, disp.title, disp.description, disp.icon,
                     disp.color, manifest.genome_build, manifest.license, manifest.owner,
-                    updated_at, updated_at,
+                    readme or "", updated_at, updated_at,
                 ),
             )
             self.conn.commit()
             return int(cur.lastrowid)
+        readme_sql, readme_params = ("", []) if readme is None else ("readme=?, ", [readme])
         self.conn.execute(
             "UPDATE modules SET title=?, description=?, icon=?, color=?, genome_build=?, "
-            "license=?, owner=?, updated_at=? WHERE id=?",
+            f"license=?, owner=?, {readme_sql}updated_at=? WHERE id=?",
             (
                 disp.title, disp.description, disp.icon, disp.color, manifest.genome_build,
-                manifest.license, manifest.owner, updated_at, existing["id"],
+                manifest.license, manifest.owner, *readme_params, updated_at, existing["id"],
             ),
         )
         self.conn.commit()
         return int(existing["id"])
+
+    def set_module_readme(self, namespace: str, name: str, readme: str) -> bool:
+        """Replace a module's readme prose. False when the module does not exist.
+
+        Module-level rather than per-version, matching the column and the card it feeds: the readme
+        answers "what is this module and what is it not", which is not a question each version
+        re-answers. A republish carries the latest spec's readme forward, exactly as `title` does.
+        """
+        cur = self.conn.execute(
+            "UPDATE modules SET readme=? WHERE namespace=? AND name=?", (readme, namespace, name)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
 
     def insert_version(
         self,

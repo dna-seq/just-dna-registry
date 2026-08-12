@@ -55,7 +55,8 @@ artifact**.
 | `module_spec.yaml` | Identity + display metadata: `name` (`^[a-z][a-z0-9_]*$`), `title`, `description`, `report_title`, `icon` (Fomantic UI icon name), `color` (`#rrggbb`), `genome_build` (default `GRCh38`), `defaults.curator`, `defaults.method` |
 | `variants.csv` | One row per genotype: `rsid`, `chrom`/`start`/`ref`/`alts`, `genotype`, `weight`, `state` (risk\|protective\|neutral\|significant\|alt\|ref), `conclusion`, `gene`, `phenotype`, `category`, ClinVar flags |
 | `studies.csv` | Grounding evidence (mandatory): `rsid`/position, `pmid`, `population`, `p_value`, `conclusion`, `study_design` |
-| `logo.png` / `MODULE.md` | Optional logo image and readme |
+| `logo.png` / `README.md` | Optional logo image and readme. An uploaded `MODULE.md` is renamed to `README.md` on publish (0.14) |
+| `derived/` | Optional, on the wire only: machine-written tables (`resolution.csv`, the fact sidecars) may arrive in a subfolder and are flattened onto the root the compiler reads |
 
 **Compiled outputs** (`compile_module()` in
 `just-dna-pipelines/src/just_dna_pipelines/module_compiler/compiler.py`):
@@ -358,7 +359,7 @@ Search params on #1: `?q=`, `?category=`, `?gene=`, `?genome_build=`, `?owner=`,
 
 ### 8.3 Detail — `GET /modules/{ns}/{name}`
 
-Returns the card object plus `readme` (MODULE.md), the full `stats.genes`, the embedded
+Returns the card object plus `readme` (README.md), the full `stats.genes`, the embedded
 `versions` array, and `latest_manifest` inline.
 
 ### 8.4 Versions — `GET /modules/{ns}/{name}/versions`
@@ -400,7 +401,7 @@ Request declares the version and files (with client-computed hashes):
     { "name": "variants.csv",     "sha256": "sha256:ff..", "size": 4350 },
     { "name": "studies.csv",      "sha256": "sha256:11..", "size": 2900 },
     { "name": "logo.png",         "sha256": "sha256:dd..", "size": 280932 },
-    { "name": "MODULE.md",        "sha256": "sha256:22..", "size": 1970 }
+    { "name": "README.md",        "sha256": "sha256:22..", "size": 1970 }
   ]
 }
 ```

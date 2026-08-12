@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.13.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -104,16 +104,31 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
 - **`namespace_available(namespace) -> dict`** — `{namespace, valid, available}`.
 - **`claim_namespace(namespace) -> dict`** *(token)* — claims it for your account
   (`{namespace, owner, already_owned}`); raises `RegistryError` `409`/`403` if taken/over-limit.
-- **`download(namespace, name, version, dest, *, include_logs=True) -> ModuleManifest`** — fetches
-  the artifact files (and logs), writes `manifest.json`, and **verifies integrity** with
-  `verify_manifest` (raises `IntegrityError` on mismatch). Returns the manifest.
+- **`download(namespace, name, version, dest, *, include_logs=True, include_inputs=False,
+  layout="flat") -> ModuleManifest`** — fetches the artifact files (and logs), writes
+  `manifest.json`, and **verifies integrity** with `verify_manifest` (raises `IntegrityError` on
+  mismatch). Returns the manifest.
+  - `include_inputs=True` also fetches the **authored** spec — `module_spec.yaml`, `variants.csv`
+    and the table CSVs — and hash-checks each against `manifest.inputs`. Off by default because the
+    download listing is the compiled parquets and an installer wants nothing else; on, it is the
+    difference between downloading an artifact and downloading a module.
+  - `layout="split"` (0.14) moves the machine-written tables — `resolution.csv` and the fact
+    sidecars — into `derived/`, so a reader can tell the enricher's files from the author's, and
+    drops a `WHERE-THIS-CAME-FROM.md` beside them. Applied **after** verification, never before: the
+    manifest attests flat names, so a tree split first is a tree that fails to verify. Re-uploading
+    either layout publishes the same module — the server flattens it back and none of these files is
+    in the content signature. `split_derived(module_dir)` is the same move as a standalone function.
+  - **Today it separates less than it will.** The manifest has fields for `logs` and `logo` and none
+    for the derived CSVs, so a downloader cannot receive them at all and `derived/` is created only
+    when something lands in it. Filed upstream (`just-dna-format`, S26).
 - **`get_tarball(namespace, name, version, dest) -> Path`** — saves the streamable `.tar.gz`.
 
 ### Writes (token required)
 
 - **`publish(namespace, name, version, spec_dir, changelog="") -> ModuleManifest`** — uploads the
   spec directory (`gather_spec_files` collects yaml/csv/md/logo/logs, skipping parquets +
-  `manifest.json`) and returns the compiled manifest.
+  `manifest.json`) and returns the compiled manifest. A `derived/` subfolder and a legacy `MODULE.md`
+  are both normalised server-side — see *Spec layout* in [API-REFERENCE.md](API-REFERENCE.md).
 - **`import_module(namespace, name, version, archive_path, *, changelog="", display=None) -> ModuleManifest`**
   — uploads a zip/tar.gz. `display` (`title/description/report_title/icon/color`) is used only for
   legacy parquet-only archives. `display["genome_build"]` rides along the same channel but is *not*
@@ -204,8 +219,11 @@ Prints one line per module (`ns/name@latest [N variants, M genes] ↓downloads �
 ### `download`
 ```bash
 registry-client download NS NAME VERSION DEST          # extract + integrity-verify into DEST/
+registry-client download NS NAME VERSION DEST --with-inputs --layout split   # a readable module
 registry-client download NS NAME VERSION FILE.tar.gz --tarball   # save a single tar.gz
 ```
+`--with-inputs` adds the authored spec, which a bare download leaves behind; `--layout split` then
+sorts the enricher's tables into `derived/`. Both are off by default.
 
 ### `register`
 ```bash

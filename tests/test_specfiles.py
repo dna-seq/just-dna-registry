@@ -31,8 +31,14 @@ from just_dna_registry.specfiles import (
     SIGNATURE_INPUTS,
     SPEC_DATA_FILES,
     SPEC_YAML,
+    DERIVED_DIR,
+    DERIVED_FILES,
+    LEGACY_README_FILE,
+    README_FILE,
+    carries_spec_content,
     has_spec_data,
     is_spec_file,
+    plan_layout,
 )
 
 
@@ -263,3 +269,90 @@ def test_the_licensing_facet_surfaces_a_no_sale_clause(pgx_client) -> None:
     assert card["licensing"]["commercial_use"] is False
     # Only the annotation layer taints; a coordinate is a fact, so a fact-layer source does not.
     assert card["licensing"]["noncommercial_layers"] == ["annotation"]
+
+
+# ── `plan_layout`: what may arrive, from where, and what it becomes ────────────
+
+
+def test_the_signature_inputs_can_never_be_moved_by_the_derived_folder() -> None:
+    """The invariant the whole layout convention rests on, asserted rather than assumed.
+
+    `content_signature` reads `SIGNATURE_INPUTS` from the spec root. If a file that may live under
+    `derived/` were ever added to that set, splitting a module would change its content identity and
+    a downloaded module would stop being republishable as itself.
+    """
+    assert set(DERIVED_FILES).isdisjoint(SIGNATURE_INPUTS)
+
+
+def test_derived_files_are_recognized_spec_files() -> None:
+    """Otherwise `upgrade` and `revalidate`, which rebuild a spec from `RECOGNIZED_SPEC_FILES`,
+    would drop exactly the tables the folder exists to hold."""
+    assert set(DERIVED_FILES) <= set(RECOGNIZED_SPEC_FILES)
+
+
+def test_a_recognized_file_is_hoisted_from_any_subdirectory() -> None:
+    """Liberal in: `derived/` is what we emit, but a producer may already use another name and
+    accepting theirs costs nothing. Blessing a second name in the code would mean keeping it."""
+    for folder in (DERIVED_DIR, "metadata", "enriched", "authored"):
+        plan = plan_layout([SPEC_YAML, f"{folder}/{RESOLUTION_CSV}"])
+        assert plan.renames == {f"{folder}/{RESOLUTION_CSV}": RESOLUTION_CSV}
+        assert plan.conflicts == []
+
+
+def test_unknown_files_are_left_exactly_where_they_are() -> None:
+    """The compiler tolerates unknown files as a contract; a rule invented here would break it."""
+    plan = plan_layout([SPEC_YAML, "notes/scratch.txt", "figures/fig1.png", "receipt.txt"])
+    assert plan.renames == {} and plan.conflicts == [] and plan.notes == []
+
+
+def test_the_logs_subtree_is_never_touched() -> None:
+    """The manifest records these paths verbatim, so hoisting one renames an attested file."""
+    plan = plan_layout([SPEC_YAML, "logs/reviewer.log", "logs/nested/pi.log", "v1.log"])
+    assert plan.renames == {}
+
+
+def test_two_paths_for_one_root_name_is_a_conflict_not_a_choice() -> None:
+    plan = plan_layout([SPEC_YAML, RESOLUTION_CSV, f"{DERIVED_DIR}/{RESOLUTION_CSV}"])
+    assert plan.renames == {}
+    assert len(plan.conflicts) == 1 and RESOLUTION_CSV in plan.conflicts[0]
+
+
+def test_the_legacy_readme_is_renamed_unless_the_real_one_is_present() -> None:
+    renamed = plan_layout([SPEC_YAML, LEGACY_README_FILE])
+    assert renamed.renames == {LEGACY_README_FILE: README_FILE} and renamed.warnings == []
+
+    both = plan_layout([SPEC_YAML, LEGACY_README_FILE, README_FILE])
+    assert both.renames == {} and len(both.warnings) == 1
+
+
+def test_a_readme_under_another_spelling_warns_rather_than_vanishing() -> None:
+    """S7: the failure was silent in both directions, and the silence is the part worth fixing.
+
+    Warned, never renamed. `MODULE.md` earns a rename because this project told authors to write it;
+    guessing that `readme.md` or `README.txt` meant the card would be inventing intent, and the
+    author can settle it with one rename or one `amend_readme` call.
+    """
+    for spelling in ("readme.md", "Readme.md", "README.txt", "README"):
+        plan = plan_layout([SPEC_YAML, spelling])
+        assert plan.renames == {}, f"{spelling} must not be renamed on a guess"
+        assert len(plan.warnings) == 1, spelling
+        assert README_FILE in plan.warnings[0] and "amend_readme" in plan.warnings[0]
+
+    # Nothing was lost when the real name is there too, so nothing is said.
+    assert plan_layout([SPEC_YAML, README_FILE, "readme.txt"]).warnings == []
+    # And the ordinary case stays silent.
+    assert plan_layout([SPEC_YAML, README_FILE]).warnings == []
+
+
+def test_a_flat_spec_plans_no_change_at_all() -> None:
+    """The common case has to be a no-op, or every publish rewrites bytes the author sent."""
+    plan = plan_layout([SPEC_YAML, *CORE_CSVS, README_FILE, PROVENANCE_FILE, "logo.png", "v1.log"])
+    assert not plan.changed and plan.notes == [] and plan.conflicts == []
+
+
+def test_the_archive_filter_keeps_everything_the_planner_acts_on() -> None:
+    """A dry run that drops what the publish would keep is not a rehearsal — and the pre-flight's
+    archive filter runs *before* the planner, so anything it drops can never be normalized."""
+    for name in (LEGACY_README_FILE, f"{DERIVED_DIR}/{RESOLUTION_CSV}", "logs/reviewer.log"):
+        assert carries_spec_content(name), name
+    assert not carries_spec_content("weights.parquet")
