@@ -47,6 +47,43 @@ TABLE_KIND_CSVS: tuple[str, ...] = (
     "pharm_variants.csv",
 )
 
+#: The licensing/attribution ledger: one row per `(source, layer)`, saying where the bytes came from
+#: and on what terms. Named here rather than left as a literal in `FACT_CSVS` because it now has two
+#: spellings and the pair has to be written down in one place — see `LICENSING_CSV`.
+SOURCES_CSV: str = "sources.csv"
+
+#: The *current* spelling of `SOURCES_CSV`, and the one this deployment's compiler cannot read.
+#:
+#: Upstream RM51 made `licensing.csv` a second accepted spelling in format 0.6 and deprecated
+#: `sources.csv` for removal at 1.0, so every current authoring tool, every enricher write path and
+#: every reference example writes the new name. This registry is pinned to 0.5, whose compiler reads
+#: `sources.csv` and nothing else — so an author who followed the ecosystem's current advice got the
+#: file *dropped from the compile*, and the `sources` summary was then built from the enricher's own
+#: single Ensembl row: `commercial_use: true`, `licenses: ["Apache-2.0"]`, for a module whose real
+#: upstreams forbid sale. A facet meaning "permitted" produced by a history that only means "nobody
+#: told us", which is the sibling-field rule from `CLAUDE.md` broken at the input stage.
+#:
+#: Renamed rather than warned about, on the `LEGACY_README_FILE` precedent and for the same reason:
+#: the author wrote the name they were told to write and *our* reader is the half that is behind, so
+#: charging them for it would be charging them for our lag. Three things make the rename safe rather
+#: than a guess, and all three were checked before making it:
+#:
+#: - It is not a guess about intent. Upstream defines the two names as **one table with one row
+#:   model**, and the 0.6 header is field-for-field the 0.5.4 `SourceRow` — which is `extra="forbid"`,
+#:   so a schema drift would have failed the compile loudly rather than published something wrong.
+#: - It cannot move an identity. `SOURCES_CSV` is a fact sidecar: out of `SIGNATURE_INPUTS` (so
+#:   `content_signature` and the global `409 duplicate_content` claim do not see the filename) and
+#:   hashed by facts rather than bytes upstream.
+#: - It happens in `normalize_spec`, ahead of enrichment, so the enricher merges its own row into the
+#:   author's ledger exactly as it would have for a spec that used the old spelling.
+#:
+#: What is *not* done here is recognising the name (`RECOGNIZED_SPEC_FILES`), which stays 0.6
+#: lockstep work: after the rename there is no `licensing.csv` left to round-trip. Upstream also
+#: **refuses** a module carrying both spellings (RM49); we warn and let the readable name win, since
+#: turning a publish that succeeds today into a refusal is a major and their own resolver arrives
+#: with the lockstep upgrade anyway.
+LICENSING_CSV: str = "licensing.csv"
+
 # The 0.5 derived-fact sidecars, produced by `just-dna-enricher`. Mirrors `compiler._FACT_TABLES`.
 # They compile to parquet (so they are part of `artifact.digest` for a module that carries them) but
 # are hashed by *facts* rather than raw bytes, because they are multi-producer: the enricher, a
@@ -55,7 +92,7 @@ FACT_CSVS: tuple[str, ...] = (
     "frequencies.csv",
     "gene_metrics.csv",
     "literature.csv",
-    "sources.csv",
+    SOURCES_CSV,
 )
 
 # The rsid↔coordinate table. Produced by the enricher (the only tier permitted to fetch) and
@@ -161,9 +198,21 @@ REQUIRED_SPEC_FILES: tuple[str, ...] = (SPEC_YAML,)
 #: which is the same property that keeps them out of `SIGNATURE_INPUTS`.
 DERIVED_FILES: tuple[str, ...] = FACT_CSVS + (RESOLUTION_CSV,)
 
-#: Names `plan_layout` will lift out of a subdirectory. The recognized spec files, plus the legacy
-#: readme, which is the one name that is also *renamed* rather than only moved.
-_HOISTABLE: frozenset[str] = frozenset(RECOGNIZED_SPEC_FILES) | {LEGACY_README_FILE}
+#: Names that arrive under one spelling and are stored under another, because the author wrote the
+#: name the ecosystem told them to write and this registry's reader is the half that lags. Both
+#: entries are the same repair at a different file — see `LEGACY_README_FILE` and `LICENSING_CSV`
+#: for why each earns a rename where a lookalike only earns a warning.
+#:
+#: A rename is only ever *onto* a name in `RECOGNIZED_SPEC_FILES`; that is what makes the renamed
+#: file survive the storage round-trip that `revalidate` and `upgrade` rebuild a spec from.
+RENAMED_ON_UPLOAD: dict[str, str] = {
+    LEGACY_README_FILE: README_FILE,
+    LICENSING_CSV: SOURCES_CSV,
+}
+
+#: Names `plan_layout` will lift out of a subdirectory. The recognized spec files, plus the names
+#: that are also *renamed* rather than only moved.
+_HOISTABLE: frozenset[str] = frozenset(RECOGNIZED_SPEC_FILES) | set(RENAMED_ON_UPLOAD)
 
 #: Exactly what `just_dna_compiler.compiler.content_signature` reads. Mirrors `_INPUT_FILES`: the
 #: fact sidecars and `resolution.csv` are excluded because they are derived, not authored, so two
@@ -181,8 +230,8 @@ def carries_spec_content(name: str) -> bool:
 
     Wider than `is_spec_file` in two directions, and both are load-bearing. A **subfoldered** spec
     file has to survive the filter or the normalization never sees it, and a dry run that drops what
-    the publish keeps is not a rehearsal. `LEGACY_README_FILE` has to survive it for the same reason:
-    it is not a recognized spec file — it is renamed into one.
+    the publish keeps is not a rehearsal. Every key of `RENAMED_ON_UPLOAD` has to survive it for the
+    same reason: none of them is a recognized spec file — each is renamed into one.
     """
     if name == LOGS_DIR or name.startswith(f"{LOGS_DIR}/"):
         return True
@@ -226,8 +275,8 @@ def plan_layout(names: Iterable[str]) -> LayoutPlan:
     module would make it a name we then have to keep. `LOGS_DIR` is the one exception and is never
     touched — the manifest attests those paths verbatim.
 
-    `LEGACY_README_FILE` is renamed as part of the same pass, since it is the same question asked
-    about a filename rather than a directory.
+    `RENAMED_ON_UPLOAD` is applied as part of the same pass, since "this file arrived under a name
+    the compiler does not read" is the same question asked about a filename rather than a directory.
 
     Unrecognized files stay exactly where they are, whatever depth they sit at. The compiler tolerates
     unknown files as a contract, and a rule invented here for them would quietly break it.
@@ -247,17 +296,20 @@ def plan_layout(names: Iterable[str]) -> LayoutPlan:
         base = PurePosixPath(name).name
         if base not in _HOISTABLE:
             continue
-        if base == LEGACY_README_FILE:
-            if README_FILE in basenames:
-                # Both arrived. The real name wins and the legacy file is left untouched as an
-                # ordinary extra file — overwriting a readme the author wrote with one they did not
-                # would be the single most surprising thing this pass could do.
+        renamed_to = RENAMED_ON_UPLOAD.get(base)
+        if renamed_to is not None:
+            if renamed_to in basenames:
+                # Both spellings arrived. The name the compiler reads wins and the other file is left
+                # untouched as an ordinary extra file. Never a merge and never newest-wins: for the
+                # readme, overwriting prose the author wrote with prose they did not is the single
+                # most surprising thing this pass could do; for the licensing ledger, the two files
+                # are human-overridable attribution claims and only the author knows which is current.
                 plan.warnings.append(
-                    f"`{name}` ignored: `{README_FILE}` is also present and is the name the "
+                    f"`{name}` ignored: `{renamed_to}` is also present and is the name the "
                     f"registry reads. The file is carried unchanged."
                 )
                 continue
-            claims.setdefault(README_FILE, []).append(name)
+            claims.setdefault(renamed_to, []).append(name)
             continue
         claims.setdefault(base, []).append(name)
 
@@ -286,10 +338,17 @@ def plan_layout(names: Iterable[str]) -> LayoutPlan:
         if source == dest:
             continue
         plan.renames[source] = dest
-        if PurePosixPath(source).name == LEGACY_README_FILE:
+        base = PurePosixPath(source).name
+        if base == LEGACY_README_FILE:
             plan.notes.append(
                 f"renamed `{source}` to `{README_FILE}` (the readme filename the registry reads; "
                 f"`{LEGACY_README_FILE}` was this project's advice until 0.14 and nothing read it)"
+            )
+        elif base == LICENSING_CSV:
+            plan.notes.append(
+                f"renamed `{source}` to `{SOURCES_CSV}` (the licensing ledger under the spelling this "
+                f"registry's compiler reads; `{LICENSING_CSV}` is the format-0.6 name and this "
+                f"deployment is on 0.5 — same table, same columns, and the rename moves no identity)"
             )
         else:
             plan.notes.append(

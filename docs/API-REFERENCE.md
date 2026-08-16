@@ -525,8 +525,8 @@ The spec's `module.name` must equal the path `{name}` (`422 name_mismatch`).
 #### Spec layout (0.14) — what may arrive, and from where
 
 The compiler reads one flat directory, so that is the canonical layout and the server normalises an
-upload onto it before reading anything. Two normalisations, both applied identically by `/versions`,
-`/versions/import`, `/validate` and `/check`, and both reported on the dry runs' `info[]`:
+upload onto it before reading anything. Applied identically by `/versions`, `/versions/import`,
+`/validate` and `/check`, and reported on the dry runs' `info[]`:
 
 - **A recognised spec file in a subdirectory is lifted to the root.** `derived/resolution.csv`
   publishes exactly as `resolution.csv` does. `derived/` is the folder this registry emits (see
@@ -534,6 +534,15 @@ upload onto it before reading anything. Two normalisations, both applied identic
   producers already ship `metadata/` and `enriched/` trees and refusing them buys nothing.
 - **`MODULE.md` is renamed to `README.md`**, unless a `README.md` is also present — then the real
   name wins, the legacy file is carried unchanged, and a warning says so.
+- **`licensing.csv` is renamed to `sources.csv`** (0.16.2), on the same rule and with the same
+  both-present behaviour. They are one table under two spellings: format 0.6 made `licensing.csv` the
+  name and deprecated `sources.csv`, this deployment compiles on 0.5, and every current authoring tool
+  and reference example writes the new one. Until this landed the file reached storage but never the
+  compile, so the `sources` summary was built from the enricher's own Ensembl row alone and a module
+  whose upstreams forbid sale advertised `licensing.commercial_use: true` on its card. Nothing is
+  guessed at here: upstream defines the two names as one table with one row model, the 0.6 header is
+  field-for-field the 0.5 one, and `sources.csv` is a fact sidecar outside `content_signature`, so the
+  rename moves no identity.
 
 Two exceptions and one refusal:
 

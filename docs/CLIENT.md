@@ -129,8 +129,10 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
 
 - **`publish(namespace, name, version, spec_dir, changelog="") -> ModuleManifest`** — uploads the
   spec directory (`gather_spec_files` collects yaml/csv/md/logo/logs, skipping parquets +
-  `manifest.json`) and returns the compiled manifest. A `derived/` subfolder and a legacy `MODULE.md`
-  are both normalised server-side — see *Spec layout* in [API-REFERENCE.md](API-REFERENCE.md).
+  `manifest.json`) and returns the compiled manifest. A `derived/` subfolder, a legacy `MODULE.md`
+  and a format-0.6 `licensing.csv` are all normalised server-side — see *Spec layout* in
+  [API-REFERENCE.md](API-REFERENCE.md). Nothing to do on your side: send the spec as your tooling
+  wrote it.
 - **`import_module(namespace, name, version, archive_path, *, changelog="", display=None) -> ModuleManifest`**
   — uploads a zip/tar.gz. `display` (`title/description/report_title/icon/color`) is used only for
   legacy parquet-only archives. `display["genome_build"]` rides along the same channel but is *not*

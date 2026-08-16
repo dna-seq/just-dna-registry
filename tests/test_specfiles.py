@@ -35,7 +35,10 @@ from just_dna_registry.specfiles import (
     DERIVED_DIR,
     DERIVED_FILES,
     LEGACY_README_FILE,
+    LICENSING_CSV,
     README_FILE,
+    RENAMED_ON_UPLOAD,
+    SOURCES_CSV,
     carries_spec_content,
     has_spec_data,
     is_spec_file,
@@ -349,11 +352,22 @@ def test_the_unjoinable_phrase_still_reaches_the_manifest(pgx_client) -> None:
 
 
 def test_the_licensing_facet_surfaces_a_no_sale_clause(pgx_client) -> None:
-    """Every PGx upstream is CC BY-SA *plus* a no-sale clause, and a marketplace has to know."""
+    """Every PGx upstream is CC BY-SA *plus* a no-sale clause, and a marketplace has to know.
+
+    Guarded on the shape rather than trusting it: this drives a sibling *working tree*, and when
+    upstream renamed the ledger to `licensing.csv` (RM51) the ledger stopped reaching the compile and
+    this test failed as a bare `assert True is False` — a wrong permissive facet reported as an
+    arithmetic surprise. If the example stops carrying a ledger under either spelling, say so.
+    """
+    parts = _pgx_parts()  # skips when the sibling checkout is absent
+    shipped = {name for _, (name, _, _) in parts}
+    assert shipped & {SOURCES_CSV, LICENSING_CSV}, (
+        f"the reference example carries no licensing ledger under either spelling: {sorted(shipped)}"
+    )
     pgx_client.post(
         "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions",
         data={"version": "1.0.0"},
-        files=_pgx_parts(),
+        files=parts,
         headers={"Authorization": "Bearer mk_live_testkey"},
     )
     card = pgx_client.get("/api/v1/modules").json()["items"][0]
@@ -433,6 +447,50 @@ def test_a_readme_under_another_spelling_warns_rather_than_vanishing() -> None:
     assert plan_layout([SPEC_YAML, README_FILE, "readme.txt"]).warnings == []
     # And the ordinary case stays silent.
     assert plan_layout([SPEC_YAML, README_FILE]).warnings == []
+
+
+def test_the_licensing_ledger_is_renamed_onto_the_spelling_the_compiler_reads() -> None:
+    """`licensing.csv` is format 0.6's name for `sources.csv` (RM51) and this deployment is on 0.5.
+
+    Renamed, not warned about: upstream defines the two names as one table with one row model, so
+    unlike the readme lookalikes there is nothing to guess. Every current authoring tool and every
+    reference example writes the new name, and until this landed the compiler simply never saw the
+    file — leaving the `sources` summary holding the enricher's own permissive Ensembl row.
+    """
+    plan = plan_layout([SPEC_YAML, "haplotypes.csv", LICENSING_CSV])
+    assert plan.renames == {LICENSING_CSV: SOURCES_CSV}
+    assert plan.warnings == [] and plan.conflicts == []
+    assert len(plan.notes) == 1 and SOURCES_CSV in plan.notes[0]
+
+    # And from a subdirectory, since 0.6 producers write it under `derived/` as often as at the root.
+    subfoldered = plan_layout([SPEC_YAML, f"{DERIVED_DIR}/{LICENSING_CSV}"])
+    assert subfoldered.renames == {f"{DERIVED_DIR}/{LICENSING_CSV}": SOURCES_CSV}
+
+
+def test_both_licensing_spellings_present_warns_and_keeps_the_readable_one() -> None:
+    """Upstream RM49 refuses this; we warn, because failing a publish that succeeds today is a major
+    and their own resolver arrives with the 0.6 lockstep upgrade. Never a merge and never
+    newest-wins — the rows are human-overridable attribution claims, so only the author knows."""
+    plan = plan_layout([SPEC_YAML, SOURCES_CSV, LICENSING_CSV])
+    assert plan.renames == {} and plan.conflicts == []
+    assert len(plan.warnings) == 1
+    assert LICENSING_CSV in plan.warnings[0] and SOURCES_CSV in plan.warnings[0]
+
+
+def test_a_rename_can_never_move_a_module_identity_or_be_dropped_by_storage() -> None:
+    """The two invariants that make `RENAMED_ON_UPLOAD` safe to add a name to.
+
+    A destination inside `SIGNATURE_INPUTS` would mean an upload spelling decides `content_signature`
+    — so the same data would claim two different global `409 duplicate_content` slots depending on
+    which name it arrived under. A destination outside `RECOGNIZED_SPEC_FILES` would survive the
+    publish and then be dropped by `revalidate`/`upgrade`, which rebuild a spec from that list.
+    """
+    destinations = set(RENAMED_ON_UPLOAD.values())
+    assert destinations.isdisjoint(SIGNATURE_INPUTS)
+    assert destinations <= set(RECOGNIZED_SPEC_FILES)
+    # A source spelling that is *also* a recognized name would make the rename unreachable: the
+    # planner would claim it under its own name first.
+    assert set(RENAMED_ON_UPLOAD).isdisjoint(RECOGNIZED_SPEC_FILES)
 
 
 def test_a_flat_spec_plans_no_change_at_all() -> None:

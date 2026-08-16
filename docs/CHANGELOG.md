@@ -6,6 +6,70 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.16.2] — 2026-08-17
+
+**Client surface: unchanged.**
+
+### A licensing ledger nobody read, and a card that then advertised the wrong terms
+
+Nothing was pending in the inbox, so this is the standing ROADMAP item found on 2026-08-12 while
+running the suite — the one red test at HEAD, and the smaller half of what was wrong with it.
+
+Format 0.6 renamed the licensing/attribution ledger from `sources.csv` to `licensing.csv` (upstream
+RM51) and deprecated the old spelling for removal at 1.0. Every current authoring tool writes the new
+name, the enricher writes it, and the PGx reference examples were rewritten onto it. This deployment
+compiles on 0.5.4, whose compiler reads `sources.csv` and nothing else.
+
+So the file arrived, was carried into storage as an unrecognised extra, and never reached the compile.
+What made that worse than a dropped file is what took its place: the enricher records the terms of
+every source *its own* resolution pass consulted, so `manifest.sources` came back holding one Ensembl
+row — `commercial_use: true`, `licenses: ["Apache-2.0"]` — and the card published that as the module's
+licensing facet. `cyp2c19_star_alleles` carries a CPIC row reading *"CPIC/ClinPGx data may not be sold
+for private or commercial use"*. A marketplace was advertising it as sellable. A facet meaning
+"permitted", produced by a history that only means "nobody told us".
+
+**`licensing.csv` is now renamed to `sources.csv` on upload**, in `plan_layout`, so the ledger reaches
+the compiler under the name it knows. Same mechanism as `MODULE.md` → `README.md` and the same
+justification read from the other side: there the corpus lagged our advice, here we lag the corpus,
+and either way the author wrote the name they were told to write. Both spellings present → the
+readable one wins, the other is carried unchanged, and a warning says so.
+
+The ROADMAP had planned a warning for this release and deferred the repair to the 0.6 lockstep
+upgrade, reasoning that passing the bytes through would put them in front of a reader that does not
+know the name. True of *recognising* the file, not of renaming it, and three checks are what turn the
+difference into a fix rather than a gamble:
+
+- The two names are **one table with one row model** upstream, so nothing is being guessed at — which
+  is precisely why `readme.md` and `README.txt` still only earn a warning (S7).
+- The 0.6 header is **field-for-field** the installed 0.5.4 `SourceRow`, and that model is
+  `extra="forbid"` — a schema drift would have failed the compile loudly rather than published
+  something subtly wrong.
+- The destination is a fact sidecar: **outside `SIGNATURE_INPUTS`**, so no spelling can move a
+  `content_signature` or the global `409 duplicate_content` claim keyed on it, and **inside
+  `RECOGNIZED_SPEC_FILES`**, so `revalidate` and `upgrade` carry the renamed file forward instead of
+  dropping it on the next rebuild.
+
+Both renames now live in one map (`RENAMED_ON_UPLOAD`) instead of a special case in the planner, and a
+test asserts those last two properties over every entry rather than for one file — the next name added
+to that map cannot quietly become a signature input or a file storage forgets.
+
+**Not done, and deliberately: upstream refuses a module carrying both spellings (RM49) and we warn.**
+Turning a publish that succeeds today into a refusal is a major, and their own resolver arrives with
+the 0.6 lockstep upgrade. Recognising `licensing.csv` belongs to that same pass; until then there is
+nothing left under that name to round-trip.
+
+`tests/test_specfiles.py::test_the_licensing_facet_surfaces_a_no_sale_clause` is green again with no
+change to what it asserts. It now checks the reference example's *shape* first: it drives a sibling
+working tree, and when upstream renamed the file the failure surfaced as a bare `assert True is False`
+— a wrong permissive licence reported as an arithmetic surprise. If the example stops shipping a
+ledger under either spelling, it now says so in a sentence.
+
+Also checked while here, and recorded in the ROADMAP so it stops reading as open work: S2's option 2
+(marking client methods public-vs-internal) is **already satisfied** — `RegistryClient` has 54 public
+methods and exactly three underscored helpers, and the convention is the underscore rather than
+`__all__`. What that item still wants is the surface *published* as a versioned contract, which is the
+other half of the same entry.
+
 ## [0.16.1] — 2026-08-16
 
 **Client surface: unchanged.**

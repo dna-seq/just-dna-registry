@@ -311,6 +311,22 @@ predicts is worse than one that does not normalize at all.
   difference between a rename we made and a republish every author pays for. Both present → the real
   name wins and the legacy file is carried untouched; overwriting prose the author wrote with prose
   they did not is the one thing this pass must never do.
+- **Renames live in one map (`RENAMED_ON_UPLOAD`), and the second entry is `licensing.csv` →
+  `sources.csv`** (0.16.2). Same repair as `MODULE.md` from the other direction: there we were ahead
+  of the corpus, here we are *behind* it — format 0.6 renamed the licensing ledger (RM51) and every
+  current authoring tool and reference example writes the new name, while this deployment compiles on
+  0.5. The failure was not a dropped file but a **false facet**: the ledger reached storage and never
+  the compile, so `manifest.sources` held the enricher's own Ensembl row and a module whose upstreams
+  forbid sale advertised `licensing.commercial_use: true`. A warning would only have announced that.
+  **Three things must hold before adding a name to that map, and all three were checked here, not
+  assumed:** the two names are one table with one row model upstream (not a guess at intent, which is
+  what keeps `_README_LOOKALIKES` a warning); the 0.6 header is field-for-field the installed 0.5
+  `SourceRow`, which is `extra="forbid"`, so a schema drift would fail loudly rather than publish
+  something wrong; and the destination is outside `SIGNATURE_INPUTS` and inside
+  `RECOGNIZED_SPEC_FILES`, so the rename can neither move a `content_signature` nor be dropped by the
+  `revalidate`/`upgrade` rebuild. A test asserts the last one over the whole map. Both present → the
+  readable name wins with a warning, where upstream RM49 *refuses*; turning a publish that succeeds
+  today into a refusal is a major, and their resolver arrives with the 0.6 lockstep anyway.
 - **The split cannot separate what a downloader never receives.** The manifest has fields for `logs`,
   `logo`, `provenance` and the authored `inputs`, and none for the derived CSVs — only their
   parquets are in `artifact.files`. So `download(layout="split")` creates `derived/` only when

@@ -56,6 +56,7 @@ artifact**.
 | `variants.csv` | One row per genotype: `rsid`, `chrom`/`start`/`ref`/`alts`, `genotype`, `weight`, `state` (risk\|protective\|neutral\|significant\|alt\|ref), `conclusion`, `gene`, `phenotype`, `category`, ClinVar flags |
 | `studies.csv` | Grounding evidence (mandatory): `rsid`/position, `pmid`, `population`, `p_value`, `conclusion`, `study_design` |
 | `logo.png` / `README.md` | Optional logo image and readme. An uploaded `MODULE.md` is renamed to `README.md` on publish (0.14) |
+| `sources.csv` | Optional licensing/attribution ledger: one row per `(source, layer)` with the terms the bytes came under. Feeds the card's `licensing` facet. An uploaded `licensing.csv` — format 0.6's name for the same table — is renamed onto this one (0.16.2) |
 | `derived/` | Optional, on the wire only: machine-written tables (`resolution.csv`, the fact sidecars) may arrive in a subfolder and are flattened onto the root the compiler reads |
 
 **Compiled outputs** (`compile_module()` in
