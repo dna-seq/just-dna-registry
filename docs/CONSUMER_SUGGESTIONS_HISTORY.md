@@ -6,7 +6,7 @@ split exists for, and the reason answered items do not stay there. The runbook f
 [CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md).
 
 **The consumer's prose is moved byte-for-byte, never rewritten** — it is the report, not the resolution. The
-move is made by `.claude/triage-archive.sh`, which compares every fingerprint before and after and refuses
+move is made by `.claude/triage-archive.py`, which compares every fingerprint before and after and refuses
 the write if one changed. A reply travels with the item it answers, and a group whose items split across the
 two files keeps its dateline in both.
 

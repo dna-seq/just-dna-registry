@@ -19,12 +19,17 @@
 # Nothing needs installing: `stat` polling is enough at this cadence, and it works where inotify-tools,
 # entr, fswatch and python watchdog are all absent.
 #
-#   FILE=<path> COOLDOWN=<seconds> POLL=<seconds> RUNBOOK=<path> .claude/watch-suggestions.sh
+# This is the only one of the three that is really bash. The ledger is Python and is invoked through
+# $PYTHON below rather than as a bare path, so neither its exec bit nor its shebang is load-bearing
+# (docs/CONSUMER_TRIAGE_LOOP.md §5 — the extension gotcha).
+#
+#   FILE=<path> COOLDOWN=<seconds> POLL=<seconds> RUNBOOK=<path> CAP=<n> .claude/watch-suggestions.sh
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 FILE=${FILE:-${INBOX:-$HERE/../docs/CONSUMER_SUGGESTIONS.md}}
-LEDGER=${LEDGER:-$HERE/triage-state.sh}
+PYTHON=${PYTHON:-python3}
+LEDGER=${LEDGER:-$HERE/triage-state.py}
 RUNBOOK=${RUNBOOK:-docs/CONSUMER_TRIAGE_LOOP.md}
 COOLDOWN=${COOLDOWN:-150}
 POLL=${POLL:-10}
@@ -50,7 +55,7 @@ while true; do
     dirty=0
 
     # The event line is capped: with a 17-item backlog an uncapped one listed every single item.
-    pending=$(INBOX="$FILE" "$LEDGER" "$FILE" --pending 2>/dev/null |
+    pending=$(INBOX="$FILE" "$PYTHON" "$LEDGER" "$FILE" --pending 2>/dev/null |
               awk -v cap="$CAP" 'NF { n++; if (n <= cap) { printf "%s%s(%s)", sep, $2, $1; sep = " " } }
                    END { if (n > cap) printf " +%d more", n - cap }')
     if [ -z "$pending" ]; then

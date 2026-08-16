@@ -577,7 +577,7 @@ def _finalize(
             manifest.owner = owner
             manifest.published_at = now_iso()
             if settings.signing_key is not None:
-                # Sign the content identity (SPEC §5); clients pin the pubkey served at /pubkey.
+                # Sign the byte identity (SPEC §5); clients pin the pubkey served at /pubkey.
                 manifest.signature = sign_digest(
                     manifest.artifact.digest,
                     settings.signing_key.read_bytes(),
@@ -681,7 +681,7 @@ def amend_logo(
     """Replace a published version's logo without a version bump.
 
     The logo is out of `artifact.digest` (SPEC §5 / manifest contract), so swapping it leaves the
-    content identity — and any signature over it — intact. Mirrors `amend_changelog`: metadata only,
+    digest — and any signature over it — intact. Mirrors `amend_changelog`: metadata only,
     owner-gated at the router. Updates the stored `manifest.logo` entry, re-stores the logo bytes
     and the refreshed `manifest.json`, and refreshes the DB projection.
     """
@@ -719,7 +719,7 @@ def amend_readme(
     """Replace a published version's readme prose without a version bump.
 
     Mirrors `amend_logo`: prose about a module is not its content, so it is out of
-    `artifact.digest` and swapping it leaves the content identity — and any signature over it —
+    `artifact.digest` and swapping it leaves the digest — and any signature over it —
     intact. On an immutable registry that is the whole point: a caveat phrased badly must be
     fixable without burning a version number and claiming a second `content_hash`.
 

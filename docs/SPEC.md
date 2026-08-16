@@ -224,11 +224,18 @@ All hashes are SHA-256, lowercase hex, prefixed `sha256:`.
 - **Artifact digest** (`artifact.digest`): SHA-256 over a canonical listing of the files —
   build the JSON array `[{"name","sha256","size"}, ...]` sorted by `name`, serialized with
   sorted keys and no whitespace, then hash. This is a Merkle-style root: verifying it
-  verifies the whole set cheaply, and it is the version's content identity.
+  verifies the whole set cheaply, and it is the version's **byte** identity — *these files, from
+  this compiler*. It is **not** the content identity; `content_signature` is (see §6), and reading
+  the digest as one sends a reader hunting a data change that did not happen. Upstream settled the
+  wording in `just-dna-format`'s `docs/SCHEMAS.md` hash table (their S7); the practical case here is
+  a spec that authors no `sources.csv`, where the enricher writes one per compile with `fetched_at`
+  stamped at second resolution — so two compiles of byte-identical inputs agree only if they land in
+  the same second. `content_signature` is invariant across that, which is why the publish gate and
+  `409 duplicate_content` are keyed on it.
 - **Out-of-digest hashed assets** (`logs`, `provenance`, `logo`): hashed as their own manifest
   entries but **excluded from `artifact.digest`**, so identical compiled data stays dedup-equal
   regardless of them and a logo/log/provenance change is a PATCH (metadata-only) rather than a new
-  content identity. The `POST .../versions/{v}/logo` amendment relies on this — it swaps the logo
+  artifact. The `POST .../versions/{v}/logo` amendment relies on this — it swaps the logo
   without a version bump. Verified opportunistically (`verify_manifest(check_logs/check_provenance/
   check_logo=True)`): a present file must match its hash, an absent one is not a failure.
 - **`compile_success`**: `true` only when the server's own `compile_module()` returned
@@ -263,8 +270,12 @@ unsigned, and verification behaves exactly as before.
   - **MAJOR**: variant set / weights changed in a way that alters annotation results.
   - **MINOR**: variants/studies added; weights unchanged for existing genotypes.
   - **PATCH**: metadata/description/logo/typo only (no data change).
-- **Content identity** vs. SemVer: SemVer orders for humans; `artifact.digest` is the
-  immutable content identity. Identical bytes → identical digest.
+- **Identity** vs. SemVer: SemVer orders for humans. `artifact.digest` is the immutable **byte**
+  identity — identical bytes → identical digest, and a recompile that changes any written byte
+  changes it. `content_signature` is the **content** identity — the authored rows, independent of
+  name, reference and of which run produced them — and it is the one to compare when the question is
+  "is this the same module data?". A moved digest beside an unmoved signature is a provenance-only
+  change, not a data change.
 - **Immutability**: a published `(namespace, name, version)` is immutable. Re-publishing an
   existing version → `409`. **Yank** (`POST .../yank`) sets `yanked=true`: the version
   disappears from default listings and `latest`, but its manifest + artifact remain fetchable

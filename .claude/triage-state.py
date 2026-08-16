@@ -24,13 +24,18 @@ Configuration (environment, all optional):
     HISTORY   path to the answered-items document (default alongside INBOX, *_HISTORY.md)
     PREFIX    item id prefix                      (default S, so `## S12 — …`)
 
-The defaults point at this repo; everything else is the generalized gist copy verbatim
+The defaults point at this repo; everything else is the generalized gist copy
 (<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254>), so a change to the *pattern*
-goes back there and a change to these paths does not.
+goes back there and a change to these paths does not. The trailing-rule normalization in `fingerprint`
+was found here and went back to the gist on 2026-08-16; the two copies agree apart from the paths.
+
+Python, and named `.py` for it: run it, or pass it to `python3` — never to `bash`. Under bash the
+shebang is ignored, this docstring is executed as commands, and `import hashlib` reaches ImageMagick's
+`import`. See the extension gotcha in docs/CONSUMER_TRIAGE_LOOP.md §5.
 
 Usage:
-    .claude/triage-state.sh [path] [--pending] [--backfill]
-    .claude/triage-state.sh --next        # the next unclaimed id, over the inbox AND the history file
+    .claude/triage-state.py [path] [--pending] [--backfill]
+    .claude/triage-state.py --next        # the next unclaimed id, over the inbox AND the history file
 """
 
 import hashlib

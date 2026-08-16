@@ -348,7 +348,10 @@ locus named in three tables counts three times here and is asked once.
 Two identities, one endpoint, because they answer different questions:
 
 * **`digest`** names the *compiled bytes*. It moves when the same spec is recompiled against a
-  different reference, and it embeds the module name — so it moves on a rename too.
+  different reference, and it embeds the module name — so it moves on a rename too. It can also move
+  on a plain recompile of an unchanged spec: a module that authors no `sources.csv` gets a fresh one
+  from the enricher each time, carrying a `fetched_at` stamped to the second. Use it to ask *which
+  published version has exactly these bytes*, never *is this data already here*.
 * **`signature`** names the *authored rows*. Name-, reference- and metadata-independent, and what
   publish gates `409 duplicate_content` on — so it is the only one that can predict a rejection. A
   client computes it locally with `just_dna_compiler.compiler.content_signature(spec_dir)`, no upload
@@ -452,8 +455,9 @@ Pass a `key` as `?group=` on the listing (endpoint 2). Membership is server-owne
 UI's — see the `group` param above.
 
 ### 3. `GET /api/v1/modules/lookup?digest=sha256:…`
-Find published versions whose `artifact.digest` matches (content-identity / "already published?"
-check). `digest` is required. `200 →`
+Find published versions whose `artifact.digest` matches — the *compiled bytes*, not the data. For
+"is this module already published?" use `?signature=` (endpoints 29–30): a recompile of the same spec
+need not produce the same digest. `digest` is required. `200 →`
 
 ```json
 { "digest": "sha256:…", "matches": [ {"namespace":"just-dna-seq","name":"coronary","version":"1.0.0","yanked":false} ] }
@@ -620,8 +624,8 @@ Amend a published version's **changelog** — descriptive metadata only; the art
 
 ### 20. `POST /api/v1/modules/{ns}/{name}/versions/{v}/logo`  *(bearer)*
 Replace a version's **logo** — multipart `logo` file (`png`/`jpg`/`jpeg`). Descriptive metadata only:
-the logo is out of `artifact.digest`, so the content identity (and any signature over it) stays
-immutable and there is **no version bump**. Owner-only. `200 → {"namespace","name","version","logo":
+the logo is out of `artifact.digest`, so the digest (and any signature over it) stays immutable and
+there is **no version bump**. Owner-only. `200 → {"namespace","name","version","logo":
 {"name","sha256","size"}}`. Errors: `401`, `403 not_namespace_member`, `404 version_not_found`,
 `422 invalid_logo` (bad extension). Cards expose the served logo as `logo_url`; consumers fall back
 to `icon`/`icon_set` when a module ships none.
@@ -864,7 +868,8 @@ The source-of-truth contract (from `just-dna-format`; the DB is a projection of 
 }
 ```
 
-`artifact.digest` is a Merkle root over `artifact.files` (the version's immutable content identity);
+`artifact.digest` is a Merkle root over `artifact.files` (the version's immutable **byte** identity —
+the *content* identity is `content_signature`, see endpoints 29–30);
 `inputs` and `logs` are hashed the same way but **not** part of that digest. All hashes are SHA-256,
 lowercase hex, `sha256:`-prefixed. A downloader verifies with `just_dna_format.verify_manifest`
 (see [CLIENT.md](CLIENT.md) / SPEC §5).

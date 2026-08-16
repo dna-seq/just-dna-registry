@@ -6,6 +6,44 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.16.1] — 2026-08-16
+
+**Client surface: unchanged.**
+
+### `artifact.digest` is the byte identity, and our docs had been calling it the content identity
+
+Found by running the suite with nothing pending in the inbox:
+`tests/test_import.py::test_a_real_agent_zip_keeps_its_prose_its_log_and_its_logo` failed on a digest
+comparison, passed six times in a row when run alone, and failed again inside the full suite. It was a
+coin flip on machine load. `hepatic_fibrosis_v1.zip` authors no `sources.csv`, so the enricher records
+the terms of every source its resolution pass consulted and writes one — with `fetched_at` stamped at
+second resolution. Two publishes of that spec produce `sources.parquet` files that differ in one
+column, `artifact.digest` is a Merkle root over those bytes, and the two agree only when both compiles
+land inside the same second.
+
+The digest was doing its job: the bytes really did differ. The defect was ours, in two places.
+
+- **The test asserted the wrong identity.** Its subject is that a run log and a logo stay out of the
+  artifact, and `content_signature` — asserted on the line above, invariant across all of this — is
+  what says so. It now checks what "out of the digest" concretely means: neither file appears in
+  `artifact.files`, the list the root is taken over, and no compiled file's bytes move between the two
+  publishes except `sources.parquet`. A log or logo reaching the compile still fails it.
+- **The docs conflated the two identities**, which is the reading that makes a moved digest look like
+  a data change. SPEC §5 and §6, `CLAUDE.md`, `API-REFERENCE.md` and four docstrings now say **byte**
+  identity for `artifact.digest` and reserve *content* identity for `content_signature`. The lookup
+  endpoint (3, and 29–30) says which question each key answers, and that a plain recompile can move
+  the digest.
+
+`just-dna-format` answered the same report as their **S7** and fixed the same wording in their
+`SCHEMAS.md` at 0.5.4; the registry's copy outlived it. Nothing filed upstream — their reasoning holds
+and the remaining half was ours. No published data is affected: every digest still names the bytes that
+were written, and `409 duplicate_content` was never keyed on it.
+
+`tests/test_v05.py::test_a_run_log_stays_out_of_the_content_identity` compares digests across two
+compiles the same way and is not exposed: its variants carry coordinates, so no pass consults a source
+and no `sources.csv` is written. That is the shape to check before writing another such comparison —
+the trap is a spec that leaves a source to be looked up, not the comparison itself.
+
 ## [0.16.0] — 2026-08-16
 
 Answers **S10**, **S11** and **S12**, all filed by `just-dna-format` after reading this tree while

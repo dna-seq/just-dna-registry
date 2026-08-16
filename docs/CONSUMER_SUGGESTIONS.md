@@ -32,7 +32,7 @@ the one-line summary of every one; the runbook for answering them is
 inbox says nothing about how many ids are taken, and the next report would be a second S1:
 
 ```
-.claude/triage-state.sh --next        # scans this file AND the history file
+.claude/triage-state.py --next        # scans this file AND the history file
 ```
 
 Ids are never reused, including for an item answered as a non-issue: the reply is part of the record and a

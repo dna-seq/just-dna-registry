@@ -102,7 +102,7 @@ VERIFICATION_FILE: str = "verification.json"
 #: asymmetry of its own and is why `carries_spec_content` exists below.)
 #:
 #: **Out of `artifact.digest` and out of `SIGNATURE_INPUTS`, deliberately.** Prose must not change a
-#: module's content identity: editing a caveat would otherwise mint a new digest and collide with
+#: module's identity on either axis: editing a caveat would otherwise mint a new digest and collide with
 #: the `409 duplicate_content` claim of the module it is a copy of.
 README_FILE: str = "README.md"
 

@@ -523,7 +523,8 @@ class Repository:
         ).fetchall()
 
     def find_versions_by_digest(self, digest: str) -> list[sqlite3.Row]:
-        """Every published version whose artifact matches `digest` (the content identity)."""
+        """Every published version whose artifact matches `digest` (the *byte* identity — the
+        content identity is `find_versions_by_content`)."""
         return self.conn.execute(
             "SELECT m.namespace, m.name, v.version, v.yanked FROM versions v "
             "JOIN modules m ON m.id = v.module_id WHERE v.digest = ? "
@@ -771,7 +772,7 @@ class Repository:
         self, namespace: str, name: str, version: str, manifest: ModuleManifest
     ) -> bool:
         """Replace a version's stored manifest_json projection. Used by out-of-digest amendments
-        (e.g. logo replacement) that keep `artifact.digest` — the content identity — unchanged."""
+        (e.g. logo replacement) that keep `artifact.digest` — the byte identity — unchanged."""
         module = self.get_module_row(namespace, name)
         if module is None:
             return False

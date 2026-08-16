@@ -300,9 +300,10 @@ def test_a_real_agent_zip_keeps_its_prose_its_log_and_its_logo(
     "the readme is called `README.md` now" without a rename would have silently blanked the card of
     the entire existing corpus.
 
-    The log and the logo are asserted to be *out of* `artifact.digest` — a module's content identity
-    cannot depend on which run produced it, or the same data recompiled tomorrow would be a different
-    module and could not be published under any other name.
+    The log and the logo are asserted to be *out of* `artifact.digest` — a module's identity cannot
+    depend on which run produced it, or the same data recompiled tomorrow would be a different module
+    and could not be published under any other name. "Out of the digest" is checked as what it
+    concretely means: neither file appears in `artifact.files`, the list the Merkle root is taken over.
     """
     zip_path = _zip("hepatic_fibrosis_v1.zip")
     name = _spec_name(zip_path)
@@ -324,6 +325,13 @@ def test_a_real_agent_zip_keeps_its_prose_its_log_and_its_logo(
     assert manifest["identity"]["version"] == "1.0.0"
 
     # Same data, no log and no logo → same content identity. The proof that neither is in it.
+    #
+    # The content identity is `content_signature`, and `artifact.digest` is deliberately *not* it:
+    # the digest names the compiled bytes (upstream S7, and `docs/SCHEMAS.md`'s hash table since
+    # format 0.5.4). This test asserted digest equality until 0.16.1 and was a coin flip for it —
+    # this zip authors no `sources.csv`, so each publish gets a fresh one from the enricher with
+    # `fetched_at` stamped at second resolution, and the two compiles agree only when they land
+    # inside the same second. It passed alone on an idle machine and failed inside the full suite.
     with zipfile.ZipFile(zip_path) as zf:
         stripped = io.BytesIO()
         with zipfile.ZipFile(stripped, "w") as out:
@@ -338,6 +346,16 @@ def test_a_real_agent_zip_keeps_its_prose_its_log_and_its_logo(
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp2.status_code == 201, resp2.text
-    assert resp2.json()["content_signature"] == manifest["content_signature"]
-    assert resp2.json()["artifact"]["digest"] == manifest["artifact"]["digest"]
-    assert resp2.json()["logs"] == [] and resp2.json()["logo"] is None
+    second = resp2.json()
+    assert second["content_signature"] == manifest["content_signature"]
+    assert second["logs"] == [] and second["logo"] is None
+
+    first_files = {f["name"]: f["sha256"] for f in manifest["artifact"]["files"]}
+    second_files = {f["name"]: f["sha256"] for f in second["artifact"]["files"]}
+    assert set(first_files) == set(second_files)
+    assert not [n for n in first_files if n.endswith((".log", ".png"))], first_files
+
+    # And the compiled bytes themselves are identical apart from the one table carrying the
+    # timestamp. Anything else moving would mean the log or the logo reached the compile.
+    moved = {n for n in first_files if first_files[n] != second_files[n]}
+    assert moved <= {"sources.parquet"}, moved

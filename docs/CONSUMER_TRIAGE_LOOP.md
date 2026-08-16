@@ -7,10 +7,19 @@ the state — there is no queue, no database and no external ledger.
 
 The pattern is published as a generalized gist —
 <https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254> — and the three scripts here are
-that copy with two lines changed each: the `INBOX` default points at this repo's docs. **The sync is
+that copy with two lines changed each: the `INBOX` default points at this repo's docs, and the watcher
+keeps this repo's name for it (`watch-suggestions.sh`, the gist calls it `watch-inbox.sh`). **The sync is
 one-way and by hand.** If you change the *pattern* (the algorithm, a script's contract, a gotcha found by
 running it), it belongs in the gist too; if you change something only true of this repo — the release
 table below, the routing destinations, a path — it does not.
+
+**The most recent trip in that direction was 2026-08-16**, carrying the trailing-rule normalization in
+`fingerprint` — found here (§5) and missing from the gist for five days. It went back with its own §5
+entry and a cross-reference: the gist had recorded an item that read `revised` over prose git showed
+byte-identical and diagnosed it as a marker stamped wrong in its own pass, which is also exactly what a
+missing trailing-rule strip looks like from the other end (a section stamped while a following `---` was
+still inside its body, then archived without one). The diagnosis may still be right; the point is that
+it can no longer be reached without ruling this out first.
 
 `just-dna-format` runs the same loop against its own inbox
 (`../just-dna-format/docs/CONSUMER_TRIAGE_LOOP.md`), which matters here for one reason above all: **the
@@ -48,7 +57,7 @@ answered items move out the inbox's highest visible id is not the corpus's highe
 empty the obvious next id is `S1`, which already exists and already has a reply.
 
 ```
-.claude/triage-state.sh --next        # scans the inbox AND the history file
+.claude/triage-state.py --next        # scans the inbox AND the history file
 ```
 
 ---
@@ -60,8 +69,13 @@ Three scripts, all in `.claude/`, none packaged, no dependencies beyond Python 3
 | | |
 |---|---|
 | `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing |
-| `.claude/triage-state.sh` | the ledger: which sections are new, revised or already answered; `--next` |
-| `.claude/triage-archive.sh` | moves answered sections to the history file and **verifies** the move |
+| `.claude/triage-state.py` | the ledger: which sections are new, revised or already answered; `--next` |
+| `.claude/triage-archive.py` | moves answered sections to the history file and **verifies** the move |
+
+**Two of the three are Python and are named `.py` for it** — run them, or hand them to `python3`, never
+to `bash`. They were `.sh` until 2026-08-16, on the reasoning that one glob arms all three; §5 has what
+that cost. The watcher calls the ledger through `$PYTHON`, so neither the exec bit nor the shebang is
+load-bearing anywhere.
 
 Arm the watcher with the `Monitor` tool, which turns each stdout line into a notification that re-invokes
 the agent:
@@ -103,8 +117,8 @@ The watcher seeds itself from the current mtime with the dirty flag clear, so **
 that predates it**. Run the ledger once at startup to pick up the standing backlog:
 
 ```
-.claude/triage-state.sh              # every section and its verdict
-.claude/triage-state.sh --pending    # just the ones needing work
+.claude/triage-state.py              # every section and its verdict
+.claude/triage-state.py --pending    # just the ones needing work
 ```
 
 ---
@@ -258,7 +272,7 @@ cannot express what, which compiler pass reports a shape it cannot distinguish, 
 sees. Say that the registry is the reporter and name the consumer whose case motivated it, since we are
 relaying, and keep our own half here rather than in their inbox. When you file one:
 
-- The id comes from *their* ledger — `cd ../just-dna-format && .claude/triage-state.sh --next` — never from
+- The id comes from *their* ledger — `cd ../just-dna-format && .claude/triage-state.py --next` — never from
   ours; the two series are independent and both start at `S1`.
 - **In that repo only `docs/CONSUMER_SUGGESTIONS.md` is writable, append-only, and you never commit there.**
   Everything else in a sibling repo is read-only.
@@ -305,7 +319,7 @@ each covered section individually, since one paragraph cannot carry several fing
 ### Step 4 — archive the answered item
 
 ```
-.claude/triage-archive.sh S3 S4 [--dry-run]
+.claude/triage-archive.py S3 S4 [--dry-run]
 ```
 
 It cuts each section — heading, prose, reply and marker — out of the inbox, appends it to the history file
@@ -324,6 +338,18 @@ the write is rejected if one changed.
 - **A block reply travels with the items it answers.**
 - **Archive in one pass at the end of a batch.** Sections append in the order given, so a group archived in
   two batches ends up with its heading twice. Afterwards, `grep -n '^# '` the history file.
+- **An item filed under no group heading says so, and asks you for one.** The inbox's own title is not a
+  group, so nothing travels with such a section and it would otherwise read as part of whichever group it
+  landed after. The script prints a notice; write the heading by hand.
+- **Then run the ledger against the *history* file** — `.claude/triage-state.py
+  docs/CONSUMER_SUGGESTIONS_HISTORY.md`. A well-formed archived item reads `current` there, so anything
+  reading `new` or `unmarked-reply` was archived unanswered or lost its marker in transit. The archiver
+  verifies the *move*, not the *verdict*: it will archive an item the ledger still calls `new` without a
+  word. Two seconds, and it is the only thing between a silent mis-archive and a permanently lost item.
+- **`--dry-run` is not a rehearsal.** It returns before the write, so it never reaches the before/after
+  fingerprint comparison, which is the invariant worth watching hold. Every path is env-driven, so a real
+  rehearsal is one command against copies:
+  `INBOX=/tmp/copy.md HISTORY=/tmp/copy_HISTORY.md .claude/triage-archive.py S3`.
 
 ### Step 5 — hygiene
 
@@ -351,7 +377,8 @@ the write is rejected if one changed.
 
 ## 5. Gotchas found by running it
 
-Each of these was a bug in the loop upstream, not a hypothetical, and the scripts here carry the fixes:
+Each of these was a bug in the loop, not a hypothetical, and the scripts here carry the fixes — some
+found upstream, some here, one still owed back to the gist:
 
 - **A reply ends at its marker, not at the first blank line.** Skipping the `**Status` *paragraph* leaked
   paragraphs two onward into the fingerprint, so writing a multi-paragraph reply reported the section
@@ -361,14 +388,46 @@ Each of these was a bug in the loop upstream, not a hypothetical, and the script
   three items by name means a naive presence test reads three answered sections as new.
 - **The marker must not be hashed.** Marking a block-replied section puts a standalone comment in its body;
   when the fingerprint covered it, the section read `revised` from the instant it was marked.
-- **An item filed with no `# Field notes` group heading drags the document's own preamble into the
-  history file.** The archiver carries whatever `#` heading precedes a section, and a section with none
-  of its own inherits the inbox's H1 — so S5/S6 landed in the history under a second
-  `# Consumer suggestions` title, status block and all. Harmless to the fingerprints, which are
-  computed per `##` section and all verified afterwards, but wrong to read. Repair it by hand:
-  replace the copied preamble with a real group heading, then run the ledger **against the history
-  file** (`.claude/triage-state.sh docs/CONSUMER_SUGGESTIONS_HISTORY.md`) to prove the prose survived.
-  Cheaper habit: add the group heading in the inbox before archiving.
+- **A document's own title is not a group heading** — and the archiver treated it as one, which is how
+  S5/S6 landed in the history under a second `# Consumer suggestions` title, status block and all. It
+  took the *last* `#` before a section as that section's group; for an item filed under no group of its
+  own — the normal shape now that the split keeps the inbox empty, since someone appending a single
+  report writes no group heading — that is the inbox's H1, whose span runs to the next `##` and so
+  swallows the whole preamble. **The fingerprint check cannot catch it**, which is why it happened twice
+  before anyone read the output: fingerprints cover the reporter's prose alone, so the move reports every
+  fingerprint intact while the history file grows duplicate front matter. Fixed in `group_span` — the
+  first `#` in a document is its title and a group is any later one — and a section with no group now
+  prints a notice instead of inheriting a name, because naming a group is editorial for the same reason
+  the contents line is hand-written. It does *not* disturb the section above the injection: the heading
+  is separated by a blank line and `fingerprint()` ends in `.strip()`. The generalizable half: **a
+  verifier that checks one property will report success while a different property is being broken** —
+  ask what your check is blind to.
+- **A line in the *front matter* that begins `**Status` is read as a block reply**, and marks every id it
+  names as answered. `**Status:** intake for field notes — S1 and S2 are open` is an ordinary thing to
+  write at the top of an inbox and it collides with the reply idiom exactly; on a two-item file both read
+  `unmarked-reply (block reply)` and `--backfill` then stamped both untriaged sections `current`. The
+  block-reply rule itself is right (a release note under a `#` heading really does answer items by name),
+  so the fix is on the writing side: do not open a preamble line with `**Status` unless it is a real
+  reply. This repo's inbox is safe because its header blockquotes them (`> **Status:** …`) — keep the `>`
+  if you rewrite that header.
+- **A marker can carry a sha that never matched its section.** An item reading `revised` over prose git
+  shows byte-identical means the marker was stamped wrong in its own pass, most plausibly before a last
+  edit to the reporter's text; check by running the ledger against the history file *at that commit*. The
+  repair is a hand edit to the computed value, and only after showing the prose is unchanged — if you
+  cannot show that, `revised` is honest and you re-triage. `--backfill` will not do it for you on
+  purpose: it touches only `unmarked-reply`, because silently restamping a `revised` section is exactly
+  how a genuine re-triage signal gets erased.
+- **A Python script named `.sh` gets run as bash sooner or later, and `import` is an ImageMagick
+  binary.** The ledger and the archiver shipped as `.sh` with a `#!/usr/bin/env python3` shebang, which
+  is correct only for a caller who *executes* them; eventually someone goes by the extension and types
+  `bash triage-state.sh`. Bash ignores the shebang, reads the module docstring as commands, and reaches
+  `import hashlib`, where `/usr/bin/import` is ImageMagick's screen-capture tool and takes its argument
+  as an output filename — so the working directory grows 0-byte files named `hashlib`, `pathlib`, `re`,
+  `sys`, which read as vendored modules rather than as debris. It is silent: `import` creates the file
+  and *then* fails on its own policy. Reproduce with `bash -c 'import sys'` in an empty directory.
+  Renamed to `.py` on 2026-08-16, which is the whole fix — nobody types `bash foo.py`, so the extension
+  was the entire invitation and a guard would defend the wrong door. **An extension is an instruction to
+  the next caller**, and one that disagrees with its interpreter is a trap with a delay fuse.
 - **Appending an item used to flip the previous one to `revised`.** A body runs to the next heading,
   so the `---` a consumer puts before their new section lands at the end of the *previous* one. Hit on
   the first run here: S2 and S3 arrived mid-pass and S1 reported `revised` against prose nobody had

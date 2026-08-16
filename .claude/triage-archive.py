@@ -17,11 +17,15 @@ which is the documented shape.
 The contents line is deliberately NOT written: naming what an item was and how it ended is editorial,
 and a generated line would be a worse version of the thing the index exists for.
 
-Configuration (environment, all optional): INBOX, HISTORY, PREFIX — as for triage-state.sh, and the
+Configuration (environment, all optional): INBOX, HISTORY, PREFIX — as for triage-state.py, and the
 same repo-local defaults.
 
+Python, and named `.py` for it: run it, or pass it to `python3` — never to `bash`. Under bash the
+shebang is ignored, this docstring is executed as commands, and `import os` reaches ImageMagick's
+`import`. See the extension gotcha in docs/CONSUMER_TRIAGE_LOOP.md §5.
+
 Usage:
-    .claude/triage-archive.sh S8 S10 [--dry-run]
+    .claude/triage-archive.py S8 S10 [--dry-run]
 """
 
 import os
@@ -38,7 +42,7 @@ INBOX = pathlib.Path(
 HISTORY = pathlib.Path(
     os.environ.get("HISTORY", INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}"))
 )
-LEDGER = HERE / "triage-state.sh"
+LEDGER = HERE / "triage-state.py"
 
 SECTION_RE = re.compile(rf"^## +{re.escape(PREFIX)}(\d+)\b")
 GROUP_RE = re.compile(r"^# +\S")
@@ -61,10 +65,29 @@ def section_span(lines: list[str], ident: str) -> tuple[int, int]:
 
 
 def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
-    """(start, end) of the `# ` group heading and dateline preceding index `before`."""
+    """(start, end) of the `# ` group heading and dateline preceding index `before`.
+
+    **A document's own title is not a group heading**, and conflating the two was a real bug that hit
+    twice here before anyone read the output. A section filed under no group — the normal shape once the
+    split keeps the inbox empty, since someone appending a single report writes no group heading — took
+    the inbox's `# Consumer suggestions` title *and its whole preamble* into the history file as that
+    item's heading, because the last `# ` before the section is the document title and its span runs to
+    the next `##`. That is how S5/S6 landed under a second status block.
+
+    **The fingerprint check cannot catch this**, which is why it survived: fingerprints cover the
+    reporter's prose alone, so the move verifies clean while the history file grows duplicate front
+    matter. It does *not* disturb the section above the injection — the heading is separated by one
+    blank line and `fingerprint()` ends in `.strip()`.
+
+    The first `# ` heading in a document is its title by convention, so a group heading is any *later*
+    one. A section with no group returns None and the caller says so out loud rather than inventing a
+    name — naming a group (who reported it, and when) is editorial, the same reason the contents line is
+    not generated either.
+    """
+    headings = [i for i, line in enumerate(lines) if GROUP_RE.match(line)]
     start = None
-    for i in range(before):
-        if GROUP_RE.match(lines[i]):
+    for i in headings[1:]:  # [0] is the document title
+        if i < before:
             start = i
     if start is None:
         return None
@@ -86,7 +109,11 @@ def fingerprints(doc: pathlib.Path) -> dict[str, str]:
     """`{id: sha}` as the ledger reports it, so before/after can be compared on its own terms."""
     env = {**os.environ, "INBOX": str(INBOX), "HISTORY": str(HISTORY), "PREFIX": PREFIX}
     out = subprocess.run(
-        [sys.executable, str(LEDGER), str(doc)], capture_output=True, text=True, env=env
+        [sys.executable, str(LEDGER), str(doc)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
     ).stdout
     pattern = rf"\b({re.escape(PREFIX)}\d+)\b.*\bsha ([0-9a-f]{{12}})"
     return {
@@ -126,6 +153,7 @@ def main() -> int:
         start, end = section_span(inbox, ident)
         del inbox[start:end]
 
+    ungrouped: list[str] = []
     for ident, body, heading in moved:
         if heading and current_group(history) != heading[0]:
             if history and history[-1].strip():
@@ -135,6 +163,8 @@ def main() -> int:
             history.append("")
         history += body
         print(f"{ident}: moved ({len(body)} lines)")
+        if heading is None:
+            ungrouped.append(ident)
 
     def render(lines: list[str]) -> str:
         return "\n".join(lines).rstrip("\n") + "\n"
@@ -158,6 +188,12 @@ def main() -> int:
         f"\n{len(idents)} section(s) archived, every fingerprint intact."
         f"\nNow add each one's line to {HISTORY.name}'s contents list."
     )
+    if ungrouped:
+        print(
+            f"\nNo group heading travelled with {', '.join(ungrouped)} — the section sat under the "
+            f"inbox's title, which is not a group. Add a `# ` heading above it in {HISTORY.name} "
+            f"(who reported it, and when) so it does not read as part of the group above."
+        )
     return 0
 
 

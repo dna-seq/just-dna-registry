@@ -3,7 +3,7 @@ Storage backend interface. A module version's files live under a version-scoped 
 (`{namespace}/{name}/{version}`), matching SPEC §9's `data/{name}/v{N}/` layout. Version-scoping
 (rather than content-addressing by `artifact.digest`) keeps per-version logs and the
 version-filled `manifest.json` from colliding across versions that share an identical artifact;
-the digest still lives in the manifest as the integrity/content identity.
+the digest still lives in the manifest as the integrity/byte identity.
 
 The MVP ships `LocalStorage`; a production `HfStorage` (HuggingFace Hub) backend implements the
 same interface and is wired in a later milestone.

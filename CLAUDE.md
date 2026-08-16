@@ -23,7 +23,8 @@ interface (§8). This file (`CLAUDE.md`) is the *how we code* companion to that 
   (default) `compile_module()` itself, so `compile_success`, input hashes, and artifact digests are
   produced by the trusted party and cannot be forged.
 - **Integrity contract** — SHA-256 per input CSV and per artifact file, plus a Merkle-root
-  `artifact.digest` that is the version's immutable content identity.
+  `artifact.digest` that is the version's immutable **byte** identity (the *content* identity is
+  `content_signature`; see *Manifest & integrity*).
 
 This service **depends on `just-dna-pipelines`** for `validate_spec`, `compile_module`, and the
 `ModuleManifest` models. Reuse that code; do not re-implement compilation or the manifest schema here.
@@ -329,7 +330,17 @@ predicts is worse than one that does not normalize at all.
   - `artifact.files[].sha256` — over the concrete written bytes (parquet is **not** deterministic
     across polars/arrow versions, so pin `compiler_version` + `ensembl_reference`).
   - `artifact.digest` — Merkle root: JSON array `[{"name","sha256","size"}, ...]` sorted by `name`,
-    serialized with sorted keys and no whitespace, then hashed. This is the version's content identity.
+    serialized with sorted keys and no whitespace, then hashed. This is the version's **byte**
+    identity, *not* its content identity.
+- **`artifact.digest` names bytes; `content_signature` names data. Never use the digest to ask "same
+  module?"** A module that authors no `sources.csv` gets a fresh one from the enricher on every
+  compile, with `fetched_at` stamped at second resolution — so two compiles of byte-identical inputs
+  produce different digests whenever they straddle a second, which is most of the imported corpus.
+  That is the digest doing its job (the bytes really did differ), and it is why the publish gate and
+  `409 duplicate_content` key on `content_signature`, which is invariant across it. Upstream answered
+  the same report as their S7 and fixed the same conflation in `docs/SCHEMAS.md`; ours outlived it
+  until 0.16.1, where a test asserting digest equality across two publishes of one spec turned out to
+  be a coin flip on how long the compile took.
 - **`compile_success` is trustworthy only when this server compiled it** (`compiled_by ==
   "marketplace-server"`). Treat foreign `compiled_by` or `false` as untrusted.
 - **A manifest flag scoped to one file is not a verdict about the module.** `fully_resolved`,
@@ -422,10 +433,15 @@ into the document beside the report. The runbook is **[docs/CONSUMER_TRIAGE_LOOP
 read it before answering one. Three dependency-free scripts run it:
 
 ```
-.claude/triage-state.sh [--pending] [--next]    # the ledger; --next claims the next id
-.claude/triage-archive.sh S3 [--dry-run]        # move answered items, verifying the prose moved verbatim
+.claude/triage-state.py [--pending] [--next]    # the ledger; --next claims the next id
+.claude/triage-archive.py S3 [--dry-run]        # move answered items, verifying the prose moved verbatim
 .claude/watch-suggestions.sh                    # debounced watcher, armed with the Monitor tool
 ```
+
+Two of the three are Python and carry `.py` for it — run them or hand them to `python3`, **never to
+`bash`**: bash ignores the shebang, executes the module docstring, and `import hashlib` reaches
+ImageMagick's `import`, which silently writes 0-byte files named after each import into the working
+directory. They were `.sh` until 2026-08-16.
 
 - **The document is the state.** A reply carries `<!-- triaged: <version> · sha <12 hex> -->` holding a
   fingerprint of the *consumer's* text only, so re-running after our own write is a no-op. Not git — a
