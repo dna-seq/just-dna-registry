@@ -28,6 +28,9 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
   (upstream S25 accepted: `manifest.readme` lands in format 0.6 — adoption tracked in ROADMAP)
 - **S8** `write_module_md` credited to the wrong repo — corrected, shipped 0.15.0
 - **S9** `amend_readme` had no CLI command — accepted, shipped 0.15.0
+- **S10** pre-flight refused a legal review-pass republish — accepted, shipped 0.16.0
+- **S11** `verification.json` dropped by every rebuild — recognized 0.16.0 (reading it: ROADMAP)
+- **S12** which instrument records a review — answered in API-REFERENCE (0.16.0)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -834,3 +837,216 @@ published module, a blank card and no Python is currently stuck.
 **Candidate fix:** an `amend-readme NS NAME VERSION PATH` command mirroring `amend-logo`. If it was
 left out deliberately — the client method takes a path *or* a string and a CLI would have to pick —
 that is a fine answer and worth stating, since `amend-logo` sets the expectation that it exists.
+
+# Field notes from just-dna-format — the second pass, 2026-08-16
+
+*Written while mapping what happens to a module after its first compile — the half none of our own
+documents described. Doing that raised one question we could not answer from our own rules at all:
+what a catalog does with a version whose data is byte-identical to its predecessor. We read your tree
+rather than assume, and every claim below is quoted from it. Three items; the first is the only one
+with a blast radius.*
+
+**One caveat that sizes two of the three: format / compiler / enricher 0.6 is not published and is not
+finished.** You pin 0.5.4 and that is correct. Everything below touching `verification.json`,
+`manifest.verification` or a closure describes work that landed in our tree on 2026-08-16 and has not
+been cut, and the closure in particular is a day old. We are not asking you to build against any of it
+now — S11 is filed early because one half of it is independent of our release, and because we would
+rather you saw the shape while it can still change than after it is frozen. If 0.6 moves, S11's second
+half moves with it and we will say so here.
+
+## S10 — the pre-flight refuses a publish the gate allows, on the commonest second-pass shape there is
+
+**Status — accepted; fixed in 0.16.0, and your reading of the field's contract is the one we hold
+too.** Reproduced end to end before touching anything, in `tests/test_preflight_api.py`: publish
+`1.0.0`, `/validate` the same spec under the same `(ns, name)`, get `would_publish_module_level:
+false`, publish `1.0.1`, get `201`. Both halves are now driven as one test, because the property is
+agreement between two code paths rather than the value of a field. The namespace is threaded into
+`_validate_worker` and through `dry_run` — `/check` reaches `validation_report` by a different route
+and a fix to only one would have left the endpoint a CI job actually calls still answering `false`.
+On the part you said was ours to decide, we took your reading: `published_as` still lists the
+same-module hit, and a new **`published_elsewhere`** carries the subset under a different
+`(namespace, name)`, which is what the gate refuses and what the verdict now quantifies over. Two
+lists rather than one filtered list, because they answer different questions — "where does this data
+exist" and "what stops me" — and only the second is a verdict. `RegistryClient.is_published` grew
+optional `namespace=`/`name=` for the same reason and its "empty list = free to publish" is now
+conditional on passing them; `registry-client validate` prints a same-module hit in yellow with `·`
+rather than red with `✗`. One thing worth reporting back: **our own test had pinned the defect** —
+`test_the_module_level_verdict_composes_the_three_gates` asserted `false` for exactly your scenario,
+so the suite was green on the bug. It now asserts that against a rename, which is the case the gate
+actually refuses. Thank you for quoting the docstring that states the intent; that is what made this
+a five-minute diagnosis rather than a design discussion.
+<!-- triaged: 0.16.0 · sha 6498fd346cbe -->
+
+**What we were doing.** Establishing what a *review pass* costs: a module is published at `1.0.0`; a
+human reads it, changes no data at all, appends one `authorship` entry recording that they reviewed
+it, and publishes `1.0.1`. In our schema `authorship` is manifest-only — outside `artifact.digest` (a
+Merkle root over the parquets, which `manifest.json` is not in) and outside `content_signature` (the
+authored rows). Measured on a real module: both identities come out byte-identical. So a review pass
+is a version whose data is unchanged, and we needed to know whether a catalog can represent that.
+
+**Your gate handles it exactly right.** `_reject_duplicate_content` (`services/publish.py:629`) carves
+the same module out by comparing the pair directly —
+
+```python
+if (r["namespace"], r["name"]) != (namespace, name)
+```
+
+— and its docstring states the intent: *"A collision under the same module (a later version with
+unchanged data) is fine and allowed."* We confirmed the rest of the surface too, and none of it bites:
+no unique index on `digest` or `content_hash`, storage keyed `namespace/name/version` rather than
+content-addressed (with a comment giving this exact reason), `latest` advancing normally, and
+`find-by-hash` returning both versions as a deterministic list.
+
+**The pre-flight computes the same lookup without the carve-out.** `validation_report`
+(`services/enrich.py:629`):
+
+```python
+published_as = [
+    VersionRef(...)
+    for r in (repo.find_versions_by_content(signature) if signature else [])
+]
+...
+would_publish_module_level=(
+    result.valid and stats.get("module_name") in (None, name) and not published_as
+),
+```
+
+and the namespace cannot reach it in any case — `_validate_worker` takes `name` alone
+(`api/routers/publish.py:402`), since the namespace lives in the route path. So for `1.0.1` both
+`/validate` and `/check` answer `published_as: [ns/name@1.0.0]` and `would_publish{_module_level}:
+false`, and the publish then succeeds.
+
+**Why we think this is worse than its size.** S1's reply settled the naming deliberately: *"`true`
+means nothing module-level blocks a publish, never that a publish would succeed"* — a caveat about a
+false **positive**. A false **negative** is not covered by it, and it is the actionable half: an
+automated publisher branching on `would_publish` (the field your API docs say to branch on) declines
+its own legal publish, and a review pass is the commonest way to arrive there. The comment beside the
+field says the composition exists so `_would_publish` *"can build on it rather than restate it, which
+is what would let the two drift"* — true between `/validate` and `/check`; the drift that exists is
+between both of them and the gate. `RegistryClient.is_published` (`client.py:523`) inherits the same
+reading in its docstring: *"Empty list = free to publish."*
+
+**A candidate fix, and the one part of it we cannot judge from outside.** Applying the gate's carve-out
+to `published_as` needs the namespace threaded into `_validate_worker`. What we would not presume to
+decide is whether `published_as` should *stop listing* the same-module hit or merely stop counting
+toward the verdict — seeing "this data is already published as `1.0.0`" is genuinely useful
+information, and we would read a `published_as` that still lists it beside a `true` verdict as the more
+informative answer. That is a call about your own field.
+
+**What we did meanwhile.** Nothing in our tree changed; the behaviour is yours and the workaround is to
+ignore the field on a same-module republish. We corrected our lifecycle document, which had described
+`would_publish_module_level` as merely *weaker* than the gate, to say that on this one scenario it
+disagrees with it.
+
+## S11 — `verification.json` is uploaded, stored, and read by nothing, and your own S7 fix comment predicts it
+
+**Status — accepted; the independent half shipped in 0.16.0, the rest is waiting for you on
+purpose.** `verification.json` is in `RECOGNIZED_SPEC_FILES`, so `revalidate` materializes it back
+out of storage and `upgrade` carries it forward instead of rebuilding a spec directory without it.
+Two tests: one that it round-trips through a real publish into the upgrade planner's file set, and
+one that it is *not* in `SIGNATURE_INPUTS` — shipping an attestation must not move a module's identity
+or its `409` claim, and that is the property which makes recognizing an unread file safe. It is
+carried where `provenance.json` deliberately is not, on your own account of the difference: provenance
+describes how the predecessor was built, while this is hash-bound to the authored bytes and so
+invalidates itself if they move. Filing it against your unreleased 0.6 rather than waiting was the
+right call, and the split you drew is exactly the one we implemented. On the question you left to us:
+we will not read it, and the reason is the one you named. This server compiles what it publishes,
+which is what makes a published digest ours to stand behind; an author-written attestation is a claim
+we cannot reproduce offline, and surfacing it unmarked would launder it into one of ours. What that
+leaves open is not "whether to trust it" but *how to present an untrusted-by-construction record
+beside trusted ones*, which is a card-design question we would rather answer once, after
+`manifest.verification` exists and `closure` has settled. It is [in our
+ROADMAP](ROADMAP.md#next-registry-version-post-011) with the three sub-decisions named, including the
+one cheap half — serving the bytes back once the manifest attests them, which needs no policy at all.
+Please do tell us if the closure block moves; nothing here is built against its shape.
+<!-- triaged: 0.16.0 · sha 1d68cb0b6aee -->
+
+**Read the standing caveat above first: the half of this that needs a reader of ours is unreleased.**
+
+**What the file is.** A derived attestation the enricher writes and the compiler stamps into
+`manifest.verification`: per check, what was checked, how many subjects, how many findings, or — when
+a check did not run — the reason, since *"ran and found nothing"* and *"never ran"* are different
+statements. It is hash-bound to the authored bytes and dropped whole when stale. Since 2026-08-16 it
+also carries an optional `closure` block: the record that *a human declared these bytes final*,
+optionally signed with the same Ed25519 key as everything else.
+
+**What happens to it today.** The client uploads it (it is not in `_SKIP_UPLOAD_NAMES`,
+`client.py:47`), `publish_version` writes it into the spec dir, and the blanket non-parquet copy
+carries it into storage. Then nothing reads it. It is absent from `RECOGNIZED_SPEC_FILES`
+(`specfiles.py:133`), so `revalidate` and `upgrade` rebuild spec dirs without it, and it is outside the
+served allow-list, so no endpoint hands it back.
+
+**The reason we are filing rather than waiting.** The comment above `README_FILE` in that same file
+(`specfiles.py:76-79`) is this failure already diagnosed once, in your words: *"every non-parquet file
+out of the spec directory, so the bytes survived either way, but nothing read them. Being on this list
+is what makes `upgrade` carry it forward and `revalidate` materialize it back out of storage — both of
+which rebuild a spec dir from `RECOGNIZED_SPEC_FILES` and would otherwise drop it."* That is S7's
+lesson, and `verification.json` now sits where `README.md` sat. `provenance.json`, one file over, *is*
+recognised — so this reads as an omission rather than a policy.
+
+**Two halves, and they have different urgency on purpose:**
+
+- **Recognition is independent of our release.** Adding it to `RECOGNIZED_SPEC_FILES` so a rebuild
+  carries it forward is safe whenever you like; the worst case is that you round-trip a file nothing
+  consumes yet, which is strictly better than dropping an author's attestation on the first
+  `revalidate`.
+- **Anything that *reads* it should wait for us.** On 0.5.4 `manifest.verification` does not exist and
+  `close_module` does not either, and your server regenerates `manifest.json` from its own compile — so
+  the closure could not appear today even if the file were served. Please do not build a card element
+  against the block until 0.6 is cut.
+
+**And one question in it is genuinely yours, not ours.** Your server compiles the spec itself, which is
+what makes a published digest trusted rather than claimed. An author-written attestation is a different
+kind of claim: it says what the enricher checked against live sources at authoring time, which your
+server cannot reproduce offline. Whether you want to surface such a thing at all, and how you would
+mark it as the author's word rather than yours, is a policy call we should not pre-empt — our own
+document marks every field in it untrusted for exactly that reason, because a forged pass is worse than
+silence.
+
+## S12 — a review reaches the manifest and stops there, and you already have the better instrument
+
+**Status — answered, and written into [API-REFERENCE.md](API-REFERENCE.md) beside the reviews
+endpoints in 0.16.0 rather than only here.** The sentence you asked for: **a `reviews` row by
+default; an `authorship` entry when the record has to travel inside the module or be signed; both
+when both matter.** They are not substitutes and the deciding asymmetry is the one you found — a
+`reviews` row cannot carry the reviewer's key, so provenance-of-review is `authorship` or nothing.
+Everything else favours the row: no version number, projected onto the card (`review_count`,
+`avg_rating`, `curated`), it drives `?group=curated`, it is moderatable, and a reviewer who is not the
+author can post one at all, which the manifest cannot express. Your "possibly the wrong advice for
+your catalog" was right in one direction and is now less right in the other: spending a patch version
+on a review is legal — the gate carves out the same module deliberately — and as of this release the
+pre-flight agrees with it instead of predicting a refusal, which was S10. So the version-bump path
+costs a version number and nothing else. We are **not** projecting `authorship` onto a card, and it is
+policy rather than a backlog item: this server compiles what it publishes, which is what makes a
+card's claims ours, while `authorship` is the author's statement about who reviewed their own work —
+rendering the two side by side would present them as the same kind of fact. Read it from `…/manifest`
+or `latest_manifest`, where it is plainly the manifest's word. Your `db/schema.py:249` quote is still
+the governing rule and nothing here changes it: no column was added.
+<!-- triaged: 0.16.0 · sha e3044a4d305c -->
+
+**What we found.** `authorship` does reach the published manifest and is readable two ways — the
+per-version `…/manifest` route and `ModuleDetail.latest_manifest`. But no projected field, column,
+filter or card element carries it, so seeing who reviewed a module means parsing manifest JSON, and
+only for the latest version without a second request. Your schema states the governing policy
+(`db/schema.py:249`), naming `authorship` among the things that stay payload: *"A column is for
+something you filter or sort by; the rest is payload."*
+
+**We are not asking for a column.** We are asking which instrument you intend, because you have two and
+they are not substitutes:
+
+- an **`authorship` entry** travels *inside the module*. It survives a download, a hand-off on disk and
+  a re-publish, it is covered by our `close`/`sign`, and it is visible to a consumer who never talks to
+  your API at all;
+- a **`reviews` row** (`db/schema.py:113`, whose `verdict` and `highlighted` drive the curated listing)
+  costs no version number, is projected onto cards, and is yours to moderate.
+
+**Why it is a real question and not a preference.** Our lifecycle document has been telling authors
+that a pure review is *"a real version bump without pretending the data changed"*. Having read your
+tree we think that is true of the format and possibly the wrong advice for your catalog: spending a
+patch version to record a review is precisely the path S10 makes fail, while the same fact is
+expressible for free in `reviews`. One asymmetry may decide it rather than convenience — a `reviews`
+row cannot be signed by the reviewer's key and an `authorship` entry can, so if provenance-of-review
+matters downstream the two are not interchangeable at any price.
+
+**What we want is a sentence, not work.** Tell us which an author should reach for, and whether both,
+and we will write it into our authoring guidance wherever you land. The documentation fix is ours.

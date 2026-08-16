@@ -600,6 +600,7 @@ def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
 def validation_report(
     spec_dir: Path,
     repo: Any,
+    namespace: str,
     name: str,
     strict: bool,
     *,
@@ -615,6 +616,14 @@ def validation_report(
     are reported rather than hidden: the point of a dry run is to predict a publish, and a publish
     that silently quotes your version, drops your `namespace:` key or flattens your `derived/` folder
     is doing something the author should be able to see.
+
+    **`namespace` is here to reproduce the gate's carve-out, and that is the whole reason it is a
+    parameter** (S10). `_reject_duplicate_content` refuses a signature published under a *different*
+    `(namespace, name)` and explicitly allows a later version of the same module with unchanged data
+    — the shape a review pass has, where an author adds an `authorship` entry and nothing else. The
+    pre-flight computed the same lookup without the carve-out, so it answered `would_publish
+    {_module_level}: false` for a publish that then succeeded: a false negative, on the commonest
+    second-pass shape there is, in the one field the docs tell a CI job to branch on.
     """
     result = validate_spec(spec_dir, IDENTITY_AUTHORITY_KEYS, strict=strict)
 
@@ -631,6 +640,13 @@ def validation_report(
                    yanked=bool(r["yanked"]))
         for r in (repo.find_versions_by_content(signature) if signature else [])
     ]
+    # Listed *and* separated, rather than filtered out of `published_as`. "This data is already
+    # published as 1.0.0" is worth knowing on a review pass — it is how an author confirms they
+    # changed nothing — while only the hits under another `(namespace, name)` are what publish
+    # refuses. One list answers "where does this data exist", the other "what stops me".
+    published_elsewhere = [
+        v for v in published_as if (v.namespace, v.name) != (namespace, name)
+    ]
     stats = result.stats or {}
     return ValidationReport(
         valid=result.valid,
@@ -644,11 +660,13 @@ def validation_report(
         content_signature=signature,
         name_matches_path=stats.get("module_name") in (None, name),
         published_as=published_as,
+        published_elsewhere=published_elsewhere,
         # The publish gates that do not scale with the variant count, composed here so a caller gets
         # one branchable field without reimplementing the contract — and so `_would_publish` below
-        # can build on it rather than restate it, which is what would let the two drift.
+        # can build on it rather than restate it, which is what would let the two drift. The drift
+        # that actually happened was with neither: it was with the gate, over `published_elsewhere`.
         would_publish_module_level=(
-            result.valid and stats.get("module_name") in (None, name) and not published_as
+            result.valid and stats.get("module_name") in (None, name) and not published_elsewhere
         ),
     )
 
@@ -658,6 +676,7 @@ def dry_run(
     settings: Settings,
     repo: Any,
     uploads: Mapping[str, bytes],
+    namespace: str,
     name: str,
     strict: bool,
     offline: bool,
@@ -693,7 +712,8 @@ def dry_run(
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(data)
             return _dry_run_inner(
-                settings=settings, repo=repo, spec_dir=spec_dir, name=name, strict=strict,
+                settings=settings, repo=repo, spec_dir=spec_dir,
+                namespace=namespace, name=name, strict=strict,
                 offline=offline, frequencies=frequencies, literature=literature,
                 identifiers=identifiers, acmg=acmg, pgx=pgx, declared_use=declared_use,
                 started=started,
@@ -708,6 +728,7 @@ def _dry_run_inner(
     settings: Settings,
     repo: Any,
     spec_dir: Path,
+    namespace: str,
     name: str,
     strict: bool,
     offline: bool,
@@ -723,7 +744,7 @@ def _dry_run_inner(
 
     normalization = normalize_spec(spec_dir)
     validation = validation_report(
-        spec_dir, repo, name, strict,
+        spec_dir, repo, namespace, name, strict,
         normalized=normalization.info, extra_warnings=normalization.warnings,
     )
 

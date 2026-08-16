@@ -67,6 +67,24 @@ RESOLUTION_CSV: str = "resolution.csv"
 # of `artifact.digest`.
 PROVENANCE_FILE: str = "provenance.json"
 
+#: The enricher's attestation of what it checked: per check, the subjects and findings, or the reason
+#: a check did not run — the distinction between "ran and found nothing" and "never ran" that this
+#: whole tier is organised around. Recognized so a `revalidate` or an `upgrade` carries it forward
+#: instead of dropping it, which is exactly the `README.md` failure of 0.14 at a different file
+#: (S11, filed by `just-dna-format` against their own unreleased 0.6).
+#:
+#: **Recognized is not read.** Nothing in this service parses it, and nothing should until the
+#: manifest can attest it: this server compiles the spec itself, which is what makes a published
+#: digest trusted rather than claimed, while this file is the *author's* word about what their
+#: enricher saw against live sources — a claim we cannot reproduce offline and must not launder into
+#: one of ours. `manifest.verification` and the signed `closure` block land in format 0.6; surfacing
+#: either is a policy decision tracked in ROADMAP, not a side effect of round-tripping the bytes.
+#:
+#: Out of `SIGNATURE_INPUTS` (it is derived, not authored) and out of `DERIVED_FILES` (that list is
+#: what `download(layout="split")` emits, and no downloader receives this file — the manifest has no
+#: field for it yet). Hoisting from a subdirectory works anyway, via `_HOISTABLE`.
+VERIFICATION_FILE: str = "verification.json"
+
 #: The module's prose, projected onto the catalog card at publish (S5). `README.md` and not
 #: `MODULE.md`: it is what an author writes without being told to, it is what the ecosystem's other
 #: registries read, and it is what the reporting consumer tried first. A comment in `upgrade.py`
@@ -130,7 +148,9 @@ LOGS_DIR: str = "logs"
 SPEC_DATA_FILES: tuple[str, ...] = CORE_CSVS + TABLE_KIND_CSVS + FACT_CSVS + (RESOLUTION_CSV,)
 
 #: Everything a spec directory may legitimately contain, for storage round-trips.
-RECOGNIZED_SPEC_FILES: tuple[str, ...] = (SPEC_YAML, PROVENANCE_FILE, README_FILE) + SPEC_DATA_FILES
+RECOGNIZED_SPEC_FILES: tuple[str, ...] = (
+    SPEC_YAML, PROVENANCE_FILE, README_FILE, VERIFICATION_FILE
+) + SPEC_DATA_FILES
 
 #: The registry's own precondition before it hands a spec to the compiler. Just the manifest of
 #: intent — everything else is the compiler's call.

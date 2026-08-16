@@ -397,10 +397,18 @@ def test_the_pgx_sources_all_forbid_sale() -> None:
 def test_a_missing_snapshot_is_not_an_unavailability(tmp_path: Path) -> None:
     """The corrected contract. A snapshot is what makes *offline* resolution possible; an online run
     reaches live Ensembl without one. Raising here would refuse the configuration that works."""
+    # Every cache the resolver ladder can find, not only the three a strict publish needs: the PGx
+    # snapshots were left unset here, so `available_references` resolved them through platformdirs
+    # and the assertion quietly described whether the developer had run `warm-caches --pgx`.
+    empty = tmp_path / "empty"
     settings = Settings(
-        ensembl_cache=tmp_path / "empty",
-        clinvar_cache=tmp_path / "empty",
-        constraint_cache=tmp_path / "empty",
+        ensembl_cache=empty,
+        clinvar_cache=empty,
+        constraint_cache=empty,
+        cpic_cache=empty,
+        pharmvar_cache=empty,
+        clinpgx_cache=empty,
+        acmg_snapshot_dir=empty,
     )
     assert all(v is None for v in available_references(settings).values())
     assert enricher_available()  # ...and the tier itself is present, which is what a 503 would mean

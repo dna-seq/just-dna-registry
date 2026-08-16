@@ -6,6 +6,83 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.16.0] — 2026-08-16
+
+Answers **S10**, **S11** and **S12**, all filed by `just-dna-format` after reading this tree while
+mapping what happens to a module *after* its first compile.
+
+**Client surface: unchanged.** No method signature moved. Added: two optional keywords
+(`namespace=`, `name=`) on `is_published()`, and `published_elsewhere` on the validation report.
+
+### The pre-flight refused a publish the gate allows (S10)
+
+A review pass — publish `1.0.0`, a human reads it, changes no data, appends one `authorship` entry,
+publishes `1.0.1` — has a `content_signature` identical to its predecessor. The publish gate allows
+that deliberately: `_reject_duplicate_content` refuses a signature published under a *different*
+`(namespace, name)`, and says so in its docstring. The pre-flight ran the same lookup with no such
+carve-out, because the namespace was never threaded into `_validate_worker`, so `/validate` and
+`/check` answered `would_publish{_module_level}: false` for a publish that then returned `201`.
+
+- **`published_elsewhere`** is the new field: the subset of `published_as` under another
+  `(namespace, name)` — what publish actually refuses. `published_as` still lists everything,
+  including your own earlier versions, because "this data is already published as 1.0.0" is how an
+  author confirms they changed nothing. The verdict now quantifies over the former.
+- **The false negative was the actionable half.** S1 settled that a `true` verdict never promises a
+  publish will succeed; that caveat is about false *positives* and does not cover this. A publisher
+  branching on the field — the field the docs tell it to branch on — declined its own legal publish,
+  on the commonest second-pass shape there is.
+- **`RegistryClient.is_published(spec_dir, namespace=…, name=…)`** filters the same way, and its
+  docstring no longer claims "empty list = free to publish" unconditionally: unfiltered, the lookup
+  is name-independent by design, which is right for classifying a corpus and wrong for a verdict.
+  Passing half a module name is a `ValueError` rather than a silent unfiltered answer.
+- **`registry-client validate` prints the two differently** — `✗` for a refusal, `·` for identical
+  data already in this module. Printing a legal review pass in red is how a publisher concludes it
+  is blocked.
+- **Our own test had pinned the bug.** `test_the_module_level_verdict_composes_the_three_gates`
+  asserted `false` for exactly this scenario; it now asserts it against a rename, which is what the
+  gate refuses, and two new cases drive the review pass end to end through `/validate`, `/check` and
+  the publish that follows.
+
+### `verification.json` is recognised, so a rebuild stops dropping it (S11)
+
+The enricher's attestation — per check, what was checked and how many subjects, or the reason a check
+did not run — was uploaded, written into the spec dir and copied into storage, and then absent from
+`RECOGNIZED_SPEC_FILES`, which is what `revalidate` and `upgrade` rebuild a spec directory from. That
+is the `README.md` failure of 0.14 at a different file, as the reporter pointed out by quoting our own
+comment about it.
+
+- **Recognised, and deliberately not read.** Nothing here parses it. This server compiles what it
+  publishes, which is what makes a published digest ours to stand behind; the attestation is the
+  author's word about what their enricher saw against live sources, which we cannot reproduce
+  offline and must not launder into a claim of ours. `manifest.verification` and its signed `closure`
+  block are unreleased format 0.6 work; what to surface, and how to mark it as the author's word, is
+  in [ROADMAP.md](ROADMAP.md) rather than decided here.
+- **Out of `SIGNATURE_INPUTS`**, so shipping one cannot move a module's identity or its
+  `409 duplicate_content` claim — asserted, not assumed. It is carried by `upgrade` where
+  `provenance.json` is not: provenance describes how the predecessor was built, while the attestation
+  is hash-bound to the authored bytes and invalidates itself if they move.
+
+### Which instrument records a review (S12)
+
+Asked, and answered in [API-REFERENCE.md](API-REFERENCE.md) beside the reviews endpoints rather than
+in a reply that only one reader sees: a **`reviews` row** by default — no version number, projected
+onto the card, drives `?group=curated`, moderatable, and postable by someone who is not the author —
+and an **`authorship` entry** when the record must travel inside the module or be covered by its
+signature, which a `reviews` row cannot be at any price. Both, when both properties are wanted; they
+are not substitutes. The registry does not project `authorship` onto a card, and that is policy: it is
+the author's statement, and rendering it beside a moderated review count would present the two as the
+same kind of fact.
+
+### Two tests were describing this machine rather than the code
+
+Both pre-existing, both surfaced by running the suite for this batch, neither caused by it. The PGx
+caches (`cpic`, `pharmvar`, `clinpgx`) were left unset in `tests/test_preflight_api.py::_app` and in
+`test_a_missing_snapshot_is_not_an_unavailability`, so the enricher's resolver ladder found whatever
+was in `~/.cache/just-dna-pipelines` — and the day a ClinPGx snapshot appeared there, two assertions
+about *unprovisioned* deployments began failing with no code change behind them. An unset cache is not
+an absent one; every cache is now pinned at an empty directory, which is what those fixtures already
+claimed to do for the other three.
+
 ## [0.15.0] — 2026-08-12
 
 Answers **S8** and **S9** from `just-module-creator`, both about 0.14.0's readme work: one wrong

@@ -407,9 +407,16 @@ def validate(
         typer.secho(
             f"  ✗ the spec's module.name is not {name!r} — publish would refuse", fg=typer.colors.RED
         )
-    if report.published_as:
-        where = ", ".join(f"{v.namespace}/{v.name}@{v.version}" for v in report.published_as)
+    # Two lists, two colours: only `published_elsewhere` is a refusal. A hit under this same module
+    # is a later version of your own unchanged data, which publish allows — printing it red is how a
+    # publisher concludes a legal review pass is blocked.
+    if report.published_elsewhere:
+        where = ", ".join(f"{v.namespace}/{v.name}@{v.version}" for v in report.published_elsewhere)
         typer.secho(f"  ✗ identical data already published as: {where}", fg=typer.colors.RED)
+    same_module = [v for v in report.published_as if v not in report.published_elsewhere]
+    if same_module:
+        where = ", ".join(f"{v.namespace}/{v.name}@{v.version}" for v in same_module)
+        typer.secho(f"  · identical data already in this module: {where}", fg=typer.colors.YELLOW)
     # The server's own verdict, not a fourth local copy of the three gates it composes: this exit
     # code is a claim about what publish will do, so it has to come from the side that decides.
     if report.would_publish_module_level:

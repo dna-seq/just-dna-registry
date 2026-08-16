@@ -31,6 +31,7 @@ from just_dna_registry.specfiles import (
     SIGNATURE_INPUTS,
     SPEC_DATA_FILES,
     SPEC_YAML,
+    VERIFICATION_FILE,
     DERIVED_DIR,
     DERIVED_FILES,
     LEGACY_README_FILE,
@@ -93,6 +94,96 @@ def test_recognized_covers_every_signature_input() -> None:
     """Anything that feeds the signature has to survive a storage round-trip, or revalidate and
     re-derivation disagree with publish about the same version."""
     assert set(SIGNATURE_INPUTS) <= set(RECOGNIZED_SPEC_FILES)
+
+
+_MINIMAL_YAML = """\
+schema_version: "1.0"
+module:
+  name: coronary
+  title: Coronary
+  description: d
+  report_title: R
+genome_build: GRCh38
+"""
+_MINIMAL_VARIANTS = (
+    "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category,direction,"
+    "stat_significance\n"
+    "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19,risk,significant\n"
+)
+_MINIMAL_STUDIES = (
+    "rsid,pmid,population,p_value,conclusion,study_design\n"
+    "rs4244285,[PMID: 29165669],T,0.05,E,U\n"
+)
+
+
+def test_the_verification_attestation_is_recognized_but_not_signed_over() -> None:
+    """S11: `verification.json` reaches storage on publish and was then dropped by every rebuild.
+
+    Two properties, and the second is what makes the first safe. Recognition is what makes
+    `revalidate` materialize a file back out of storage and `upgrade` carry it forward — the
+    `README.md` lesson of 0.14, at the enricher's attestation. Staying out of `SIGNATURE_INPUTS` is
+    what keeps it from touching `content_signature`: an attestation is derived, and a module's
+    identity must not depend on whether its author happened to ship one.
+    """
+    assert VERIFICATION_FILE in RECOGNIZED_SPEC_FILES
+    assert VERIFICATION_FILE not in SIGNATURE_INPUTS
+    assert is_spec_file(VERIFICATION_FILE)
+
+
+def test_an_attestation_survives_the_rebuild_that_used_to_drop_it(client, api_key, app) -> None:
+    """The end-to-end half: publish with one, and the upgrade planner still has it.
+
+    `prepare_version_upgrade` rebuilds its file set from `RECOGNIZED_SPEC_FILES` ∩ storage, so before
+    0.16 an author's attestation was uploaded, stored, and then silently absent from the very
+    re-publish that claims to carry a version forward. Asserted beside `provenance.json`, which is
+    deliberately *not* carried — it describes how the predecessor was built, while the attestation is
+    hash-bound to the authored bytes and so invalidates itself if they move.
+    """
+    from just_dna_registry.services.upgrade import prepare_version_upgrade
+
+    attestation = b'{"format": "0.6", "checks": {"clin_sig": {"checked": 0, "reason": "no snapshot"}}}'
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"},
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+            ("files", (VERIFICATION_FILE, attestation, "application/json")),
+            ("files", (PROVENANCE_FILE, b'{"tool": "x"}', "application/json")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, resp.text
+    manifest = ModuleManifest.model_validate(resp.json())
+
+    storage = app.state.storage
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.0", manifest)
+    assert prep is not None
+    assert prep.files[VERIFICATION_FILE] == attestation
+    assert PROVENANCE_FILE not in prep.files
+
+    # And it changed nothing about the module's identity: the same spec without it signs the same.
+    without = client.post(
+        "/api/v1/modules/just-dna-seq/plain/validate",
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    ).json()
+    with_it = client.post(
+        "/api/v1/modules/just-dna-seq/plain/validate",
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+            ("files", (VERIFICATION_FILE, attestation, "application/json")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    ).json()
+    assert with_it["content_signature"] == without["content_signature"]
 
 
 def test_required_is_only_the_yaml() -> None:

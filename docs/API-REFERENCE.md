@@ -3,8 +3,9 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.15.x**, API `v1` (0.15 added no route; it wrapped an
-  existing one in the CLI). Written against the server at that version; a
+- **Normative for:** registry **0.14.x–0.16.x**, API `v1` (0.15 added no route; it wrapped an
+  existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
+  verdict that stopped disagreeing with the publish gate). Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).
@@ -155,16 +156,27 @@ never rehearsed.
   "content_signature": "sha256:…",
   "name_matches_path": true,
   "published_as": [],
+  "published_elsewhere": [],
   "would_publish_module_level": true
 }
 ```
 
-`info` is what the server rewrote and accepted; `published_as` is the `409 duplicate_content`
-pre-check. Rate bucket `validate` (60/h).
+`info` is what the server rewrote and accepted. `published_as` lists **every** version already built
+from identical data, including earlier versions of this same module; `published_elsewhere` (0.16) is
+the subset under a *different* `(namespace, name)`, which is the one publish refuses with
+`409 duplicate_content`. Rate bucket `validate` (60/h).
+
+**The two lists exist because a review pass is not a duplicate.** A version that changes no data —
+one `authorship` entry appended, nothing else — has the same `content_signature` as its predecessor,
+and the publish gate allows that under the same module while refusing a re-list under another name.
+Until 0.16 the pre-flight ran the lookup without that carve-out and answered `would_publish
+{_module_level}: false` for a publish that then returned `201`, so an automated publisher branching
+on the field declined its own legal publish (S10). The same-module hit is still *reported*, because
+"this data is already published as 1.0.0" is how an author confirms they changed nothing.
 
 **`would_publish_module_level` (0.13)** composes the three publish gates that do not scale with the
-variant count — `valid` under `strict`, `name_matches_path`, and an empty `published_as` — into the
-one field a CI job can branch on here. It is derived server-side, from the same expression
+variant count — `valid` under `strict`, `name_matches_path`, and an empty `published_elsewhere` —
+into the one field a CI job can branch on here. It is derived server-side, from the same expression
 `/check` builds `would_publish` on, so the two cannot drift.
 
 It is deliberately **not** `would_publish`, and the distinction is the point rather than pedantry:
@@ -529,6 +541,14 @@ Two exceptions and one refusal:
   author knows which copy is current, and picking one silently would publish the wrong table under a
   signature that looks perfectly valid.
 
+**`verification.json` is recognised as of 0.16** (S11), so a `revalidate` or an `upgrade` rebuilds a
+spec directory with the enricher's attestation still in it instead of dropping it — the same failure
+`README.md` had before 0.14. Recognised is not read: nothing in this service parses the file, and
+nothing will until the manifest can attest it. It is the *author's* record of what their enricher
+checked against live sources, which a server that compiles offline cannot reproduce and must not
+present as its own. `manifest.verification` and its signed `closure` block are format 0.6 work;
+surfacing either is tracked in [ROADMAP.md](ROADMAP.md).
+
 **The folder cannot move a module's identity.** `content_signature` is computed over
 `module_spec.yaml`, `variants.csv`, `studies.csv` and the table-kind CSVs — all authored, all at the
 root — so nothing that may live in `derived/` is in it, and a spec published flat and the same spec
@@ -656,6 +676,31 @@ The namespace **owner** highlights (or un-highlights) a reviewer's review — SO
 any number may be highlighted. A highlighted review is what `?group=curated` and the card's
 `curated` flag key on. Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
 `404 review_not_found` (highlight) / `version_not_found`.
+
+#### A review: a `reviews` row, or an `authorship` entry? (S12)
+
+Both record that someone read a module and formed a view, and they are **not substitutes** — the
+question is where the record has to survive.
+
+- **`reviews` row (28) — the default, and what a catalog is for.** It costs no version number, it is
+  projected onto the card (`review_count`, `avg_rating`, `curated`), it drives `?group=curated`, and
+  it is moderatable. A reviewer who is not the author can post one. Reach for this unless one of the
+  properties below is required.
+- **An `authorship` entry in `module_spec.yaml` — when the record must travel with the module.** It
+  is inside the spec, so it survives a download, a hand-off on disk and a re-publish, it is visible
+  to someone who never calls this API, and it is covered by the module's signature. That last one is
+  the asymmetry that decides it: a `reviews` row cannot be signed by the reviewer's key. It costs a
+  version, since the manifest is written at publish.
+
+Publishing a version that changes no data in order to record a review is legal — the duplicate gate
+carves out the same `(namespace, name)` deliberately — and since 0.16 the pre-flight agrees with it
+rather than predicting a refusal (S10).
+
+The registry does **not** project `authorship` onto a card, and this is a policy rather than an
+omission: this server compiles what it publishes, which is what makes a card's claims ours to stand
+behind, while `authorship` is the author's own statement about who reviewed their work. Rendering it
+beside a moderated review count would present the two as the same kind of fact. Read it from
+`…/manifest` or `ModuleDetail.latest_manifest`, where it is plainly the manifest's word.
 
 ### 24. `GET /api/v1/namespaces/{ns}/members`  *(bearer)*
 List a namespace's members. Any member may read. `200 → {"namespace": "…", "members": [{"account":

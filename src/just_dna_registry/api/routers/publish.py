@@ -394,19 +394,25 @@ async def validate_spec_endpoint(
     require_capability(repo, account, namespace, Capability.PUBLISH)
     try:
         uploads = await _preflight_uploads(files, archive, settings)
-        return await run_in_threadpool(_validate_worker, repo, settings, uploads, name, strict)
+        return await run_in_threadpool(
+            _validate_worker, repo, settings, uploads, namespace, name, strict
+        )
     except publish_service.PublishError as exc:
         raise _publish_http_error(exc)
 
 
 def _validate_worker(
-    repo: Repository, settings: Settings, uploads: dict[str, bytes], name: str, strict: bool
+    repo: Repository, settings: Settings, uploads: dict[str, bytes],
+    namespace: str, name: str, strict: bool,
 ) -> ValidationReport:
+    """`namespace` reaches the dedup pre-check here so it can carve out the same module the way the
+    publish gate does (S10) — it took the path's namespace not being threaded down for the two to
+    disagree."""
     with tempfile.TemporaryDirectory() as tmp:
         spec_dir = _preflight_spec_dir(uploads, tmp)
         normalization = publish_service.normalize_spec(spec_dir)
         return enrich_service.validation_report(
-            spec_dir, repo, name, strict,
+            spec_dir, repo, namespace, name, strict,
             normalized=normalization.info, extra_warnings=normalization.warnings,
         )
 
@@ -517,7 +523,8 @@ async def check_spec(
             return await asyncio.wait_for(
                 run_in_threadpool(
                     enrich_service.dry_run,
-                    settings=settings, repo=repo, uploads=uploads, name=name, strict=strict,
+                    settings=settings, repo=repo, uploads=uploads,
+                    namespace=namespace, name=name, strict=strict,
                     offline=offline, frequencies=frequencies, literature=literature,
                     identifiers=identifiers, acmg=acmg, pgx=pgx,
                     declared_use=declared_use or settings.declared_use, gate=gate,

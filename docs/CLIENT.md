@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.15.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.16.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -47,7 +47,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Batch find by digest | `lookup_by_digests(digests)` | *(programmatic)* | — |
 | Content signature (local) | `content_signature(spec_dir)` | `signature` | — |
 | Find by content signature | `lookup_by_signature(sig)` | `signature --lookup` | — |
-| Already published? | `is_published(spec_dir)` | `signature --lookup` | — |
+| Already published? | `is_published(spec_dir, namespace=, name=)` | `signature --lookup` | — |
 | Validate a spec | `validate(ns, name, spec_dir)` | `validate` | bearer |
 | Full publish dry run | `check(ns, name, spec_dir)` | `check` | bearer |
 | Server liveness | `health()` | *(programmatic)* | — |
@@ -354,6 +354,13 @@ same algorithm the registry gates `409 duplicate_content` on. Needs the compiler
 > artifact published?" and fails when it is not. This one is a *pre-publish dedup gate*, so a match
 > is the failure: exit 1 means the registry already has this data under some name.
 
+> **A hit under your own module is not a refusal.** `signature --lookup` and
+> `is_published(spec_dir)` are name-independent by design — they answer "does this data exist here",
+> which is the right question for classifying a corpus. Publishing a *new version of the same module*
+> with unchanged data is legal (a review pass: one `authorship` entry, no data touched), so pass
+> `is_published(spec_dir, namespace=…, name=…)` when what you want is a verdict; then an empty list
+> means free to publish. `validate`/`check` report both lists — see `published_elsewhere` below.
+
 **`validate`** runs the real compiler server-side and returns findings, stats, the content signature,
 and any versions already built from identical data. It writes nothing and the module need not exist —
 `name` is the name you intend to publish under. It defaults to `--strict`, matching what publish
@@ -366,6 +373,12 @@ on, so the two cannot drift. **It is not `would_publish`.** `true` means nothing
 a publish; a reference mismatch or a withdrawn rsID can still refuse one, and only `check` looks. Its
 value is that it has no ceiling and costs no egress, so it answers for panels far too large to check
 online, which is the case that motivated it.
+
+Its dedup half reads **`published_elsewhere`** (0.16) — the versions built from identical data under
+a *different* `(namespace, name)`, which is what publish refuses. `published_as` still lists every
+match including your own earlier versions, and the CLI prints the two differently: `✗` for a
+refusal, `·` for "identical data already in this module". Before 0.16 a republish of your own
+unchanged data was predicted as a refusal it then was not (S10).
 
 **`check`** adds what only the network tier can see: an authored reference allele against the actual
 genome, `clin_sig` against ClinVar, rsIDs dbSNP has merged away, GA4GH allele-identity coverage, and

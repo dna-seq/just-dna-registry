@@ -434,6 +434,19 @@ an explicit guard:
   `README_CANDIDATES` ladder resolves more spellings than our single `README_FILE`; decide
   deliberately whether to widen ours to match or to keep warning (S7), because two different answers
   to "which file is the readme" is exactly the drift this item exists to end.
+- **Decide what to do with `verification.json` once format 0.6 can attest it** (open; minor —
+  the second half of **S11** from `just-dna-format`). 0.16 recognises the file, so a rebuild carries
+  it forward; nothing reads it. When `manifest.verification` and the signed `closure` block land,
+  three decisions come with them and none should be made by reflex. **(1)** Whether to surface it at
+  all: this server compiles what it publishes, which is what makes `compile_success` and the digest
+  *ours*; the attestation is the author's word about what their enricher saw against live sources at
+  authoring time, and we cannot reproduce it offline. **(2)** If surfaced, how it is marked as the
+  author's claim rather than the registry's — upstream marks every field in it untrusted for exactly
+  this reason, and a forged pass is worse than silence. **(3)** Whether a `closure` signed by the
+  module's own key means anything more to us than an unsigned one, given we already verify a
+  signature over the artifact. The cheap, obviously-correct half is serving the bytes back once the
+  manifest attests them, since `/files/{path}` is built from what the manifest records — that needs
+  no policy at all, and it is the half to do first.
 - **A successful publish drops its enrichment findings.** `EnrichOutcome.notes` is read in exactly one
   place — a *failed* compile's `warnings` (`services/publish.py`) — so on the happy path the ref-allele
   result, the non-fatal stale rsIDs, the PAR drops and the new `clin_sig_not_checked` reason are

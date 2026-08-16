@@ -149,6 +149,33 @@ async def test_is_published_reports_free_then_taken(sdk, tmp_path, app) -> None:
     )
 
 
+async def test_is_published_answers_the_named_question_too(sdk, tmp_path) -> None:
+    """S10's client half: the unfiltered call cannot tell "taken" from "mine".
+
+    `is_published` is name-independent by design — the right shape for classifying a local corpus,
+    the wrong one for a verdict, since publish allows a later version of the *same* module built from
+    unchanged data. Naming the module you intend to publish under restores "empty list = free to
+    publish", which is what the docstring had been claiming unconditionally.
+    """
+    spec = _write_spec(tmp_path)
+    await asyncio.to_thread(lambda: sdk.publish(_NS, _NAME, _VER, spec))
+
+    assert [v.name for v in await asyncio.to_thread(lambda: sdk.is_published(spec))] == [_NAME]
+    assert await asyncio.to_thread(
+        lambda: sdk.is_published(spec, namespace=_NS, name=_NAME)
+    ) == []
+    assert [
+        v.name
+        for v in await asyncio.to_thread(
+            lambda: sdk.is_published(spec, namespace=_NS, name="rebranded")
+        )
+    ] == [_NAME]
+
+    # Half a module name matches nothing, so it would silently answer the unfiltered question.
+    with pytest.raises(ValueError):
+        await asyncio.to_thread(lambda: sdk.is_published(spec, namespace=_NS))
+
+
 async def test_validate_returns_a_typed_report(sdk, tmp_path) -> None:
     report = await asyncio.to_thread(lambda: sdk.validate(_NS, _NAME, _write_spec(tmp_path)))
     assert report.valid is True and report.strict is True

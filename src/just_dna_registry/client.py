@@ -520,15 +520,31 @@ class RegistryClient:
             for r in self._json(resp)["results"]
         }
 
-    def is_published(self, spec_dir: Path) -> list[VersionRef]:
-        """Whether this spec's data is already on the registry. Empty list = free to publish.
+    def is_published(
+        self, spec_dir: Path, *, namespace: Optional[str] = None, name: Optional[str] = None
+    ) -> list[VersionRef]:
+        """Where this spec's data is already published, under any name.
 
         The pre-publish dedup check, in one call. Calls `assert_compatible` first because the
         signature it sends was computed by *this* client's compiler, and a signature computed under a
         different format minor answers about a different algorithm.
+
+        **Pass `namespace=`/`name=` when you are asking "may I publish *this module*", and then an
+        empty list means free to publish.** Without them the answer is name-independent, and a hit
+        may well be your own earlier version — publish allows a later version of the same module with
+        unchanged data (a review pass), and refuses only a re-list under a different name. The
+        unfiltered call is still the right one for classifying a local corpus; it is the wrong one
+        for a verdict, and reading it as one is what the server-side `published_as` field did until
+        0.16 (S10).
         """
+        if (namespace is None) != (name is None):
+            raise ValueError("pass both namespace and name, or neither — a half-named module "
+                             "matches nothing and would silently answer the unfiltered question")
         self.assert_compatible()
-        return self.lookup_by_signature(self.content_signature(spec_dir))
+        matches = self.lookup_by_signature(self.content_signature(spec_dir))
+        if namespace is None:
+            return matches
+        return [m for m in matches if (m.namespace, m.name) != (namespace, name)]
 
     def validate(
         self, namespace: str, name: str, spec_dir: Path, *, strict: bool = True, pack: bool = False
@@ -549,6 +565,11 @@ class RegistryClient:
         no egress. It is **not** `would_publish` — `true` means nothing module-level blocks a
         publish, not that one would succeed, since only `check()` runs the tier that can still
         refuse on a reference mismatch or a withdrawn rsID.
+
+        Since 0.16 the dedup half of that verdict quantifies over `report.published_elsewhere` — data
+        published under a *different* `(namespace, name)` — rather than over `published_as`, which
+        also lists earlier versions of this same module. Republishing your own unchanged data as a
+        new version is legal, and the verdict used to say otherwise (S10).
         """
         self.assert_compatible()
         resp = self._http.post(

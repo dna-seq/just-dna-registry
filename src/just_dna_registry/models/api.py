@@ -353,17 +353,30 @@ class ValidationReport(BaseModel):
     )
     published_as: list[VersionRef] = Field(
         default_factory=list,
-        description="Versions already built from identical data — publish would 409 duplicate_content",
+        description=(
+            "Every version already built from identical data, including earlier versions of **this** "
+            "module. Informational: a hit here does not by itself predict a `409` — see "
+            "`published_elsewhere`, which is the subset that does."
+        ),
+    )
+    published_elsewhere: list[VersionRef] = Field(
+        default_factory=list,
+        description=(
+            "The subset of `published_as` under a *different* `(namespace, name)` — what publish "
+            "actually refuses with `409 duplicate_content` (0.16). A later version of the same "
+            "module with unchanged data is allowed by the gate, which is what a review pass is: an "
+            "`authorship` entry added, no data touched."
+        ),
     )
     would_publish_module_level: bool = Field(
         default=False,
         description=(
             "The publish gates that do not scale with the variant count, composed into one field: "
-            "the spec validates under `strict`, `module.name` matches the path, and no version is "
-            "already built from identical data. **It is not `would_publish`.** It quantifies over "
-            "the module-level gates only, so `true` means 'nothing here blocks a publish', never "
-            "'a publish would succeed' — the network tier can still refuse one on a reference "
-            "mismatch or a withdrawn rsID, and only `/check` runs that tier."
+            "the spec validates under `strict`, `module.name` matches the path, and the data is not "
+            "already published under another `(namespace, name)`. **It is not `would_publish`.** It "
+            "quantifies over the module-level gates only, so `true` means 'nothing here blocks a "
+            "publish', never 'a publish would succeed' — the network tier can still refuse one on a "
+            "reference mismatch or a withdrawn rsID, and only `/check` runs that tier."
         ),
     )
 

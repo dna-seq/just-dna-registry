@@ -78,20 +78,29 @@ def _app(tmp_path: Path, **over) -> TestClient:
 
     Explicit rather than unset, so the enricher's ambient discovery ($JUST_DNA_PIPELINES_CACHE_DIR,
     platformdirs) cannot make these assertions depend on whose machine they run on.
+
+    **Every snapshot the enricher can discover, not only the three a strict publish needs.** The PGx
+    caches were left unset here, so the `?pgx=` assertions silently described the developer's machine:
+    the day a `~/.cache/just-dna-pipelines/clinpgx` appeared beside this checkout, the ClinPGx leg
+    started *running* and the test that asserts each leg names its missing snapshot failed with no
+    code change behind it. An unset cache is not an absent one.
     """
     empty = tmp_path / "no-cache"
-    client = TestClient(
-        create_app(
-            Settings(
-                db_path=tmp_path / "m.db",
-                local_storage_dir=tmp_path / "a",
-                ensembl_cache=empty,
-                clinvar_cache=empty,
-                constraint_cache=empty,
-                **over,
-            )
-        )
-    )
+    # `over` last: a test that provisions one snapshot (`pharmvar_cache=…`) overrides that one and
+    # keeps the rest pinned empty.
+    settings = {
+        "db_path": tmp_path / "m.db",
+        "local_storage_dir": tmp_path / "a",
+        "ensembl_cache": empty,
+        "clinvar_cache": empty,
+        "constraint_cache": empty,
+        "cpic_cache": empty,
+        "pharmvar_cache": empty,
+        "clinpgx_cache": empty,
+        "acmg_snapshot_dir": empty,
+        **over,
+    }
+    client = TestClient(create_app(Settings(**settings)))
     repo = client.app.state.repo
     account_id = repo.create_account("antonkulaga")
     repo.add_namespace("just-dna-seq", account_id)
@@ -200,9 +209,16 @@ def test_published_as_predicts_the_duplicate_rejection(tmp_path: Path) -> None:
         == 201
     )
 
-    # The pre-check sees it...
-    body = _validate(client)
+    # The pre-check sees it, under the name that would actually be refused...
+    body = client.post(
+        "/api/v1/modules/just-dna-seq/rebranded/validate",
+        files=_parts(yaml=_YAML.replace("name: coronary", "name: rebranded")),
+        headers=_AUTH,
+    ).json()
     assert [(v["name"], v["version"]) for v in body["published_as"]] == [("coronary", "1.0.0")]
+    assert [(v["name"], v["version"]) for v in body["published_elsewhere"]] == [
+        ("coronary", "1.0.0")
+    ]
 
     # ...and publishing the same data under another name is indeed refused.
     dup = client.post(
@@ -213,6 +229,73 @@ def test_published_as_predicts_the_duplicate_rejection(tmp_path: Path) -> None:
     )
     assert dup.status_code == 409
     assert dup.json()["detail"]["error"] == "duplicate_content"
+
+
+def test_a_review_pass_is_not_a_duplicate_and_the_pre_flight_agrees(tmp_path: Path) -> None:
+    """S10: a second version of the same module with unchanged data is legal, and was being predicted
+    as a refusal.
+
+    The scenario is the commonest second pass there is: `1.0.0` is published, a human reviews it,
+    changes no data, and publishes `1.0.1`. The gate carves the same `(namespace, name)` out
+    explicitly; the pre-flight ran the same lookup without the carve-out, so `/validate` answered
+    `would_publish_module_level: false` for a publish that then returned `201` — a false negative in
+    the one field the docs tell a CI job to branch on.
+
+    Driven end to end rather than asserted on the field alone, because the property under test is
+    agreement between two code paths: what the pre-flight predicts, and what publish then does.
+    """
+    client = _app(tmp_path, compile_strict=False)
+    assert client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"}, files=_parts(), headers=_AUTH,
+    ).status_code == 201
+
+    body = _validate(client)
+    # Still listed — "this data is already published as 1.0.0" is how an author confirms they changed
+    # nothing — but not counted, and separated into the list that says which hits refuse.
+    assert [(v["name"], v["version"]) for v in body["published_as"]] == [("coronary", "1.0.0")]
+    assert body["published_elsewhere"] == []
+    assert body["would_publish_module_level"] is True
+
+    republished = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.1"}, files=_parts(), headers=_AUTH,
+    )
+    assert republished.status_code == 201, republished.text  # the verdict was right
+
+
+def test_the_review_pass_carve_out_holds_for_check_too(tmp_path: Path) -> None:
+    """The same fix on `/check`, whose `would_publish` composes the module-level half.
+
+    `/check` reaches `validation_report` down a different path (`dry_run`), and the namespace had to
+    be threaded through both — a fix to one and not the other would leave the endpoint a CI job is
+    actually pointed at still answering `false`.
+    """
+    client = _app(tmp_path, compile_strict=False)
+    assert client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"}, files=_parts(), headers=_AUTH,
+    ).status_code == 201
+
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": True}, files=_parts(), headers=_AUTH,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["validation"]["published_elsewhere"] == []
+    assert body["validation"]["would_publish_module_level"] is True
+    assert body["would_publish"] is True
+
+    other = client.post(
+        "/api/v1/modules/just-dna-seq/rebranded/check",
+        params={"offline": True},
+        files=_parts(yaml=_YAML.replace("name: coronary", "name: rebranded")),
+        headers=_AUTH,
+    ).json()
+    assert [v["name"] for v in other["validation"]["published_elsewhere"]] == ["coronary"]
+    assert other["validation"]["would_publish_module_level"] is False
+    assert other["would_publish"] is False
 
 
 def test_the_module_level_verdict_composes_the_three_gates(tmp_path: Path) -> None:
@@ -241,8 +324,15 @@ def test_the_module_level_verdict_composes_the_three_gates(tmp_path: Path) -> No
         ).status_code
         == 201
     )
-    after = _validate(client)
-    assert after["valid"] is True and after["published_as"]
+    # The dedup gate, asserted against a *rename* — which is what publish refuses. Until 0.16 this
+    # asserted the same-module case instead, and so pinned the S10 false negative as intended
+    # behaviour: `false` for a republish of this module's own unchanged data, which publish allows.
+    after = client.post(
+        "/api/v1/modules/just-dna-seq/rebranded/validate",
+        files=_parts(yaml=_YAML.replace("name: coronary", "name: rebranded")),
+        headers=_AUTH,
+    ).json()
+    assert after["valid"] is True and after["published_elsewhere"]
     assert after["would_publish_module_level"] is False, "a valid spec can still be undeployable"
 
 
