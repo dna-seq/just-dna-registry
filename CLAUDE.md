@@ -26,8 +26,17 @@ interface (§8). This file (`CLAUDE.md`) is the *how we code* companion to that 
   `artifact.digest` that is the version's immutable **byte** identity (the *content* identity is
   `content_signature`; see *Manifest & integrity*).
 
-This service **depends on `just-dna-pipelines`** for `validate_spec`, `compile_module`, and the
-`ModuleManifest` models. Reuse that code; do not re-implement compilation or the manifest schema here.
+This service **depends on the `just-dna-format` workspace** for `validate_spec`, `compile_module` and
+the `ModuleManifest` models — three packages, three tiers: `just_dna_format` (schema, pydantic +
+cryptography), `just_dna_compiler`, `just_dna_enricher` (the only tier permitted to fetch). Reuse that
+code; do not re-implement compilation or the manifest schema here. `just-dna-pipelines` is a *sibling
+consumer*, not this service's dependency — an earlier version of this line said otherwise, which is
+worth knowing if you meet the claim again somewhere it has been copied to.
+
+**The floor is a lockstep, not a minimum.** `version.contract_compatible` treats a `0.x` minor as a
+breaking contract change, so the installed minor must match what clients speak; adopting a new format
+minor is a coordinated cut with an operator procedure, never a dependency bump. See
+[docs/UPGRADE.md](docs/UPGRADE.md).
 
 ---
 
@@ -281,7 +290,7 @@ running server, and one direction arms a delete endpoint on production data.
 
 ---
 
-## Spec layout (0.14) — the flat one is canonical, everything else is transport
+## Spec layout (0.17) — the flat one is canonical, everything else is transport
 
 The compiler reads one flat directory, so that is the spec. `specfiles.plan_layout` normalizes an
 upload onto it and `services/publish.normalize_spec` applies the plan — called from `_finalize` and
@@ -311,28 +320,43 @@ predicts is worse than one that does not normalize at all.
   difference between a rename we made and a republish every author pays for. Both present → the real
   name wins and the legacy file is carried untouched; overwriting prose the author wrote with prose
   they did not is the one thing this pass must never do.
-- **Renames live in one map (`RENAMED_ON_UPLOAD`), and the second entry is `licensing.csv` →
-  `sources.csv`** (0.16.2). Same repair as `MODULE.md` from the other direction: there we were ahead
-  of the corpus, here we are *behind* it — format 0.6 renamed the licensing ledger (RM51) and every
-  current authoring tool and reference example writes the new name, while this deployment compiles on
-  0.5. The failure was not a dropped file but a **false facet**: the ledger reached storage and never
-  the compile, so `manifest.sources` held the enricher's own Ensembl row and a module whose upstreams
-  forbid sale advertised `licensing.commercial_use: true`. A warning would only have announced that.
-  **Three things must hold before adding a name to that map, and all three were checked here, not
-  assumed:** the two names are one table with one row model upstream (not a guess at intent, which is
-  what keeps `_README_LOOKALIKES` a warning); the 0.6 header is field-for-field the installed 0.5
-  `SourceRow`, which is `extra="forbid"`, so a schema drift would fail loudly rather than publish
-  something wrong; and the destination is outside `SIGNATURE_INPUTS` and inside
-  `RECOGNIZED_SPEC_FILES`, so the rename can neither move a `content_signature` nor be dropped by the
-  `revalidate`/`upgrade` rebuild. A test asserts the last one over the whole map. Both present → the
-  readable name wins with a warning, where upstream RM49 *refuses*; turning a publish that succeeds
-  today into a refusal is a major, and their resolver arrives with the 0.6 lockstep anyway.
-- **The split cannot separate what a downloader never receives.** The manifest has fields for `logs`,
-  `logo`, `provenance` and the authored `inputs`, and none for the derived CSVs — only their
-  parquets are in `artifact.files`. So `download(layout="split")` creates `derived/` only when
-  something lands in it, and `download(include_inputs=True)` exists because `/download` lists
-  `artifact.files` alone. Filed upstream as **S26**, with the second half: the compiler discovers
-  authored tables at the spec root only, which is what keeps this layer transport-only.
+- **Renames live in one map (`RENAMED_ON_UPLOAD`), and since 0.17 the sidecar entry is *derived*
+  rather than written down.** The second entry is `sources.csv` → `licensing.csv`, computed from
+  `just_dna_format.layout.SIDECAR_SPELLINGS` + `DEPRECATED_SPELLINGS`. **It pointed the other way in
+  0.16.2, and the flip is the lesson**: under 0.5 our compiler read only `sources.csv`, so the ledger
+  every current tool writes was dropped from the compile — not a missing file but a **false facet**,
+  with `manifest.sources` holding the enricher's own Ensembl row while a module whose upstreams forbid
+  sale advertised `licensing.commercial_use: true`. Under 0.6 the compiler reads both, prefers
+  `licensing.csv`, and warns that the old name goes at format 1.0. Left pointing backwards, the same
+  map would have stamped a deprecation warning into every published (and immutable) manifest and
+  stored the one spelling that stops being read at all.
+
+  So: **never hardcode a spelling here again.** Upstream owns which names exist and which are
+  deprecated; restating that is precisely how the two got out of step. **Three things must hold before
+  adding a name to that map by hand:** the two names are one table with one row model upstream (not a
+  guess at intent, which is what keeps `_README_LOOKALIKES` a warning); the row model is
+  `extra="forbid"`, so a schema drift fails loudly rather than publishing something wrong; and the
+  destination is outside `SIGNATURE_INPUTS` and inside `RECOGNIZED_SPEC_FILES`, so the rename can
+  neither move a `content_signature` nor be dropped by the `revalidate`/`upgrade` rebuild. A test
+  asserts the last one over the whole map.
+
+  **Both spellings present is a `422` since 0.17**, matching upstream RM49 — and note this is *not*
+  the same answer as the readme's. `layout.resolve_sidecar` **raises** on two copies of one fact
+  table, so warn-and-prefer would no longer produce a publish at all, only a `SidecarCollision` with
+  our own upload as the cause. The readme keeps warn-and-carry because an extra markdown file makes
+  the compiler do nothing, while overwriting authored prose is unrecoverable.
+- **The split used to be unable to separate what a downloader never received — fixed by 0.6, in
+  0.17.** The manifest had fields for `logs`, `logo`, `provenance` and the authored `inputs` and none
+  for the derived CSVs, so nothing attested them and a client had no name to ask for. Filed as **S26**
+  and answered by `manifest.derived` (RM49) plus `manifest.readme` (S5): `download(include_inputs=True)`
+  now fetches the sidecars and the readme and hash-checks them, which is what makes a downloaded module
+  recompile where it lands — the compiler never fetches, so `resolution.csv` has to travel with it.
+
+  Two things from that episode survive it and are worth keeping. **A split can only separate files the
+  downloader actually receives**, so `download(layout="split")` still creates `derived/` only when
+  something lands in it — the folder is a consequence of the manifest's contents, never a promise made
+  ahead of them. And the second half of S26 is still upstream's and still true: the compiler discovers
+  authored tables at the spec root only, which is what keeps this whole layer transport-only.
 
 ---
 

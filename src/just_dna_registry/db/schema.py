@@ -274,12 +274,23 @@ _V011_COLUMNS: tuple[tuple[str, str], ...] = (
 #: and a manifest that predates the block is a manifest whose module carried no such table — the
 #: block did not exist to be omitted. So `0` is honest for a legacy row in a way it would not be for
 #: `commercial_use`, and in a way `positional_rows` deliberately is not (see `db/facets.py`).
+#:
+#: The five RM44/S31/S33 counters are stored **nullable with no default**, which is the opposite
+#: choice from the booleans above and is the whole point. `NOT NULL DEFAULT 0` would stamp "this
+#: module has no positional rows" across every version compiled before 0.6 — a false statement about
+#: a 1,482-row PGx artifact, and precisely the vacuous-`fully_resolved` defect these fields exist to
+#: close. `NULL` means *not measured*, exactly as it does in the manifest.
 _V017_COLUMNS: tuple[tuple[str, str], ...] = (
     ("has_gene_validity", "INTEGER NOT NULL DEFAULT 0"),
     ("has_clinical_assertions", "INTEGER NOT NULL DEFAULT 0"),
     ("has_gwas_effects", "INTEGER NOT NULL DEFAULT 0"),
     ("has_frequencies", "INTEGER NOT NULL DEFAULT 0"),
     ("weighting_declared", "INTEGER NOT NULL DEFAULT 0"),
+    ("resolution_subjects", "INTEGER"),
+    ("positional_rows", "INTEGER"),
+    ("positional_rows_placed", "INTEGER"),
+    ("expanded_keys", "INTEGER"),
+    ("expanded_rows", "INTEGER"),
 )
 
 

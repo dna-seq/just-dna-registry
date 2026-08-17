@@ -6,6 +6,105 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.17.0] — 2026-08-18
+
+**Client surface: unchanged.** `list_modules` gains five optional keyword arguments and
+`get_module`/`download` return more; no method signature moved and nothing a consumer calls today
+behaves differently. **But this release is not drop-in**: see below, which is about the *contract*
+rather than the client API.
+
+### Format 0.6 adoption
+
+`just-dna-format`, `just-dna-compiler` and `just-dna-enricher` move to **0.6.0**. This is the second
+contract cut after 0.11's, and it has the same shape: every `artifact.digest` moves, and
+`version.contract_compatible` treats a `0.x` minor as breaking, so **a 0.5 client is refused by a 0.6
+server**. Bump clients first; the operator sequence is [UPGRADE.md](UPGRADE.md) § 0.17.
+
+It is a shorter migration than 0.11's, for a reason worth stating plainly: **`content_signature` does
+not move** (upstream measured 0/11 across the reference corpus). So there is no `rederive-signatures`
+step, no dedup claim changes hands, and no module loses the right to republish its own data.
+
+**No trust migration ships either, unlike 0.11.3**, and that is checked rather than asserted. The
+trust rule did change — it reads RM44's counters now instead of matching warning prose — but only for
+manifests carrying those counters, and no version in an existing catalog does. The pre-0.6 branch is
+the 0.5 rule unchanged, asserted over the whole 24-shape pre-0.6 space in `tests/test_format_06.py`.
+
+### The trust facet reads counts, and keeps the sentence for what predates them
+
+`resolution_subjects` (RM44) is the denominator `fully_resolved` quantifies over, and
+`positional_rows`/`positional_rows_placed` (S31) say how many of how many rows join to a VCF, where
+the warning only ever said *some do not*. Both are surfaced on every `resolution` object, along with
+`expanded_keys`/`expanded_rows` (S33), and all five are `int | null` where **null means *not
+measured* and is never `0`** — each has a meaningful zero, so coalescing them would tell a consumer
+that a 1,482-row PGx artifact has no positional rows.
+
+`CLAUDE.md` and the 0.11.3 ROADMAP entry both said to delete the `UNJOINABLE_PHRASE` match once RM44
+landed. **That instruction was wrong and is now recorded as superseded.** Every published artifact
+predates the counters, so for them the sentence is still the only record a reindex can see — deleting
+it would have silently re-granted trust to precisely the modules 0.11.3 took it from. Upstream's own
+integration note says the same. It retires when the last pre-0.6 version leaves a catalog.
+
+**One verdict genuinely moves, and the compiler is what moved.** RM43's positional fill places
+rsID-keyed rows from `resolution.csv`, so the reference CPIC example goes from 0 of 106 rows placed to
+106 of 106 and flips `trusted: false → true`. Nothing about the module changed; the compiler learned
+to do what the warning had been complaining about. A side effect worth recording: nothing in the
+upstream corpus is unjoinable any more, so the negative half of that facet is now driven by a written
+fixture rather than by an example that could quietly stop exercising it.
+
+### `specfiles.py` stops guessing where a sidecar lives
+
+Where a machine-written table may sit and what it may be called is imported from
+`just_dna_format.layout` rather than restated here. That module exists for the four parties who have
+to agree — compiler reads, enricher writes, publisher uploads, registry re-splits — and 0.16.2 was a
+disagreement between two of them.
+
+- **The licensing rename inverted.** 0.5 renamed `licensing.csv` → `sources.csv` because our compiler
+  read only the old name. 0.6 reads both, prefers the new one, and warns that the old goes at format
+  1.0 — so left pointing backwards this would have written a deprecation warning into every published
+  manifest, permanently, and stored the spelling that stops being read at all. The direction is now
+  *derived* from `SIDECAR_SPELLINGS`, so the next such rename arrives with a floor bump.
+- **Both spellings present is refused (`422`) instead of preferred.** `layout.resolve_sidecar` raises,
+  so carrying the loser through as an extra file no longer produces a publish with a warning — it
+  produces a `SidecarCollision` out of the compiler with our own upload as the cause. Upstream's
+  reasoning is why agreeing beats working around it: these tables are fact-hashed and hand-editable,
+  so two copies are two claims and preferring either discards somebody's curation silently.
+- **The three new fact tables** — `gene_validity.csv`, `clinical_assertions.csv`, `gwas_effects.csv` —
+  are recognized. Missing from that list means dropped by every rebuild, which is exactly how
+  `licensing.csv` was lost.
+
+### The readme travels, and so do the sidecars
+
+`manifest.readme` (S25) closes the asymmetry `amend_logo` has had since 0.5: the readme was the one
+projection no manifest could produce. `amend_readme` now records its swap on the manifest, so a
+downloader can verify prose that changed after publish, and `/files/{path}` and the tarball admit it
+without their rules changing — both serve what the manifest attests, which is also how
+`manifest.derived` (RM49) made the machine-written sidecars fetchable. `download(include_inputs=True)`
+therefore returns a module that **recompiles where it lands**, which it could not before: the compiler
+never fetches, so `resolution.csv` has to arrive with it. That is the registry half of S26.
+
+Prose stays out of both identities, so amending it moves no digest and cannot collide with the
+`409 duplicate_content` claim of the module it describes.
+
+### Three new blocks on the module detail
+
+- **`weighting`** (RM92) — what the module says its authored `weight` column means, verbatim, free
+  text. `null` when it has not said, which a consumer must read as *do not combine these weights*,
+  not as *safe*. Filterable as `?weighting_declared=`, where `false` is the useful direction.
+- **`gwas_effects`** (RM90) — with `units` and `without_effect_allele` rendered **beside**
+  `row_count`, on upstream's warning that a count alone reads as confidence. More than one unit means
+  those betas must not be pooled; the rows naming no effect allele are real evidence that cannot be
+  weighted in any direction.
+- **`verification`** (RM45) — the publisher's attestation, never a card facet and never a filter,
+  because ranking by someone else's unverifiable pass would lend it our credibility. How much of it is
+  ours was **measured**, not assumed, and is pinned as a test: a check this server runs cannot be
+  forged (our record displaces theirs), a check it does not run is carried verbatim, and `closed` is
+  hash-bound — the compiler drops a closure whose binding no longer matches the authored bytes.
+
+Presence of each fact table is projected into indexed columns and filterable on `GET /modules`, scoped
+to a module's current version like `gene` and `category`. Those columns are plain booleans rather than
+tri-state, which is right here and wrong one file over: a manifest predating a block belongs to a
+module that carried no such table, so `0` is honest — unlike the counters, where it would not be.
+
 ## [0.16.2] — 2026-08-17
 
 **Client surface: unchanged.**

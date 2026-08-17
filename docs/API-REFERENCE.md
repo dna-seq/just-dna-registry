@@ -3,9 +3,11 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.16.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.17.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
-  verdict that stopped disagreeing with the publish gate). Written against the server at that version; a
+  verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
+  0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
+  five counters to every `resolution` object; see *Format 0.6 fields* below). Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).
@@ -403,6 +405,18 @@ only featured), `include_blacklisted` (`true` → include hidden namespaces), `g
 see below), `sort` = `name` (default) | `downloads` | `recent` | `stars` | `popular`, plus `page`,
 `per_page`. Facet filters match modules with a non-yanked version carrying that gene/category.
 
+**Fact-table filters (0.17, format 0.6)** — `has_gene_validity`, `has_clinical_assertions`,
+`has_gwas_effects`, `has_frequencies`, `weighting_declared`. Each is **tri-state**: omitting it does
+not filter, which is not the same as `false`. They match against the module's **current** version,
+the same scoping `gene` and `category` use — a sidecar dropped two releases ago stops answering.
+
+`weighting_declared=false` is the deliberately useful negative: it finds modules that have **not**
+said what their authored `weight` column means, which is the population a consumer must not
+aggregate across. An absent declaration means *the module has not said*, never *the weights are
+comparable*.
+
+There is no `verification` filter and there will not be one — see *ModuleDetail*.
+
 **`group`** is a server-defined tab preset over the raw filters (a group wins over the equivalent
 `sort`/`featured`): `all` (everything), `featured` (`featured=true`), `curated` (has an
 owner-highlighted review — see reviews), `popular` (`sort=popular`), `new` (`sort=recent`), `test`. **Test/sandbox namespaces** — those matching the server-config
@@ -534,15 +548,21 @@ upload onto it before reading anything. Applied identically by `/versions`, `/ve
   producers already ship `metadata/` and `enriched/` trees and refusing them buys nothing.
 - **`MODULE.md` is renamed to `README.md`**, unless a `README.md` is also present — then the real
   name wins, the legacy file is carried unchanged, and a warning says so.
-- **`licensing.csv` is renamed to `sources.csv`** (0.16.2), on the same rule and with the same
-  both-present behaviour. They are one table under two spellings: format 0.6 made `licensing.csv` the
-  name and deprecated `sources.csv`, this deployment compiles on 0.5, and every current authoring tool
-  and reference example writes the new one. Until this landed the file reached storage but never the
-  compile, so the `sources` summary was built from the enricher's own Ensembl row alone and a module
-  whose upstreams forbid sale advertised `licensing.commercial_use: true` on its card. Nothing is
-  guessed at here: upstream defines the two names as one table with one row model, the 0.6 header is
-  field-for-field the 0.5 one, and `sources.csv` is a fact sidecar outside `content_signature`, so the
-  rename moves no identity.
+- **`sources.csv` is renamed to `licensing.csv`** (0.17; the rename ran the *other* way in 0.16.2,
+  when this deployment's compiler could read only the old spelling). They are one table under two
+  spellings, and format 0.6 makes `licensing.csv` the name while deprecating `sources.csv` for
+  removal at format 1.0 — so an upload under either keeps working, and storing the current one is
+  what keeps a spec authored years ago publishable at 1.0 without its author editing anything. It is
+  also what stops a deprecation warning being written into every published manifest, which is
+  immutable. The rename moves no identity: the ledger is a fact sidecar, outside `content_signature`
+  and therefore outside the global `409 duplicate_content` claim.
+
+  **Both spellings present is a `422`**, not a preference — this is the one place where the rule
+  differs from `MODULE.md`. The compiler *raises* on two copies of one fact table (they are
+  fact-hashed and hand-editable, so two copies are two claims and preferring either discards
+  somebody's curation), so carrying the loser through as an extra file would produce a failed compile
+  rather than a publish with a warning. An extra stray markdown file, by contrast, makes the compiler
+  do nothing at all.
 
 Two exceptions and one refusal:
 
@@ -827,10 +847,65 @@ is truncated to 3; in detail/manifest it's the full list.
 
 ### VersionSummary
 `version, artifact_digest, compile_success, yanked, signed, needs_upgrade, downloads, created_at,
-changelog, manifest_url`. `downloads` is the per-version download count.
+changelog, manifest_url, resolution: ResolutionInfo`. `downloads` is the per-version download count.
+
+### ResolutionInfo
+`mode, fully_resolved, trusted, vrs_alleles, vrs_alleles_identified, vrs_complete,
+resolution_subjects, positional_rows, positional_rows_placed, expanded_keys, expanded_rows` (the
+last five are 0.17), plus `sources[]`/`signature` on the card's copy.
+
+`trusted` is tri-state — `false` when the compiler reported a table no VCF can join by position,
+`null` when we have no verdict to offer.
+
+**The five counters are `int | null`, and `null` is *not measured* — never `0`.** Each has a
+meaningful zero: `resolution_subjects: 0` is a module that resolved nothing, `positional_rows: 0` is
+one carrying no PGx/positional table, `expanded_keys: 0` is one where resolution found no one-to-many
+expansion. Every version compiled before format 0.6 reports `null` for all five, which is how you
+tell the eras apart without probing parquet. Do not coalesce them.
+
+Read `resolution_subjects` **beside** `fully_resolved`: that flag is `all()` over the module's variant
+rows, so `fully_resolved: true` with `resolution_subjects: 0` is an empty quantifier rather than a
+verdict. "Positionally complete" is `positional_rows_placed == positional_rows` — parts rather than a
+ratio, so the size of a shortfall is visible. And `expanded_rows - expanded_keys` is **not** the count
+of rows that cannot match; that needs per-row information the manifest does not carry.
 
 ### ModuleDetail
-`ModuleCard` fields + `readme: string`, `versions: VersionSummary[]`, `latest_manifest: ModuleManifest`.
+`ModuleCard` fields + `readme: string`, `versions: VersionSummary[]`, `latest_manifest: ModuleManifest`,
+plus the three format-0.6 blocks below, each projected from the **latest** version's manifest and
+each `null` when that version carries none.
+
+`weighting: {scale, method, note} | null` — what the module says its authored `weight` column means
+(RM92). All three are **free text and rendered verbatim**; upstream declined to impose a vocabulary,
+so neither does this. **`null` is the load-bearing value**: it means the module has not said, which a
+consumer must read as *do not combine these weights with another module's*, not as *safe*.
+
+`gwas_effects: {row_count, variant_count, with_effect_allele, without_effect_allele, measures[],
+units[], traits[], sources[], datasets[]} | null` — the GWAS Catalog effect-size sidecar (RM90).
+**Read `units` and `without_effect_allele` before using any of it.** More than one entry in `units`
+means those betas are on different scales and must not be pooled — one real variant in the reference
+corpus carries twelve distinct unit spellings across 62 traits. `without_effect_allele` counts
+associations the Catalog published without establishing which allele carries the effect; they are
+real evidence and **cannot be used as a weight in any direction**, and they are counted rather than
+filtered so that neither dropping nor keeping them can happen by accident. A `row_count` on its own
+reads as confidence, which is why it is never rendered alone.
+
+`verification: {closed, closed_at, closed_by, producer, produced_at, checks[]} | null` — whether
+anything the module asserts was ever *checked* (RM45). Each entry of `checks` is
+`{check, subjects, findings, skipped, detail, source, release, checked_at}`, where `skipped: null`
+means the check ran; `subjects: 0` beside a reason is *not* the same statement as `subjects: 0`
+without one.
+
+**How much of this block is the registry's word, measured rather than asserted.** A check *this
+server runs* cannot be forged — publish runs enrichment itself and its record displaces whatever
+arrived under the same name. A check *this server does not run* is carried **verbatim from the
+upload** and is unverifiable. `closed` is the sturdiest field, because a closure is hash-bound: the
+compiler recomputes the binding against the authored bytes and drops the closure when it does not
+match, so `closed: true` cannot be claimed by editing a JSON file — though `closed_by` is free text
+and proves that someone declared authoring finished, not who.
+
+Consequently: **absent reads as *nothing was said*, never as *passed***, and this block is
+deliberately **not** on the card and **not** filterable or sortable. A registry that let you rank by
+someone else's unverifiable pass would be lending it our credibility.
 
 ### WhoAmI
 `account: string` (handle), `namespaces: string[]` (every namespace the account is a member of),

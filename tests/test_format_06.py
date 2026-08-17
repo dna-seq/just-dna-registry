@@ -255,3 +255,57 @@ def test_a_weighting_declaration_moves_no_identity(client, api_key) -> None:
         return resp.json()["content_signature"]
 
     assert signature(_YAML) == signature(_YAML_NO_WEIGHTING)
+
+
+def test_the_counters_reach_both_projection_paths_and_null_survives(client, api_key) -> None:
+    """RM44/S31 on the wire, and the `None`-is-not-`0` rule holding at every hop.
+
+    Two paths render a `ResolutionInfo` and they must agree: the card parses the latest manifest,
+    the version list reads projected columns and never parses anything. This drives both and
+    compares them, because a counter that survives one hop and is coalesced at the other is worse
+    than one nobody published — a consumer would see `0` on the list and `null` on the card for the
+    same version.
+
+    The pre-0.6 direction is asserted from a stored row rather than argued: a legacy manifest is
+    written into the projection and every counter must come back `null`, not `0`. The DB columns are
+    nullable with no default for exactly this, which is the opposite of the choice made one tuple
+    over for the fact-table booleans.
+    """
+    published = _publish(client, api_key, name="declared")
+    compilation = published["compilation"]
+    assert compilation["resolution_subjects"] == 1
+    assert compilation["positional_rows"] == 0, "no positional table is a real 0, not a null"
+
+    card = client.get("/api/v1/modules/just-dna-seq/declared").json()["resolution"]
+    listed = client.get(
+        "/api/v1/modules/just-dna-seq/declared/versions"
+    ).json()["items"][0]["resolution"]
+    for field in (
+        "resolution_subjects", "positional_rows", "positional_rows_placed",
+        "expanded_keys", "expanded_rows",
+    ):
+        assert card[field] == listed[field], f"{field} disagrees between the two projections"
+    assert card["resolution_subjects"] == 1 and card["positional_rows"] == 0
+    # `fully_resolved` is only a verdict beside a non-zero denominator, which is now readable.
+    assert card["fully_resolved"] is True and card["resolution_subjects"] > 0
+
+
+def test_a_legacy_row_projects_null_counters_rather_than_zero(tmp_path) -> None:
+    """The half a live publish cannot reach: what a *pre-0.6* version looks like after migrating.
+
+    Every version in a real catalog on upgrade day is this shape, and the failure mode is silent —
+    `0` reads as "this module has no positional rows", which for a PGx artifact compiled in 0.5 is
+    false. Asserted through `version_facets`, the single derivation both the migration backfill and
+    the publish path use.
+    """
+    from just_dna_registry.db.facets import version_facets
+
+    legacy = _pre_06_manifest(signed=True, mode="best_effort", fully_resolved=True, warned=False)
+    facets = version_facets(legacy)
+    for field in (
+        "resolution_subjects", "positional_rows", "positional_rows_placed",
+        "expanded_keys", "expanded_rows",
+    ):
+        assert facets[field] is None, f"{field} projected {facets[field]!r} for a pre-0.6 manifest"
+    # ...while the fact-table booleans genuinely are `0`: the blocks did not exist to be omitted.
+    assert facets["has_gwas_effects"] == 0 and facets["weighting_declared"] == 0

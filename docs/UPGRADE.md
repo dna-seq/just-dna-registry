@@ -1,5 +1,80 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.17 format 0.6 adoption (operator note — a coordinated cut)
+
+**This is the second contract cut, and it has the same shape as 0.11's.** `just-dna-format`,
+`just-dna-compiler` and `just-dna-enricher` all move to **0.6.0**, `artifact.digest` moves on every
+module, and `version.contract_compatible` treats a `0.x` minor as breaking — so a 0.5 client talking
+to a 0.6 server is **refused**, and the first symptom of skipping step 0 is a blanket publish
+rejection with no obvious cause.
+
+Do the whole sequence in one maintenance window. It is shorter than 0.11's, and the reason is worth
+knowing before you start: **`content_signature` does not move.** Upstream measured 0/11 over the
+reference corpus and this repo's suite checks the consequence. So there is **no `rederive-signatures`
+step**, no risk of merged dedup claims, and no version loses its `409 duplicate_content` slot.
+
+**0. Bump clients to 0.6 first.** Same rule as 0.11, same failure if skipped.
+
+**1. `registry revalidate --recompile-check` — before anything else, and read the report.**
+This is the step that is new in kind rather than a repeat. 0.6 tightens two checks that can refuse a
+spec which published perfectly well at 0.5.4:
+
+- **RM50** — a `PMC ` id in a `pmid` cell. `PMC 3110566` used to be accepted as PMID 3110566, which
+  is a real id for an unrelated article.
+- **RM48** — a wrong-build coordinate: a position past its contig's end, or a contig only the other
+  assembly names. It is arithmetic rather than judgement, so it is an error in **both** modes and
+  `--strict` is not the switch that turns it off.
+
+Neither fired on the upstream corpus, but neither had to: the point is that your catalog is not that
+corpus. A version that fails here cannot be recompiled by step 2, so find them now and notify their
+publishers, rather than discovering it a third of the way through a catalog-wide sweep.
+`just-dna-enricher hint recover` reports which rs-number GRCh37 dbSNP records at a coordinate, which
+is the diagnostic for an RM48 refusal.
+
+**2. `registry upgrade --apply --limit N` — the digest re-baseline.** Every module recompiled under
+0.6 gets a different `artifact.digest`, exactly as 0.5 did to 0.4. This is a one-time, catalog-wide
+event and it is not corruption: `upgrade` re-publishes as a new PATCH and never mutates the
+predecessor, so old versions stay published and verifiable and a client pinned to one is unaffected.
+Only a client tracking `latest` sees new bytes, which is what a new PATCH means. With enrichment in
+the loop this is still the longest-running operation the registry has — batch it.
+
+**What you do *not* have to run, and why.**
+
+- **No `rederive-signatures`.** `content_signature` did not move. Running it anyway is not harmful,
+  but it is a long read of every stored spec to confirm nothing changed.
+- **No trust migration**, unlike 0.11.3. The trust rule *did* change — it reads RM44's counts now
+  instead of matching warning prose — but only for manifests that carry the new counters, and no
+  version already in your catalog does. The pre-0.6 branch is the 0.5 rule unchanged, asserted
+  exhaustively over the 24-shape pre-0.6 space in `tests/test_format_06.py`. Stored verdicts move
+  only as step 2 recompiles versions.
+- The schema migration (new fact-table columns) runs itself on first `init_db`, i.e. on
+  `registry serve` startup. It reads `manifest_json` only and backfills every existing row to "no
+  such table", which is honest rather than a downgrade: `gwas_effects.csv` did not exist when those
+  modules were compiled.
+
+**What visibly changes after step 2.** Expect these and do not treat them as regressions:
+
+- **Some PGx modules flip from `trusted: false` to `true`.** Compiler RM43 ships a positional fill:
+  rsID-keyed rows in `haplotypes.csv`/`pharm_variants.csv`/`heteroplasmy.csv` now take coordinates
+  from `resolution.csv`, so tables that joined to no VCF now join. The reference CPIC example goes
+  from 0 of 106 rows placed to 106 of 106. Nothing about those modules changed; the compiler learned
+  to do what the warning had been complaining about.
+- **`resolution_subjects` and the positional counters appear** on `/modules` and version lists. On a
+  version compiled before 0.6 they are `null`, which means *not measured* and is **not** `0`.
+- **`licensing.csv` becomes the stored spelling** of the licence ledger. An upload under either name
+  keeps working; `sources.csv` is renamed on the way in, because 0.6 deprecates it for removal at
+  format 1.0 and a published manifest is immutable — left alone, every publish would carry a
+  deprecation warning forever. A spec carrying **both** spellings is now refused (`422`) instead of
+  preferring one, because the 0.6 compiler raises on the collision rather than picking.
+- **The readme and the machine-written sidecars are downloadable**, since format 0.6 attests them
+  (`manifest.readme`, `manifest.derived`). `/files/{path}` and the tarball serve what the manifest
+  records, so this needed no change to the guard — and `download(include_inputs=True)` now returns a
+  module that recompiles where it lands.
+
+**If a publisher asks why their module suddenly warns about a closure**: 0.6 warns when a spec
+records none (`just-dna-compiler close`). It is a warning in 0.6 and a gate only at 1.0. It does not
+block a publish and there is nothing for an operator to configure.
+
 ## 0.12 deployment modes (operator note)
 
 **Existing production deployments need no change.** `REGISTRY_MODE` defaults to `prod`, and that is the

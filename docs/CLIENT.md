@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.16.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.17.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -82,12 +82,23 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
 ### Reads (no token)
 
 - **`list_modules(*, q=None, category=None, gene=None, genome_build=None, owner=None, license=None,
-  namespace=None, featured=None, include_blacklisted=False, group=None, sort="name", page=1,
-  per_page=20) -> dict`** — a `Page` of cards; `None` filters are dropped. Keyword-only and fully
-  named on purpose: the server ignores a query param it does not know, so a misspelled facet would
-  otherwise come back as a *wider* result set that looks like a working search.
+  namespace=None, featured=None, include_blacklisted=False, has_gene_validity=None,
+  has_clinical_assertions=None, has_gwas_effects=None, has_frequencies=None,
+  weighting_declared=None, group=None, sort="name", page=1, per_page=20) -> dict`** — a `Page` of
+  cards; `None` filters are dropped. Keyword-only and fully named on purpose: the server ignores a
+  query param it does not know, so a misspelled facet would otherwise come back as a *wider* result
+  set that looks like a working search.
+  - The five fact-table filters (0.17) select on what a module's **current** version carries and are
+    tri-state — omitted means "do not filter", which is not `False`. `weighting_declared=False` is
+    the useful negative: it finds the modules that have not stated what their `weight` column means,
+    i.e. the ones you must not aggregate across.
 - **`get_module(namespace, name) -> dict`** — module detail (readme, versions, `latest_manifest`,
-  full `stats.genes`).
+  full `stats.genes`), plus the format-0.6 blocks `weighting`, `gwas_effects` and `verification`,
+  each `null` when the latest version carries none. Two reading rules that the API reference spells
+  out and are worth repeating where they will be met: a `null` `weighting` means *the module has not
+  said what its weights mean* (not that they are comparable), and an absent `verification` means
+  *nothing was said* (not that anything passed). If you render `gwas_effects`, render `units` and
+  `without_effect_allele` — a bare `row_count` reads as confidence the data may not support.
 - **`versions(namespace, name, *, page=1, per_page=20) -> dict`** — a `Page` of `VersionSummary`.
   The listing is paged server-side (`per_page` max 100), so a long history needs the second page.
 - **`manifest(namespace, name, version) -> ModuleManifest`** — the parsed `just_dna_format`
@@ -120,9 +131,15 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
     manifest attests flat names, so a tree split first is a tree that fails to verify. Re-uploading
     either layout publishes the same module — the server flattens it back and none of these files is
     in the content signature. `split_derived(module_dir)` is the same move as a standalone function.
-  - **Today it separates less than it will.** The manifest has fields for `logs` and `logo` and none
-    for the derived CSVs, so a downloader cannot receive them at all and `derived/` is created only
-    when something lands in it. Filed upstream (`just-dna-format`, S26).
+  - **It separates properly since 0.17, and that is upstream's doing.** Through 0.16 the manifest
+    had fields for `logs` and `logo` and none for the derived CSVs, so a downloader could not
+    receive them at all and `derived/` was created only if something happened to land in it — filed
+    as S26 and answered by format 0.6's `manifest.derived`. `include_inputs=True` now fetches the
+    machine-written sidecars alongside the authored spec and hash-checks them
+    (`verify_manifest(check_derived=True)`), which is what makes a downloaded module recompile where
+    it lands: the compiler never fetches, so `resolution.csv` has to arrive with it.
+  - The readme travels too, verified like everything else (`manifest.readme`, S5). Before 0.6 it was
+    prose the server rendered on a card and no client could check.
 - **`get_tarball(namespace, name, version, dest) -> Path`** — saves the streamable `.tar.gz`.
 
 ### Writes (token required)

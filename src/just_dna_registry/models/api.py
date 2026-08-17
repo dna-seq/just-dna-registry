@@ -49,6 +49,43 @@ class ResolutionInfo(BaseModel):
     vrs_complete: Optional[bool] = Field(
         default=None, description="null when there are no alleles — complete-out-of-zero is vacuous"
     )
+    # ── 0.6 counters (RM44 / S31 / S33). `null` is *not measured*, and never `0`. ──
+    #
+    # Every one of these is `null` on a version compiled before 0.6, and `0` is a real answer for
+    # each: "no variant rows were resolved", "this module carries no positional table", "resolution
+    # found no one-to-many expansion". Coalescing the two would say something false about an existing
+    # catalog — that a 1,482-row PGx artifact has no positional rows — which is the vacuous
+    # `fully_resolved` failure re-made inside the fields written to close it.
+    resolution_subjects: Optional[int] = Field(
+        default=None,
+        description=(
+            "Variant rows `fully_resolved` was evaluated over, after rsID expansion. Read it beside "
+            "`fully_resolved`: `true` over `0` subjects is an empty all(), not a verdict. null = the "
+            "version predates 0.6 and did not count."
+        ),
+    )
+    positional_rows: Optional[int] = Field(
+        default=None,
+        description="Rows across pharm_variants/haplotypes/heteroplasmy. 0 = no such table; null = not counted.",
+    )
+    positional_rows_placed: Optional[int] = Field(
+        default=None,
+        description=(
+            "Of those, how many carry chrom+start and therefore join to a VCF by position. Complete "
+            "is `placed == rows` — parts rather than a ratio, so a shortfall's size is visible."
+        ),
+    )
+    expanded_keys: Optional[int] = Field(
+        default=None,
+        description="Authored identities that resolved onto more than one locus (null = not counted).",
+    )
+    expanded_rows: Optional[int] = Field(
+        default=None,
+        description=(
+            "Rows those keys became. Only one member per genotype can match; the difference from "
+            "`expanded_keys` is **not** the count of non-matching rows."
+        ),
+    )
     sources: list[str] = Field(default_factory=list)
     signature: Optional[str] = None
 

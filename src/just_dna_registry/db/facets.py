@@ -214,6 +214,37 @@ def version_facets(manifest: ModuleManifest) -> dict[str, Any]:
         # what its weights mean, not that it has any. Filterable because "whose weights can I combine"
         # is the question S36 was actually asking, and an absent declaration answers it with *no*.
         "weighting_declared": int(manifest.weighting is not None),
+        # The RM44/S31/S33 counters, projected so a version row and a parsed manifest cannot give
+        # different answers. `None` throughout for a pre-0.6 compile — including `resolution_subjects`,
+        # whose manifest default of `0` is the one value here that would silently lie.
+        **_counters(manifest),
+    }
+
+
+def _counters(manifest: ModuleManifest) -> dict[str, Optional[int]]:
+    """The 0.6 counters, or `None` for every one of them on a manifest that predates them.
+
+    `resolution_subjects` needs the era gate more than its siblings, not less: the other four are
+    already `int | None` upstream and arrive as `None` on their own, while this one is a plain `int`
+    defaulting to `0`. Projected naively, every 0.5-era version in the catalog would report "nothing
+    was resolved" — indistinguishable from a module where that is true, and exactly the vacuity the
+    field was added to expose.
+    """
+    compilation = manifest.compilation
+    if predates_positional_counts(manifest):
+        return {
+            "resolution_subjects": None,
+            "positional_rows": None,
+            "positional_rows_placed": None,
+            "expanded_keys": None,
+            "expanded_rows": None,
+        }
+    return {
+        "resolution_subjects": compilation.resolution_subjects,
+        "positional_rows": compilation.positional_rows,
+        "positional_rows_placed": compilation.positional_rows_placed,
+        "expanded_keys": compilation.expanded_keys,
+        "expanded_rows": compilation.expanded_rows,
     }
 
 

@@ -739,3 +739,58 @@ def test_split_and_flatten_are_inverses(tmp_path) -> None:
         f"{DERIVED_DIR}/{name}": name for name in DERIVED_FILES
     }
     assert "logs/reviewer.log" not in plan.renames, "the one subtree the manifest attests by path"
+
+
+async def test_the_fact_table_filters_are_reachable_from_the_sdk(sdk, client, api_key) -> None:
+    """SDK↔API parity for the 0.17 filters, which the route table cannot catch.
+
+    `_WRAPPED_ROUTES` pairs every *route* with a client method, and it stays green here because
+    `/modules` gained no new route — only five new query parameters. That is the drift this test
+    exists for: `list_modules` names every filter explicitly rather than sweeping `**kwargs`,
+    precisely because the server ignores a parameter it does not know, so a filter the client
+    forgot to forward comes back as a *wider* result set that looks like a working search.
+
+    Driven through the real client against the real app, so a typo in either spelling fails.
+    """
+    yaml = (
+        'schema_version: "1.0"\n'
+        "module:\n  name: weighted\n  title: W\n  description: d\n  report_title: R\n"
+        "genome_build: GRCh38\n"
+        'weighting:\n  scale: "0-1, curator-set"\n'
+    )
+    variants = (
+        "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category\n"
+        "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19\n"
+    )
+    studies = (
+        "rsid,pmid,population,p_value,conclusion,study_design\n"
+        "rs4244285,[PMID: 29165669],T,0.05,E,U\n"
+    )
+    resp = client.post(
+        f"/api/v1/modules/{_NS}/weighted/versions",
+        data={"version": _VER},
+        files=[
+            ("files", ("module_spec.yaml", yaml.encode(), "text/yaml")),
+            ("files", ("variants.csv", variants.encode(), "text/csv")),
+            ("files", ("studies.csv", studies.encode(), "text/csv")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    async def names(**filters) -> set[str]:
+        page = await asyncio.to_thread(lambda: sdk.list_modules(**filters))
+        return {item["name"] for item in page["items"]}
+
+    assert "weighted" in await names()
+    assert await names(weighting_declared=True) == {"weighted"}
+    assert "weighted" not in await names(weighting_declared=False)
+    # A module with no GWAS sidecar must not answer the positive filter — the failure mode of a
+    # dropped parameter is the filter silently matching everything.
+    assert await names(has_gwas_effects=True) == set()
+    assert "weighted" in await names(has_gwas_effects=False)
+
+    detail = await asyncio.to_thread(lambda: sdk.get_module(_NS, "weighted"))
+    assert detail["weighting"]["scale"] == "0-1, curator-set"
+    assert detail["facts"]["weighting_declared"] is True
+    assert detail["verification"] is not None and detail["verification"]["closed"] is False

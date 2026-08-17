@@ -11,7 +11,7 @@ from just_dna_format.manifest import ModuleManifest
 from just_dna_registry import groups
 from just_dna_registry.config import API_PREFIX
 from just_dna_registry.db.repository import Repository
-from just_dna_registry.db.facets import is_trusted
+from just_dna_registry.db.facets import is_trusted, version_facets
 from just_dna_registry.models.api import (
     CardStats,
     FactTablesInfo,
@@ -67,6 +67,7 @@ def _resolution_from_manifest(manifest: Optional[ModuleManifest]) -> ResolutionI
         vrs_alleles=alleles,
         vrs_alleles_identified=compilation.vrs_alleles_identified,
         vrs_complete=(compilation.vrs_alleles_identified == alleles) if alleles else None,
+        **_counters_from_manifest(manifest),
         sources=list(compilation.resolution_sources),
         signature=compilation.resolution_signature,
     )
@@ -91,7 +92,36 @@ def _resolution_from_row(row: sqlite3.Row) -> ResolutionInfo:
         vrs_alleles=alleles,
         vrs_alleles_identified=identified,
         vrs_complete=(identified == alleles) if alleles else None,
+        # Read straight through, `None` included: these columns are nullable precisely so the row
+        # path can say "not measured" in the same words the manifest path does. `int(x or 0)` — the
+        # idiom two lines up, correct for a counter with a meaningful zero — would be wrong here.
+        **{
+            name: (None if row[name] is None else int(row[name]))
+            for name in _COUNTER_COLUMNS
+            if name in keys
+        },
     )
+
+
+#: The 0.6 counters, by the name they share across the manifest, the column and the API field. One
+#: spelling in three places is what keeps the row path and the manifest path from drifting.
+_COUNTER_COLUMNS: tuple[str, ...] = (
+    "resolution_subjects",
+    "positional_rows",
+    "positional_rows_placed",
+    "expanded_keys",
+    "expanded_rows",
+)
+
+
+def _counters_from_manifest(manifest: ModuleManifest) -> dict[str, Optional[int]]:
+    """The same counters `version_facets` projects, for the card's manifest-side path.
+
+    Delegated rather than re-read off `manifest.compilation`, so the era gate that turns a pre-0.6
+    `resolution_subjects: 0` into `None` is applied once and cannot be forgotten on one path only.
+    """
+    facets = version_facets(manifest)
+    return {name: facets[name] for name in _COUNTER_COLUMNS}
 
 
 def _licensing(manifest: Optional[ModuleManifest]) -> LicensingInfo:

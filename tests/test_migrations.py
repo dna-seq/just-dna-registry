@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from just_dna_registry.db.schema import connect, init_db
+from just_dna_registry.db.schema import _V017_COLUMNS, connect, init_db
 
 # A minimal pre-0.5.0 `versions` table — no `needs_upgrade` column.
 _OLD_SCHEMA = """
@@ -142,3 +142,63 @@ def _manifest_json(*, warnings: list[str]) -> str:
         }
     )
     return manifest.model_dump_json()
+
+
+def test_init_db_backfills_the_0_17_fact_columns_without_re_judging_anything(tmp_path: Path) -> None:
+    """The 0.17 migration, and the two opposite defaults it has to get right on the same row.
+
+    This is what an operator meets on upgrade day: a catalog full of pre-0.6 versions, migrated in
+    place on the first `registry serve`. `docs/UPGRADE.md` § 0.17 promises it needs no command and
+    re-judges nothing, so both halves are checked here rather than argued there.
+
+    **The fact-table booleans backfill to `0`, and that is honest** — a manifest predating the block
+    belongs to a module that carried no such table, because the table did not exist to be omitted.
+    **The five counters backfill to `NULL`, and `0` would be a lie** — `positional_rows: 0` says "this
+    module has no positional table", which about a PGx artifact compiled under 0.5 is false. Same
+    migration, same row, opposite correct answers; the columns are declared to match.
+
+    `trusted` is asserted untouched beside them, because the 0.17 rule change is the kind that
+    *looks* like it needs a re-projection (0.11.3's did) and does not: the pre-0.6 branch is the 0.5
+    rule unchanged, so a migration that moved a stored verdict here would be a bug.
+    """
+    db = tmp_path / "catalog.db"
+    conn = connect(db)
+    init_db(conn)
+
+    conn.execute("INSERT INTO modules(id, namespace, name, title) VALUES (1, 'just-dna-seq', 'm', 'M')")
+    conn.execute(
+        "INSERT INTO versions(id, module_id, version, digest, manifest_json, resolution_mode, "
+        "fully_resolved, trusted) VALUES (1, 1, '1.0.0', 'sha256:x', ?, 'strict', 1, 1)",
+        (_manifest_json(warnings=[]),),
+    )
+    conn.commit()
+
+    # Simulate a DB that predates 0.17 by dropping the columns the migration adds. The index goes
+    # first — SQLite refuses to drop a column an index still names, and a real pre-0.17 DB has
+    # neither.
+    conn.execute("DROP INDEX IF EXISTS idx_versions_gwas_effects")
+    for column, _decl in _V017_COLUMNS:
+        conn.execute(f"ALTER TABLE versions DROP COLUMN {column}")
+    conn.commit()
+    assert not {c for c, _ in _V017_COLUMNS} & _cols(conn, "versions")
+
+    init_db(conn)  # re-adds and backfills
+
+    row = conn.execute("SELECT * FROM versions WHERE id = 1").fetchone()
+    assert (
+        row["has_gene_validity"],
+        row["has_clinical_assertions"],
+        row["has_gwas_effects"],
+        row["has_frequencies"],
+        row["weighting_declared"],
+    ) == (0, 0, 0, 0, 0)
+    for counter in (
+        "resolution_subjects", "positional_rows", "positional_rows_placed",
+        "expanded_keys", "expanded_rows",
+    ):
+        assert row[counter] is None, f"{counter} backfilled to {row[counter]!r}, not NULL"
+
+    assert row["trusted"] == 1, "0.17 must not re-judge a stored verdict"
+
+    init_db(conn)  # idempotent
+    assert conn.execute("SELECT trusted FROM versions WHERE id = 1").fetchone()["trusted"] == 1

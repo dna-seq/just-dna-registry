@@ -418,35 +418,62 @@ an explicit guard:
   source row stops being reported as unused — which had been advising authors to delete the exact row the
   compile licence gate reads.
 
+## 0.17 — format/compiler/enricher 0.6.0 adoption ✅
+
+- **A contract cut, not an attribute chase.** Every `artifact.digest` moves and a 0.5 client is
+  refused outright, exactly as 0.11 did for 0.4→0.5. `content_signature` moves nowhere (0/11 upstream),
+  so no `rederive-signatures` and no dedup claim changes hands. Operator sequence in
+  [UPGRADE.md](UPGRADE.md) § 0.17; the reassurances it makes are tested in `tests/test_format_06.py`
+  rather than asserted.
+- **RM44 landed and the prose fallback stayed** — see *Manifest & integrity* in `CLAUDE.md` for why
+  the standing "delete the facet" instruction was superseded rather than followed. The counters
+  (`resolution_subjects`, `positional_rows`/`_placed`, `expanded_keys`/`_rows`) are projected into
+  columns and onto every `resolution` object, `null` throughout for a pre-0.6 compile.
+- **`specfiles.py` is built on `just_dna_format.layout`** instead of mirroring it, which is what the
+  0.16.2 incident argued for. The licensing rename inverted and is now derived rather than written.
+- **Three new blocks on the detail** (`weighting`, `gwas_effects`, `verification`) and five new
+  fact-table filters on `GET /modules`.
+- **Free from upstream**: RM43's positional fill makes rsID-keyed PGx tables joinable, which flips
+  the reference example's trust verdict and removes the last unjoinable module from the corpus.
+- **Owed, and newly the only thing owed here**: the fallback in `db/facets.py` and its differential
+  baseline in `tests/test_format_06.py` retire together, when the last pre-0.6 version leaves a
+  catalog. That is an event to watch for, not a release to schedule — a deployment that has run
+  `registry upgrade` over its whole catalog is done, and one that has not, is not.
+
 ## Next registry version (post-0.11)
 
-- **Adopt `manifest.readme` when format 0.6 lands** (open; minor — closes the upstream half of **S5**
-  and **S7**). Filed as their **S25** and *accepted as asked*: `readme: FileEntry | None` mirroring
-  `logo`, excluded from `artifact.digest` **and** `content_signature`, with
-  `verify_manifest(check_readme=True)` to re-hash it. Upstream explicitly endorsed keeping our
-  `/files/{path}` guard as it is — the fix was the missing attestation, not the refusal to serve
-  unhashed bytes — so adoption is: set the field on publish and on `amend_readme`, then let the
-  existing manifest-driven paths serve and pack it with no change to their rules. Two things to do in
-  the same pass: the DB projection becomes derivable from the manifest again (today `readme` is the
-  one column no manifest records, which is why `upsert_module(readme=None)` means "leave it"), and
-  `tests/test_v05.py::test_the_readme_reaches_the_card_but_not_a_downloader` is asserting a
-  limitation rather than a desired property — it is the test to rewrite, not to delete. Note their
-  `README_CANDIDATES` ladder resolves more spellings than our single `README_FILE`; decide
-  deliberately whether to widen ours to match or to keep warning (S7), because two different answers
-  to "which file is the readme" is exactly the drift this item exists to end.
-- **Decide what to do with `verification.json` once format 0.6 can attest it** (open; minor —
-  the second half of **S11** from `just-dna-format`). 0.16 recognises the file, so a rebuild carries
-  it forward; nothing reads it. When `manifest.verification` and the signed `closure` block land,
-  three decisions come with them and none should be made by reflex. **(1)** Whether to surface it at
-  all: this server compiles what it publishes, which is what makes `compile_success` and the digest
-  *ours*; the attestation is the author's word about what their enricher saw against live sources at
-  authoring time, and we cannot reproduce it offline. **(2)** If surfaced, how it is marked as the
-  author's claim rather than the registry's — upstream marks every field in it untrusted for exactly
-  this reason, and a forged pass is worse than silence. **(3)** Whether a `closure` signed by the
-  module's own key means anything more to us than an unsigned one, given we already verify a
-  signature over the artifact. The cheap, obviously-correct half is serving the bytes back once the
-  manifest attests them, since `/files/{path}` is built from what the manifest records — that needs
-  no policy at all, and it is the half to do first.
+- **Adopt `manifest.readme` when format 0.6 lands** (**done in 0.17**). Shipped as filed: publish
+  and `amend_readme` both set the entry, `/files/{path}` and the tarball admit the file without their
+  rules changing (they serve what the manifest attests), and `verify_manifest(check_readme=True)`
+  re-hashes it on download. `tests/test_v05.py::test_the_readme_reaches_the_card_but_not_a_downloader`
+  was rewritten rather than deleted — it was pinning a limitation, and this item named it as the one
+  to change.
+
+  Two decisions the item asked for, and what they resolved to. The DB projection is *derivable* in
+  the sense that mattered: the text is a hash rather than a copy, so the manifest cannot carry the
+  prose, but it now names **which file is the readme**, and the publish path reads
+  `manifest.readme.name` rather than the constant. `upsert_module(readme=None)` still means "leave
+  it" and should stay that way — that guard is about a caller that does not know about readmes, which
+  no manifest field fixes. And on upstream's wider `README_CANDIDATES` ladder: ours stays a single
+  `README.md` plus the `MODULE.md` rename, because following the manifest's own `readme.name` gets us
+  their resolution for free wherever the compiler applied it, and inventing a second answer to "which
+  file is the readme" is the drift this item existed to end (S7 stays a warning).
+- **Decide what to do with `verification.json` once format 0.6 can attest it** (**done in 0.17** —
+  the second half of **S11**). All three decisions were made deliberately and the evidence for them is
+  in `tests/test_specfiles.py::test_a_publisher_cannot_forge_a_check_this_server_runs`, because the
+  answers turned on a question nobody had measured: **how much of that block is actually ours**.
+
+  **(1) Surfaced, on the detail only.** Not because it is trustworthy but because it is now partly
+  ours: this server runs enrichment on the publish path and attests what it saw, and that record
+  *displaces* an uploaded one for the same check. A publisher cannot forge a check we run. **(2)** A
+  check we do **not** run is carried verbatim and is unverifiable — that is the residual surface, so
+  nothing in the block is presented as a registry verdict, and it is deliberately not a card facet,
+  not a filter and not a sort key. **(3)** The closure earns a boolean of its own: it is hash-bound,
+  the compiler recomputes the binding and drops a closure whose authored bytes moved, so `closed:
+  true` cannot be claimed by editing a file. `closed_by` remains free text and proves that somebody
+  declared authoring finished, not who. An Ed25519 signature over it would add a *who*, and that is
+  worth revisiting only if signed closures start appearing in the wild.
+
 - **A successful publish drops its enrichment findings.** `EnrichOutcome.notes` is read in exactly one
   place — a *failed* compile's `warnings` (`services/publish.py`) — so on the happy path the ref-allele
   result, the non-fatal stale rsIDs, the PAR drops and the new `clin_sig_not_checked` reason are
@@ -527,12 +554,17 @@ an explicit guard:
   change to what it asserts, and it now guards on the example's shape so the next upstream move fails
   with a sentence instead of a bare `assert True is False`.
 
-  **Two halves remain, both 0.6 lockstep.** Recognising `licensing.csv` in `RECOGNIZED_SPEC_FILES` is
-  moot until then (after the rename there is nothing left under that name to round-trip) and becomes
-  necessary the moment the compiler prefers it. And upstream **refuses** a module carrying both
-  spellings (RM49); we warn and let the readable name win, because failing a publish that succeeds
-  today is a major and their own resolver arrives with the upgrade. Revisit both in the same pass, and
-  note the deprecation runs the other way from then on: `sources.csv` is removed at format 1.0.
+  **Both remaining halves landed in 0.17**, and the pass found a third thing the item had not
+  predicted. `licensing.csv` is recognized, and the rename **inverted**: the 0.6 compiler prefers the
+  new spelling and warns on the old, so renaming forward is what keeps a legacy spec publishable at
+  1.0 — and leaving it pointing backwards would have stamped a deprecation warning into every
+  published manifest, permanently. Both spellings present is now a `422` rather than a warning,
+  matching upstream RM49, because `layout.resolve_sidecar` **raises**: our warn-and-prefer would no
+  longer have produced a publish at all, only a `SidecarCollision` with our own upload as the cause.
+
+  The unpredicted part: the direction is no longer written down. `RENAMED_ON_UPLOAD` is derived from
+  `just_dna_format.layout.SIDECAR_SPELLINGS`, so the next sidecar rename arrives with a floor bump
+  instead of an incident.
 
 ## Superseded (post-0.10)
 
