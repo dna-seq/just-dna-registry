@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.16.2"
+version = "0.17.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -12,7 +12,18 @@ dependencies = [
     "httpx>=0.28.1",
     "typer>=0.26.8",
     "python-dotenv>=1.0.1",
-    "just-dna-format>=0.5.0",
+    # **0.6.0 is a hard floor on the base install**, which no previous adoption needed. Through 0.5.x
+    # the client read only models that had existed since 0.3, so the floor could stay at 0.5.0 and let
+    # a 0.5.0 client talk to a 0.5.4 server. 0.6 ends that: `just_dna_format.layout` (the four-party
+    # sidecar-name agreement `specfiles.py` is now built on) and the `readme` / `verification` /
+    # `weighting` / `gwas_effects` manifest blocks are all new symbols, read unguarded, on the client
+    # path as well as the server one.
+    #
+    # And a floor is the *weaker* of the two guards here. `version.contract_compatible` treats a 0.x
+    # MINOR as a breaking contract bump, so a 0.5 client is refused by a 0.6 server before any import
+    # error could occur — the floor exists so the failure is a resolver message rather than an
+    # `AttributeError` deep inside a download.
+    "just-dna-format>=0.6.0",
 ]
 
 [project.optional-dependencies]
@@ -20,19 +31,15 @@ dependencies = [
 # compute a spec's content identity locally, without uploading and without recompiling, so a
 # publisher can pre-check dedup before spending a publish. Only the compiler tier is needed for
 # that — no network tier, no FastAPI.
-# `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41). Floor is now **0.5.4**, for
-# `compiler.UNJOINABLE_PHRASE`: `db/facets.py` imports it rather than spelling the fragment, so this is
-# a hard floor and not a preference — on 0.5.3 the import is an `ImportError` at startup.
+# `>=0.5.1` for the public `load_csv_rows` / `load_spec_variants` (RM41), then `>=0.5.4` for
+# `compiler.UNJOINABLE_PHRASE`. Floor is now **0.6.0**, and unlike the 0.5.x bumps this one is a
+# contract cut rather than an attribute chase: 0.6 moves `artifact.digest` on every module, so a 0.5
+# compiler computing a signature beside a 0.6 server is computing it under a different parquet schema.
 #
-# `just-dna-format` stays at 0.5.0 on purpose, and 0.5.4 did not change that even though upstream
-# bumped format to the shared number. That bump was for *legibility* — "a 0.5.4 compiler naming a 0.5.0
-# schema is a version pair nobody can read" — not a schema cut: no model, parquet column or manifest
-# field moved in 0.5.1→0.5.4, which is what kept them all legal inside the closed 0.5 digest window.
-# `version.contract_compatible` says the same thing structurally (same major.minor interoperates), so a
-# 0.5.0 client still exchanges artifacts with a 0.5.4 server and raising this floor would break that
-# for nothing.
+# `ARTIFACT_PARQUETS` / `LEAD_PARQUETS` (the public names for what was `_OUTPUT_FILES`) are the
+# concrete new imports; the floor would be here for the digest window regardless.
 compiler = [
-    "just-dna-compiler>=0.5.4",
+    "just-dna-compiler>=0.6.0",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -47,20 +54,26 @@ server = [
     "huggingface-hub>=0.34.0",
     "pyjwt>=2.10.0",
     "pyyaml>=6.0.2",
-    # `>=0.5.4` is a hard floor, not a preference. Each of these is read unguarded, and every one of
-    # them is an attribute or a name that simply does not exist on the release below it: `.vrs` (RM40,
-    # 0.5.1), `.clin_sig_not_checked` (S4, 0.5.2), `offline=` on the dosage pass (RM39, 0.5.1),
-    # `cpic_cache`/`pharmvar_cache` on `enrich_pgx` (RM38, 0.5.1), `heteroplasmy.csv` in the enricher's
-    # subject list (0.5.3), the positional-joinability warning the trust facet consults (0.5.3), and now
-    # from 0.5.4: `EnrichmentResult.unreachable_rsids` (S20), `IdentifierReport.gene_loci` /
-    # `.gene_loci_not_checked` (S24), and `compiler.UNJOINABLE_PHRASE` (S13).
+    # `>=0.6.0` is a hard floor, and the reason differs in kind from every floor before it. The 0.5.x
+    # bumps were each an attribute that did not exist on the release below (`.vrs`, RM40, 0.5.1;
+    # `.clin_sig_not_checked`, S4, 0.5.2; `offline=` on the dosage pass, RM39, 0.5.1;
+    # `cpic_cache`/`pharmvar_cache` on `enrich_pgx`, RM38, 0.5.1; `EnrichmentResult.unreachable_rsids`,
+    # S20, 0.5.4; `IdentifierReport.gene_loci` / `.gene_loci_not_checked`, S24, 0.5.4). Those are still
+    # true and still read unguarded.
     #
-    # 0.5.4 also makes `PacingGate` thread-safe (S15), which is the one item here the registry does not
-    # *read* — it repairs a race this server was the reported cause of, since a shared bundle across a
-    # threadpool is exactly the arrangement the enricher's own docstring recommends. See
-    # `services/enrich.py::shared_lookup_clients` and `enrich_max_concurrency` in `config.py`.
-    "just-dna-compiler>=0.5.4",
-    "just-dna-enricher>=0.5.4",
+    # 0.6 adds a second, stronger reason: it is a **contract** boundary. Every `artifact.digest` this
+    # server publishes moves, so the compiler that computes one and the format that models it must be
+    # the same minor as the clients verifying it — which `version.contract_compatible` enforces on the
+    # wire, and this floor enforces at install time. Running a 0.5 compiler here would publish digests
+    # no 0.6 client can reproduce.
+    #
+    # Concrete new reads on top of the digest window: `compiler.ARTIFACT_PARQUETS` / `LEAD_PARQUETS`,
+    # `Compilation.resolution_subjects` and the four positional/expansion counters (RM44 — what
+    # finally retires the warning-prose coupling in `db/facets.py`), `manifest.readme` (S25),
+    # `manifest.verification` / `weighting` / `gwas_effects`, and the enricher's three new drafting
+    # passes behind the fact tables `specfiles.py` now recognizes.
+    "just-dna-compiler>=0.6.0",
+    "just-dna-enricher>=0.6.0",
 ]
 
 [build-system]

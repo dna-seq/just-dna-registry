@@ -7,6 +7,7 @@ table kind is added, and the failure mode of staleness is a module the registry 
 for no reason the author can see.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from just_dna_compiler.compiler import (
     _TABLE_KIND_CSVS,
 )
 from just_dna_format.manifest import ModuleManifest
+from just_dna_format.verification import VerificationDoc
 
 from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
@@ -141,6 +143,14 @@ def test_an_attestation_survives_the_rebuild_that_used_to_drop_it(client, api_ke
     re-publish that claims to carry a version forward. Asserted beside `provenance.json`, which is
     deliberately *not* carried — it describes how the predecessor was built, while the attestation is
     hash-bound to the authored bytes and so invalidates itself if they move.
+
+    **What is asserted changed at the 0.6 adoption, and the reason is worth keeping.** Through 0.16
+    this compared the stored bytes to the uploaded bytes, which held because nothing on the server
+    wrote this file. Under 0.6 the server's own enrichment attests its checks into it, so the stored
+    copy is a *merge* and byte equality is the wrong question — asserting it would only pin that we
+    had not adopted the feature. What must stay true is that the file survives the storage round-trip
+    into the rebuild, which is what this test exists for; who wrote which record inside it is
+    `test_a_publisher_cannot_forge_a_check_this_server_runs` below.
     """
     from just_dna_registry.services.upgrade import prepare_version_upgrade
 
@@ -163,8 +173,13 @@ def test_an_attestation_survives_the_rebuild_that_used_to_drop_it(client, api_ke
     storage = app.state.storage
     prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.0", manifest)
     assert prep is not None
-    assert prep.files[VERIFICATION_FILE] == attestation
     assert PROVENANCE_FILE not in prep.files
+    # Carried forward, and carried forward as a *readable* attestation rather than the bytes that
+    # arrived: the server re-attested it during the publish, so what the rebuild gets is a document
+    # the next compile can read.
+    carried = VerificationDoc.model_validate_json(prep.files[VERIFICATION_FILE])
+    assert {r.check for r in carried.records} == {r.check for r in manifest.verification.checks}
+    assert manifest.verification is not None
 
     # And it changed nothing about the module's identity: the same spec without it signs the same.
     without = client.post(
@@ -187,6 +202,90 @@ def test_an_attestation_survives_the_rebuild_that_used_to_drop_it(client, api_ke
         headers={"Authorization": f"Bearer {api_key}"},
     ).json()
     assert with_it["content_signature"] == without["content_signature"]
+
+
+def test_a_publisher_cannot_forge_a_check_this_server_runs(client, api_key) -> None:
+    """Exactly how much of `manifest.verification` is the publisher's word, measured rather than assumed.
+
+    The 0.17 decision to surface this block at all turned on this question, and the ROADMAP's worry —
+    "a forged pass is worse than silence" — is *half* answered by the format, in a way that is much
+    better than it looks from the models alone. Both halves are pinned here because the surface's
+    wording depends on them, and a change in either would make our own documentation false.
+
+    **Half one: a check this server runs cannot be forged.** The publish path runs enrichment itself
+    and attests what it saw, and that record displaces whatever arrived under the same name. Here an
+    upload claims `clinical_significance` ran over 999 subjects and found nothing; what publishes is
+    this server's own `skipped` record for a deployment with no ClinVar snapshot.
+
+    **Half two: a check this server does *not* run survives verbatim, and is unverifiable.** Nothing
+    in this deployment produces `acmg_secondary_findings`, so the fabricated record is carried into
+    the manifest exactly as sent. That is the residual surface, it is why every field in the block is
+    presented as the publisher's claim, and it is why an absent block must read as *nothing was said*
+    rather than as *nothing was found*.
+
+    A third property falls out of the format and is worth pinning beside them: the **closure is
+    hash-bound**. A closure whose `module_hash` does not match the authored bytes is dropped by the
+    compiler rather than republished, so `closed` cannot be claimed by editing a JSON file.
+    """
+    forged = json.dumps(
+        {
+            "module_hash": "sha256:" + "0" * 64,
+            "signature": "sha256:" + "0" * 64,
+            "difficulty": 20,
+            "nonce": 1,
+            "producer": "totally-legit-tool 9.9",
+            "produced_at": "2026-01-01T00:00:00Z",
+            "closure": {
+                "closed_at": "2026-01-01T00:00:00Z",
+                "closed_by": "a person who says it is fine",
+                "signature": None,
+            },
+            "records": [
+                {
+                    "check": check,
+                    "subjects": 999,
+                    "findings": 0,
+                    "skipped": None,
+                    "detail": "everything is perfect",
+                    "source": source,
+                    "release": "2026-01",
+                    "checked_at": "2026-01-01T00:00:00Z",
+                }
+                for check, source in (
+                    ("clinical_significance", "clinvar"),
+                    ("acmg_secondary_findings", "acmg"),
+                )
+            ],
+        }
+    ).encode()
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"},
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+            ("files", (VERIFICATION_FILE, forged, "application/json")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, resp.text
+    published = {r.check: r for r in ModuleManifest.model_validate(resp.json()).verification.checks}
+
+    # Displacement is the property, not the verdict: this fixture *has* a ClinVar snapshot, so the
+    # check really runs and reports `subjects=0` against a spec whose one variant it found nothing
+    # for. What matters is that none of the forged cells survived — not the count, not the prose, and
+    # not the invented release, which is replaced by the snapshot actually read.
+    ours = published["clinical_significance"]
+    assert ours.subjects == 0 and ours.detail != "everything is perfect", (
+        "a forged 'ran' record displaced this server's own"
+    )
+    assert ours.release != "2026-01"
+    theirs = published["acmg_secondary_findings"]
+    assert theirs.subjects == 999 and theirs.skipped is None, (
+        "the unverifiable half changed shape — re-read the surface's wording before changing this"
+    )
+    assert ModuleManifest.model_validate(resp.json()).verification.closure is None
 
 
 def test_required_is_only_the_yaml() -> None:
@@ -268,19 +367,24 @@ def test_a_pgx_only_module_publishes_revalidates_and_upgrades(pgx_client) -> Non
     manifest = ModuleManifest.model_validate(resp.json())
 
     # A variants-free module never gets a `resolution_mode`, and `fully_resolved` is then `all()` over
-    # an empty list — vacuously `True`, about a file that does not exist.
+    # an empty list — vacuously `True`, about a file that does not exist. 0.6 publishes the
+    # denominator that says so out loud, which is what retires the inference.
     assert manifest.compilation.resolution_mode is None
     assert manifest.compilation.fully_resolved is True
+    assert manifest.compilation.resolution_subjects == 0
 
-    # Through 0.11.2 this asserted `is_trusted() is True`, reading that vacuous flag as a verdict.
-    # It is not one *for this module*: all 106 `haplotypes.csv` rows carry a `start` with no `chrom`
-    # (CPIC publishes the position on `sequence_location` and the chromosome on `gene` — there is no
-    # `chrom` column at all), so nothing here joins to a VCF by position and the catalog was
-    # advertising it as fully-baked. Compiler 0.5.3 is what makes this visible, and the warning is
-    # the durable record of it.
-    assert manifest.compilation.fully_resolved is True  # still vacuously so
-    assert any("have no chrom+start" in w for w in manifest.compilation.warnings)
-    assert is_trusted(manifest) is False
+    # **This module's verdict reversed at the 0.6 adoption, and it is the compiler that moved.**
+    # Through 0.11.2 it read `True` off the vacuous flag; 0.11.3 corrected that to `False`, because
+    # all 106 `haplotypes.csv` rows carried a `start` with no `chrom` (CPIC publishes the position on
+    # `sequence_location` and the chromosome on `gene` — there is no `chrom` column at all), so
+    # nothing joined to a VCF by position. RM43 shipped the positional fill: the same 106 rows are
+    # now placed from the `resolution.csv` the example ships, and RM44/S31 publish that as counts
+    # instead of a sentence. So the module really does annotate now, and `True` is the honest answer.
+    assert (manifest.compilation.positional_rows, manifest.compilation.positional_rows_placed) == (
+        106, 106
+    )
+    assert not any("have no chrom+start" in w for w in manifest.compilation.warnings)
+    assert is_trusted(manifest) is True
 
     storage = pgx_client.app.state.storage
     status, _ = revalidate_version(storage, "just-dna-seq", name, "1.0.0", manifest)
@@ -288,9 +392,51 @@ def test_a_pgx_only_module_publishes_revalidates_and_upgrades(pgx_client) -> Non
 
     prep = prepare_version_upgrade(storage, "just-dna-seq", name, "1.0.0", manifest)
     assert prep is not None  # was None — un-upgradable
-    # The 0.5 sidecars survive the round trip. They are absent from `manifest.inputs` by design, so
-    # carrying only what the manifest lists silently dropped them.
-    assert {"resolution.csv", "sources.csv"} <= set(prep.files)
+    # The derived sidecars survive the round trip. They are absent from `manifest.inputs` by design,
+    # so carrying only what the manifest lists silently dropped them. The ledger is asserted under
+    # the *current* spelling: 0.17 stores it as `licensing.csv`, and a rebuild that produced the
+    # deprecated name would be re-introducing the file 1.0 stops reading.
+    assert {"resolution.csv", LICENSING_CSV} <= set(prep.files)
+    assert SOURCES_CSV not in prep.files
+
+
+#: A PGx module that genuinely joins to nothing: rsID-keyed haplotypes with no coordinate column at
+#: all, and no `resolution.csv` to fill one from, published against a deployment with empty caches.
+#:
+#: Hand-written, and that is a deliberate exception to this file's own rule of driving the real
+#: reference corpus. The corpus **used to be** this case — the CPIC example carried 106 rows with a
+#: `start` and no `chrom` — and RM43's positional fill repaired it, which is the good outcome and
+#: also the reason a fixture is now needed: nothing published upstream is unjoinable any more. Left
+#: to the corpus, the negative half of this facet would simply stop being tested, and the way we
+#: would find out is a catalog advertising an unjoinable module as fully-baked.
+_UNJOINABLE_YAML = """\
+schema_version: "1.0"
+module:
+  name: rsid_only_pgx
+  title: rsID-only PGx
+  description: d
+  report_title: R
+genome_build: GRCh38
+"""
+_UNJOINABLE_HAPLOTYPES = (
+    "haplotype_name,rsid,allele,gene\n"
+    "*2,rs4244285,A,CYP2C19\n"
+    "*17,rs12248560,T,CYP2C19\n"
+)
+
+
+def _publish_unjoinable(pgx_client) -> ModuleManifest:
+    resp = pgx_client.post(
+        "/api/v1/modules/just-dna-seq/rsid_only_pgx/versions",
+        data={"version": "1.0.0"},
+        files=[
+            ("files", (SPEC_YAML, _UNJOINABLE_YAML.encode(), "text/yaml")),
+            ("files", ("haplotypes.csv", _UNJOINABLE_HAPLOTYPES.encode(), "text/csv")),
+        ],
+        headers={"Authorization": "Bearer mk_live_testkey"},
+    )
+    assert resp.status_code == 201, resp.text
+    return ModuleManifest.model_validate(resp.json())
 
 
 def test_a_module_that_joins_to_no_vcf_is_not_advertised_as_trusted(pgx_client) -> None:
@@ -298,19 +444,20 @@ def test_a_module_that_joins_to_no_vcf_is_not_advertised_as_trusted(pgx_client) 
 
     `trusted` is projected into `versions` on publish, so the defect this covers was not "a function
     returned True" but "the catalog served a module that annotates nothing under the fully-baked
-    facet". Driven through a real publish of a real reference example, because the whole point is that
-    the compiler's judgement reaches the column.
+    facet".
+
+    Since 0.17 the verdict is read from `positional_rows_placed` vs `positional_rows` rather than
+    from warning prose, so this also pins that the *counts* reach the column — and it is a stronger
+    check than the sentence ever allowed, because a partial failure now shows as 0 of 2 rather than
+    as the mere presence of a complaint.
     """
-    resp = pgx_client.post(
-        "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions",
-        data={"version": "1.0.0"},
-        files=_pgx_parts(),
-        headers={"Authorization": "Bearer mk_live_testkey"},
+    manifest = _publish_unjoinable(pgx_client)
+    assert (manifest.compilation.positional_rows, manifest.compilation.positional_rows_placed) == (
+        2, 0
     )
-    assert resp.status_code == 201, resp.text
     # From the projected column (the version list reads rows, never re-parsing the manifest)...
     versions = pgx_client.get(
-        "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions"
+        "/api/v1/modules/just-dna-seq/rsid_only_pgx/versions"
     ).json()["items"]
     assert [v["resolution"]["trusted"] for v in versions] == [False]
     # ...and from the manifest on the card, which is a second implementation that must agree.
@@ -337,18 +484,49 @@ def test_the_unjoinable_phrase_still_reaches_the_manifest(pgx_client) -> None:
     """
     from just_dna_registry.db.facets import UNJOINABLE_PHRASE, joins_nothing_positionally
 
-    resp = pgx_client.post(
-        "/api/v1/modules/just-dna-seq/cyp2c19_star_alleles/versions",
-        data={"version": "1.0.0"},
-        files=_pgx_parts(),
-        headers={"Authorization": "Bearer mk_live_testkey"},
-    )
-    manifest = ModuleManifest.model_validate(resp.json())
+    manifest = _publish_unjoinable(pgx_client)
     emitted = [w for w in manifest.compilation.warnings if UNJOINABLE_PHRASE in w]
     assert emitted, manifest.compilation.warnings
     # The sentence names the table and both counts, which is what makes it worth surfacing verbatim.
-    assert "haplotypes.csv" in emitted[0] and "106" in emitted[0]
+    assert "haplotypes.csv" in emitted[0] and "2" in emitted[0]
     assert joins_nothing_positionally(manifest) is True
+
+
+def test_the_structured_counts_are_preferred_and_the_prose_is_the_legacy_path(pgx_client) -> None:
+    """RM44's actual adoption: the counts decide, and the sentence only decides without them.
+
+    `CLAUDE.md` and the 0.11.3 ROADMAP entry both said to delete the prose coupling once RM44 landed.
+    It landed, and deleting it would have been wrong — every version already in a catalog was compiled
+    before 0.6 and carries neither counter, so the sentence is still the only record a reindex can see
+    for them. Deleting it would have silently re-granted trust to exactly the modules 0.11.3 took it
+    from.
+
+    Both paths are therefore pinned on one manifest, by stripping the counts off a copy of it: the
+    same version must reach the same verdict either way, or the fallback is not a fallback.
+    """
+    from just_dna_registry.db.facets import (
+        is_trusted,
+        positionally_joinable,
+        predates_positional_counts,
+    )
+
+    modern = _publish_unjoinable(pgx_client)
+    assert predates_positional_counts(modern) is False
+    assert positionally_joinable(modern) is False
+    assert is_trusted(modern) is False
+
+    # The same module as a pre-0.6 manifest: no counters, only the warning the compiler wrote.
+    legacy = modern.model_copy(deep=True)
+    legacy.compilation.positional_rows = None
+    legacy.compilation.positional_rows_placed = None
+    assert predates_positional_counts(legacy) is True
+    assert positionally_joinable(legacy) is None  # cannot say — never `True`
+    assert is_trusted(legacy) is False  # ...but the sentence still says it, so the verdict holds
+
+    # With neither the counters nor the sentence, the answer is an admission rather than a pass.
+    silent = legacy.model_copy(deep=True)
+    silent.compilation.warnings = []
+    assert is_trusted(silent) is None
 
 
 def test_the_licensing_facet_surfaces_a_no_sale_clause(pgx_client) -> None:
@@ -449,32 +627,53 @@ def test_a_readme_under_another_spelling_warns_rather_than_vanishing() -> None:
     assert plan_layout([SPEC_YAML, README_FILE]).warnings == []
 
 
-def test_the_licensing_ledger_is_renamed_onto_the_spelling_the_compiler_reads() -> None:
-    """`licensing.csv` is format 0.6's name for `sources.csv` (RM51) and this deployment is on 0.5.
+def test_the_licensing_ledger_is_stored_under_the_spelling_that_survives_1_0() -> None:
+    """The rename that inverted at the 0.6 adoption, and the reason it had to.
 
-    Renamed, not warned about: upstream defines the two names as one table with one row model, so
-    unlike the readme lookalikes there is nothing to guess. Every current authoring tool and every
-    reference example writes the new name, and until this landed the compiler simply never saw the
-    file — leaving the `sources` summary holding the enricher's own permissive Ensembl row.
+    Under 0.5 this pointed the other way: `licensing.csv` → `sources.csv`, because the compiler read
+    only the old name and the ledger was otherwise dropped from the compile. A 0.6 compiler reads
+    both, prefers `licensing.csv`, and warns that `sources.csv` is removed at 1.0. Left pointing
+    backwards, this pass would have written a deprecation warning into `manifest.compilation.warnings`
+    of every publish — permanently, since a published manifest is immutable — and stored the one
+    spelling that stops being read at all at 1.0.
+
+    The direction is not written down anywhere in `specfiles`: it is read off `SIDECAR_SPELLINGS` and
+    `DEPRECATED_SPELLINGS`, so the next such rename arrives with the floor bump rather than with an
+    incident.
     """
-    plan = plan_layout([SPEC_YAML, "haplotypes.csv", LICENSING_CSV])
-    assert plan.renames == {LICENSING_CSV: SOURCES_CSV}
+    plan = plan_layout([SPEC_YAML, "haplotypes.csv", SOURCES_CSV])
+    assert plan.renames == {SOURCES_CSV: LICENSING_CSV}
     assert plan.warnings == [] and plan.conflicts == []
-    assert len(plan.notes) == 1 and SOURCES_CSV in plan.notes[0]
+    assert len(plan.notes) == 1 and LICENSING_CSV in plan.notes[0]
 
-    # And from a subdirectory, since 0.6 producers write it under `derived/` as often as at the root.
-    subfoldered = plan_layout([SPEC_YAML, f"{DERIVED_DIR}/{LICENSING_CSV}"])
-    assert subfoldered.renames == {f"{DERIVED_DIR}/{LICENSING_CSV}": SOURCES_CSV}
+    # The current spelling is left exactly alone — the common case must be a no-op.
+    assert plan_layout([SPEC_YAML, "haplotypes.csv", LICENSING_CSV]).changed is False
+
+    # And a deprecated spelling is still hoisted out of `derived/` while being renamed.
+    subfoldered = plan_layout([SPEC_YAML, f"{DERIVED_DIR}/{SOURCES_CSV}"])
+    assert subfoldered.renames == {f"{DERIVED_DIR}/{SOURCES_CSV}": LICENSING_CSV}
 
 
-def test_both_licensing_spellings_present_warns_and_keeps_the_readable_one() -> None:
-    """Upstream RM49 refuses this; we warn, because failing a publish that succeeds today is a major
-    and their own resolver arrives with the 0.6 lockstep upgrade. Never a merge and never
-    newest-wins — the rows are human-overridable attribution claims, so only the author knows."""
+def test_both_licensing_spellings_present_is_refused_rather_than_preferred() -> None:
+    """0.5 warned and let one win. 0.6 cannot: `layout.resolve_sidecar` **raises**.
+
+    So carrying the loser through as an ordinary extra file no longer yields a publish with a
+    warning — it yields a `SidecarCollision` out of the compiler with our own upload as the cause.
+    Refused here instead, where the message names both paths and the author can act on it.
+
+    Upstream's reasoning (RM49) is why agreeing beats working around it: these tables are fact-hashed
+    and hand-editable, so two copies are two claims, and preferring either discards somebody's
+    curation without saying so.
+    """
     plan = plan_layout([SPEC_YAML, SOURCES_CSV, LICENSING_CSV])
-    assert plan.renames == {} and plan.conflicts == []
-    assert len(plan.warnings) == 1
-    assert LICENSING_CSV in plan.warnings[0] and SOURCES_CSV in plan.warnings[0]
+    assert plan.renames == {} and plan.warnings == []
+    assert len(plan.conflicts) == 1
+    assert LICENSING_CSV in plan.conflicts[0] and SOURCES_CSV in plan.conflicts[0]
+
+    # The readme keeps the *other* answer, and the divergence is deliberate: an extra markdown file
+    # makes the compiler do nothing at all, while overwriting authored prose is unrecoverable.
+    readme_plan = plan_layout([SPEC_YAML, README_FILE, LEGACY_README_FILE])
+    assert readme_plan.conflicts == [] and len(readme_plan.warnings) == 1
 
 
 def test_a_rename_can_never_move_a_module_identity_or_be_dropped_by_storage() -> None:
@@ -488,9 +687,15 @@ def test_a_rename_can_never_move_a_module_identity_or_be_dropped_by_storage() ->
     destinations = set(RENAMED_ON_UPLOAD.values())
     assert destinations.isdisjoint(SIGNATURE_INPUTS)
     assert destinations <= set(RECOGNIZED_SPEC_FILES)
-    # A source spelling that is *also* a recognized name would make the rename unreachable: the
-    # planner would claim it under its own name first.
-    assert set(RENAMED_ON_UPLOAD).isdisjoint(RECOGNIZED_SPEC_FILES)
+    # Sources are equally barred from `SIGNATURE_INPUTS`, and for the mirror-image reason: renaming
+    # a signature input *away* would drop it out of `content_signature` entirely.
+    assert set(RENAMED_ON_UPLOAD).isdisjoint(SIGNATURE_INPUTS)
+    # A rename source may now be a recognized name, which it could not be at 0.5 — `sources.csv` is a
+    # legal spelling the compiler still reads, not an alien name. What must stay true is that the
+    # planner reaches the rename before claiming the file under its own name; `plan_layout` checks
+    # `RENAMED_ON_UPLOAD` first, and this is the assertion that would catch that order being flipped.
+    for source, dest in RENAMED_ON_UPLOAD.items():
+        assert plan_layout([SPEC_YAML, source]).renames == {source: dest}
 
 
 def test_a_flat_spec_plans_no_change_at_all() -> None:

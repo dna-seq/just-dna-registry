@@ -34,8 +34,12 @@ from just_dna_format.binning import (
     HeteroplasmyRow,
     RepeatAlleleRow,
 )
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.layout import sidecar_spellings
 from just_dna_format.identity import parse_version
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import Contribution, GenePanelSpec, ModuleManifest
@@ -155,12 +159,19 @@ _ROW_MODELS: dict[str, type[BaseModel]] = {
     "diplotypes.csv": DiplotypeRow,
     "pgs.csv": PgsRow,
     "pharm_variants.csv": PharmVariantRow,
-    # The 0.5 derived-fact sidecars. Enricher-produced rather than hand-authored, but they round-trip
+    # The derived-fact sidecars. Enricher-produced rather than hand-authored, but they round-trip
     # through storage like everything else and an unknown column in one fails the same recompile.
+    # The last three are 0.6's (RM24 / RM25 / RM90).
     "frequencies.csv": FrequencyRow,
     "gene_metrics.csv": GeneMetricsRow,
     "literature.csv": LiteratureRow,
-    "sources.csv": SourceRow,
+    "gene_validity.csv": GeneValidityRow,
+    "clinical_assertions.csv": ClinicalAssertionRow,
+    "gwas_effects.csv": GwasEffectRow,
+    # Keyed by **spelling**, so the licensing ledger is checked under whichever name a stored version
+    # actually carries. `normalize_spec` stores the preferred one, but this planner also runs over
+    # versions published years earlier, whose storage still holds the name of their own era.
+    **dict.fromkeys(sidecar_spellings("sources.csv"), SourceRow),
 }
 
 

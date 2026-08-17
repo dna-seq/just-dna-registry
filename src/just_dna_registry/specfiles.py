@@ -16,6 +16,15 @@ another package's internals — instead `tests/test_specfiles.py` imports them a
 a table kind added in a future format release fails CI here rather than being silently rejected at
 publish time.
 
+**One part of that is no longer mirrored, and that is the improvement 0.6 brought.** Where a
+*sidecar* may live and what it may be called is now `just_dna_format.layout`, a module in the
+dependency-light tier written for exactly the four parties that have to agree — the compiler reads,
+the enricher writes, a publisher uploads, this registry re-splits. Every disagreement between them so
+far has been silent, and 0.16.2 was one: `licensing.csv` reached storage and never reached the
+compile. So the spellings, the `derived/` name and the deprecation set are **imported** below rather
+than restated, and the rename map is *derived* from them. When 1.0 removes `sources.csv`, nothing
+here needs editing.
+
 Deliberately *not* a validation rule: composition is the compiler's judgement, not the registry's.
 `REQUIRED_SPEC_FILES` is only `module_spec.yaml`, and everything past that
 (`"module has no recognized table"`, `"studies.csv is missing"` when `variants.csv` is present) comes
@@ -25,6 +34,16 @@ back from `validate_spec` as a proper finding with the compiler's own wording.
 from pathlib import PurePosixPath
 from typing import Iterable
 
+from just_dna_format.layout import (
+    DERIVED_SUBDIR,
+    LICENSING_CSV,
+    SIDECAR_SPELLINGS,
+    SOURCES_CSV,
+    VERIFICATION_JSON,
+    is_deprecated_spelling,
+    preferred_spelling,
+    sidecar_spellings,
+)
 from pydantic import BaseModel, Field
 
 SPEC_YAML: str = "module_spec.yaml"
@@ -48,51 +67,41 @@ TABLE_KIND_CSVS: tuple[str, ...] = (
 )
 
 #: The licensing/attribution ledger: one row per `(source, layer)`, saying where the bytes came from
-#: and on what terms. Named here rather than left as a literal in `FACT_CSVS` because it now has two
-#: spellings and the pair has to be written down in one place — see `LICENSING_CSV`.
-SOURCES_CSV: str = "sources.csv"
+#: and on what terms. `SOURCES_CSV` and `LICENSING_CSV` are **one table with two spellings**, and
+#: both names — plus which of them is deprecated — are imported from `just_dna_format.layout` rather
+#: than restated here. That import is the whole lesson of 0.16.2: while these lists were hand-kept,
+#: the two halves of the ecosystem disagreed about the filename and the disagreement was silent.
+#:
+#: The direction of travel reversed at 0.6. Under 0.5 this registry was the half that lagged — the
+#: compiler read `sources.csv` and nothing else, so the ledger every current authoring tool writes
+#: was dropped from the compile and the card advertised the enricher's own permissive Ensembl row for
+#: a module whose upstreams forbid sale. Under 0.6 the compiler reads both, prefers `licensing.csv`,
+#: and warns on the old spelling for removal at 1.0. So the rename in `RENAMED_ON_UPLOAD` now points
+#: the other way, and it is derived from `SIDECAR_SPELLINGS` instead of written down: at 1.0, when
+#: `sources.csv` stops being read at all, an author who still sends one keeps publishing and nothing
+#: in this file has to be edited to make that true.
 
-#: The *current* spelling of `SOURCES_CSV`, and the one this deployment's compiler cannot read.
-#:
-#: Upstream RM51 made `licensing.csv` a second accepted spelling in format 0.6 and deprecated
-#: `sources.csv` for removal at 1.0, so every current authoring tool, every enricher write path and
-#: every reference example writes the new name. This registry is pinned to 0.5, whose compiler reads
-#: `sources.csv` and nothing else — so an author who followed the ecosystem's current advice got the
-#: file *dropped from the compile*, and the `sources` summary was then built from the enricher's own
-#: single Ensembl row: `commercial_use: true`, `licenses: ["Apache-2.0"]`, for a module whose real
-#: upstreams forbid sale. A facet meaning "permitted" produced by a history that only means "nobody
-#: told us", which is the sibling-field rule from `CLAUDE.md` broken at the input stage.
-#:
-#: Renamed rather than warned about, on the `LEGACY_README_FILE` precedent and for the same reason:
-#: the author wrote the name they were told to write and *our* reader is the half that is behind, so
-#: charging them for it would be charging them for our lag. Three things make the rename safe rather
-#: than a guess, and all three were checked before making it:
-#:
-#: - It is not a guess about intent. Upstream defines the two names as **one table with one row
-#:   model**, and the 0.6 header is field-for-field the 0.5.4 `SourceRow` — which is `extra="forbid"`,
-#:   so a schema drift would have failed the compile loudly rather than published something wrong.
-#: - It cannot move an identity. `SOURCES_CSV` is a fact sidecar: out of `SIGNATURE_INPUTS` (so
-#:   `content_signature` and the global `409 duplicate_content` claim do not see the filename) and
-#:   hashed by facts rather than bytes upstream.
-#: - It happens in `normalize_spec`, ahead of enrichment, so the enricher merges its own row into the
-#:   author's ledger exactly as it would have for a spec that used the old spelling.
-#:
-#: What is *not* done here is recognising the name (`RECOGNIZED_SPEC_FILES`), which stays 0.6
-#: lockstep work: after the rename there is no `licensing.csv` left to round-trip. Upstream also
-#: **refuses** a module carrying both spellings (RM49); we warn and let the readable name win, since
-#: turning a publish that succeeds today into a refusal is a major and their own resolver arrives
-#: with the lockstep upgrade anyway.
-LICENSING_CSV: str = "licensing.csv"
-
-# The 0.5 derived-fact sidecars, produced by `just-dna-enricher`. Mirrors `compiler._FACT_TABLES`.
+# The derived-fact sidecars, produced by `just-dna-enricher`. Mirrors `compiler._FACT_TABLES` — under
+# the *canonical* spelling, which is what that constant names; the accepted spellings of each are
+# `sidecar_spellings()` and are folded into `RECOGNIZED_SPEC_FILES` below.
+#
 # They compile to parquet (so they are part of `artifact.digest` for a module that carries them) but
 # are hashed by *facts* rather than raw bytes, because they are multi-producer: the enricher, a
 # human, and `reverse_module` all legitimately emit different bytes for the same content.
+#
+# The last three are 0.6's: `gene_validity.csv` (ClinGen/GenCC gene–disease validity, RM24),
+# `clinical_assertions.csv` (ClinVar clinical assertions, RM25) and `gwas_effects.csv` (GWAS Catalog
+# effect sizes, RM90). Adding them here is not cosmetic — this tuple is what `revalidate` and
+# `upgrade` rebuild a spec directory from, so a fact table missing from it is a fact table silently
+# dropped the first time a module is re-published. That is precisely how `licensing.csv` was lost.
 FACT_CSVS: tuple[str, ...] = (
     "frequencies.csv",
     "gene_metrics.csv",
     "literature.csv",
     SOURCES_CSV,
+    "gene_validity.csv",
+    "clinical_assertions.csv",
+    "gwas_effects.csv",
 )
 
 # The rsid↔coordinate table. Produced by the enricher (the only tier permitted to fetch) and
@@ -110,17 +119,18 @@ PROVENANCE_FILE: str = "provenance.json"
 #: instead of dropping it, which is exactly the `README.md` failure of 0.14 at a different file
 #: (S11, filed by `just-dna-format` against their own unreleased 0.6).
 #:
-#: **Recognized is not read.** Nothing in this service parses it, and nothing should until the
-#: manifest can attest it: this server compiles the spec itself, which is what makes a published
-#: digest trusted rather than claimed, while this file is the *author's* word about what their
-#: enricher saw against live sources — a claim we cannot reproduce offline and must not launder into
-#: one of ours. `manifest.verification` and the signed `closure` block land in format 0.6; surfacing
-#: either is a policy decision tracked in ROADMAP, not a side effect of round-tripping the bytes.
+#: **Recognized is not read as ours.** 0.16 recognized this file so a rebuild would carry it forward;
+#: 0.6 lets the manifest attest it (`manifest.verification`), and 0.17 surfaces it — as the
+#: *publisher's* claim, never as a registry verdict. This server compiles the spec itself, which is
+#: what makes `compile_success` and the digest ours; this file is the author's word about what their
+#: enricher saw against live sources at authoring time, which we cannot reproduce offline. Every
+#: field upstream puts in that block is marked untrusted for the same reason, and **absent reads as
+#: *nothing was said*, never as *passed***.
 #:
-#: Out of `SIGNATURE_INPUTS` (it is derived, not authored) and out of `DERIVED_FILES` (that list is
-#: what `download(layout="split")` emits, and no downloader receives this file — the manifest has no
-#: field for it yet). Hoisting from a subdirectory works anyway, via `_HOISTABLE`.
-VERIFICATION_FILE: str = "verification.json"
+#: Out of `SIGNATURE_INPUTS` (it is derived, not authored). **In** `DERIVED_FILES` since 0.17: the
+#: manifest now records it under `derived`, so a downloader does receive it and the split tree has
+#: somewhere to put it.
+VERIFICATION_FILE: str = VERIFICATION_JSON
 
 #: The module's prose, projected onto the catalog card at publish (S5). `README.md` and not
 #: `MODULE.md`: it is what an author writes without being told to, it is what the ecosystem's other
@@ -175,7 +185,14 @@ _README_LOOKALIKES: frozenset[str] = frozenset(
 #: **Safe by construction, and this is the reason to prefer a folder over any in-file marker:**
 #: `SIGNATURE_INPUTS` is entirely root-level, so nothing that may move into this folder can move
 #: `content_signature`, and `artifact.digest` is over parquets the server builds itself.
-DERIVED_DIR: str = "derived"
+#:
+#: The name is imported rather than chosen since 0.17. This registry invented the convention and
+#: upstream adopted it as RM49, which makes it *their* constant now — and a second definition of a
+#: name two packages must agree on is the exact failure `just_dna_format.layout` exists to end.
+#: Their `sidecar_candidates` accepts a sidecar at the root **or** under this folder, so flattening
+#: is no longer strictly required for the fact tables; it is still done, because the authored tables
+#: are root-only and one normalized layout is easier to reason about than two.
+DERIVED_DIR: str = DERIVED_SUBDIR
 
 #: Where logs arrive, and the one subtree `plan_layout` must never touch: the compiler discovers
 #: `logs/**.log` and the manifest records that path verbatim, so flattening one would rename a file
@@ -184,10 +201,23 @@ LOGS_DIR: str = "logs"
 
 SPEC_DATA_FILES: tuple[str, ...] = CORE_CSVS + TABLE_KIND_CSVS + FACT_CSVS + (RESOLUTION_CSV,)
 
+#: Every accepted *spelling* of every spec data file. For most names that is the name itself;
+#: `sidecar_spellings` is what makes the ledger's two names one entry rather than a special case.
+_SPEC_DATA_SPELLINGS: tuple[str, ...] = tuple(
+    dict.fromkeys(
+        spelling for name in SPEC_DATA_FILES for spelling in sidecar_spellings(name)
+    )
+)
+
 #: Everything a spec directory may legitimately contain, for storage round-trips.
+#:
+#: Spellings, not canonical names: a file is stored under the name it was normalized to, and
+#: `revalidate`/`upgrade` rebuild a spec directory from this tuple. A name missing here is a file
+#: dropped on the next rebuild, which is what happened to `licensing.csv` before 0.16.2 and to the
+#: readme before 0.14.
 RECOGNIZED_SPEC_FILES: tuple[str, ...] = (
     SPEC_YAML, PROVENANCE_FILE, README_FILE, VERIFICATION_FILE
-) + SPEC_DATA_FILES
+) + _SPEC_DATA_SPELLINGS
 
 #: The registry's own precondition before it hands a spec to the compiler. Just the manifest of
 #: intent — everything else is the compiler's call.
@@ -196,18 +226,48 @@ REQUIRED_SPEC_FILES: tuple[str, ...] = (SPEC_YAML,)
 #: The machine-written tables: what `DERIVED_DIR` holds on the way in and on the way out. Everything
 #: here is produced (or merged) by `just-dna-enricher` and hashed by *facts* rather than raw bytes —
 #: which is the same property that keeps them out of `SIGNATURE_INPUTS`.
-DERIVED_FILES: tuple[str, ...] = FACT_CSVS + (RESOLUTION_CSV,)
-
-#: Names that arrive under one spelling and are stored under another, because the author wrote the
-#: name the ecosystem told them to write and this registry's reader is the half that lags. Both
-#: entries are the same repair at a different file — see `LEGACY_README_FILE` and `LICENSING_CSV`
-#: for why each earns a rename where a lookalike only earns a warning.
 #:
-#: A rename is only ever *onto* a name in `RECOGNIZED_SPEC_FILES`; that is what makes the renamed
-#: file survive the storage round-trip that `revalidate` and `upgrade` rebuild a spec from.
+#: Under the **preferred** spelling, because this is an emit list: it is what
+#: `download(layout="split")` puts in `derived/`, and a tree we write should carry the name a fresh
+#: file is created under rather than one queued for removal. `verification.json` joins it at 0.17,
+#: now that `manifest.derived` attests the file and a downloader therefore receives it.
+DERIVED_FILES: tuple[str, ...] = tuple(
+    preferred_spelling(name) for name in FACT_CSVS
+) + (RESOLUTION_CSV, VERIFICATION_FILE)
+
+#: Names that arrive under one spelling and are stored under another, because the author wrote a name
+#: that is not the one this registry's storage should hold. Two entries, and they are the same repair
+#: pointing in opposite directions — which is the point worth keeping.
+#:
+#: `MODULE.md` → `README.md`: the corpus lags *us*. This project advised `MODULE.md` for two releases
+#: and `just-dna-pipelines` still writes it, so refusing it — or silently dropping the prose, which is
+#: what happened until 0.14 — would charge the author for our rename.
+#:
+#: `sources.csv` → `licensing.csv`: **we** lag the corpus no longer, and at 0.6 the lag inverted. The
+#: 0.16.2 entry pointed the other way, renaming the new name onto the old one because this deployment's
+#: compiler could only read the old one; a 0.6 compiler reads both, prefers the new one, and warns that
+#: the old is removed at 1.0. Left alone, every publish of a legacy spec would carry that deprecation
+#: warning into `manifest.compilation.warnings` forever, and at 1.0 the file would stop being read at
+#: all. Renaming forward is what keeps a module authored in 2025 publishable in 1.0 without its author
+#: editing anything.
+#:
+#: **Derived from `SIDECAR_SPELLINGS`, never written down.** Upstream owns which spellings exist and
+#: which are deprecated; restating that here is how the two got out of step in the first place. A
+#: sidecar renamed in some future release is picked up by this comprehension in the release that
+#: bumps the floor.
+#:
+#: A rename is only ever *onto* a name in `RECOGNIZED_SPEC_FILES` — that is what makes the renamed
+#: file survive the storage round-trip `revalidate` and `upgrade` rebuild a spec from — and a test
+#: asserts it over the whole map, along with the disjointness from `SIGNATURE_INPUTS` that keeps any
+#: spelling from moving a `content_signature` or its global `409 duplicate_content` claim.
 RENAMED_ON_UPLOAD: dict[str, str] = {
     LEGACY_README_FILE: README_FILE,
-    LICENSING_CSV: SOURCES_CSV,
+    **{
+        spelling: preferred_spelling(canonical)
+        for canonical, spellings in SIDECAR_SPELLINGS.items()
+        for spelling in spellings
+        if is_deprecated_spelling(spelling)
+    },
 }
 
 #: Names `plan_layout` will lift out of a subdirectory. The recognized spec files, plus the names
@@ -299,11 +359,26 @@ def plan_layout(names: Iterable[str]) -> LayoutPlan:
         renamed_to = RENAMED_ON_UPLOAD.get(base)
         if renamed_to is not None:
             if renamed_to in basenames:
-                # Both spellings arrived. The name the compiler reads wins and the other file is left
-                # untouched as an ordinary extra file. Never a merge and never newest-wins: for the
-                # readme, overwriting prose the author wrote with prose they did not is the single
-                # most surprising thing this pass could do; for the licensing ledger, the two files
-                # are human-overridable attribution claims and only the author knows which is current.
+                # Both spellings arrived, and the two cases diverge at 0.6 — which is why this is no
+                # longer one branch. Never a merge and never newest-wins in either.
+                if is_deprecated_spelling(base):
+                    # A sidecar. `layout.resolve_sidecar` **raises** `SidecarCollision` on two copies
+                    # of one table, so carrying the loser through as an extra file no longer produces
+                    # a publish with a warning — it produces a `ValueError` out of the compiler with
+                    # our own upload as its cause. Refused here instead, where the message can name
+                    # both paths and the author can act on it. Upstream's reasoning is the reason to
+                    # agree rather than to work around it: these tables are fact-hashed and
+                    # hand-editable, so two copies are two claims and preferring either discards
+                    # somebody's curation silently.
+                    plan.conflicts.append(
+                        f"`{name}` and `{renamed_to}` are the same table under both of its "
+                        f"spellings; keep one and drop the other. `{renamed_to}` is the spelling to "
+                        f"keep — `{name}` is deprecated and is removed at format 1.0"
+                    )
+                    continue
+                # The readme. Still a warning: overwriting prose the author wrote with prose they
+                # did not is the single most surprising thing this pass could do, and unlike a
+                # sidecar an extra markdown file makes the compiler do nothing at all.
                 plan.warnings.append(
                     f"`{name}` ignored: `{renamed_to}` is also present and is the name the "
                     f"registry reads. The file is carried unchanged."
@@ -344,11 +419,12 @@ def plan_layout(names: Iterable[str]) -> LayoutPlan:
                 f"renamed `{source}` to `{README_FILE}` (the readme filename the registry reads; "
                 f"`{LEGACY_README_FILE}` was this project's advice until 0.14 and nothing read it)"
             )
-        elif base == LICENSING_CSV:
+        elif is_deprecated_spelling(base):
             plan.notes.append(
-                f"renamed `{source}` to `{SOURCES_CSV}` (the licensing ledger under the spelling this "
-                f"registry's compiler reads; `{LICENSING_CSV}` is the format-0.6 name and this "
-                f"deployment is on 0.5 — same table, same columns, and the rename moves no identity)"
+                f"renamed `{source}` to `{dest}` (same table, same columns; `{base}` is the "
+                f"deprecated spelling and is removed at format 1.0, so it is stored under the "
+                f"current name — the rename moves no identity, since the licensing ledger is a fact "
+                f"sidecar and sits outside `content_signature`)"
             )
         else:
             plan.notes.append(

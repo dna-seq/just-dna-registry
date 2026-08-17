@@ -26,6 +26,41 @@ def predates_resolution_contract(manifest: ModuleManifest) -> bool:
     return manifest.content_signature is None
 
 
+def predates_positional_counts(manifest: ModuleManifest) -> bool:
+    """Whether this manifest predates the 0.6 counters, so the prose fallback is the only record.
+
+    Keyed on `positional_rows`, which a 0.6 compile sets **unconditionally** — `0` for a module
+    carrying no positional table at all, which is a real answer. `None` therefore means exactly "this
+    compiler did not count", which is what every pre-0.6 manifest honestly is.
+
+    `resolution_subjects` cannot be the witness even though it is the field this era introduced: it
+    is typed plain `int` with a default of `0`, so a 0.5 manifest parsed by a 0.6 model reads `0` —
+    indistinguishable from a module that genuinely attempted no resolution. That asymmetry is
+    upstream's deliberate choice (`0` is meaningful for that field and `None` would be a breaking
+    read), and it is precisely why the era test has to be a sibling field rather than the obvious one.
+    """
+    return manifest.compilation.positional_rows is None
+
+
+def positionally_joinable(manifest: ModuleManifest) -> Optional[bool]:
+    """Whether every positional row in this version carries `chrom`+`start`. `None` = cannot say.
+
+    The structured half of what `joins_nothing_positionally` reads out of prose, and the preferred
+    path since 0.6: `positional_rows_placed == positional_rows` (RM44/S31). Parts rather than a
+    ratio, and "complete" is derived rather than stored, which is the house pattern.
+
+    `positional_rows == 0` is **True, not None**: a module carrying no `pharm_variants`/`haplotypes`/
+    `heteroplasmy` table has nothing that could fail to join, so there is no unjoinability to report.
+    That is a different statement from the one `resolution_subjects == 0` makes about `fully_resolved`,
+    and conflating them is what this whole family of fields exists to prevent.
+    """
+    compilation = manifest.compilation
+    rows, placed = compilation.positional_rows, compilation.positional_rows_placed
+    if rows is None or placed is None:
+        return None
+    return placed == rows
+
+
 def joins_nothing_positionally(manifest: ModuleManifest) -> bool:
     """Whether the compiler reported a table in this version that no VCF can join by position.
 
@@ -40,14 +75,18 @@ def joins_nothing_positionally(manifest: ModuleManifest) -> bool:
     modules that annotate nothing. Through 0.11.x this module carried the literal because 0.5.3 had no
     constant to import.
 
-    The structural fix is still owed and still upstream's: one additive integer on `Compilation` — how
-    many rows resolution was applied to — which makes `fully_resolved=True` beside zero subjects
-    self-evidently vacuous with no prose anywhere. Tracked as **RM44**, targeted at format **0.6**, and
-    deliberately *not* folded into S8's `checks_run`/`checks_skipped` (RM43/RM45): resolution is not a
-    verification pass, so a row count does not belong in a map of which checks ran. Until then the
-    warning is the only *durable* record — it rides in `manifest.compilation.warnings`, which is what
-    `is_trusted` can still see at reindex time, when the spec directory is long gone. When RM44 lands,
-    delete this function and its pinning test.
+    **RM44 landed in format 0.6, and this function survived it deliberately.** The structural fix is
+    here — `positionally_joinable` reads `positional_rows`/`positional_rows_placed` and says how many
+    of how many, where the sentence only ever said *some do not* — and it is the preferred path.
+    `CLAUDE.md` and the 0.11.3 ROADMAP entry both said to delete this function when that happened.
+    That instruction is **superseded**, and by upstream's own integration note: already-published
+    artifacts carry neither new field, so for every version in the catalog compiled before 0.6 the
+    sentence remains the only record that survives into a reindex, when the spec directory is long
+    gone. Deleting it would silently re-grant trust to exactly the modules 0.11.3 took it from — the
+    PGx modules that join to no VCF — which is the original defect restored by a cleanup.
+
+    So: structured counts when the manifest has them, this when it does not, and the fallback retires
+    on its own when the last pre-0.6 version is upgraded off the catalog rather than on a date.
 
     Only the fragment is frozen; the rest of the sentence is free to change, so never widen the match.
     Two things still keep the coupling honest: a test compiles a real rsid-authored spec through the
@@ -93,18 +132,52 @@ def is_trusted(manifest: ModuleManifest) -> Optional[bool]:
     `None` rather than `False` for a pre-0.5 manifest, on the same distinction: `False` is a verdict
     about a module, `None` is an admission that we cannot make one, and painting a whole pre-existing
     catalogue scarlet on upgrade day would be the former standing in for the latter.
+
+    **0.6 changed two of the three steps, and one module's verdict with them.** The positional test is
+    now a pair of counts rather than a substring (`positionally_joinable`), and the vacuity test is now
+    the denominator upstream published for it (`resolution_subjects`) rather than an inference from
+    `resolution_mode is None`. Upstream states the rule as
+    `resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)` and names a *catalog*
+    as its reader — this function is that reader.
+
+    The changed verdict is worth stating, because it is a real reversal and not a refactor. A
+    table-only module whose rows all carry coordinates used to land on `None`: nothing was resolved, we
+    had no positive evidence, and "probably fine" is not a verdict. 0.6's positional fill (RM43) plus
+    its counts supply that evidence — `positional_rows_placed == positional_rows` over a non-zero
+    denominator says every row joins to a VCF by position — so such a module is now **`True`**. The
+    reference PGx example is exactly this case: at 0.5 it was `False` (106 rows, none placed), and at
+    0.6 the same 106 rows are placed from the `resolution.csv` it ships. Nothing about the module
+    changed; the compiler learned to do what the warning had been complaining about.
     """
     if predates_resolution_contract(manifest):
         return None
     compilation = manifest.compilation
-    if joins_nothing_positionally(manifest):
+    joinable = positionally_joinable(manifest)
+    if joinable is None:
+        # Pre-0.6: the warning is the only record, and it only ever speaks in the negative.
+        if joins_nothing_positionally(manifest):
+            return False
+    elif not joinable:
         return False
-    if compilation.resolution_mode == "strict":
+
+    if predates_positional_counts(manifest):
+        # Pre-0.6, so `resolution_subjects` is a default rather than a measurement. The 0.5 rule
+        # stands for these versions, unchanged — including its blind spot, which is the honest state
+        # of the evidence a pre-0.6 manifest offers.
+        if compilation.resolution_mode == "strict":
+            return True
+        if compilation.resolution_mode is None:
+            return None
+        return compilation.fully_resolved
+
+    if compilation.resolution_subjects > 0:
+        return compilation.resolution_mode == "strict" or compilation.fully_resolved
+    # Nothing was resolved, so `fully_resolved` is `all()` over an empty list and says nothing. The
+    # positional side may still carry the module: every row placed, over rows that exist, is positive
+    # evidence that it joins — which is the question this facet answers.
+    if joinable and (compilation.positional_rows or 0) > 0:
         return True
-    if compilation.resolution_mode is None:
-        # No `variants.csv`, so `fully_resolved` is an empty `all()` and says nothing on its own.
-        return None
-    return compilation.fully_resolved
+    return None
 
 
 def version_facets(manifest: ModuleManifest) -> dict[str, Any]:

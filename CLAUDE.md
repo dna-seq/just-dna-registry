@@ -367,15 +367,33 @@ predicts is worse than one that does not normalize at all.
   quantifier means — a table-only module is the case that finds out. **Positional joinability is the
   separate question**: rows with no `chrom`+`start` match nothing in a VCF, it is legal and stays a
   warning in both modes (compiler 0.5.3), and it must never become a publish gate — the remedy is a
-  compiler change (upstream RM43), not an authored edit.
-- **That facet reads a warning *string*, and the fragment is imported rather than spelled**
-  (`compiler.UNJOINABLE_PHRASE`, compiler 0.5.4 / upstream S13). The coupling exists because the manifest
-  carries no structured record of what resolution was applied to, and the warning is the only copy a
-  reindex can still see once the spec directory is gone. Two rules while it lasts: **never widen the
-  match** (only that fragment is frozen upstream; the sentence around it is free to improve), and keep
-  the test that drives a real publish through the real compiler — an import proves the two spellings
-  agree, not that the warning still fires and still reaches `manifest.compilation.warnings`. The
-  structural fix is RM44, targeted at format 0.6; when it lands, delete the facet and the test.
+  compiler change (upstream RM43), **which shipped in 0.6**: the fill places rsID-keyed positional rows
+  from `resolution.csv`, so the modules this warned about now join.
+- **That facet reads counts since 0.17, and a warning *string* only for what predates them.** RM44 and
+  S31 landed in format 0.6: `resolution_subjects` is the denominator `fully_resolved` quantifies over,
+  and `positional_rows`/`positional_rows_placed` say how many of how many rows join to a VCF, where the
+  sentence only ever said *some do not*. `db/facets.positionally_joinable` is the preferred read.
+
+  **The instruction this file used to carry — "when RM44 lands, delete the facet and the test" — was
+  wrong, and following it would have restored the defect 0.11.3 fixed.** Already-published artifacts
+  carry neither counter, so for every version compiled before 0.6 the warning is still the only record a
+  reindex can see once the spec directory is gone; deleting it would silently re-grant trust to exactly
+  the modules that join to nothing. Upstream's integration note says the same — keep the fallback, add
+  the fields as the preferred path. It retires when the last pre-0.6 version leaves a catalog, not on a
+  release. Two rules while it lasts: **never widen the match** (only that fragment is frozen upstream;
+  the sentence around it is free to improve), and keep the test that drives a real publish through the
+  real compiler — an import proves the two spellings agree, not that the warning still fires.
+
+  Two consequences to expect rather than treat as regressions. **The reference PGx example's verdict
+  flipped `False` → `True`**, because RM43 places its 106 rows; the module changed nothing and the
+  compiler learned to do what the warning complained about. And the negative case is now a hand-written
+  fixture (`tests/test_specfiles.py::_publish_unjoinable`), because nothing in the upstream corpus is
+  unjoinable any more — left to the corpus, that half of the facet would quietly stop being tested.
+
+  **Adopting 0.6 re-judges nothing already stored**, which is why 0.17 ships no trust migration where
+  0.11.3 needed one: the pre-0.6 branch is the 0.5 rule unchanged, asserted exhaustively over the
+  24-shape pre-0.6 space in `tests/test_format_06.py`. Verdicts move only as versions are recompiled by
+  `registry upgrade`.
 - **Immutability + yank**: never mutate a published version's bytes. Yank sets `yanked=true` (drops it
   from default listings and `latest`) but keeps the manifest + artifact fetchable so existing installs
   keep verifying. Un-yank is allowed.
