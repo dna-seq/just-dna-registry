@@ -105,6 +105,22 @@ to a module's current version like `gene` and `category`. Those columns are plai
 tri-state, which is right here and wrong one file over: a manifest predating a block belongs to a
 module that carried no such table, so `0` is honest — unlike the counters, where it would not be.
 
+### Measured, not assumed
+
+**All 16 upstream reference examples publish through this registry under 0.6**, driven end to end
+through the real publish path (enrich → strict compile → store → project). Upstream measured 16/16
+through *their* publisher after the RM89 fix; this is the same corpus through a different path, which
+is the part their number could not tell us.
+
+Every one of the 16 comes back with an attested readme, a verification block, a surviving closure and
+between 2 and 8 `derived` entries — so the new attestation surfaces are exercised by real modules
+rather than only by fixtures. `hfe_hemochromatosis` carries both `gwas_effects` and `weighting`.
+Two results worth reading as confirmations rather than curiosities: `cyp2c19_star_alleles` reports
+106 of 106 positional rows placed (RM43's fill, the verdict flip described above), and
+`cyp2c9_warfarin_grch37` reports **2 of 26** — a GRCh37 module the fill cannot help, which is exactly
+the population the counters exist to make visible and which a single boolean could not have
+distinguished from the first.
+
 ## [0.16.2] — 2026-08-17
 
 **Client surface: unchanged.**
