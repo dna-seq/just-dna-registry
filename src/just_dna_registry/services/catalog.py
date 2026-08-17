@@ -14,12 +14,17 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.facets import is_trusted
 from just_dna_registry.models.api import (
     CardStats,
+    FactTablesInfo,
+    GwasEffectsInfo,
     LicensingInfo,
     ModuleCard,
     ModuleDetail,
     Page,
     ResolutionInfo,
+    VerificationCheck,
+    VerificationInfo,
     VersionSummary,
+    WeightingInfo,
 )
 
 _CARD_GENES: int = 3  # genes shown on a card; the full list lives in the manifest
@@ -108,6 +113,106 @@ def _licensing(manifest: Optional[ModuleManifest]) -> LicensingInfo:
     )
 
 
+def _facts(manifest: Optional[ModuleManifest]) -> FactTablesInfo:
+    """Which derived fact tables the version carries. Presence only — see `FactTablesInfo`.
+
+    Read off the manifest blocks rather than off `artifact.files`: a block is present exactly when
+    the compile had the table, which is the same question asked one level up and does not depend on
+    how a parquet came to be named.
+    """
+    if manifest is None:
+        return FactTablesInfo()
+    return FactTablesInfo(
+        gene_validity=manifest.gene_validity is not None,
+        clinical_assertions=manifest.clinical_assertions is not None,
+        gwas_effects=manifest.gwas_effects is not None,
+        frequencies=manifest.frequency is not None,
+        weighting_declared=manifest.weighting is not None,
+    )
+
+
+def _facts_from_row(row: sqlite3.Row) -> FactTablesInfo:
+    """The same facets from the projected columns, for list rows that must not reparse a manifest.
+
+    A card built by `list_modules` already loads the latest manifest for its stats, so it could use
+    `_facts`; this exists so the *filters* and the columns they read cannot disagree with what the
+    card renders. Missing columns mean a DB that has not migrated yet, which reads as all-absent —
+    the honest answer, since nothing has been projected.
+    """
+    keys = row.keys()
+    if "has_gwas_effects" not in keys:
+        return FactTablesInfo()
+    return FactTablesInfo(
+        gene_validity=bool(row["has_gene_validity"]),
+        clinical_assertions=bool(row["has_clinical_assertions"]),
+        gwas_effects=bool(row["has_gwas_effects"]),
+        frequencies=bool(row["has_frequencies"]),
+        weighting_declared=bool(row["weighting_declared"]),
+    )
+
+
+def _verification(manifest: Optional[ModuleManifest]) -> Optional[VerificationInfo]:
+    """The publisher's attestation, or `None` when the module said nothing.
+
+    `None` and an empty block are **not** collapsed: absent means no attestation survived into the
+    manifest, which is a different statement from an attestation that recorded no checks. Both read
+    as "nothing was verified", but only one of them is a claim someone made.
+    """
+    if manifest is None or manifest.verification is None:
+        return None
+    block = manifest.verification
+    closure = block.closure
+    return VerificationInfo(
+        closed=closure is not None,
+        closed_at=closure.closed_at if closure else None,
+        closed_by=closure.closed_by if closure else None,
+        producer=block.producer,
+        produced_at=block.produced_at,
+        checks=[
+            VerificationCheck(
+                check=record.check,
+                subjects=record.subjects,
+                findings=record.findings,
+                skipped=record.skipped,
+                detail=record.detail,
+                source=record.source,
+                release=record.release,
+                checked_at=record.checked_at,
+            )
+            for record in block.checks
+        ],
+    )
+
+
+def _weighting(manifest: Optional[ModuleManifest]) -> Optional[WeightingInfo]:
+    """What the module says its weights mean — verbatim, or `None` if it has not said."""
+    if manifest is None or manifest.weighting is None:
+        return None
+    return WeightingInfo(
+        scale=manifest.weighting.scale,
+        method=manifest.weighting.method,
+        note=manifest.weighting.note,
+    )
+
+
+def _gwas_effects(manifest: Optional[ModuleManifest]) -> Optional[GwasEffectsInfo]:
+    """The GWAS sidecar's facets, with the two that decide usability carried alongside the count."""
+    if manifest is None or manifest.gwas_effects is None:
+        return None
+    block = manifest.gwas_effects
+    return GwasEffectsInfo(
+        row_count=block.row_count,
+        variant_count=block.variant_count,
+        with_effect_allele=block.with_effect_allele,
+        without_effect_allele=block.without_effect_allele,
+        measures=list(block.measures),
+        units=list(block.units),
+        traits=list(block.traits),
+        sources=list(block.sources),
+        datasets=list(block.datasets),
+    )
+
+
 def _card(repo: Repository, row: sqlite3.Row, starred_by: Optional[int] = None) -> ModuleCard:
     manifest = _latest_manifest(repo, row)
     stats = manifest.stats if manifest else None
@@ -154,6 +259,7 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: Optional[int] = None) 
         org_funding_url=funding["org_funding_url"],
         resolution=_resolution_from_manifest(manifest),
         licensing=_licensing(manifest),
+        facts=_facts(manifest),
     )
 
 
@@ -226,6 +332,9 @@ def module_detail(
         readme=row["readme"],
         versions=[_version_summary(v, namespace, name) for v in versions],
         latest_manifest=manifest,
+        verification=_verification(manifest),
+        weighting=_weighting(manifest),
+        gwas_effects=_gwas_effects(manifest),
     )
 
 

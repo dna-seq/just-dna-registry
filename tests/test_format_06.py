@@ -97,3 +97,161 @@ def test_adopting_0_6_re_judges_nothing_already_published() -> None:
             f"verdict moved for (signed={signed}, mode={mode}, "
             f"fully_resolved={fully_resolved}, warned={warned})"
         )
+
+
+# ── The 0.6 manifest blocks, as the catalog serves them ────────────────────────
+
+_YAML = """\
+schema_version: "1.0"
+module:
+  name: coronary
+  title: Coronary
+  description: d
+  report_title: R
+genome_build: GRCh38
+weighting:
+  scale: "0-1, curator-set, arbitrary"
+  method: "literature triage, no GWAS input"
+  note: "not comparable with any other module's weights"
+"""
+_YAML_NO_WEIGHTING = "\n".join(_YAML.splitlines()[:8]) + "\n"
+#: Two genuinely different modules, because `weighting` is **outside** `content_signature` and two
+#: specs differing only by it are the same data — the registry answers that with `409
+#: duplicate_content`, globally and permanently. Discovering that here was the cheap way to learn it;
+#: `test_a_weighting_declaration_moves_no_identity` asserts it deliberately rather than by accident.
+_ROWS: dict[str, tuple[str, str]] = {
+    "declared": ("rs4244285", "10,94781859,G,A,A/G"),
+    "undeclared": ("rs12248560", "10,94761900,C,T,C/T"),
+}
+
+
+def _files(name: str, yaml: str) -> list:
+    rsid, locus = _ROWS.get(name, _ROWS["declared"])
+    variants = (
+        "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category\n"
+        f"{rsid},{locus},-0.8,risk,het,CYP2C19,cyp2c19\n"
+    )
+    studies = (
+        "rsid,pmid,population,p_value,conclusion,study_design\n"
+        f"{rsid},[PMID: 29165669],T,0.05,E,U\n"
+    )
+    return [
+        ("files", ("module_spec.yaml", yaml.replace("coronary", name).encode(), "text/yaml")),
+        ("files", ("variants.csv", variants.encode(), "text/csv")),
+        ("files", ("studies.csv", studies.encode(), "text/csv")),
+    ]
+
+
+def _publish(client, api_key, *, name: str, yaml: str = _YAML) -> dict:
+    resp = client.post(
+        f"/api/v1/modules/just-dna-seq/{name}/versions",
+        data={"version": "1.0.0"},
+        files=_files(name, yaml),
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_weighting_reaches_the_detail_verbatim_and_absence_is_not_a_pass(client, api_key) -> None:
+    """RM92 on the catalog: what the module says its weights mean, in the author's words.
+
+    Two properties, and the second is the one that carries the consumer report behind it. The prose
+    is rendered **verbatim** — free text upstream on purpose, so any normalization here would be this
+    catalog inventing a taxonomy the format declined to invent. And an **absent** block is `null`
+    rather than an empty `WeightingInfo`, because "the module has not said what its weights mean" is
+    the state a consumer must not read as "these weights are comparable". That conflation is what
+    S36 reported one layer down: `weight` is a bare float with no unit column, every module means
+    something different by it, and until 0.6 the artifact could not say so.
+    """
+    _publish(client, api_key, name="declared")
+    detail = client.get("/api/v1/modules/just-dna-seq/declared").json()
+    assert detail["weighting"] == {
+        "scale": "0-1, curator-set, arbitrary",
+        "method": "literature triage, no GWAS input",
+        "note": "not comparable with any other module's weights",
+    }
+    assert detail["facts"]["weighting_declared"] is True
+
+    _publish(client, api_key, name="undeclared", yaml=_YAML_NO_WEIGHTING)
+    silent = client.get("/api/v1/modules/just-dna-seq/undeclared").json()
+    assert silent["weighting"] is None, "an absent declaration must not render as an empty one"
+    assert silent["facts"]["weighting_declared"] is False
+
+
+def test_the_weighting_filter_finds_the_modules_you_must_not_aggregate(client, api_key) -> None:
+    """`?weighting_declared=false` is the useful direction, and the reason the filter exists.
+
+    A consumer combining weights across a corpus needs the population that has **not** stated a
+    scale, because that is the one it must leave alone. Tri-state on the wire: omitting the
+    parameter must return both, or the filter would be quietly narrowing every unfiltered listing.
+    """
+    _publish(client, api_key, name="declared")
+    _publish(client, api_key, name="undeclared", yaml=_YAML_NO_WEIGHTING)
+
+    def names(**params) -> set[str]:
+        resp = client.get("/api/v1/modules", params=params)
+        assert resp.status_code == 200, resp.text
+        return {item["name"] for item in resp.json()["items"]}
+
+    assert names() == {"declared", "undeclared"}
+    assert names(weighting_declared=True) == {"declared"}
+    assert names(weighting_declared=False) == {"undeclared"}
+
+
+def test_the_verification_block_is_served_as_a_claim_not_a_verdict(client, api_key) -> None:
+    """RM45 on the catalog, with the honesty the block requires.
+
+    The server's own enrichment attests its checks during publish, so a published module carries a
+    verification block even when its author shipped no `verification.json` — which is exactly why
+    the surface must not read as an endorsement. What is asserted here is the shape a consumer
+    depends on: the records are present with their `skipped` reasons intact (an unrun check must
+    stay distinguishable from one that ran and found nothing), and `closed` is `false` when no human
+    ever declared the module final.
+
+    `closed` is the one field with a check behind it — the closure is hash-bound and the compiler
+    drops it when the authored bytes moved — which is what makes it safe to publish as a boolean
+    while everything beside it stays the publisher's word.
+    """
+    _publish(client, api_key, name="coronary")
+    detail = client.get("/api/v1/modules/just-dna-seq/coronary").json()
+
+    block = detail["verification"]
+    assert block is not None and block["producer"].startswith("just-dna-enricher")
+    assert block["closed"] is False and block["closed_at"] is None
+
+    checks = {c["check"]: c for c in block["checks"]}
+    assert checks, "a publish that ran enrichment must record what it checked"
+    # The distinction this whole tier is organised around: a check that could not run says why, and
+    # `subjects: 0` beside a reason is not the same statement as `subjects: 0` without one.
+    for record in checks.values():
+        assert record["skipped"] is None or isinstance(record["detail"], (str, type(None)))
+        assert record["subjects"] >= 0
+
+    # Never a card facet and never a filter: a registry that let you sort by someone else's
+    # unverifiable pass would be lending it our credibility.
+    card = client.get("/api/v1/modules", params={"namespace": "just-dna-seq"}).json()["items"][0]
+    assert "verification" not in card
+
+
+def test_a_weighting_declaration_moves_no_identity(client, api_key) -> None:
+    """Declaring what your weights mean must not change what module you are.
+
+    Upstream puts `weighting` outside both identity halves — advisory metadata, like `license` — and
+    that is load-bearing here rather than incidental. If it moved `content_signature`, adding the
+    declaration to an already-published module would produce a *different* module by the registry's
+    reckoning, and the global `409 duplicate_content` claim would then refuse the honest version of
+    a module in favour of the one that said nothing.
+
+    Checked through `/validate`, which computes the signature without spending a publish.
+    """
+    def signature(yaml: str) -> str:
+        resp = client.post(
+            "/api/v1/modules/just-dna-seq/declared/validate",
+            files=_files("declared", yaml),
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["content_signature"]
+
+    assert signature(_YAML) == signature(_YAML_NO_WEIGHTING)

@@ -234,6 +234,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
     _migrate_0_11_facets(conn, ver_cols)
     _migrate_0_11_3_trust(conn)
+    _migrate_0_17_fact_tables(conn, ver_cols)
 
     # 0.6.0 namespace membership: seed each existing single-owner namespace as an `owner` member,
     # so the new membership check (which supersedes single-owner) sees no disruption. Idempotent.
@@ -262,6 +263,25 @@ _V011_COLUMNS: tuple[tuple[str, str], ...] = (
     ("share_alike", "INTEGER NOT NULL DEFAULT 0"),
 )
 
+#: 0.17 (format 0.6) per-version facets: which derived fact tables a version carries, and whether it
+#: declared what its weights mean. Same rule as `_V011_COLUMNS` above — a column is for something you
+#: filter by, and the counts and lists that make each table *interpretable* stay in `manifest_json`
+#: and surface on the detail endpoint.
+#:
+#: **Plain booleans rather than tri-state, and that is correct here for once.** The licence columns
+#: beside them are `NULL`-able because "this source's terms could not be established" is a real third
+#: state. Presence of a fact table is not like that: either the compile had the table or it did not,
+#: and a manifest that predates the block is a manifest whose module carried no such table — the
+#: block did not exist to be omitted. So `0` is honest for a legacy row in a way it would not be for
+#: `commercial_use`, and in a way `positional_rows` deliberately is not (see `db/facets.py`).
+_V017_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("has_gene_validity", "INTEGER NOT NULL DEFAULT 0"),
+    ("has_clinical_assertions", "INTEGER NOT NULL DEFAULT 0"),
+    ("has_gwas_effects", "INTEGER NOT NULL DEFAULT 0"),
+    ("has_frequencies", "INTEGER NOT NULL DEFAULT 0"),
+    ("weighting_declared", "INTEGER NOT NULL DEFAULT 0"),
+)
+
 
 def _migrate_0_11_facets(conn: sqlite3.Connection, ver_cols: set[str]) -> None:
     """Add and backfill the 0.5-manifest facets.
@@ -286,6 +306,35 @@ def _migrate_0_11_facets(conn: sqlite3.Connection, ver_cols: set[str]) -> None:
                 (*facets.values(), row["id"]),
             )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_trusted ON versions(trusted)")
+
+
+def _migrate_0_17_fact_tables(conn: sqlite3.Connection, ver_cols: set[str]) -> None:
+    """Add and backfill the format-0.6 fact-table facets.
+
+    Reads `manifest_json` only — no storage, no network — which is what makes it a migration rather
+    than an ops command, and it is idempotent: the backfill runs on the columns' first appearance and
+    the values are a pure function of a manifest that never changes.
+
+    **Nothing here re-judges anything**, unlike `_migrate_0_11_3_trust`. Every existing row backfills
+    to `0` because a pre-0.6 manifest carries none of these blocks, and that is not a downgrade: the
+    modules genuinely have no `gwas_effects.csv`, since the table did not exist when they were
+    compiled. The columns become non-zero as versions are published or recompiled onto 0.6.
+    """
+    added = [name for name, decl in _V017_COLUMNS if name not in ver_cols]
+    for name, decl in _V017_COLUMNS:
+        if name not in ver_cols:
+            conn.execute(f"ALTER TABLE versions ADD COLUMN {name} {decl}")
+    if added:
+        for row in conn.execute("SELECT id, manifest_json FROM versions").fetchall():
+            facets = version_facets(ModuleManifest.model_validate_json(row["manifest_json"]))
+            columns = {k: v for k, v in facets.items() if k in {n for n, _ in _V017_COLUMNS}}
+            conn.execute(
+                "UPDATE versions SET " + ", ".join(f"{k} = ?" for k in columns) + " WHERE id = ?",
+                (*columns.values(), row["id"]),
+            )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_versions_gwas_effects ON versions(has_gwas_effects)"
+    )
 
 
 def _migrate_0_11_3_trust(conn: sqlite3.Connection) -> None:

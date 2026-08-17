@@ -605,7 +605,15 @@ def _finalize(
             # The card's prose (S5). Read from what was actually stored rather than from the upload,
             # so the projection and the bytes a downloader gets cannot disagree. Absent → `None`,
             # which leaves an earlier version's readme in place instead of blanking the card.
-            readme_bytes = stored.get(README_FILE)
+            #
+            # **Named by the manifest since 0.17**, falling back to the constant only for a compile
+            # that attested none. That is the whole of what `manifest.readme` buys the projection: the
+            # text itself is not in the manifest and cannot be (it is a hash, not a copy), but *which
+            # file is the readme* now is — so a reindex no longer has to know the convention, and if
+            # upstream's `README_CANDIDATES` ladder ever resolves a spelling ours does not, this
+            # follows it rather than silently projecting nothing.
+            readme_name = manifest.readme.name if manifest.readme is not None else README_FILE
+            readme_bytes = stored.get(readme_name)
             ingest_manifest(
                 repo,
                 manifest,
@@ -723,19 +731,37 @@ def amend_readme(
     intact. On an immutable registry that is the whole point: a caveat phrased badly must be
     fixable without burning a version number and claiming a second `content_hash`.
 
-    **One asymmetry with the logo, and it is upstream's to close.** `amend_logo` records the swap on
-    `manifest.logo`, so the manifest stays the source of truth and the DB stays a projection of it.
-    The manifest has no readme field, so this writes the bytes to storage and the text to the
-    projection, and the manifest says nothing about either. Filed upstream (S5); when the field
-    lands this should set it and the projection becomes derivable again. Until then, storage is the
-    durable copy and the DB column is the cache — which is why publish reads it back out of
-    `stored` rather than trusting the upload.
+    **The asymmetry with the logo closed in 0.17.** Through 0.16 `amend_logo` recorded its swap on
+    `manifest.logo` while this wrote bytes to storage and text to the DB, with the manifest saying
+    nothing about either — so the readme was the one column no manifest could produce, and a
+    re-ingest that did not know about readmes would have blanked every card (which is why
+    `upsert_module(readme=None)` has to mean *leave it*). Format 0.6 added `manifest.readme` as the
+    answer to S5, and this now sets it exactly as `amend_logo` does: the manifest is the source of
+    truth again and the DB is a projection of it.
+
+    The entry is a hash, not just a name, so an amended readme stays verifiable — a downloader
+    re-hashes it via `verify_manifest(check_readme=True)`. That is the difference the attestation
+    makes: before it, prose was bytes we served and no client could check; now it travels with the
+    module. Still out of `artifact.digest` **and** `content_signature`, so amending it moves no
+    identity and cannot collide with the `409 duplicate_content` claim of the module it describes.
     """
-    if repo.get_manifest_json(namespace, name, version) is None:
+    raw = repo.get_manifest_json(namespace, name, version)
+    if raw is None:
         raise PublishError("version_not_found")
+    manifest = ModuleManifest.model_validate_json(raw)
+
+    data = text.encode("utf-8")
+    manifest.readme = FileEntry(name=README_FILE, sha256=sha256_bytes(data), size=len(data))
 
     key = version_key(namespace, name, version)
-    storage.store_module(key, {README_FILE: text.encode("utf-8")})
+    storage.store_module(
+        key,
+        {
+            README_FILE: data,
+            "manifest.json": manifest.model_dump_json(indent=2).encode("utf-8") + b"\n",
+        },
+    )
+    repo.set_version_manifest(namespace, name, version, manifest)
     repo.set_module_readme(namespace, name, text)
     return text
 

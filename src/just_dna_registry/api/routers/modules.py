@@ -83,6 +83,32 @@ def list_modules(
     namespace: Optional[str] = None,
     featured: Optional[bool] = None,
     include_blacklisted: bool = False,
+    # Format-0.6 fact tables (0.17). Tri-state: omitted means "do not filter", which is not `false`.
+    # Scoped to each module's current version, like `gene` and `category`.
+    has_gene_validity: Optional[bool] = Query(
+        None, description="Modules whose latest version carries a ClinGen/GenCC validity table"
+    ),
+    has_clinical_assertions: Optional[bool] = Query(
+        None, description="Modules whose latest version carries a ClinVar clinical-assertion table"
+    ),
+    has_gwas_effects: Optional[bool] = Query(
+        None,
+        description=(
+            "Modules whose latest version carries published GWAS effect sizes. Read the detail's "
+            "`gwas_effects.units` and `.without_effect_allele` before using them — more than one "
+            "unit means the betas are on different scales and must not be pooled."
+        ),
+    ),
+    has_frequencies: Optional[bool] = Query(
+        None, description="Modules whose latest version carries an allele-frequency table"
+    ),
+    weighting_declared: Optional[bool] = Query(
+        None,
+        description=(
+            "Modules that state what their authored `weight` column means. `false` finds the ones "
+            "that have not said — which is not the same as saying their weights are comparable."
+        ),
+    ),
     group: Optional[str] = Query(None, pattern="^(all|featured|curated|popular|new|test)$"),
     sort: str = Query("name", pattern="^(downloads|recent|name|stars|popular)$"),
 ) -> Page[ModuleCard]:
@@ -102,6 +128,11 @@ def list_modules(
         namespace=namespace,
         featured=featured,
         include_blacklisted=include_blacklisted,
+        has_gene_validity=has_gene_validity,
+        has_clinical_assertions=has_clinical_assertions,
+        has_gwas_effects=has_gwas_effects,
+        has_frequencies=has_frequencies,
+        weighting_declared=weighting_declared,
         sort=sort,
     )
 
@@ -215,7 +246,15 @@ def get_file(
     file_path: str,
 ) -> Response:
     """Serve (or redirect to) any file recorded in the manifest — artifact parquet, provenance
-    log (e.g. `logs/reviewer.log`), or input — validated against the manifest listing."""
+    log (e.g. `logs/reviewer.log`), or input — validated against the manifest listing.
+
+    **The rule is "what the manifest attests", not a list maintained here**, which is why three
+    files became reachable at 0.17 without this guard's logic changing: format 0.6 gave `readme`
+    (S5) and `derived` (RM49) manifest entries, so the readme and the machine-written sidecars are
+    now hashed records like everything else. Upstream endorsed keeping this refusal exactly as it
+    is — the fix for prose a client could not verify was the missing attestation, not serving
+    unhashed bytes — so the new names are added to `allowed` and nothing else moves.
+    """
     manifest = catalog.get_manifest(repo, namespace, name, version)
     if manifest is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version_not_found")
@@ -223,9 +262,12 @@ def get_file(
         {f.name for f in manifest.artifact.files}
         | {e.name for e in manifest.logs}
         | {e.name for e in manifest.inputs}
+        | {e.name for e in manifest.derived or []}
     )
     if manifest.logo is not None:
         allowed.add(manifest.logo.name)
+    if manifest.readme is not None:
+        allowed.add(manifest.readme.name)
     if manifest.provenance is not None and manifest.provenance.file:
         allowed.add(manifest.provenance.file)
     if file_path not in allowed:
@@ -250,6 +292,12 @@ def _build_tarball(storage: StorageBackend, key: str, manifest: ModuleManifest) 
 
     `manifest.json` comes from the DB manifest (authoritative); every other file is read from
     storage, skipping any optional ones (logs/inputs) not present. Deterministic (no mtimes).
+
+    **"Whole" got closer to true at 0.17**, and only because the manifest can now say more. The
+    entry list is deliberately the manifest's own — anything it does not attest is not shipped, so
+    this tarball gained the readme and the machine-written sidecars the release format 0.6 gave them
+    entries. Before that a tarball of a module was missing the very files needed to recompile it,
+    which is the registry half of S26.
     """
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
@@ -260,9 +308,16 @@ def _build_tarball(storage: StorageBackend, key: str, manifest: ModuleManifest) 
             tar.addfile(info, io.BytesIO(data))
 
         _add("manifest.json", manifest.model_dump_json(indent=2).encode("utf-8") + b"\n")
-        entries = [*manifest.artifact.files, *manifest.logs, *manifest.inputs]
+        entries = [
+            *manifest.artifact.files,
+            *manifest.logs,
+            *manifest.inputs,
+            *(manifest.derived or []),
+        ]
         if manifest.logo is not None:
             entries.append(manifest.logo)
+        if manifest.readme is not None:
+            entries.append(manifest.readme)
         for entry in entries:
             if storage.exists(key, entry.name):
                 _add(entry.name, storage.read_file(key, entry.name))

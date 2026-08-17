@@ -75,6 +75,132 @@ class LicensingInfo(BaseModel):
     declared_uses: list[str] = Field(default_factory=list)
 
 
+class WeightingInfo(BaseModel):
+    """What the module says its authored `weight` column means (0.6, RM92). All three free text.
+
+    Rendered **verbatim**, never parsed and never normalized. Upstream chose free text deliberately —
+    a closed vocabulary would have had to enumerate scales nobody has surveyed — so any tidying here
+    would be this catalog inventing a taxonomy the format refused to invent.
+
+    **An absent block means the module has not said, which is not the same as "the weights are
+    comparable".** That distinction is the entire point of the block existing: `weight` is a bare
+    float with no unit column, every module means something different by it, and until 0.6 the
+    artifact had no way to say so. A consumer aggregating weights across modules should read absence
+    as *do not*.
+    """
+
+    scale: Optional[str] = None
+    method: Optional[str] = None
+    note: Optional[str] = None
+
+
+class GwasEffectsInfo(BaseModel):
+    """The GWAS Catalog effect-size sidecar's facets (0.6, RM90).
+
+    **`units` and `without_effect_allele` are surfaced beside `row_count`, not behind it**, on
+    upstream's explicit warning that a row count alone reads as confidence. They are what tell a
+    reader whether these effects are usable at all:
+
+    * more than one entry in `units` means the betas are on **different scales** and must not be
+      pooled — one real variant in the reference corpus carries twelve distinct unit spellings across
+      62 traits, three of which are spellings of "SD";
+    * `without_effect_allele` counts associations the Catalog published without establishing which
+      allele carries the effect (it writes `rs4149056-?`) — 42 of 195 on that same module. Those rows
+      are real evidence and cannot be used as a weight in any direction. They are counted rather than
+      filtered precisely so that neither dropping them nor keeping them can happen by accident.
+
+    This is **not** a substitute for the authored `weight`, and a consumer must not treat it as one:
+    the two are different methodologies, and `weight` is positive-is-protective while a GWAS beta is
+    positive on its effect allele.
+    """
+
+    row_count: int = 0
+    variant_count: int = 0
+    with_effect_allele: int = 0
+    without_effect_allele: int = 0
+    measures: list[str] = Field(default_factory=list)
+    units: list[str] = Field(default_factory=list)
+    traits: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    datasets: list[str] = Field(default_factory=list)
+
+
+class VerificationCheck(BaseModel):
+    """One check, and what putting it produced. Every field is the publisher's claim — see below."""
+
+    check: str
+    subjects: int = 0
+    findings: int = 0
+    skipped: Optional[str] = Field(
+        default=None,
+        description="Why the check did not run. null = it ran. `subjects: 0` with no reason is a "
+        "check that ran and had nothing to look at, which is not the same as one that was skipped.",
+    )
+    detail: Optional[str] = None
+    source: Optional[str] = None
+    release: Optional[str] = None
+    checked_at: Optional[str] = None
+
+
+class VerificationInfo(BaseModel):
+    """Whether anything this module asserts was ever *checked* (0.6, RM45) — as a claim, not a verdict.
+
+    **Absent reads as *nothing was said*, never as *passed*.** Upstream marks every field of the
+    manifest block untrusted for that reason, and the block is also absent when an attestation no
+    longer matches the bytes it was made against, which reads correctly the same way.
+
+    **How much of this is ours, measured rather than assumed** (pinned by
+    `tests/test_specfiles.py::test_a_publisher_cannot_forge_a_check_this_server_runs`):
+
+    * A check **this server runs** cannot be forged. Publish runs enrichment itself and attests what
+      it saw, and that record displaces whatever arrived under the same name — an upload claiming
+      `clinical_significance` ran over 999 subjects publishes as our own record instead.
+    * A check **this server does not run** survives verbatim and is unverifiable. Nothing here
+      produces `acmg_secondary_findings`, so a fabricated one is carried into the manifest as sent.
+      That is the residual surface and the reason nothing in this block is presented as a registry
+      verdict.
+    * `closed` is the sturdiest field, because the closure is **hash-bound**: the compiler recomputes
+      the binding against the authored bytes and drops the whole closure when it does not match. So
+      `closed: true` cannot be claimed by editing a JSON file — though `closed_by` is free text, and
+      proves that someone declared authoring finished, not who.
+
+    Deliberately **not** a card facet and deliberately not a filter. A registry that let you sort by
+    someone else's unverifiable pass would be lending it our credibility, which is the one thing this
+    surface must not do.
+    """
+
+    closed: bool = Field(
+        default=False,
+        description="A closure survived the compiler's re-binding: a human declared this module "
+        "final and the authored bytes have not moved since. The one field here with a check behind it.",
+    )
+    closed_at: Optional[str] = None
+    closed_by: Optional[str] = Field(
+        default=None, description="Free text. Who they say they are, not who they are."
+    )
+    producer: Optional[str] = Field(
+        default=None, description="Tool and version that last wrote the attestation. Untrusted."
+    )
+    produced_at: Optional[str] = None
+    checks: list[VerificationCheck] = Field(default_factory=list)
+
+
+class FactTablesInfo(BaseModel):
+    """Which derived fact tables a version carries, for the card and the search filters (0.6).
+
+    Presence only — the counts and facets live on the detail, because a card is a grid cell and a
+    reader scanning one wants "does this module carry GWAS effects at all", not 195. `weighting` is
+    here for the same reason and is the odd one out in kind: it is authored rather than derived, and
+    what it flags is that the module **said** what its weights mean.
+    """
+
+    gene_validity: bool = False
+    clinical_assertions: bool = False
+    gwas_effects: bool = False
+    frequencies: bool = False
+    weighting_declared: bool = False
+
+
 class ModuleCard(BaseModel):
     """One entry in the list/search grid (SPEC §8.2)."""
 
@@ -106,6 +232,10 @@ class ModuleCard(BaseModel):
     # Projected from the latest version's manifest, the same way `stats` is (0.11).
     resolution: ResolutionInfo = Field(default_factory=ResolutionInfo)
     licensing: LicensingInfo = Field(default_factory=LicensingInfo)
+    # Which derived fact tables the latest version carries (0.6 adoption). Presence only; the
+    # facets that decide whether the data is *usable* are on the detail, where there is room to
+    # render them honestly.
+    facts: FactTablesInfo = Field(default_factory=FactTablesInfo)
 
 
 class VersionSummary(BaseModel):
@@ -127,11 +257,22 @@ class VersionSummary(BaseModel):
 
 
 class ModuleDetail(ModuleCard):
-    """Module detail: card + readme + full versions + inline latest manifest (SPEC §8.3)."""
+    """Module detail: card + readme + full versions + inline latest manifest (SPEC §8.3).
+
+    The three 0.6 blocks are projected here rather than onto the card, and each for its own reason.
+    `verification` is an unverifiable third-party claim that must never be sortable; `gwas_effects`
+    needs `units` and `without_effect_allele` rendered beside its count or the count misleads; and
+    `weighting` is free prose that a grid cell would have to truncate into something the author did
+    not write. All three are projected from the **latest** version's manifest, exactly as `stats`,
+    `resolution` and `licensing` already are, so they describe the same version the card does.
+    """
 
     readme: str
     versions: list[VersionSummary]
     latest_manifest: Optional[ModuleManifest]
+    verification: Optional[VerificationInfo] = None
+    weighting: Optional[WeightingInfo] = None
+    gwas_effects: Optional[GwasEffectsInfo] = None
 
 
 class Page(BaseModel, Generic[T]):

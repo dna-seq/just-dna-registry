@@ -2,6 +2,7 @@
 ClinVar-stat surfacing, module logo (served, in card, amend without version bump), and optional
 Ed25519 signing (publish signs, /pubkey serves, client verifies a pinned key)."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -271,29 +272,85 @@ def test_readme_wins_when_both_names_arrive(client: TestClient, api_key: str) ->
     assert client.get("/api/v1/modules/just-dna-seq/cardio").json()["readme"] == _README
 
 
-def test_the_readme_reaches_the_card_but_not_a_downloader(client: TestClient, api_key: str) -> None:
-    """The half of S5 that is upstream's, pinned so it cannot be lost.
+def test_the_readme_travels_with_the_module_now_that_the_manifest_attests_it(
+    client: TestClient, api_key: str
+) -> None:
+    """S5 closed from upstream's side, and the test that used to pin the limitation.
 
-    `/files/{path}` and the tarball are both built from what the **manifest** attests, and the
-    manifest has no readme entry — the logo has one (`manifest.logo`), which is exactly why the logo
-    is fetchable and this is not. So the prose reaches the catalog card and no further.
+    Through 0.16 this asserted `/files/README.md` → **404**. That was correct and deliberate:
+    `/files/{path}` and the tarball are built from what the *manifest* attests, the logo had an entry
+    and the readme did not, so the prose reached the catalog card and went no further. The refusal
+    was never the defect — serving unhashed bytes would have been worse — and upstream said so when
+    accepting S5, fixing the missing attestation instead.
 
-    When `just-dna-format` adds the field, this test is the one to change: it is asserting a
-    limitation, not a desired property.
+    Format 0.6 adds `manifest.readme`, so the same guard now admits the same file for the same
+    reason it always refused it. The properties worth pinning are that the entry is a real hash
+    (a downloader can verify the prose, which is the whole point of attesting it) and that it stays
+    out of both identities — prose must never move `artifact.digest` or `content_signature`, or
+    fixing a typo in a caveat would mint a new module identity and collide with the
+    `409 duplicate_content` claim of the version it is a copy of.
     """
     import io
     import tarfile
 
-    _publish(client, api_key, readme=_README.encode())
+    manifest = _publish(client, api_key, readme=_README.encode())
     assert client.get("/api/v1/modules/just-dna-seq/cardio").json()["readme"] == _README
 
-    assert client.get(f"{_BASE}/files/README.md").status_code == 404
-    assert client.get(f"{_BASE}/files/logo.png").status_code == 200, "the logo IS in the manifest"
+    entry = manifest["readme"]
+    assert entry["name"] == "README.md"
+    assert entry["sha256"] == "sha256:" + hashlib.sha256(_README.encode()).hexdigest()
+    assert entry["size"] == len(_README.encode())
+
+    assert client.get(f"{_BASE}/files/README.md").status_code == 200
+    assert client.get(f"{_BASE}/files/logo.png").status_code == 200
 
     resp = client.get(f"{_BASE}/download", params={"format": "tarball"})
     with tarfile.open(fileobj=io.BytesIO(resp.content)) as tar:
         names = set(tar.getnames())
-    assert "README.md" not in names and "logo.png" in names
+    assert {"README.md", "logo.png"} <= names
+
+    # Attested, but outside both identities — the manifest records it and neither hash sees it.
+    # Checked through `/validate`, which computes the signature without spending a publish, so the
+    # two specs can differ by the readme alone rather than by the module name a second publish needs.
+    assert entry["name"] not in {f["name"] for f in manifest["artifact"]["files"]}
+    signatures = {
+        client.post(
+            "/api/v1/modules/just-dna-seq/cardio/validate",
+            files=_files(readme=prose),
+            headers={"Authorization": f"Bearer {api_key}"},
+        ).json()["content_signature"]
+        for prose in (None, _README.encode(), b"# totally different prose\n")
+    }
+    assert len(signatures) == 1, "prose moved `content_signature`"
+
+
+def test_amending_a_readme_re_attests_it_without_moving_the_digest(
+    client: TestClient, api_key: str
+) -> None:
+    """`amend_readme` records the swap on the manifest now, exactly as `amend_logo` always has.
+
+    This is the asymmetry 0.17 closed. While the manifest had no readme field, amending wrote bytes
+    to storage and text to the DB column and the manifest said nothing about either — which made
+    `readme` the one projection no manifest could reproduce, and is why `upsert_module(readme=None)`
+    has to mean *leave it* rather than *clear it*. The rewritten entry is what makes the projection
+    derivable again, and what keeps a downloader able to verify prose that changed after publish.
+    """
+    _publish(client, api_key, readme=_README.encode())
+    before = client.get(f"{_BASE}/manifest").json()["artifact"]["digest"]
+
+    revised = "# Cardio\n\nThis module does **not** diagnose anything.\n"
+    resp = client.post(
+        f"{_BASE}/readme",
+        files={"readme": ("README.md", revised.encode(), "text/markdown")},
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    manifest = client.get(f"{_BASE}/manifest").json()
+    assert manifest["readme"]["sha256"] == "sha256:" + hashlib.sha256(revised.encode()).hexdigest()
+    assert manifest["artifact"]["digest"] == before, "prose is not content; the digest must not move"
+    assert client.get(f"{_BASE}/files/README.md").content.decode() == revised
+    assert client.get("/api/v1/modules/just-dna-seq/cardio").json()["readme"] == revised
 
 
 def test_amend_logo_rejects_bad_extension(client: TestClient, api_key: str) -> None:

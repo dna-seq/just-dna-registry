@@ -310,6 +310,11 @@ class RegistryClient:
         namespace: Optional[str] = None,
         featured: Optional[bool] = None,
         include_blacklisted: bool = False,
+        has_gene_validity: Optional[bool] = None,
+        has_clinical_assertions: Optional[bool] = None,
+        has_gwas_effects: Optional[bool] = None,
+        has_frequencies: Optional[bool] = None,
+        weighting_declared: Optional[bool] = None,
         group: Optional[str] = None,
         sort: str = "name",
         page: int = 1,
@@ -322,11 +327,21 @@ class RegistryClient:
         that looks like a working search. `group` ∈ `all|featured|curated|popular|new|test`,
         `sort` ∈ `downloads|recent|name|stars|popular` — the server 422s on anything else.
         `None` filters are dropped rather than sent empty.
+
+        The five fact-table filters (0.17) select on what a module's **current** version carries, and
+        are tri-state: omitted is "do not filter", which is not `False`. `weighting_declared=False`
+        is the useful negative — it finds modules that have not said what their `weight` column
+        means, which is the population you must not aggregate across.
         """
         params: dict[str, Any] = {
             "q": q, "category": category, "gene": gene, "genome_build": genome_build,
             "owner": owner, "license": license, "namespace": namespace, "featured": featured,
             "include_blacklisted": include_blacklisted, "group": group,
+            "has_gene_validity": has_gene_validity,
+            "has_clinical_assertions": has_clinical_assertions,
+            "has_gwas_effects": has_gwas_effects,
+            "has_frequencies": has_frequencies,
+            "weighting_declared": weighting_declared,
             "sort": sort, "page": page, "per_page": per_page,
         }
         clean = {k: v for k, v in params.items() if v is not None}
@@ -436,10 +451,20 @@ class RegistryClient:
         an installer wants the parquets and nothing else; on, this is the difference between a
         downloaded artifact and a downloaded *module*, and it is what makes `layout` mean anything.
 
-        `layout="split"` moves the machine-written tables into `derived/` afterwards, so a reader can
-        tell the author's files from the enricher's. **Afterwards is the whole of the design:** the
-        manifest attests flat names, so verification runs on the flat tree and the split is applied
-        to a tree that has already been proven. Default `"flat"` — nothing existing changes."""
+        **Since 0.17 it also fetches the machine-written sidecars**, which is what makes a downloaded
+        module recompile where it lands. Through 0.16 it could not: `resolution.csv` and the fact
+        tables are in neither `artifact.files` nor `manifest.inputs`, so nothing attested them and a
+        client had no name to ask for — filed upstream as S26 and answered by format 0.6's
+        `manifest.derived`. `verify_manifest(check_derived=True)` re-hashes them like everything else.
+
+        `layout="split"` moves those tables into `derived/` afterwards, so a reader can tell the
+        author's files from the enricher's. **Afterwards is the whole of the design:** the manifest
+        attests the names as stored, so verification runs on the tree as attested and the split is
+        applied to one already proven. Default `"flat"` — nothing existing changes.
+
+        The readme travels too, and is re-hashed (`check_readme`). Before 0.6 it was prose the server
+        served and no client could check; `manifest.readme` (S5) is what lets it come along as part
+        of the module rather than as a page on a website."""
         if layout not in {"flat", "split"}:
             raise ValueError(f"layout must be 'flat' or 'split', got {layout!r}")
         self.assert_compatible()  # a format mismatch shows up as a digest failure — catch it first
@@ -458,8 +483,14 @@ class RegistryClient:
             # arrives unasked. Taken off the manifest rather than a second listing endpoint: these
             # are the entries `check_inputs` verifies against, so one source decides both.
             names += [e.name for e in manifest.inputs]
+            # And the derived half, on the same reasoning and from the same place. An authored spec
+            # without `resolution.csv` does not recompile to the same artifact — the compiler never
+            # fetches, so the coordinates have to arrive with it.
+            names += [e.name for e in manifest.derived or []]
         if manifest.logo is not None:
             names.append(manifest.logo.name)
+        if manifest.readme is not None:
+            names.append(manifest.readme.name)
         if manifest.provenance is not None and manifest.provenance.file:
             names.append(manifest.provenance.file)
         for rel in names:
@@ -472,7 +503,9 @@ class RegistryClient:
             manifest,
             check_logs=include_logs,
             check_inputs=include_inputs,
+            check_derived=include_inputs and bool(manifest.derived),
             check_logo=manifest.logo is not None,
+            check_readme=manifest.readme is not None,
             check_provenance=manifest.provenance is not None,
             public_key=public_key,
         )

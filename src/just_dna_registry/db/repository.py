@@ -943,6 +943,11 @@ class Repository:
         exclude_namespaces: Optional[list[str]] = None,
         only_namespaces: Optional[list[str]] = None,
         curated_only: bool = False,
+        has_gene_validity: Optional[bool] = None,
+        has_clinical_assertions: Optional[bool] = None,
+        has_gwas_effects: Optional[bool] = None,
+        has_frequencies: Optional[bool] = None,
+        weighting_declared: Optional[bool] = None,
         sort: str = "name",
         limit: int = 20,
         offset: int = 0,
@@ -954,6 +959,11 @@ class Repository:
         restricts to them. `exclude_namespaces` / `only_namespaces` scope the result to a set of
         namespaces (used by the listing groups to hide or isolate test/sandbox spaces). Each row
         carries `featured`/`blacklisted` (from the namespaces table).
+
+        The five fact-table filters (0.17) are tri-state as parameters and match against the module's
+        **current** version, the same scoping `gene` and `category` use: a module is what its latest
+        version is, and a `gwas_effects.csv` dropped two releases ago should not keep answering the
+        filter. `None` means "do not filter", which is not the same as `False`.
         """
         where: list[str] = ["m.latest_version IS NOT NULL"]
         params: list[Any] = []
@@ -1002,6 +1012,23 @@ class Repository:
                 "WHERE v.yanked = 0 AND c.category = ?)"
             )
             params.append(category)
+        for column, wanted in (
+            ("has_gene_validity", has_gene_validity),
+            ("has_clinical_assertions", has_clinical_assertions),
+            ("has_gwas_effects", has_gwas_effects),
+            ("has_frequencies", has_frequencies),
+            ("weighting_declared", weighting_declared),
+        ):
+            if wanted is None:
+                continue
+            # Scoped to the module's current version by joining on `m.latest_version`, so the answer
+            # tracks what a downloader would actually get. Written as a correlated EXISTS rather than
+            # a join on `versions` so it composes with the other predicates without multiplying rows.
+            where.append(
+                f"EXISTS (SELECT 1 FROM versions v WHERE v.module_id = m.id "
+                f"AND v.version = m.latest_version AND COALESCE(v.{column}, 0) = ?)"
+            )
+            params.append(int(bool(wanted)))
 
         clause = " AND ".join(where)
         order = _SORT_SQL.get(sort, _SORT_SQL["name"])

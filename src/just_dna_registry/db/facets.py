@@ -203,6 +203,17 @@ def version_facets(manifest: ModuleManifest) -> dict[str, Any]:
         # would be a false positive — which is why the manifest keeps per-layer lists rather than one
         # boolean, and why this counts layers instead of sources.
         "share_alike": int(bool(sources.share_alike_layers)) if sources else 0,
+        # Which derived fact tables this version carries (0.6). Presence of the manifest block is the
+        # question — a block is written exactly when the compile had the table — so a legacy manifest
+        # honestly projects `0` here rather than "unknown": the table did not exist to be omitted.
+        "has_gene_validity": int(manifest.gene_validity is not None),
+        "has_clinical_assertions": int(manifest.clinical_assertions is not None),
+        "has_gwas_effects": int(manifest.gwas_effects is not None),
+        "has_frequencies": int(manifest.frequency is not None),
+        # Authored rather than derived, and the odd one out in kind: this says the module **stated**
+        # what its weights mean, not that it has any. Filterable because "whose weights can I combine"
+        # is the question S36 was actually asking, and an absent declaration answers it with *no*.
+        "weighting_declared": int(manifest.weighting is not None),
     }
 
 
