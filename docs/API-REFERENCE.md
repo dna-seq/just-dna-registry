@@ -562,7 +562,7 @@ The spec's `module.name` must equal the path `{name}` (`422 name_mismatch`).
 `422 invalid_version`, `409 version_exists`,
 `422 {error: missing_spec_files|invalid_spec|compile_failed|name_mismatch|ambiguous_spec_layout}`.
 
-#### Spec layout (0.14) — what may arrive, and from where
+#### Spec layout (0.17) — what may arrive, and from where
 
 The compiler reads one flat directory, so that is the canonical layout and the server normalises an
 upload onto it before reading anything. Applied identically by `/versions`, `/versions/import`,
@@ -602,11 +602,14 @@ Two exceptions and one refusal:
 
 **`verification.json` is recognised as of 0.16** (S11), so a `revalidate` or an `upgrade` rebuilds a
 spec directory with the enricher's attestation still in it instead of dropping it — the same failure
-`README.md` had before 0.14. Recognised is not read: nothing in this service parses the file, and
-nothing will until the manifest can attest it. It is the *author's* record of what their enricher
-checked against live sources, which a server that compiles offline cannot reproduce and must not
-present as its own. `manifest.verification` and its signed `closure` block are format 0.6 work;
-surfacing either is tracked in [ROADMAP.md](ROADMAP.md).
+`README.md` had before 0.14. **Since 0.17 it is also surfaced**, because format 0.6 lets the manifest
+attest it: the compiler reads the file and this API projects the result as `ModuleDetail.verification`
+(see *ModuleDetail* under *Schemas*, which is also where the boundary between the publisher's claim
+and the registry's word is set out). Nothing in this service parses the file itself, and the
+distinction is not pedantry — it is the *author's* record of what their enricher checked against live
+sources, which a server that compiles offline cannot reproduce and must never present as its own. It
+is served and downloadable as a `derived` entry, never rendered as a registry verdict, and never a
+filter.
 
 **The folder cannot move a module's identity.** `content_signature` is computed over
 `module_spec.yaml`, `variants.csv`, `studies.csv` and the table-kind CSVs — all authored, all at the

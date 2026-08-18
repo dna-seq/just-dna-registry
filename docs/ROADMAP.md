@@ -579,6 +579,17 @@ an explicit guard:
   `just_dna_format.layout.SIDECAR_SPELLINGS`, so the next sidecar rename arrives with a floor bump
   instead of an incident.
 
+- **Decide what to do about `httpx2` before starlette makes it not a choice.** The suite emits one
+  warning and has since before 0.17: starlette 1.6 deprecates driving `TestClient` with `httpx` and
+  points at `httpx2`. It is *not* ours to fix in a hurry — nothing in `src/` touches the test client,
+  and the warning is about how the tests reach the app rather than about the app — but the SDK's own
+  transport is `httpx>=0.28.1`, and that is the part with a decision in it: `RegistryClient` is the
+  reference client, so its dependency is a consumer-facing choice and not an implementation detail.
+  Two things to establish before moving: whether `httpx2` is a drop-in for the client's own calls, and
+  whether a consumer already pinned to `httpx` 0.x can still install us if we move. Recorded here
+  rather than acted on inside a contract cut, where an unrelated transport swap is exactly the change
+  nobody would think to look at when something breaks.
+
 ## Superseded (post-0.10)
 
 - **Retire Eliot → stdlib `logging`.** Rewire the Eliot usage — `start_action` in

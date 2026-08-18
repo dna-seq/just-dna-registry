@@ -149,6 +149,14 @@ def _facts(manifest: Optional[ModuleManifest]) -> FactTablesInfo:
     Read off the manifest blocks rather than off `artifact.files`: a block is present exactly when
     the compile had the table, which is the same question asked one level up and does not depend on
     how a parquet came to be named.
+
+    **From the manifest and not from the projected columns**, unlike `_resolution_from_row` next
+    door, and the reason is not a preference: `search_modules` selects `m.*`, so a card row carries
+    no `versions` columns at all. A row-reading twin of this function existed briefly and was
+    unreachable; wiring it in would have rendered every card all-false while the filters that read
+    those same columns kept working — the two disagreeing in the one direction nobody would notice.
+    The card already loads the latest manifest for `stats`, so reading it here costs nothing, and
+    the manifest is the source of truth the columns are a projection of.
     """
     if manifest is None:
         return FactTablesInfo()
@@ -158,26 +166,6 @@ def _facts(manifest: Optional[ModuleManifest]) -> FactTablesInfo:
         gwas_effects=manifest.gwas_effects is not None,
         frequencies=manifest.frequency is not None,
         weighting_declared=manifest.weighting is not None,
-    )
-
-
-def _facts_from_row(row: sqlite3.Row) -> FactTablesInfo:
-    """The same facets from the projected columns, for list rows that must not reparse a manifest.
-
-    A card built by `list_modules` already loads the latest manifest for its stats, so it could use
-    `_facts`; this exists so the *filters* and the columns they read cannot disagree with what the
-    card renders. Missing columns mean a DB that has not migrated yet, which reads as all-absent —
-    the honest answer, since nothing has been projected.
-    """
-    keys = row.keys()
-    if "has_gwas_effects" not in keys:
-        return FactTablesInfo()
-    return FactTablesInfo(
-        gene_validity=bool(row["has_gene_validity"]),
-        clinical_assertions=bool(row["has_clinical_assertions"]),
-        gwas_effects=bool(row["has_gwas_effects"]),
-        frequencies=bool(row["has_frequencies"]),
-        weighting_declared=bool(row["weighting_declared"]),
     )
 
 

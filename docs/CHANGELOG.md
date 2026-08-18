@@ -249,9 +249,20 @@ directory name.
 ### Measured, not assumed
 
 **The suite is green on 0.6.1 with nothing else changed**: 395 passed, which is the measurement that
-says the patch bump itself costs no adoption work — everything below it is ours. **409 with the fourteen
+says the patch bump itself costs no adoption work — everything below it is ours. **410 with the fifteen
 new guards** (0.6.2 adds four: the AST ordering walk and its own self-test, the ACMG `skip` pair, and
 the parent arm that is not an outage).
+
+The fifteenth came out of the pre-merge review of this release, and it closes the half of the
+`unreachable` story the model-side guard cannot see. That guard fails when a sixth pass ships without
+an `unreachable` list; it says nothing about whether anything **prints** one, and for `frequencies`,
+`literature` and `acmg` the renderer is the only place an outage reaches a screen. So the pass names
+`registry-client check` walks are now a named constant pinned against `EnrichmentReport`'s own fields
+by the same walk, and it was shown to fail on a pass removed from the tuple before being kept. Same
+review dropped a `_facts_from_row` in `services/catalog.py` that was never called: `search_modules`
+selects `m.*`, so a card row carries no `versions` columns, and wiring the function in as its docstring
+described would have rendered every card's `facts` all-false while the filters reading those same
+columns kept working.
 
 **All 16 upstream reference examples publish through this registry under 0.6**, driven end to end
 through the real publish path (enrich → strict compile → store → project). Upstream measured 16/16

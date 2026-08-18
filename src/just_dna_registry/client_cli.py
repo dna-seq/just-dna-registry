@@ -28,6 +28,16 @@ _URL_ENV = "REGISTRY_URL"
 _TOKEN_ENV = "REGISTRY_TOKEN"
 _SKIP_VERSION_ENV = "REGISTRY_SKIP_VERSION_CHECK"
 
+#: The `/check` passes whose `unreachable` list `check` renders. Named here rather than written into
+#: the loop so a test can pin it against `EnrichmentReport`'s own fields: the model side already
+#: fails when a sixth pass ships without an `unreachable` list, and this is the other half of that
+#: guard, because a field nothing prints is a field that does not reach the person running the check.
+#: Three of the five (`frequencies`, `literature`, `acmg`) print no summary line of their own, so for
+#: them this loop is the only place an outage becomes visible at all.
+_UNREACHABLE_PASSES: tuple[str, ...] = (
+    "frequencies", "literature", "identifiers", "acmg", "pgx",
+)
+
 
 def _client(url: Optional[str], token: Optional[str], *, need_token: bool = False) -> RegistryClient:
     base = url or os.getenv(_URL_ENV) or "http://127.0.0.1:8000"
@@ -556,7 +566,7 @@ def check(
         # the frequency, literature and ACMG passes print no summary at all, so without this a gnomAD
         # outage would show as a clean check. Yellow, never red: an upstream being down is not a
         # finding about the module and `would_publish` does not move for it.
-        for pass_name in ("frequencies", "literature", "identifiers", "acmg", "pgx"):
+        for pass_name in _UNREACHABLE_PASSES:
             result = getattr(e, pass_name)
             if result is not None and result.unreachable:
                 typer.secho(

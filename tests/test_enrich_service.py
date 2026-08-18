@@ -534,13 +534,43 @@ def test_every_pass_that_can_degrade_can_say_it_reached_nothing() -> None:
     one. So the guard walks the report's own fields — a sixth pass added without the field fails here
     rather than shipping a clean-looking verdict nobody established.
     """
+    checks = _degradable_checks()
+
+    assert set(checks) == {"frequencies", "literature", "identifiers", "acmg", "pgx"}
+    for name, model in checks.items():
+        assert "unreachable" in model.model_fields, f"{name} cannot say it reached nothing"
+        assert "warnings" in model.model_fields, f"{name} cannot say why"
+
+
+def test_the_cli_renders_every_pass_that_can_say_it_reached_nothing() -> None:
+    """The field existing is half a fix; the renderer is where it becomes visible.
+
+    `registry-client check` walks a named tuple of passes, and three of the five (`frequencies`,
+    `literature`, `acmg`) print no summary line of their own — so for them that loop is the *only*
+    place an outage reaches the screen, and a pass missing from it renders an outage as `✓ would
+    publish`. The model-side guard above cannot catch that: a sixth pass can carry a perfectly good
+    `unreachable` list that nothing prints.
+
+    Enumerated from `EnrichmentReport` by the same walk, so the two halves cannot drift apart.
+    """
+    from just_dna_registry.client_cli import _UNREACHABLE_PASSES
+
+    assert set(_UNREACHABLE_PASSES) == set(_degradable_checks())
+
+
+def _degradable_checks() -> dict[str, type]:
+    """The `Optional[XCheck]` pass fields of `EnrichmentReport`, by field name.
+
+    Discovered rather than listed, which is what makes both guards above cover a pass nobody
+    remembered to add them for.
+    """
     import typing
 
     from pydantic import BaseModel
 
     from just_dna_registry.models.api import EnrichmentReport
 
-    checks = {}
+    checks: dict[str, type] = {}
     for name, info in EnrichmentReport.model_fields.items():
         args = typing.get_args(info.annotation)
         if type(None) not in args:  # `Optional[XCheck]` — an *optional pass*, not a finding list
@@ -548,11 +578,7 @@ def test_every_pass_that_can_degrade_can_say_it_reached_nothing() -> None:
         for arg in args:
             if isinstance(arg, type) and issubclass(arg, BaseModel) and arg.__name__.endswith("Check"):
                 checks[name] = arg
-
-    assert set(checks) == {"frequencies", "literature", "identifiers", "acmg", "pgx"}
-    for name, model in checks.items():
-        assert "unreachable" in model.model_fields, f"{name} cannot say it reached nothing"
-        assert "warnings" in model.model_fields, f"{name} cannot say why"
+    return checks
 
 
 def test_no_adapter_catches_an_unavailability_subclass_with_its_parent_first() -> None:

@@ -423,8 +423,8 @@ def plan_layout(names: Iterable[str]) -> LayoutPlan:
             plan.notes.append(
                 f"renamed `{source}` to `{dest}` (same table, same columns; `{base}` is the "
                 f"deprecated spelling and is removed at format 1.0, so it is stored under the "
-                f"current name — the rename moves no identity, since the licensing ledger is a fact "
-                f"sidecar and sits outside `content_signature`)"
+                f"current name — the rename moves no identity, since a fact sidecar sits outside "
+                f"`content_signature`)"
             )
         else:
             plan.notes.append(
