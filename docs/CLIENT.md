@@ -405,7 +405,16 @@ optionally gnomAD frequencies (`--frequencies`), citations (`--literature`), ACM
 (`--acmg`) and the PGx nomenclature cross-check (`--pgx`). It exits 0 only when the server says it
 `would_publish`.
 
-Two of its answers are about what could *not* be established, and both print as their own line since
+Three of its answers are about what could *not* be established. Each optional pass carries
+**`unreachable`** (0.17) — the sources it asked and got no answer from — because an empty finding list
+means two opposite things and only one of them is reassuring: gnomAD holding none of your alleles, and
+gnomAD returning a 503. Read it before trusting any pass that reported nothing — the CLI prints
+a `· <pass>: no answer from …` line above the findings for exactly that reason, since `--frequencies`,
+`--literature` and `--acmg` otherwise print nothing at all when they succeed *or* fail. An outage does
+not change `would_publish`: it is a degradation of the report, not a finding about your module. Until
+0.17 these came back as `HTTP 500`, so a retry was the only available reading of them.
+
+The other two print as their own line since
 0.13. `unreachable_rsids` names rsIDs live Ensembl never answered about — they appear in `unresolved`
 too, but an unanswered request is a re-run rather than an authoring fix, so do not go writing
 coordinates for a variant on the strength of an unresolved list alone. And `--identifiers` now also

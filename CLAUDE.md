@@ -38,6 +38,23 @@ breaking contract change, so the installed minor must match what clients speak; 
 minor is a coordinated cut with an operator procedure, never a dependency bump. See
 [docs/UPGRADE.md](docs/UPGRADE.md).
 
+**And a *patch* inside that minor can still be mandatory — check what it touches before floating it.**
+0.17 floors at **0.6.1**, not 0.6.0, because upstream RM95 stored an uncanonicalized vocabulary
+spelling *inside* `content_signature`: a signature this server publishes is a permanent global claim on
+a `409 duplicate_content` slot that only a purge frees, so a floor below that fix lets one be minted
+over a value upstream calls invalid. Two more of the eight land on our endpoints (RM93 — `validate` did
+not predict `compile` for two shapes, which is S6's rule one tier down; RM97 — see the catching rule
+below). The reasons are written into the `pyproject.toml` pins beside each floor, which is where the
+next person will look.
+
+**And the three tiers can move apart: `just-dna-enricher` floors at 0.6.2 while the other two stay at
+0.6.1.** The network tier touches no parquet, model or manifest field, so upstream can cut it alone —
+and 0.6.2 is a hard floor for the *opposite* of the usual reason. Not a symbol missing below it, but
+one whose meaning changes at it: our adapters catch `FrequencyUnavailable` and its siblings, which on
+0.6.1 nothing raises, so those arms would be dead code and `/check` would 500 over an outage again.
+Read what a patch *does* before assuming a partial cut is optional; upgrading all three in step here
+would have been wrong.
+
 ---
 
 ## Running the service
@@ -193,7 +210,8 @@ Four rules that each cost a bug to learn:
   every empty collection this tier publishes needs a sibling field saying which it is.
   `clin_sig_conflicts` had no such field until enricher 0.5.2 gave it `clin_sig_not_checked`; a
   deployment with no ClinVar snapshot was reporting a cross-check it never ran, `would_publish: true`
-  beside it. Note the divergence from the enricher's own CLI: it suppresses `not_requested` (there it
+  beside it. The `/check` passes carry `unreachable` for the same reason, and it is
+  the second half of the rule below. Note the divergence from the enricher's own CLI: it suppresses `not_requested` (there it
   is the author's `--no-verify-clinsig` echoed back), and we must not, because here the switch is
   `REGISTRY_ENRICH_VERIFY_CLINSIG` and the publisher cannot see the server's settings. **And a skip is
   never a publish gate**: the reasons are all operator-side, and failing a publish over one would make
@@ -216,6 +234,38 @@ Four rules that each cost a bug to learn:
   publish must wait **in the coroutine**; waiting in a worker would starve the pool `/check` needs,
   which is the opposite of yielding. Deference is at *entry* only; a running publish cannot be
   preempted, and pretending otherwise in a comment would be worse than saying so.
+- **Catch the unavailability subclass *above* its parent, and give each independent source its own
+  `try`.** Since enricher 0.6.2 (RM101, our S37) every pass raises its own type, with "the source could
+  not be reached" as a **subclass**: `FrequencyUnavailable(FrequencyEnrichmentError)` and five siblings,
+  plus `AcmgListUnavailable`, which predates them. So the adapters no longer catch client types at all —
+  `services/enrich.py` imports `httpx` nowhere — and the hazard moved from *which* type to *what order*.
+  A parent arm above the subclass arm swallows the outage and reports it as a structural note with no
+  `unreachable`: nothing raises, nothing 500s, and a check comes back looking clean while the source is
+  down. That is worse than the bug it replaced, and it is what `test_no_adapter_catches_an_unavailability_subclass_with_its_parent_first`
+  walks the AST for. **The parent arm is not redundant** — it now means *the question was put and the
+  answer is a problem* (a `variants.csv` that will not load, a strict refusal), which is a different
+  thing to report. Upstream's own upgrade table missed this shape because it assumes one
+  `except (PassError, ClientError)` tuple; filed back as **S38**.
+  The history is worth keeping because it is why the guards assert the *field* rather than a `200`:
+  through 0.6.1 a pass let its client's type through untranslated (`enrich_frequencies` carries no
+  `except` at all; `enrich_literature` calls `esummary` inside a bare `try/finally`), so a gnomAD 503
+  was a **500 from `/check`** — an endpoint whose entire contract is to report, failing over somebody
+  else's outage. The `try` granularity is the other half: the three
+  PGx passes shared one until 0.17, so an unreachable ClinGen discarded the PharmVar/CPIC and ClinPGx
+  findings already collected — the rule `enrich_pgx` already applies between PharmVar and CPIC one level
+  down. `LicenseRefusal` stays outside the legs, because a `declared_use` contradiction is one statement
+  about the whole request. Two corollaries worth keeping: **a source with no live route is never
+  `unreachable`** (ClinPGx's API was retired — its failures are skips with a reason), and where one
+  exception type covers two histories, **never discriminate on the sentence** — a warning's wording is
+  upstream's to change, and only the pinned catalogue is an API. `ClinGenError` was that case: chained
+  `from` the transport error for a fetch, raised bare for an unparseable local table, so we read
+  `__cause__`. 0.6.2 makes it a type (`ClinGenUnavailable`) and the `isinstance` is gone — read a
+  *structured* member where one exists, which is also why `AcmgListUnavailable.skip` is honoured rather
+  than flattened: `unreachable` and `no_reference` send an operator to different places, and only the
+  first is an outage. **And a new report field is only half a
+  fix**: `registry-client check` prints per-pass *findings*, so three passes that print no summary
+  rendered an outage as `✓ would publish` with the reason sitting unread in the JSON. Anything that
+  distinguishes "unchecked" from "clean" has to reach the renderer too.
 - **Nice values are one-way.** Raising a thread's nice is unprivileged, lowering it back is not, and
   anyio reuses its workers — so anything niced runs on a thread we create and discard
   (`lowpriority.py`). A `finally: restore()` here does not work and cannot be made to.

@@ -20,6 +20,11 @@ enriched-with-a-real-cache path (hand-building a snapshot means reproducing anot
 duckdb/parquet layout, which tests that layout rather than our wiring). A CI failure caused by gnomAD
 publishing a new release would tell us nothing about this repo. The registry-side wiring — modes,
 cache paths, projection, cost guards — is covered without any of it.
+
+**One thing about those passes *is* covered**: what the endpoint answers when an upstream does not.
+Their findings need the network; their failure handling does not, and a stub client raising the tier's
+own error type reaches every line the real 5xx would. That half was untested and broken — see the
+`unreachable` tests at the end of this file.
 """
 
 import socket
@@ -1067,3 +1072,245 @@ def test_check_requires_publish_capability(tmp_path: Path) -> None:
         "/api/v1/modules/someone-else/coronary/check", files=_parts(), headers=_AUTH
     )
     assert other.status_code == 403
+
+
+# ── An upstream that does not answer ───────────────────────────────────────────
+#
+# Every one of these was a `500` until 0.17. The shape of the bug is one line long: each pass adapter
+# caught the *pass's* own error type (`FrequencyEnrichmentError`, `LiteratureEnrichmentError`, …) while
+# the pass itself lets its **client's** error type through untranslated — `enrich_frequencies` carries
+# no `except` at all, and `enrich_literature` calls `esummary` inside a bare `try/finally`. So a gnomAD
+# 503 arrived as `GnomadError` (as `httpx.HTTPStatusError` before enricher 0.6.1 / RM97) and sailed
+# past the handler written for exactly this case, failing a *reporting* endpoint over somebody else's
+# outage. The stubs below raise what the real client raises; nothing here egresses.
+
+
+def _bundle(**over):
+    """A `LookupClients`-shaped stand-in. Every leg explicit, so a slip builds no live client."""
+    from types import SimpleNamespace
+
+    base = dict(
+        ensembl=None, gnomad=None, eutils=None, europepmc=None, crossref=None, ontology=None,
+    )
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def _no_live_lookups(tmp_path: Path, **over) -> TestClient:
+    """An app whose only network touch is the pass under test.
+
+    `verify_ref` and `verify_rsids` reach live Ensembl and dbSNP from inside `enrich()` itself, and
+    `use_gnomad` gives it its own gnomAD link — none of which is the pass being tested, so all three
+    are off. The `no_network` fixture is what makes that a checked claim rather than a hope.
+    """
+    return _app(
+        tmp_path,
+        enrich_verify_ref=False,
+        enrich_verify_rsids=False,
+        enrich_use_gnomad=False,
+        **over,
+    )
+
+
+def test_a_gnomad_outage_is_a_finding_rather_than_a_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gnomAD 503s; `/check` answers 200 and says the coverage figures are unchecked."""
+    from just_dna_enricher.gnomad import GnomadError
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _Boom:
+        def fetch_frequencies(self, *_a, **_k):
+            raise GnomadError("gnomAD request failed: Server error '503 Service Unavailable'")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        enrich_service, "shared_lookup_clients", lambda: _bundle(gnomad=_Boom())
+    )
+    code, body = _check(_no_live_lookups(tmp_path), offline=False, frequencies=True)
+    assert code == 200, body
+
+    freq = body["enrichment"]["frequencies"]
+    assert freq["unreachable"] == ["gnomad"]
+    # The distinction the field exists for: this is not an offline run, and those empty lists are not
+    # gnomAD saying it has nothing.
+    assert freq["skipped_offline"] is False
+    assert freq["covered"] == 0 and freq["missing"] == [] and freq["uncovered"] == []
+    assert any("could not be reached" in w for w in freq["warnings"])
+    # An outage upstream is not a defect in the module, so the verdict does not move.
+    assert body["would_publish"] is True
+
+
+def test_a_pubmed_outage_is_a_finding_rather_than_a_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same gap one pass over: `esummary` raises `EutilsError` through a bare `try/finally`."""
+    from just_dna_enricher.eutils import EutilsError
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _Boom:
+        def esummary(self, *_a, **_k):
+            raise EutilsError("eutils request failed: Server error '502 Bad Gateway'")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        enrich_service, "shared_lookup_clients", lambda: _bundle(eutils=_Boom())
+    )
+    code, body = _check(
+        _no_live_lookups(tmp_path), offline=False, literature=True, spec={"studies": _STUDIES}
+    )
+    assert code == 200, body
+
+    lit = body["enrichment"]["literature"]
+    assert lit["unreachable"] == ["pubmed"]
+    # `missing_pmids: []` is the empty-list trap this field answers: nobody asked, so no PMID was
+    # established as absent.
+    assert lit["missing_pmids"] == []
+    assert body["would_publish"] is True
+
+
+def test_a_clingen_outage_keeps_the_other_pgx_legs_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One PGx leg falling over must cost its own findings and none of the other three's.
+
+    The four shared a single `try` until 0.17, so an unguarded `fetch_curation_list` inside
+    `enrich_dosage_sensitivity` took the PharmVar/CPIC and ClinPGx results down with it — collected,
+    then discarded by the exception on the way out, and served as a 500.
+
+    `declared_use="unstated"` is what makes this a zero-egress test rather than a mocked one: the three
+    licence-gated legs are skipped without a request, while ClinGen dosage is CC0 and runs anyway, so
+    the only client that gets as far as HTTP is the one being made to fail.
+    """
+    import httpx
+    import just_dna_enricher.clingen as clingen
+
+    def refused(*_a, **_k):
+        raise httpx.ConnectError("connection refused")
+
+    # Patched at the transport, not at `fetch_curation_list`, so the `ClinGenError` under test is the
+    # real one with the real cause chain — which is what `_pgx_leg_clingen` discriminates on.
+    monkeypatch.setattr(clingen.httpx, "get", refused)
+    code, body = _check(
+        _no_live_lookups(tmp_path), offline=False, pgx=True, declared_use="unstated"
+    )
+    assert code == 200, body
+
+    pgx = body["enrichment"]["pgx"]
+    assert pgx["unreachable"] == ["clingen"]
+    assert any("clingen" in w and "Unchecked" in w for w in pgx["warnings"])
+
+    # The isolation assertion, and the whole point of the test: ClinGen runs **last**, so everything
+    # here was already collected when it fell over. On the shared `try` both of these were empty —
+    # the exception unwound past every line that fills them. Asserted as "a finding that is not
+    # ClinGen's", rather than against the other passes' wording, which is upstream's to reword.
+    assert [w for w in pgx["warnings"] if "clingen" not in w.lower()], pgx
+    assert pgx["skipped"], pgx
+    # `routes` records what answered, so a leg that did not gets no entry there.
+    assert "clingen" not in pgx["routes"]
+    assert body["would_publish"] is True
+
+
+@pytest.mark.parametrize(
+    "skip, expected_unreachable",
+    [("unreachable", ["acmg-sf-list"]), ("no_reference", [])],
+)
+def test_an_unreadable_acmg_list_does_not_report_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, skip: str, expected_unreachable: list
+) -> None:
+    """`AcmgCheck.clean` defaults to `True`, so the failure return used to publish a pass nobody ran.
+
+    `checked: 0` was honest and `clean: true` beside it was not. The verdict stays a plain bool —
+    narrowing a published field to the tri-state `IdentifierCheck.clean` carries would be a major — so
+    `unreachable` is what tells a vacuous `clean` from an established one.
+
+    **Both `skip` values are driven, because only one of them is an outage.** `AcmgListUnavailable`
+    predates 0.6.2 (RM72) and carries a `VALID_VERIFICATION_SKIPS` member decided where the failure
+    happened: `unreachable` means the list was asked for and never came, `no_reference` means there
+    was nothing to compare against — offline with no snapshot, a re-laid-out page, a list too short to
+    trust. Reporting the second as an outage sends an operator to check a network that is fine when
+    the fix is `just-dna-enricher acmg build`. Both are still `clean: true` and both must still say so.
+    """
+    import just_dna_enricher.acmg as acmg
+
+    def boom(**_k):
+        raise acmg.AcmgListUnavailable(
+            "the ACMG SF page layout changed; refusing to guess", skip=skip
+        )
+
+    monkeypatch.setattr(acmg, "verify_acmg_sf", boom)
+    code, body = _check(_no_live_lookups(tmp_path), offline=False, acmg=True)
+    assert code == 200, body
+
+    check = body["enrichment"]["acmg"]
+    assert check["unreachable"] == expected_unreachable
+    assert check["checked"] == 0
+    assert check["clean"] is True  # vacuously — which is exactly why the field above is needed
+    # Whichever it was, the reason reaches the reader and names which of the two it is.
+    assert any("Nothing was checked" in w and skip in w for w in check["warnings"])
+
+
+def test_an_acmg_list_that_was_read_is_never_an_outage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plain parent means the question was put and answered badly — never `unreachable`.
+
+    `verify_acmg_sf` raises `AcmgSfError` for a `variants.csv` that will not load and for the strict
+    disagreement, and `AcmgListUnavailable` for everything list-side. Catching only the parent would
+    have collapsed the two, which is the same conflation `ClinGenError` carried until RM101.
+    """
+    import just_dna_enricher.acmg as acmg
+
+    def boom(**_k):
+        raise acmg.AcmgSfError("variants.csv is invalid: row 2 has no rsid")
+
+    monkeypatch.setattr(acmg, "verify_acmg_sf", boom)
+    code, body = _check(_no_live_lookups(tmp_path), offline=False, acmg=True)
+    assert code == 200, body
+
+    check = body["enrichment"]["acmg"]
+    assert check["unreachable"] == []
+    assert any("could not complete" in w for w in check["warnings"])
+
+
+def test_an_ontology_outage_says_nothing_was_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real `OntologyClient` over a dead transport, which is the only honest way to stub this one.
+
+    This arm caught raw `httpx.HTTPError` until enricher 0.6.2, and it was the only handler of ours a
+    *client* fix rather than a pass fix turned off: RM97 declared the leaking-transport class closed
+    while `OntologyClient` kept leaking `HTTPStatusError` from both its methods for a whole release,
+    because RM97's own guard walked a hand-written list of eight modules that did not include
+    `identifiers`. Patching `check_identifiers` itself to raise `httpx` — which is what this test did
+    first — kept passing against a stub of the defect after the defect was gone. Breaking the
+    transport underneath the real client is what tells the two apart.
+    """
+    import httpx
+    from just_dna_enricher.identifiers import OntologyClient
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _Dead(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection refused", request=request)
+
+    def unreachable_ontology():
+        client = OntologyClient()
+        client._client = httpx.Client(transport=_Dead())
+        return _bundle(ontology=client)
+
+    monkeypatch.setattr(enrich_service, "shared_lookup_clients", unreachable_ontology)
+    code, body = _check(_no_live_lookups(tmp_path), offline=False, identifiers=True)
+    assert code == 200, body
+
+    check = body["enrichment"]["identifiers"]
+    assert check["unreachable"] == ["ols4/hgnc"]
+    assert check["stale_traits"] == [] and check["stale_genes"] == []
+    assert check["clean"] is None  # already tri-state here, and stays that way

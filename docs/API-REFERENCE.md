@@ -212,6 +212,28 @@ reports a clean result it did not earn:
 | `?acmg=` | **works with a snapshot** | needs `REGISTRY_ACMG_SNAPSHOT_DIR` (build it with `just-dna-enricher acmg build`); without one, `checked: 0` and a warning — *unchecked*, never *clean* |
 | `?pgx=` | **works with snapshots** | each leg is snapshot → live → skipped-with-a-reason; `REGISTRY_CPIC_CACHE` / `REGISTRY_PHARMVAR_CACHE` / `REGISTRY_CLINPGX_CACHE`. ClinGen dosage alone is live-only |
 
+**`unreachable` (0.17) is the same rule for a source that answers nothing.** A missing prerequisite is
+one story; a 5xx, a timeout or a refused connection is another, and both end with a pass that reported
+no findings. Each check object carries `unreachable` — the sources it asked and got no answer from — so
+`covered: 0` beside `missing: []` can be told from gnomAD genuinely holding none of those alleles. Read
+it before believing any empty list on a pass, exactly as you read `clin_sig_not_checked` before
+believing `clin_sig_conflicts: []`. Two notes:
+
+* **This is a `200`.** Until 0.17 it was a `500`: each pass adapter caught the pass's own error type
+  while the pass let its *client's* type through, so an outage upstream failed the endpoint whose whole
+  job is to report. An outage never moves `would_publish` either — it is a degradation of the report,
+  not a finding about the module.
+* **An empty `unreachable` does not mean the pass ran cleanly** — it means no source was *asked and
+  unanswered*. A pass can also decline for a reason that is nobody's outage: offline with no snapshot,
+  a licence gate, a module with no table to check. Those are `skipped` and `warnings`, and on `?acmg=`
+  the distinction is upstream's own: `no_reference` (nothing to compare against — build a snapshot with
+  `just-dna-enricher acmg build`) is reported as a warning naming it, not as `unreachable`, because the
+  remedy is a file rather than a network.
+* **On `?pgx=` it is per leg.** The three passes behind it run independently, so one source's outage no
+  longer costs the others their findings, and `routes` still lists only what answered. ClinPGx never appears in
+  `unreachable`: the API was retired, so it has no live route to be unreachable on, and its failures are
+  skips with a reason.
+
 `?identifiers=true` checks authored `trait_efo_id` CURIEs against OLS4 and `gene` symbols against
 HGNC — the generalization of "is the source stale?" from datasets to identifiers, since an EFO
 retirement or an HGNC rename leaves a module well-formed and quietly out of date. rsIDs are **not**
@@ -242,7 +264,8 @@ multiplies its callers onto one allowance rather than each getting their own. Th
 Two consequences worth reading:
 
 * **`routes`** says `snapshot` or `live` per source. Recorded rather than implied, because a pinned
-  file and a live API can differ by a release.
+  file and a live API can differ by a release. It records what *answered*, so a leg that fell over gains
+  no entry — that is `unreachable`.
 * **PharmVar needs no key when a snapshot is present**, which is the configuration a public
   deployment wants: that key is personal and non-transferable under PharmVar's terms §2, so serving
   third parties on it is the thing to avoid. It is also the one cache the registry cannot pull for
@@ -252,7 +275,10 @@ Two consequences worth reading:
 Prefer the **ACMG snapshot** to the scrape even online: NCBI's page still serves SF v3.2 while ACMG
 published v3.3 in June 2025, so a disagreement against the page is as likely to mean the list is old
 as that the module is wrong. Those are reported apart, under `unverifiable` rather than `mismatches`,
-and never count against `would_publish`.
+and never count against `would_publish`. **`acmg.clean` is a plain bool, so it is `true` when
+nothing was checked** — read `checked` and `unreachable` beside it. It stays a bool deliberately:
+narrowing a published field to the tri-state `identifiers.clean` carries would break every client
+branching on it.
 
 **`declared_use` is a third axis, orthogonal to `strict` and `offline`** (format Principle 5):
 `strict` says how hard to fail on a finding, this says who is using the data and why, and it is

@@ -193,6 +193,60 @@ async def test_check_returns_a_typed_report(sdk, tmp_path) -> None:
     assert report.enrichment is not None and report.enrichment.offline is True
 
 
+async def test_the_cli_prints_a_pass_that_reached_nothing(capsys, monkeypatch) -> None:
+    """An outage must reach the screen, not just the JSON.
+
+    The frequency, literature and ACMG passes print no summary line of their own, so a pass that
+    reached nothing renders as an entirely clean check — the same empty-list trap one layer up. This
+    is the only place `unreachable` becomes visible for three of the five, which is why it prints
+    before any findings rather than beside them.
+    """
+    from just_dna_registry import client_cli
+    from just_dna_registry.models.api import (
+        CheckReport, EnrichmentReport, FrequencyCheck, ValidationReport,
+    )
+
+    report = CheckReport(
+        validation=ValidationReport(valid=True, strict=False, would_publish_module_level=True),
+        enrichment=EnrichmentReport(
+            frequencies=FrequencyCheck(unreachable=["gnomad"], warnings=["gnomAD 503"]),
+        ),
+        would_publish=True,
+        elapsed_seconds=0.1,
+    )
+    monkeypatch.setattr(client_cli, "_client", lambda *a, **k: _StubCheck(report))
+    # Returns rather than exiting: `would_publish` is true, and an upstream outage is not a failed
+    # check. Only `✗ would NOT publish` raises `typer.Exit(1)`.
+    client_cli.check(
+        _NS, _NAME, Path("."), strict=False, offline=False, frequencies=True, literature=False,
+        identifiers=False, acmg=False, pgx=False, use=None, pack=False, url=None, token=None,
+    )
+
+    printed = capsys.readouterr().out
+    assert "gnomad" in printed
+    assert "unchecked, not clean" in printed
+    assert "✓ would publish" in printed
+
+
+class _StubCheck:
+    """Returns one prepared report. The renderer is what is under test, not the transport."""
+
+    def __init__(self, report) -> None:
+        self._report = report
+
+    def check(self, *_a, **_k):
+        return self._report
+
+    def close(self) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        pass
+
+
 async def test_health_is_wrapped(sdk) -> None:
     """Mounted outside `/api/v1`, which is why it went unwrapped until 0.11."""
     health = await asyncio.to_thread(sdk.health)

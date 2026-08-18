@@ -418,7 +418,7 @@ an explicit guard:
   source row stops being reported as unused — which had been advising authors to delete the exact row the
   compile licence gate reads.
 
-## 0.17 — format/compiler/enricher 0.6.0 adoption ✅
+## 0.17 — format/compiler 0.6.1 + enricher 0.6.2 adoption ✅
 
 - **A contract cut, not an attribute chase.** Every `artifact.digest` moves and a 0.5 client is
   refused outright, exactly as 0.11 did for 0.4→0.5. `content_signature` moves nowhere (0/11 upstream),
@@ -435,6 +435,19 @@ an explicit guard:
   fact-table filters on `GET /modules`.
 - **Free from upstream**: RM43's positional fill makes rsID-keyed PGx tables joinable, which flips
   the reference example's trust verdict and removes the last unjoinable module from the corpus.
+- **The floor is 0.6.1, and the patch is load-bearing.** RM95 let a non-vocabulary spelling into
+  `content_signature`, RM93 made `validate` stop predicting `compile` for two spec shapes, and RM97
+  is upstream's half of the escaping-exception bug below. Reasons are written into the `pyproject.toml`
+  pins, where the next floor bump will be read.
+- **An upstream that does not answer stopped being a `500`.** Every `/check` pass caught its own error
+  type while the pass let the *client's* through; each now reports `unreachable`, and the CLI prints
+  it. Filed upstream as **S37** and answered the same day as RM101 in enricher 0.6.2: unavailability is
+  a per-pass **subclass**, so the distinction is a type rather than a cause chain.
+- **That fix reintroduced the bug once, which is the durable lesson.** A subclass lands in a parent
+  `except` arm written above it, so our outage arms went dead and `/check` reported clean passes over a
+  dead source — silently, with no status change for a test to notice. Arms reordered, client catches
+  dropped, and an AST guard now fails on any shadowed `except`. Filed back as **S38**: upstream's
+  upgrade table assumes one `except (PassError, ClientError)` tuple and has no row for two arms.
 - **Owed, and newly the only thing owed here**: the fallback in `db/facets.py` and its differential
   baseline in `tests/test_format_06.py` retire together, when the last pre-0.6 version leaves a
   catalog. That is an event to watch for, not a release to schedule — a deployment that has run

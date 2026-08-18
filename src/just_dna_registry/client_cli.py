@@ -550,6 +550,20 @@ def check(
         for stale in e.stale_rsids:
             colour = typer.colors.RED if stale.fatal else typer.colors.YELLOW
             typer.secho(f"  {'✗' if stale.fatal else '!'} rsID {stale.rsid} is {stale.state}", fg=colour)
+        # Before any pass's findings, because it decides how to read them. A pass that reached
+        # nothing reports nothing, which is indistinguishable on screen from a pass that found
+        # nothing — and unlike `unreachable_rsids` above, this one is not visible in any other line:
+        # the frequency, literature and ACMG passes print no summary at all, so without this a gnomAD
+        # outage would show as a clean check. Yellow, never red: an upstream being down is not a
+        # finding about the module and `would_publish` does not move for it.
+        for pass_name in ("frequencies", "literature", "identifiers", "acmg", "pgx"):
+            result = getattr(e, pass_name)
+            if result is not None and result.unreachable:
+                typer.secho(
+                    f"  · {pass_name}: no answer from {', '.join(result.unreachable)} — that part "
+                    f"of the check is unchecked, not clean. Re-run.",
+                    fg=typer.colors.YELLOW,
+                )
         if e.identifiers is not None:
             for line in e.identifiers.stale_traits + e.identifiers.stale_genes:
                 typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)

@@ -23,7 +23,16 @@ dependencies = [
     # MINOR as a breaking contract bump, so a 0.5 client is refused by a 0.6 server before any import
     # error could occur — the floor exists so the failure is a resolver message rather than an
     # `AttributeError` deep inside a download.
-    "just-dna-format>=0.6.0",
+    #
+    # **`.1`, not `.0`, and this one is about `content_signature`.** Upstream RM95: a closed
+    # vocabulary is meant to accept `-` for `_` and store the canonical member, and
+    # `MeasureBinRow._validate_measure_kind` stored the input instead — so `measure_kind=copy-number`
+    # went into `content_signature` as a value the vocabulary does not contain, and every subclass then
+    # refused what the base model had just accepted. A signature is this service's one permanent global
+    # claim (a `409 duplicate_content` slot only a purge frees), so a floor below the fix is a floor
+    # that lets one be minted over a spelling upstream calls invalid. Same cut, no contract change:
+    # 0.6.1 moves no schema surface and recompiles all sixteen reference examples byte-identical.
+    "just-dna-format>=0.6.1",
 ]
 
 [project.optional-dependencies]
@@ -38,8 +47,15 @@ dependencies = [
 #
 # `ARTIFACT_PARQUETS` / `LEAD_PARQUETS` (the public names for what was `_OUTPUT_FILES`) are the
 # concrete new imports; the floor would be here for the digest window regardless.
+#
+# **0.6.1 raises it one patch, for what `validate_spec` does.** RM93: two table-level checks ran on the
+# compile side and not in `validate_spec`, so `validate --strict` could pass a spec `compile --strict`
+# then refused — a module with `frequencies.csv`, or a table-only module with `studies.csv`. Both
+# endpoints this repo built for CI (`/validate`, `/check`) are pre-flights for the publish compile, and
+# S6's rule is that a read-only pre-flight must predict the operation it precedes. On 0.6.0 they could
+# not, for those two shapes.
 compiler = [
-    "just-dna-compiler>=0.6.0",
+    "just-dna-compiler>=0.6.1",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -72,8 +88,29 @@ server = [
     # finally retires the warning-prose coupling in `db/facets.py`), `manifest.readme` (S25),
     # `manifest.verification` / `weighting` / `gwas_effects`, and the enricher's three new drafting
     # passes behind the fact tables `specfiles.py` now recognizes.
-    "just-dna-compiler>=0.6.0",
-    "just-dna-enricher>=0.6.0",
+    #
+    # **0.6.1 on both, and on the enricher it is the one floor here that fixes behaviour we relied on
+    # rather than a symbol we import.** Three of its four network-tier items land on paths this server
+    # runs: RM97 — `gnomad` and `eutils` leaked raw `httpx` past handlers written for the tier's own
+    # error types, which is what made `services/enrich.py`'s per-pass adapters miss a 5xx (fixed on our
+    # side too, since the pass functions let the *client's* type through either way); RM98 — an
+    # `--offline` pass with no cache recorded `status="not_found"`, a definite negative nobody
+    # established, against the rule this repo states as "a pass that could not run never reports
+    # clean"; RM99 — three passes wrote their sidecar to the spec root regardless of layout, so an
+    # `enrich` run against a `derived/` tree could leave both copies, which `layout.resolve_sidecar`
+    # then refuses as a collision our own upload caused.
+    #
+    # **The enricher goes to 0.6.2 alone, and it is a hard floor for the opposite of the usual reason:
+    # not a symbol that is missing below it, but one whose *meaning changes at* it.** 0.6.2 is RM101,
+    # which is our own S37 answered — every pass now raises its own error type rather than its
+    # client's, with "the source could not be reached" as a **subclass** (`FrequencyUnavailable` and
+    # five siblings). Our adapters catch the subclass arm first, so on 0.6.1 those arms are dead code:
+    # the pass raises the client's type, no arm matches, and `/check` 500s again — the exact defect
+    # this floor's predecessor was raised to fix. Running 0.6.1 here would silently reinstate it.
+    # `just-dna-format` and `just-dna-compiler` did *not* move and stay at 0.6.1; this is a partial cut
+    # and upgrading all three in step would be wrong.
+    "just-dna-compiler>=0.6.1",
+    "just-dna-enricher>=0.6.2",
 ]
 
 [build-system]

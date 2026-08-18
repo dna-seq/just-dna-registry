@@ -8,17 +8,42 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [0.17.0] — 2026-08-18
 
-**Client surface: unchanged.** `list_modules` gains five optional keyword arguments and
-`get_module`/`download` return more; no method signature moved and nothing a consumer calls today
-behaves differently. **But this release is not drop-in**: see below, which is about the *contract*
+**Client surface: unchanged.** `list_modules` gains five optional keyword arguments,
+`get_module`/`download` return more, and every `check` pass returns an `unreachable` list (rendered by
+`registry-client check`); no method signature moved and nothing a consumer calls today behaves
+differently — except that a `check` against an upstream that is down now answers `200` with a reason
+where it used to answer `500`. **But this release is not drop-in**: see below, which is about the *contract*
 rather than the client API.
 
 ### Format 0.6 adoption
 
-`just-dna-format`, `just-dna-compiler` and `just-dna-enricher` move to **0.6.0**. This is the second
+`just-dna-format` and `just-dna-compiler` move to **0.6.1**, `just-dna-enricher` to **0.6.2**. This is the second
 contract cut after 0.11's, and it has the same shape: every `artifact.digest` moves, and
 `version.contract_compatible` treats a `0.x` minor as breaking, so **a 0.5 client is refused by a 0.6
 server**. Bump clients first; the operator sequence is [UPGRADE.md](UPGRADE.md) § 0.17.
+
+**The floors name `0.6.1`, not `0.6.0`, and the patch is not cosmetic.** Upstream cut 0.6.0 on
+2026-08-17 and 0.6.1 the following day, fixing eight defects a code-first re-reading of its own
+documents found (RM93–RM100). No schema surface moves in either direction, so nothing in the adoption
+below changes — but three of the eight land squarely on paths this server runs, and one of them lands
+on `content_signature`, which is the one identity here that is a permanent global claim:
+
+- **RM95** — a closed vocabulary is meant to accept `-` for `_` and store the canonical member;
+  `MeasureBinRow` stored the input, so `measure_kind=copy-number` went **into `content_signature`** as
+  a value the vocabulary does not contain, and every subclass then refused what the base model had just
+  accepted. A floor below the fix is a floor that lets a `409 duplicate_content` slot — which only a
+  purge frees — be minted over a spelling upstream calls invalid.
+- **RM93** — two table-level checks ran in `compile` and not in `validate_spec`, so `validate --strict`
+  could pass a spec that `compile --strict` then refused (a module with `frequencies.csv`; a table-only
+  module with `studies.csv`). `/validate` and `/check` exist to predict the publish compile, and S6's
+  rule is that a read-only pre-flight must predict the operation it precedes. For those two shapes, on
+  0.6.0, they could not.
+- **RM98 / RM99** — an `--offline` pass with no cache recorded `status="not_found"`, a definite
+  negative nobody established; and three passes wrote their sidecar to the spec root regardless of
+  layout, so an `enrich` run against a `derived/` tree could leave both copies for
+  `layout.resolve_sidecar` to refuse as a collision *our* upload appeared to have caused.
+
+RM97 is the fourth, and it is answered on both sides — see below.
 
 It is a shorter migration than 0.11's, for a reason worth stating plainly: **`content_signature` does
 not move** (upstream measured 0/11 across the reference corpus). So there is no `rederive-signatures`
@@ -105,7 +130,105 @@ to a module's current version like `gene` and `category`. Those columns are plai
 tri-state, which is right here and wrong one file over: a manifest predating a block belongs to a
 module that carried no such table, so `0` is honest — unlike the counters, where it would not be.
 
+### An upstream that does not answer is a finding, not a `500`
+
+Found while reading RM97, which is upstream's half of it: `gnomad` and `eutils` leaked raw `httpx`
+exceptions past handlers written to catch the enricher's own error types. Ours is the other half, and it
+was the older bug — every pass adapter in `services/enrich.py` caught the *pass's* error type
+(`FrequencyEnrichmentError`, `LiteratureEnrichmentError`, `AcmgSfError`) while the pass itself lets its
+**client's** error type through untranslated: `enrich_frequencies` carries no `except` at all, and
+`enrich_literature` calls `esummary` inside a bare `try/finally`. So a gnomAD 503, a PubMed 502 or a
+ClinGen connection refusal walked straight past the handler written for exactly that case and out of the
+request. `/check` answered **500** — a reporting endpoint failing over somebody else's outage, which is
+the opposite of the rule this repo states as *a pass that could not run reports why, and never reports
+clean*. Reproduced against all three before anything was changed, and all three are asserted end to end in
+`tests/test_preflight_api.py` — each raises the tier's error straight out of the request on the pre-fix
+tree, which is how they were checked to be guards rather than decoration.
+
+- **Each pass now catches its client's error type as well as its own**, and answers `200` with the
+  reason in `warnings`.
+- **`unreachable` is a new field on all five check objects** — `frequencies`, `literature`,
+  `identifiers`, `acmg`, `pgx` — naming the sources that were asked and did not answer. It exists
+  because `covered: 0` beside `missing: []` reads identically whether gnomAD had nothing or was never
+  reached, which is the empty-list trap `clin_sig_not_checked` was added for one field over. A test
+  walks `EnrichmentReport`'s own fields rather than a list, so a sixth pass cannot ship without it.
+- **`AcmgCheck.clean` defaults to `true`**, so the failure return used to publish a verdict nobody
+  earned: `checked: 0, mismatches: [], clean: true`. The count was honest and the verdict was not.
+  `clean` stays a plain bool — narrowing a published field to the tri-state `IdentifierCheck.clean`
+  carries would be a major — and `unreachable` is what separates a vacuous `clean` from an established
+  one.
+- **The three PGx passes — four sources between them — get one `try` each**
+  (`_pgx_leg_nomenclature` / `_pgx_leg_clinpgx` / `_pgx_leg_clingen`). They shared one, so the unguarded `fetch_curation_list` inside
+  `enrich_dosage_sensitivity` discarded the PharmVar/CPIC and ClinPGx findings already collected on its
+  way out — three sources' work lost to one source's outage. That is the rule `enrich_pgx` already
+  applies between PharmVar and CPIC one level down. `LicenseRefusal` stays *outside* the legs on
+  purpose: a `declared_use` contradiction is one statement about the whole request, so the first
+  refusal ends it rather than being reported three times.
+- **`registry-client check` prints it**, above any findings, because for three of the five passes it is
+  the *only* place an outage becomes visible: `frequencies`, `literature` and `acmg` print no summary
+  line of their own, so a gnomAD 503 rendered as `✓ would publish` with nothing else on screen.
+  Reproduced before the renderer was written and pinned in `tests/test_client_sdk.py`.
+- **A failed leg gains no `routes` entry.** `routes` records what answered; `unreachable` records what
+  did not. And ClinPGx is never `unreachable` whatever it raises — the API was retired, so it has no
+  live route to be unreachable on, and its causes (a configured path with no snapshot in it, an
+  unparseable `pharm_variants.csv`) are skips with a reason.
+- **`ClinGenError` covers two opposite histories and the cause chain separates them**, since matching
+  the sentence would pin prose upstream is free to reword: `fetch_curation_list` raises `from` the
+  transport error, while an unparseable local `gene_metrics.csv` is raised on its own. Only the first
+  claims `unreachable`.
+
+None of this moves `would_publish`. An upstream outage is a degradation of the report, never a finding
+about the module — the same reason a missing snapshot is not one.
+
+### The fix for that arrived from upstream mid-release, and reintroduced it once
+
+The above was filed upstream as **S37** and answered the same day as **RM101** in `just-dna-enricher`
+**0.6.2** — a partial cut, format and compiler unchanged at 0.6.1. Every pass now raises its own type
+with unavailability as a **subclass** (`FrequencyUnavailable(FrequencyEnrichmentError)` and five
+siblings), which is what our filing asked for and which upstream's own reply called "keeps working
+unchanged" for a consumer in our position.
+
+**It did not keep working, and the way it failed is the point.** Our two arms were separate — a plain
+warning for a structural problem, `unreachable` for an outage — with the parent first, so the new
+subclass landed in the parent arm and the outage arm went dead. Measured: `unreachable` came back `[]`
+where it had been `["gnomad"]`, on three of the four handlers. Nothing raised, nothing 500'd, and
+`/check` reported a clean pass while the source was down — the same defect S37 exists to end,
+reintroduced by its own fix, silently. Filed back as **S38**, since upstream's upgrade table assumes one
+`except (PassError, ClientError)` tuple and has no row for two arms. **Answered the same day**: a fourth
+row in the table, a dated correction on S37's reply rather than an edit to it, and they adopted the AST
+walk for their own three packages.
+
+Their review also found a flaw in ours worth keeping, because it is about what a guard costs when it is
+wrong: **a parent and its subclass inside one `except (A, B)` tuple is redundant, not dead.** Every
+instance is still caught and the arm still runs, so reporting it is crying wolf on working code — which
+is how a guard gets deleted rather than fixed. The walk now compares each clause against *earlier arms
+only*, and a self-test drives all three shapes (parent-first → one finding; subclass-first → none;
+one-tuple → none), because a guard reporting zero proves nothing until it is shown able to report one.
+
+- **Every `*Unavailable` arm now precedes its parent**, and a test walks `services/enrich.py`'s AST to
+  fail on any `except` clause shadowed by an earlier one — naming the line. It discovers the pass
+  modules from the file's own imports, so an adapter added later is covered without anybody remembering.
+- **The client-type catches are gone rather than kept beside the new ones.** The pass owns its
+  translation now, so `services/enrich.py` imports `httpx` nowhere — including the `identifiers` arm,
+  which was raw `httpx` until 0.6.2 because RM97 left `OntologyClient` leaking for a whole release.
+- **The parent arm stopped being redundant**: it now means *the question was put and the answer is a
+  problem* — a `variants.csv` that will not load, a strict refusal — which is worth reporting
+  differently from silence.
+- **`AcmgListUnavailable.skip` is honoured instead of flattened**, and this one we had wrong before
+  either upgrade. It carries a `VALID_VERIFICATION_SKIPS` member decided where the failure happened, so
+  `no_reference` (offline with no snapshot, a re-laid-out page) is no longer reported as an outage
+  sending an operator to check a network that is fine. Both values are driven in the tests.
+- **`ClinGenError`'s `__cause__` inspection is gone**, replaced by `ClinGenUnavailable`. Reading a
+  private detail worked; a type is better. Matching the message was never on the table — neither string
+  is in the pinned warning-text catalogue, so a reword upstream would have flipped the verdict from
+  "unchecked" to "your table is broken".
+
 ### Measured, not assumed
+
+**The suite is green on 0.6.1 with nothing else changed**: 395 passed, which is the measurement that
+says the patch bump itself costs no adoption work — everything below it is ours. **407 with the twelve
+new guards** (0.6.2 adds four: the AST ordering walk and its own self-test, the ACMG `skip` pair, and
+the parent arm that is not an outage).
 
 **All 16 upstream reference examples publish through this registry under 0.6**, driven end to end
 through the real publish path (enrich → strict compile → store → project). Upstream measured 16/16

@@ -641,6 +641,15 @@ class FrequencyCheck(BaseModel):
     )
     sources: list[str] = Field(default_factory=list)
     skipped_offline: bool = False
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that were asked and never answered — a 5xx, a timeout, a refused connection. "
+            "Non-empty means every count and list beside it is *unchecked* rather than clean: this "
+            "pass reached its upstream's error, not its data. A degradation of the report, never a "
+            "finding about the module and never a publish gate"
+        ),
+    )
     warnings: list[str] = Field(
         default_factory=list,
         description="Why the pass could not run — a degradation, never a module defect",
@@ -659,6 +668,15 @@ class LiteratureCheck(BaseModel):
         default=0, description="A quote that could not be checked is not a quote that passed"
     )
     skipped_offline: bool = False
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that were asked and never answered — a 5xx, a timeout, a refused connection. "
+            "Non-empty means every count and list beside it is *unchecked* rather than clean: this "
+            "pass reached its upstream's error, not its data. A degradation of the report, never a "
+            "finding about the module and never a publish gate"
+        ),
+    )
     warnings: list[str] = Field(
         default_factory=list,
         description="Why the pass could not run — e.g. a PGx-only module carries no studies.csv",
@@ -674,7 +692,22 @@ class AcmgCheck(BaseModel):
     unverifiable: list[str] = Field(
         default_factory=list, description="The question could not be put — not a negative answer"
     )
-    clean: bool = True
+    clean: bool = Field(
+        default=True,
+        description=(
+            "No mismatch was found. Vacuous when nothing was checked — read `checked` and "
+            "`unreachable` beside it. A plain bool rather than the tri-state `IdentifierCheck.clean` "
+            "carries, because retyping a published field is a major"
+        ),
+    )
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The list could not be read: a 5xx, a timeout, or a page whose shape the scrape guards "
+            "refuse — which is the same state as an outage for a reader, since either way no gene "
+            "was compared. Non-empty makes `clean: true` vacuous. Never a publish gate"
+        ),
+    )
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -712,6 +745,15 @@ class PgxCheck(BaseModel):
             "`source -> snapshot | live | skipped`. Recorded rather than implied, because a pinned "
             "snapshot and a live API can differ by a release, and a reader has to be able to tell "
             "which answered — the same reason a gnomAD constraint row names its own dataset."
+        ),
+    )
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Legs asked that never answered. Per source rather than per pass, because the four run "
+            "independently and one upstream's outage must not be read as silence from the other "
+            "three — nor discard their findings. Distinct from `skipped` (a licensing refusal, "
+            "nothing was asked) and from a `warning` (the source answered and something was odd)"
         ),
     )
     offline: bool = Field(
@@ -780,6 +822,15 @@ class IdentifierCheck(BaseModel):
             "Why the comparison above did not run, or null when it did. Read it before believing an "
             "empty `gene_loci`: HGNC may have returned no usable chromosome, or no row may have a "
             "known one. Same contract as `EnrichmentReport.clin_sig_not_checked`"
+        ),
+    )
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that were asked and never answered — a 5xx, a timeout, a refused connection. "
+            "Non-empty means every count and list beside it is *unchecked* rather than clean: this "
+            "pass reached its upstream's error, not its data. A degradation of the report, never a "
+            "finding about the module and never a publish gate"
         ),
     )
     clean: Optional[bool] = Field(

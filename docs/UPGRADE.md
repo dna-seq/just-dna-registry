@@ -2,11 +2,25 @@
 
 ## 0.17 format 0.6 adoption (operator note — a coordinated cut)
 
-**This is the second contract cut, and it has the same shape as 0.11's.** `just-dna-format`,
-`just-dna-compiler` and `just-dna-enricher` all move to **0.6.0**, `artifact.digest` moves on every
-module, and `version.contract_compatible` treats a `0.x` minor as breaking — so a 0.5 client talking
+**This is the second contract cut, and it has the same shape as 0.11's.** `just-dna-format` and
+`just-dna-compiler` move to **0.6.1** and `just-dna-enricher` to **0.6.2**, `artifact.digest` moves on
+every module, and `version.contract_compatible` treats a `0.x` minor as breaking — so a 0.5 client talking
 to a 0.6 server is **refused**, and the first symptom of skipping step 0 is a blanket publish
 rejection with no obvious cause.
+
+**The enricher is one patch ahead of the other two, and that is not a typo.** 0.6.2 is enricher-only
+(upstream RM101); format and compiler are unchanged at 0.6.1, so `uv sync` installs `0.6.1 / 0.6.1 /
+0.6.2` and that is the correct state. It is a hard floor rather than a preference: this server's
+`/check` adapters catch the unavailability subclasses 0.6.2 introduces, and on 0.6.1 nothing raises
+them — those handlers would be dead code and an upstream outage would go back to being a `500`.
+
+**Install `0.6.1`, never `0.6.0`.** Upstream cut 0.6.0 on 2026-08-17 and 0.6.1 the next day with eight
+defects fixed; this repo's floors name `0.6.1` and `uv sync` will refuse the older one. It changes no
+schema surface, so nothing in the sequence below moves — the reason it is a hard floor rather than a
+preference is that one of the eight (RM95) let a non-vocabulary `measure_kind` spelling into
+`content_signature`, and a signature is the one thing here that cannot be taken back: it claims a
+global `409 duplicate_content` slot that only a purge frees. Two others land on this service's own
+endpoints; `docs/CHANGELOG.md` § 0.17 names all four.
 
 Do the whole sequence in one maintenance window. It is shorter than 0.11's, and the reason is worth
 knowing before you start: **`content_signature` does not move.** Upstream measured 0/11 over the

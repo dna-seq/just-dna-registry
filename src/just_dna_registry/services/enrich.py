@@ -30,7 +30,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-import httpx
 from just_dna_compiler.compiler import content_signature, validate_spec
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 
@@ -1006,7 +1005,11 @@ def _frequency_check(spec_dir: Path, offline: bool, clients: Any) -> FrequencyCh
     reported as `not_found`. The count is still worth having, so it travels as a warning that says
     which of the two it is.
     """
-    from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
+    from just_dna_enricher.frequencies import (
+        FrequencyEnrichmentError,
+        FrequencyUnavailable,
+        enrich_frequencies,
+    )
 
     try:
         result = enrich_frequencies(
@@ -1016,10 +1019,30 @@ def _frequency_check(spec_dir: Path, offline: bool, clients: Any) -> FrequencyCh
             write=False,
             client=clients.gnomad if clients else None,
         )
+    except FrequencyUnavailable as exc:
+        # **Subclass first, and the order is the whole of the rule** — `FrequencyUnavailable` derives
+        # from `FrequencyEnrichmentError` (enricher 0.6.2 / RM101, our S37), so the arm below would
+        # otherwise swallow it and report an outage as a structural note with no `unreachable`. That
+        # is a silent downgrade rather than a crash, which is why the guards below assert the field
+        # rather than merely a `200`.
+        #
+        # The history this replaces: `enrich_frequencies` carries no `except` at all, so through
+        # 0.6.1 `fetch_frequencies` raised straight through it — `GnomadError`, and raw
+        # `httpx.HTTPStatusError` before RM97 — past a handler written for exactly this case, and
+        # `/check` answered 500 over somebody else's outage. Catching the client's type here was our
+        # workaround; the pass now owns it, so the workaround is gone rather than kept beside it.
+        return FrequencyCheck(
+            unreachable=["gnomad"],
+            warnings=[
+                f"gnomAD could not be reached ({exc}), so no allele was checked. Unchecked rather "
+                f"than clean: this says nothing about whether gnomAD holds these frequencies."
+            ],
+        )
     except FrequencyEnrichmentError as exc:
         # In best-effort the reachable causes are structural — no `resolution.csv` (a module with no
         # coordinate-bearing table at all) or one that will not parse. A degradation to report, not
-        # a reason to fail a dry run whose other findings are perfectly good.
+        # a reason to fail a dry run whose other findings are perfectly good. Since 0.6.2 this arm
+        # means *the question was put and the answer is a problem*, which is what the split buys.
         return FrequencyCheck(warnings=[str(exc)])
     if result.skipped_offline:
         return FrequencyCheck(
@@ -1048,7 +1071,11 @@ def _literature_check(spec_dir: Path, offline: bool, clients: Any) -> Literature
     symmetric: a phrase absent from a 200-word abstract says nothing about the body of the paper,
     so a quote that could not be checked must never be reported as a quote that failed.
     """
-    from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
+    from just_dna_enricher.literature import (
+        LiteratureEnrichmentError,
+        LiteratureUnavailable,
+        enrich_literature,
+    )
 
     try:
         result = enrich_literature(
@@ -1059,6 +1086,15 @@ def _literature_check(spec_dir: Path, offline: bool, clients: Any) -> Literature
             eutils=clients.eutils if clients else None,
             europepmc=clients.europepmc if clients else None,
             crossref=clients.crossref if clients else None,
+        )
+    except LiteratureUnavailable as exc:
+        # Subclass before base, for the reason spelled out in `_frequency_check`.
+        return LiteratureCheck(
+            unreachable=["pubmed"],
+            warnings=[
+                f"PubMed (eutils) could not be reached ({exc}), so no citation was checked. An "
+                f"empty `missing_pmids` here means nothing was asked, not that every PMID exists."
+            ],
         )
     except LiteratureEnrichmentError as exc:
         # Most often "no studies.csv", which is the correct and complete shape of a PGx-only module
@@ -1106,7 +1142,11 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
     Degrades on a transport failure rather than failing the dry run: OLS4 being down says nothing
     about the spec, and the other passes' findings are still worth returning.
     """
-    from just_dna_enricher.identifiers import check_identifiers
+    from just_dna_enricher.identifiers import (
+        IdentifierCheckError,
+        IdentifierUnavailable,
+        check_identifiers,
+    )
 
     if not (spec_dir / "variants.csv").is_file():
         return IdentifierCheck(
@@ -1126,8 +1166,20 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         # `variants.csv` will not load — which the validation findings already explain in full, so
         # this is a note rather than a second, worse-worded copy of them.
         return IdentifierCheck(warnings=[str(exc)])
-    except httpx.HTTPError as exc:
-        return IdentifierCheck(warnings=[f"OLS4/HGNC could not be reached: {exc}"])
+    except IdentifierUnavailable as exc:
+        # **This one was raw `httpx` until enricher 0.6.2**, and it is the reason RM101 was wider than
+        # S37 filed it: RM97 declared the leaking-transport class closed while `OntologyClient` kept
+        # leaking `HTTPStatusError` from both its methods for a whole release, because the guard that
+        # would have caught it walked a hand-written list of eight modules. So this arm was
+        # `except httpx.HTTPError`, and it is the only one of ours that a *client* fix — rather than a
+        # pass fix — turned off. Catching the leaked type is exactly the trap RM101 names.
+        return IdentifierCheck(
+            unreachable=["ols4/hgnc"],
+            warnings=[f"OLS4/HGNC could not be reached: {exc}. Nothing was checked."],
+        )
+    except IdentifierCheckError as exc:
+        # The question was put and the answer is a problem — distinct from the arm above since 0.6.2.
+        return IdentifierCheck(warnings=[str(exc)])
 
     unchecked = [
         f"{t.curie}: not an ontology this tier can resolve, so its currency is unknown"
@@ -1182,7 +1234,12 @@ def _acmg_check(spec_dir: Path, settings: Settings, offline: bool) -> AcmgCheck:
     gene-level list membership, so a per-row list prints one identical sentence once per variant
     (thirteen times for the HFE reference example).
     """
-    from just_dna_enricher.acmg import AcmgReport, AcmgSfError, verify_acmg_sf
+    from just_dna_enricher.acmg import (
+        AcmgListUnavailable,
+        AcmgReport,
+        AcmgSfError,
+        verify_acmg_sf,
+    )
 
     if not (spec_dir / "variants.csv").is_file():
         return AcmgCheck(
@@ -1209,11 +1266,27 @@ def _acmg_check(spec_dir: Path, settings: Settings, offline: bool) -> AcmgCheck:
             offline=offline,
             snapshot_dir=settings.acmg_snapshot_dir,
         )
+    except AcmgListUnavailable as exc:
+        # **The one pass whose subclass predates 0.6.2** (RM72), and the one that carries a `skip`
+        # member rather than being a single shape. `exc.skip` is decided where the failure happened
+        # and is a `VALID_VERIFICATION_SKIPS` member, so `unreachable` (asked, no answer) and
+        # `no_reference` (nothing to compare against — offline with no snapshot, a re-laid-out page,
+        # a list too short to trust) are upstream's own distinction rather than one we infer.
+        #
+        # Only the first is an outage. Reporting `no_reference` as `unreachable` would send an
+        # operator to check a network that is fine when the fix is `just-dna-enricher acmg build` —
+        # the same error the three standard `unresolved` remedies make, one pass over.
+        #
+        # `clean` defaults to `True` either way, so this return used to publish a pass nobody ran:
+        # `checked: 0, mismatches: [], clean: true`. The count was honest and the verdict was not.
+        return AcmgCheck(
+            unreachable=["acmg-sf-list"] if exc.skip == "unreachable" else [],
+            warnings=[f"the ACMG SF list could not be read ({exc.skip}): {exc}. Nothing was checked."],
+        )
     except AcmgSfError as exc:
-        # The scrape guards refusing (a re-laid-out page, a short list) or the fetch failing. The
-        # guards exist precisely so a short list is never reported as a set of module defects, so
-        # their refusal is a note about the list, not a finding about the module.
-        return AcmgCheck(warnings=[f"the ACMG SF list could not be read: {exc}"])
+        # A list *was* read and something else refused — the strict disagreement, or a `variants.csv`
+        # that will not load. Never `unreachable`: the question was put and answered.
+        return AcmgCheck(warnings=[f"the ACMG SF check could not complete: {exc}"])
 
     return AcmgCheck(
         list_version=report.version,
@@ -1229,6 +1302,183 @@ def _acmg_check(spec_dir: Path, settings: Settings, offline: bool) -> AcmgCheck:
         clean=report.clean,
         warnings=list(report.warnings),
     )
+
+
+def _pgx_leg_nomenclature(
+    spec_dir: Path,
+    check: PgxCheck,
+    sources: set[str],
+    *,
+    offline: bool,
+    declared_use: str,
+    use_pharmvar: bool,
+    caches: dict[str, Optional[Path]],
+) -> None:
+    """PharmVar + CPIC allele nomenclature, via `enrich_pgx`.
+
+    One leg, one `try`. The three PGx legs share nothing but the report they write into, so a source
+    that falls over must cost its own findings and none of the others' — the rule `enrich_pgx` already
+    applies between PharmVar and CPIC one level down. They shared a single `try` until 0.17: a ClinGen
+    outage discarded the CPIC and ClinPGx findings already collected and then surfaced as a 500.
+    """
+    from just_dna_enricher.cpic import CpicError
+    from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
+    from just_dna_enricher.pharmvar import PharmVarError
+
+    try:
+        pgx_result = enrich_pgx(
+            spec_dir, mode="best_effort", offline=offline, declared_use=declared_use,
+            use_pharmvar=use_pharmvar, use_cpic=True, write=False,
+            cpic_cache=caches["cpic"], pharmvar_cache=caches["pharmvar"],
+        )
+    except PgxEnrichmentError as exc:
+        # Structural, not a transport failure: a `haplotypes.csv` / `pharm_variants.csv` that will not
+        # parse. Nothing was asked, and the reason is the module's own table — so this is a warning
+        # naming it, not an `unreachable` claiming an upstream fell over.
+        check.warnings.append(f"pharmvar/cpic: {exc}")
+        return
+    except (PharmVarError, CpicError) as exc:
+        # `enrich_pgx` translates these around `resolve()` and `read()`, so reaching here means one
+        # escaped from somewhere it does not (a cache load, a client construction). Which of the two
+        # is in the message and not in the type, so the entry names the pair — same compromise as
+        # `ols4/hgnc`, and for the same reason.
+        check.unreachable.append("pharmvar/cpic")
+        check.warnings.append(
+            f"pharmvar/cpic: no answer ({exc}), so no authored allele function was compared. "
+            f"Unchecked rather than agreed."
+        )
+        return
+    check.skipped.extend(pgx_result.skipped)
+    check.skipped.extend(pgx_result.skipped_offline)
+    check.warnings.extend(pgx_result.warnings)
+    check.routes.update(pgx_result.routes)
+    # `routes`, not `rows`. `PgxResult.rows` is the *merged* `sources.csv` — the module's own
+    # authored rows plus whatever this run emitted, existing-wins — so reading sources off it
+    # reported a source the module happened to declare as one the registry had consulted. A
+    # module carrying an authored CPIC row got `sources: [cpic]` on a run whose very next line
+    # said cpic was skipped for want of a snapshot, and picked up `ensembl` from the resolution
+    # row `enrich()` had just written. `routes` gains an entry only where a client answered.
+    #
+    # Which is also why no failure handler in this family writes to `routes`: a leg that did not
+    # answer has no route, and `unreachable` is the field that says so.
+    sources.update(pgx_result.routes)
+    check.conflicts.extend(
+        FunctionConflictEntry(
+            gene=c.gene, allele=c.allele, authored=c.authored, reported=c.reported,
+            source=c.source,
+        )
+        for c in pgx_result.conflicts
+    )
+    if not use_pharmvar:
+        check.skipped.append(
+            "pharmvar: this deployment has neither a built snapshot "
+            "(REGISTRY_PHARMVAR_CACHE, `just-dna-enricher pharmvar build`) nor an API key, so "
+            "only CPIC was consulted. The key is personal to a PharmVar account (their terms "
+            "§2) and its bulk data is therefore never published for pulling — a hosted "
+            "deployment builds the snapshot once instead."
+        )
+
+
+def _pgx_leg_clinpgx(
+    spec_dir: Path,
+    check: PgxCheck,
+    sources: set[str],
+    *,
+    offline: bool,
+    declared_use: str,
+    caches: dict[str, Optional[Path]],
+    present: dict[str, Optional[Path]],
+) -> None:
+    """Authored evidence levels against the ClinPGx snapshot. Snapshot-only — it has no live route."""
+    from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
+
+    try:
+        cp = enrich_clinpgx(
+            spec_dir, mode="best_effort", declared_use=declared_use,
+            snapshot=caches["clinpgx"], offline=offline,
+            download=False,  # never provision inside a request; `registry warm-caches` does it
+            write=False,
+        )
+    except ClinPgxEnrichmentError as exc:
+        # **Never `unreachable` here**, whatever the cause: the API was retired, so this leg has no
+        # live route to be unreachable on. What it does have is a configured path with no snapshot
+        # inside it — the case the skip below was written for, which a raised exception used to jump
+        # straight past — and a `pharm_variants.csv` that will not parse. Both are skips with a
+        # reason.
+        check.skipped.append(f"clinpgx: {exc}")
+        return
+    check.warnings.extend(cp.warnings)
+    check.routes.setdefault("clinpgx", "snapshot" if cp.rows or cp.dataset else "skipped")
+    sources.update(row.source for row in cp.rows)
+    # A different axis from the allele-function conflicts above — an authored *evidence level*
+    # the record does not support — so it is rendered rather than forced into the gene/allele
+    # shape it does not have.
+    check.conflicts.extend(
+        FunctionConflictEntry(
+            gene=c.rsid or "?", allele=c.drug, authored=c.authored, reported=c.reported,
+            source="clinpgx",
+        )
+        for c in cp.conflicts
+    )
+    if cp.unmatched:
+        check.warnings.append(
+            f"clinpgx: {len(cp.unmatched)} authored row(s) matched nothing in the snapshot"
+        )
+    # Keyed on "did it answer", not on "was a path configured". The earlier condition also
+    # required `caches["clinpgx"] is None`, so an operator who pointed REGISTRY_CLINPGX_CACHE at
+    # a directory holding no snapshot got silence — the one case where the setting *looks* done
+    # and is not.
+    if not (cp.rows or cp.dataset) and present["clinpgx"] is None:
+        check.skipped.append(
+            "clinpgx: no snapshot found (REGISTRY_CLINPGX_CACHE); provision one with "
+            "`registry warm-caches --apply --use non_commercial`. It has no live route to fall "
+            "back on — the API was retired."
+        )
+
+
+def _pgx_leg_clingen(
+    spec_dir: Path,
+    check: PgxCheck,
+    sources: set[str],
+    *,
+    offline: bool,
+    declared_use: str,
+) -> None:
+    """ClinGen dosage sensitivity — CC0, live-only, so `offline` skips it and no snapshot exists."""
+    from just_dna_enricher.clingen import ClinGenError, ClinGenUnavailable, enrich_dosage_sensitivity
+
+    try:
+        cg = enrich_dosage_sensitivity(
+            spec_dir, mode="best_effort", declared_use=declared_use, offline=offline, write=False
+        )
+    except ClinGenUnavailable as exc:
+        # Two histories that were one exception type until enricher 0.6.2 — an unfetchable curation
+        # list, and a local `gene_metrics.csv` that will not parse. We separated them by reading
+        # `exc.__cause__` (chained for the fetch, bare for the table), which worked and was a private
+        # detail to depend on; RM101 makes it a type, so the `isinstance` is gone. **Not the message**,
+        # then or now: neither string is in the pinned warning-text catalogue, so a reword upstream
+        # would have flipped this verdict from "unchecked" to "your table is broken".
+        check.unreachable.append("clingen")
+        check.warnings.append(
+            f"clingen dosage: the curation list could not be fetched ({exc}), so no gene was "
+            f"checked against it. Unchecked, not no-curation-found."
+        )
+        return
+    except ClinGenError as exc:
+        check.warnings.append(f"clingen dosage: {exc}")
+        return
+    if cg.skipped_offline:
+        check.skipped.append(
+            "clingen dosage: a CC0 curation TSV fetched live, and this run is offline. There is "
+            "no snapshot for it, so re-run without offline to consult it."
+        )
+    if cg.source_row is not None:
+        sources.add(cg.source_row.source)
+    if cg.missing:
+        check.warnings.append(
+            f"clingen dosage: no curation for {len(cg.missing)} gene(s): "
+            f"{', '.join(cg.missing[:5])}"
+        )
 
 
 def _pgx_check(
@@ -1292,101 +1542,25 @@ def _pgx_check(
         # rather than one clever loop. `ClinGenResult` alone has no `warnings`, no `skipped`, and
         # `rows` of `GeneMetricsRow` (whose source lives on a separate `source_row`), so a generic
         # `getattr` walk would have quietly dropped findings from whichever one it did not fit.
-        from just_dna_enricher.pgx import enrich_pgx
-
-        pgx_result = enrich_pgx(
-            spec_dir, mode="best_effort", offline=offline, declared_use=declared_use,
-            use_pharmvar=use_pharmvar, use_cpic=True, write=False,
-            cpic_cache=caches["cpic"], pharmvar_cache=caches["pharmvar"],
+        # Each owns its own `try` — see `_pgx_leg_nomenclature`.
+        _pgx_leg_nomenclature(
+            spec_dir, check, sources, offline=offline, declared_use=declared_use,
+            use_pharmvar=use_pharmvar, caches=caches,
         )
-        check.skipped.extend(pgx_result.skipped)
-        check.skipped.extend(pgx_result.skipped_offline)
-        check.warnings.extend(pgx_result.warnings)
-        check.routes.update(pgx_result.routes)
-        # `routes`, not `rows`. `PgxResult.rows` is the *merged* `sources.csv` — the module's own
-        # authored rows plus whatever this run emitted, existing-wins — so reading sources off it
-        # reported a source the module happened to declare as one the registry had consulted. A
-        # module carrying an authored CPIC row got `sources: [cpic]` on a run whose very next line
-        # said cpic was skipped for want of a snapshot, and picked up `ensembl` from the resolution
-        # row `enrich()` had just written. `routes` gains an entry only where a client answered.
-        sources.update(pgx_result.routes)
-        check.conflicts.extend(
-            FunctionConflictEntry(
-                gene=c.gene, allele=c.allele, authored=c.authored, reported=c.reported,
-                source=c.source,
-            )
-            for c in pgx_result.conflicts
+        _pgx_leg_clinpgx(
+            spec_dir, check, sources, offline=offline, declared_use=declared_use,
+            caches=caches, present=present,
         )
-        if not use_pharmvar:
-            check.skipped.append(
-                "pharmvar: this deployment has neither a built snapshot "
-                "(REGISTRY_PHARMVAR_CACHE, `just-dna-enricher pharmvar build`) nor an API key, so "
-                "only CPIC was consulted. The key is personal to a PharmVar account (their terms "
-                "§2) and its bulk data is therefore never published for pulling — a hosted "
-                "deployment builds the snapshot once instead."
-            )
-
-        from just_dna_enricher.clinpgx import enrich_clinpgx
-
-        cp = enrich_clinpgx(
-            spec_dir, mode="best_effort", declared_use=declared_use,
-            snapshot=caches["clinpgx"], offline=offline,
-            download=False,  # never provision inside a request; `registry warm-caches` does it
-            write=False,
-        )
-        check.warnings.extend(cp.warnings)
-        check.routes.setdefault("clinpgx", "snapshot" if cp.rows or cp.dataset else "skipped")
-        sources.update(row.source for row in cp.rows)
-        # A different axis from the allele-function conflicts above — an authored *evidence level*
-        # the record does not support — so it is rendered rather than forced into the gene/allele
-        # shape it does not have.
-        check.conflicts.extend(
-            FunctionConflictEntry(
-                gene=c.rsid or "?", allele=c.drug, authored=c.authored, reported=c.reported,
-                source="clinpgx",
-            )
-            for c in cp.conflicts
-        )
-        if cp.unmatched:
-            check.warnings.append(
-                f"clinpgx: {len(cp.unmatched)} authored row(s) matched nothing in the snapshot"
-            )
-        # Keyed on "did it answer", not on "was a path configured". The earlier condition also
-        # required `caches["clinpgx"] is None`, so an operator who pointed REGISTRY_CLINPGX_CACHE at
-        # a directory holding no snapshot got silence — the one case where the setting *looks* done
-        # and is not.
-        if not (cp.rows or cp.dataset) and present["clinpgx"] is None:
-            check.skipped.append(
-                "clinpgx: no snapshot found (REGISTRY_CLINPGX_CACHE); provision one with "
-                "`registry warm-caches --apply --use non_commercial`. It has no live route to fall "
-                "back on — the API was retired."
-            )
-
-        from just_dna_enricher.clingen import enrich_dosage_sensitivity
-
-        cg = enrich_dosage_sensitivity(
-            spec_dir, mode="best_effort", declared_use=declared_use, offline=offline, write=False
-        )
-        if cg.skipped_offline:
-            check.skipped.append(
-                "clingen dosage: a CC0 curation TSV fetched live, and this run is offline. There is "
-                "no snapshot for it, so re-run without offline to consult it."
-            )
-        if cg.source_row is not None:
-            sources.add(cg.source_row.source)
-        if cg.missing:
-            check.warnings.append(
-                f"clingen dosage: no curation for {len(cg.missing)} gene(s): "
-                f"{', '.join(cg.missing[:5])}"
-            )
+        _pgx_leg_clingen(spec_dir, check, sources, offline=offline, declared_use=declared_use)
     except LicenseRefusal as exc:
         # `commercial` against a source that forbids sale. A contradiction, not a finding — refused
-        # at acquisition, so nothing was fetched.
+        # at acquisition, so nothing was fetched. Deliberately *not* handled per leg, unlike every
+        # transport failure below it: the declaration is one statement about the whole request, so
+        # the first refusal ends it rather than being reported three times.
         raise PublishError("license_refused", errors=[str(exc)])
 
     check.sources = sorted(sources)
     return check
-
 
 class EnrichmentGate:
     """A process-wide cap on simultaneous enrichment runs, on top of the per-caller token bucket.

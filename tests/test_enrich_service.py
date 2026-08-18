@@ -480,3 +480,193 @@ def test_the_boot_gate_covers_only_what_a_publish_reads(
     assert "constraint" not in RESOLUTION_REFERENCES
     assert "constraint" in REFERENCE_NAMES  # still reportable, still pullable
     assert "constraint" in PULLABLE_REFERENCES
+
+
+# ── An upstream that could not be reached ──────────────────────────────────────
+
+
+def test_a_clingen_fetch_failure_is_unreachable_and_a_bad_local_table_is_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ClinGenError` covers two opposite histories, and the cause chain is what separates them.
+
+    `fetch_curation_list` raises `from` the transport error; an unparseable local `gene_metrics.csv`
+    is raised on its own. Only the first means ClinGen was asked and did not answer, so only the first
+    may claim `unreachable` — the alternative was matching the sentence, and a warning text is a
+    surface upstream is free to reword.
+    """
+    import httpx
+    import just_dna_enricher.clingen as clingen
+
+    from just_dna_registry.models.api import PgxCheck
+    from just_dna_registry.services.enrich import _pgx_leg_clingen
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(
+        'schema_version: "1.0"\nmodule:\n  name: m\n  version: 1\ngenome_build: GRCh38\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        clingen.httpx, "get", lambda *_a, **_k: (_ for _ in ()).throw(httpx.ConnectError("refused"))
+    )
+    fetched = PgxCheck()
+    _pgx_leg_clingen(spec, fetched, set(), offline=False, declared_use="non_commercial")
+    assert fetched.unreachable == ["clingen"]
+    assert any("Unchecked, not no-curation-found" in w for w in fetched.warnings)
+
+    def local_table_is_bad(*_a, **_k):
+        raise clingen.ClinGenError("existing gene_metrics.csv is invalid: row 2 has no gene")
+
+    monkeypatch.setattr(clingen, "enrich_dosage_sensitivity", local_table_is_bad)
+    authored = PgxCheck()
+    _pgx_leg_clingen(spec, authored, set(), offline=False, declared_use="non_commercial")
+    assert authored.unreachable == []  # nothing was asked, and nothing upstream is at fault
+    assert any("gene_metrics.csv is invalid" in w for w in authored.warnings)
+
+
+def test_every_pass_that_can_degrade_can_say_it_reached_nothing() -> None:
+    """Enumerated from `EnrichmentReport`, not from a list in this file.
+
+    The pass adapters keep growing (five today, from two in 0.11), and each new one arrives with the
+    same trap: an empty finding list from a run that reached nothing renders identically to a clean
+    one. So the guard walks the report's own fields — a sixth pass added without the field fails here
+    rather than shipping a clean-looking verdict nobody established.
+    """
+    import typing
+
+    from pydantic import BaseModel
+
+    from just_dna_registry.models.api import EnrichmentReport
+
+    checks = {}
+    for name, info in EnrichmentReport.model_fields.items():
+        args = typing.get_args(info.annotation)
+        if type(None) not in args:  # `Optional[XCheck]` — an *optional pass*, not a finding list
+            continue
+        for arg in args:
+            if isinstance(arg, type) and issubclass(arg, BaseModel) and arg.__name__.endswith("Check"):
+                checks[name] = arg
+
+    assert set(checks) == {"frequencies", "literature", "identifiers", "acmg", "pgx"}
+    for name, model in checks.items():
+        assert "unreachable" in model.model_fields, f"{name} cannot say it reached nothing"
+        assert "warnings" in model.model_fields, f"{name} cannot say why"
+
+
+def test_no_adapter_catches_an_unavailability_subclass_with_its_parent_first() -> None:
+    """Order matters here in a way that fails *silently*, so it is checked structurally.
+
+    Enricher 0.6.2 (RM101, our S37) made "the source could not be reached" a **subclass** of each
+    pass's own error type — `FrequencyUnavailable(FrequencyEnrichmentError)` and five siblings. That
+    is what keeps `except <Pass>Error` catching everything it used to, and it is also the trap: a
+    parent arm written above the subclass arm swallows the outage and reports it as a structural note
+    with no `unreachable`. Nothing raises, nothing 500s, and the check comes back looking clean.
+
+    So this walks the AST of every handler in `services/enrich.py` rather than driving a request per
+    pass: an adapter added later, for a pass that grows an unavailability subclass later, is covered
+    without anybody remembering to add a case. The behavioural half is in `test_preflight_api.py`,
+    which drives the real passes through real client failures.
+
+    **A parent and its subclass in one `except (A, B)` tuple is not a finding.** That form is redundant
+    rather than dead — every instance is still caught, and the arm still runs — so flagging it would
+    make this guard cry wolf on working code, which is how a guard gets deleted. Upstream adopted this
+    walk for their own tree (S38) and made the same carve-out; `_shadowed_handlers` is shared by the
+    self-test below so the two cannot drift.
+    """
+    from just_dna_registry.services import enrich as enrich_service
+
+    source = Path(enrich_service.__file__).read_text(encoding="utf-8")
+    assert _shadowed_handlers(source) == []
+
+
+def test_the_shadowed_handler_walk_can_actually_fail() -> None:
+    """A zero from the guard above is worth nothing unless the walk is able to report a one.
+
+    Three shapes, and the middle one is the only defect. The third is the trap in the *guard* rather
+    than in the code it checks: `except (Parent, Child)` catches everything it means to, so calling it
+    a finding would make the guard wrong about working code.
+    """
+    parent_first = """
+try:
+    enrich_frequencies(spec)
+except FrequencyEnrichmentError:
+    pass
+except FrequencyUnavailable:
+    pass
+"""
+    subclass_first = """
+try:
+    enrich_frequencies(spec)
+except FrequencyUnavailable:
+    pass
+except FrequencyEnrichmentError:
+    pass
+"""
+    one_tuple = """
+try:
+    enrich_frequencies(spec)
+except (FrequencyEnrichmentError, FrequencyUnavailable):
+    pass
+"""
+    imports = "from just_dna_enricher.frequencies import FrequencyEnrichmentError, FrequencyUnavailable\n"
+
+    assert len(_shadowed_handlers(imports + parent_first)) == 1
+    assert _shadowed_handlers(imports + subclass_first) == []
+    assert _shadowed_handlers(imports + one_tuple) == []
+
+
+def _shadowed_handlers(source: str) -> list[str]:
+    """`except` clauses in `source` that an earlier clause in the same `try` already catches.
+
+    Resolves bare names only, against the `just_dna_enricher` modules `source` itself imports — so a
+    new pass's module is covered without editing a list, and a dotted `except httpx.HTTPError` is
+    skipped rather than half-resolved. Same limitation upstream's copy documents.
+    """
+    import ast
+    import importlib
+
+    tree = ast.parse(source)
+    modules = [
+        importlib.import_module(node.module)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module
+        and node.module.startswith("just_dna_enricher.")
+    ]
+    assert modules, "no enricher imports found — the walk would vacuously pass"
+
+    def resolve(node: ast.expr) -> list[type]:
+        names = node.elts if isinstance(node, ast.Tuple) else [node]
+        found = []
+        for n in names:
+            if not isinstance(n, ast.Name):
+                continue
+            for module in modules:
+                cls = getattr(module, n.id, None)
+                if isinstance(cls, type) and issubclass(cls, BaseException):
+                    found.append(cls)
+                    break
+        return found
+
+    offenders = []
+    for block in ast.walk(tree):
+        if not isinstance(block, ast.Try):
+            continue
+        seen: list[type] = []
+        for handler in block.handlers:
+            if handler.type is None:
+                continue
+            # Per clause, not per name: a parent and its child inside one tuple are redundant rather
+            # than dead, so only what an *earlier arm* shadows counts.
+            caught = resolve(handler.type)
+            for cls in caught:
+                shadowing = [e for e in seen if issubclass(cls, e)]
+                if shadowing:
+                    offenders.append(
+                        f"line {handler.lineno}: `except {cls.__name__}` is unreachable — "
+                        f"{shadowing[0].__name__} in an earlier arm already catches its subclasses"
+                    )
+            seen.extend(caught)
+    return offenders
