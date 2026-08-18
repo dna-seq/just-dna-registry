@@ -6,6 +6,50 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.17.1] — 2026-08-18
+
+**Client surface: unchanged.** Nothing in `RegistryClient` moves and no endpoint changes. Both fixes
+are on the admin CLI and the `upgrade` path behind it, found by an operator running 0.17's own step 2
+on the polygon.
+
+### `registry upgrade` could not re-publish test-prefixed data, on either instance
+
+`upgrade --apply --force` died with `PublishError: test_data_on_prod` at the first `test-`/`test_`
+prefixed module, and there was no flag to pass and no way past it. **The prospective guard cannot be
+about an `upgrade` re-publish.** It exists so a mistyped namespace cannot spend a version number and a
+global `content_hash` that only a purge frees — a question about an identifier arriving for the first
+time. By the time `upgrade` runs, the module is already in the catalog under that exact name, admitted
+either by an `allow_test_data=true` override (0.14) or by an instance whose mode says this is the data
+it holds, and the successor is a PATCH of that same identifier. Nothing was left to prevent, and
+refusing made a catalog-wide re-baseline impossible to finish.
+
+`upgrade_version` now passes `allow_test_data=True` with that reasoning written beside it. The
+override's warning still fires and is still logged, so production holding test-prefixed data stays as
+findable as it was before the re-publish. Pinned in `tests/test_upgrade.py`, driven on a **prod**-mode
+instance on purpose — that is the case a mode flag cannot fix, because the data is legitimately there.
+
+### `--mode` moved to the root, because the env var never reached the operator's shell
+
+A deployment sets `REGISTRY_MODE` in its unit file or compose env. That reaches the *server* process
+and not an interactive shell — so `registry upgrade` run by hand on the polygon read the default,
+`prod`, and applied production's rules to the test box's catalog. The mode was invisible until a rule
+fired, and the flag that would have said otherwise existed on exactly one command out of thirty.
+
+- **Every command takes `--mode` now**, before the subcommand: `registry --mode test upgrade --apply
+  --force`. One helper (`_apply_mode`) shared with `serve --mode`, which still works and still means
+  the same thing. A typo is refused with the valid values named, and omitting the flag stamps nothing —
+  a deployment's own `REGISTRY_MODE` is not overridden by silence.
+- **`revalidate` and `upgrade` echo `mode=… db=…` before doing anything.** They are the two long
+  catalog-wide operations, the mode changes what their re-publish accepts, and a line up front turns a
+  refusal three minutes in into a self-diagnosis.
+
+`RegistryClient` is untouched: the mode stays a server concept and a client still must not be gated on
+it — a method that vanished depending on where you pointed it would be worse than a documented `405`.
+
+**413 passed**, three more than 0.17.0. Both defects were reproduced before either was touched: the
+`upgrade` refusal fails on the pre-fix tree at `publish.py:499` with the operator's own error, and the
+mode test drives the real CLI so the flag's position — before the subcommand — is covered too.
+
 ## [0.17.0] — 2026-08-18
 
 **Client surface: unchanged.** `list_modules` gains five optional keyword arguments,

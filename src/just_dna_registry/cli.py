@@ -38,6 +38,54 @@ from just_dna_registry.storage.local import LocalStorage
 app = typer.Typer(help="just-dna-registry admin CLI", no_args_is_help=True)
 
 
+def _apply_mode(mode: Optional[str]) -> None:
+    """Point this process at one deployment's rules, by setting `REGISTRY_MODE`.
+
+    Set the variable rather than build a `Settings`, for `serve`'s reason (uvicorn imports the app by
+    string, so the worker reads the environment) and for a second one that applies to every other
+    command: `get_settings` is `lru_cache`d, so a value handed around by hand would leave any later
+    reader on the pre-flag settings.
+    """
+    if mode is None:
+        return
+    normalized = mode.strip().lower()
+    if normalized not in VALID_MODES:
+        raise typer.BadParameter(f"--mode must be one of {sorted(VALID_MODES)}, got: {mode!r}")
+    os.environ["REGISTRY_MODE"] = normalized
+    get_settings.cache_clear()
+
+
+@app.callback()
+def main(
+    mode: str = typer.Option(
+        None, "--mode", help="prod | test — overrides REGISTRY_MODE for this invocation"
+    ),
+) -> None:
+    """Admin/ops commands for one deployment.
+
+    **`--mode` belongs here and not only on `serve`, and an incident is why.** A deployment sets
+    `REGISTRY_MODE` in its unit file or compose env, which reaches the server process and *not* an
+    operator's shell — so `registry upgrade` run by hand on the polygon read the default, `prod`, and
+    applied production's rules to the test box's catalog. Nothing said so: the mode is invisible until
+    a rule fires, and the rule that fired refused the data the polygon exists to hold. Every command
+    here now takes the flag, before the subcommand: `registry --mode test upgrade --apply --force`.
+
+    `serve --mode` still works and means the same thing; it predates this and is documented.
+    """
+    _apply_mode(mode)
+
+
+def _echo_mode(settings: Settings) -> None:
+    """Say which deployment's rules this invocation is applying, before it applies them.
+
+    On the two long catalog-wide operations only. The mode changes what a publish accepts and how
+    `duplicate_content` is scoped, and it is otherwise invisible until a rule fires — which is how a
+    polygon sweep came to run under production's rules and die on `test_data_on_prod` at the first
+    test-prefixed module. A line up front costs nothing and turns that into a self-diagnosis.
+    """
+    typer.echo(f"mode={settings.mode} db={settings.db_path}")
+
+
 def _open_existing_db(settings: Settings) -> Repository:
     """Open an EXISTING catalog DB for a read-only op. Refuses a missing or empty/uninitialized file
     (a relative `db_path` resolved against the wrong working directory is the classic trap) instead
@@ -101,24 +149,17 @@ def serve(
     One number apart rather than adjacent so a client pointed at the wrong instance gets a connection
     refusal instead of the wrong catalog answering on a plausible port.
 
-    `--mode` is a convenience over `REGISTRY_MODE`, and it works by **setting that variable** rather
-    than by handing a value to the app. It has to: uvicorn imports the application by string, so
-    `create_app()` runs in the worker and builds its own `Settings` from the environment — and with
-    `--reload` that worker is a whole other process. Mutating a `Settings` object here would configure
-    the CLI and nothing that serves a request. Exporting `REGISTRY_MODE` before `uvicorn.run` is what
-    reaches both, because a subprocess inherits it.
+    `--mode` here is the same flag the root callback takes (`registry --mode test serve` works too),
+    kept on the command because it predates the callback and deployments have it written down. Both go
+    through `_apply_mode`, which sets `REGISTRY_MODE` rather than handing a value to the app — it has
+    to: uvicorn imports the application by string, so `create_app()` runs in the worker and builds its
+    own `Settings` from the environment, and with `--reload` that worker is a whole other process.
+    Mutating a `Settings` object here would configure the CLI and nothing that serves a request.
 
     A deployment should still set `REGISTRY_MODE` in its unit file or compose env. The flag is for a
     local polygon on a developer's machine, where remembering an export per shell is the annoying part.
     """
-    if mode is not None:
-        normalized = mode.strip().lower()
-        if normalized not in VALID_MODES:
-            raise typer.BadParameter(f"--mode must be one of {sorted(VALID_MODES)}, got: {mode!r}")
-        os.environ["REGISTRY_MODE"] = normalized
-        # `get_settings` is `lru_cache`d, so anything that read settings earlier in this process holds
-        # the pre-flag value. Cleared here so this process agrees with the worker it is about to start.
-        get_settings.cache_clear()
+    _apply_mode(mode)
     settings = get_settings()
     resolved = port if port is not None else DEFAULT_PORTS[settings.mode]
     typer.echo(f"mode={settings.mode} listening on {host}:{resolved}")
@@ -508,6 +549,7 @@ def revalidate(
     publishers. `--strict-check` is the cheap approximation: it catches the mode-ladder findings but
     not the unresolved-position gate, which only a real compile can see."""
     settings = get_settings()
+    _echo_mode(settings)
     conn = connect(settings.db_path)
     init_db(conn)  # idempotent: ensures the needs_upgrade column exists on a pre-0.5.0 DB
     repo = Repository(conn)
@@ -612,6 +654,7 @@ def upgrade(
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
+    _echo_mode(settings)
     conn = connect(settings.db_path)
     init_db(conn)
     repo = Repository(conn)

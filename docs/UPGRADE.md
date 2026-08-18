@@ -27,6 +27,13 @@ knowing before you start: **`content_signature` does not move.** Upstream measur
 reference corpus and this repo's suite checks the consequence. So there is **no `rederive-signatures`
 step**, no risk of merged dedup claims, and no version loses its `409 duplicate_content` slot.
 
+**Every command below takes `--mode`, and on the polygon you must pass it (0.17.1).** A deployment
+sets `REGISTRY_MODE` in its unit file or compose env, which the server process inherits and your shell
+does not — so `registry upgrade` run by hand on the polygon applies *production's* rules to the test
+box's catalog. Spell it: `registry --mode test upgrade --apply --force`. The flag goes before the
+subcommand, and `revalidate`/`upgrade` echo `mode=… db=…` up front so a wrong one is visible before it
+refuses anything. On production the default is already right and the flag is optional.
+
 **0. Bump clients to 0.6 first.** Same rule as 0.11, same failure if skipped.
 
 **1. `registry revalidate --recompile-check` — before anything else, and read the report.**

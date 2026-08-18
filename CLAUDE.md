@@ -309,6 +309,15 @@ running server, and one direction arms a delete endpoint on production data.
 - **The mode is a server concept only. Never gate the client on it.** `RegistryClient` always exposes
   `delete_version`/`delete_module`; a client cannot know a host's mode before asking, and a method that
   silently vanishes depending on where you pointed it is worse than a documented `405`.
+- **But the *admin CLI* is not the client, and it has to be told.** `REGISTRY_MODE` in a unit file or
+  compose env reaches the server process and **not** an operator's shell, so an ops command run by hand
+  on the polygon read the default (`prod`) and applied production's rules to the test box's catalog —
+  0.17's own step 2 died on `test_data_on_prod` that way. `--mode` is on the **root callback** since
+  0.17.1 (`registry --mode test upgrade …`), sharing `_apply_mode` with `serve --mode`, so a new ops
+  command inherits the *flag* without doing anything. The `mode=… db=…` **echo is not inherited** — it is
+  an explicit `_echo_mode(settings)` call, today on `revalidate` and `upgrade` only, because those are
+  the long catalog-wide ones. Add it to any command whose behaviour the mode changes: a mode is invisible
+  until a rule fires, and the rule fires minutes in.
 - **Why the mode exists**: a published version is immutable *and* its data is claimed by a
   name-independent `content_hash` that **`yank` does not release**. So without a delete verb every
   rehearsal permanently burns a version number and the right to publish that data under any other name.
@@ -329,6 +338,13 @@ running server, and one direction arms a delete endpoint on production data.
   documented — a reader who learns only one of them has the dangerous half.
 - **That guard is prospective only.** It does not clean what is already there, so `purge-test-data`
   stays necessary. Do not describe one as making the other redundant.
+- **And prospective means it has nothing to say about a re-publish of data already in the catalog.**
+  `upgrade_version` passes `allow_test_data=True` (0.17.1): the module is already published under that
+  exact name, the identifier and its global `content_hash` are already spent, and the successor is a
+  PATCH of the same identity — so there is nothing left to prevent. Refusing there did not protect
+  anything; it made a catalog-wide re-baseline impossible to finish, with no flag to pass. Any future
+  internal re-publish path inherits this question: ask whether the identifier is *arriving* or *already
+  admitted*, because the guard is only about the first.
 - **A read-only pre-flight must predict the operation it precedes.** `GET /namespaces/{ns}` reported
   `valid: true` for a name the claim then refused (S6). It now carries `requires_allow_test_data` and
   a warning instead — *not* `valid: false`, because the name is genuinely claimable with the flag, and

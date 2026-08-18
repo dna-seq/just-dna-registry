@@ -491,5 +491,16 @@ def upgrade_version(
         changelog=changelog or _upgrade_changelog(prep, version),
         owner=manifest.owner or namespace,
         files=prep.files,
+        # **The prospective test-data guard cannot be about this publish.** It exists so a mistyped
+        # namespace cannot spend a version number and a global `content_hash` that only a purge frees
+        # (0.12/0.14) — a question about an identifier arriving for the first time. Here the module is
+        # already in the catalog under this exact name, admitted either by an `allow_test_data=true`
+        # override or by an instance whose mode says this is the data it holds, and the successor is a
+        # PATCH of that same identifier. So there is nothing left to prevent, and refusing instead made
+        # a catalog-wide re-baseline impossible to finish: `registry upgrade --apply --force` died on
+        # `test_data_on_prod` at the first such module, with no flag to pass and no way past it. The
+        # override's own warning still fires and is still logged, so production holding test-prefixed
+        # data remains as findable as it was before this re-publish.
+        allow_test_data=True,
     )
     return new_version, new_manifest

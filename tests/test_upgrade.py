@@ -474,3 +474,67 @@ def test_back_population_moves_the_content_signature(
         moved.append(name)
 
     assert moved, "no module was back-populated — this assertion would be vacuous"
+
+
+# ── The prospective test-data guard, and a re-publish it cannot be about ─────────
+
+_TEST_YAML = _YAML.replace("name: coronary", "name: test_coronary")
+
+
+def _publish_test_named(
+    repo, storage, settings: Settings, version: str = "1.0.0"
+) -> ModuleManifest:
+    """A `test_`prefixed module on a **production** instance, deliberately accepted (0.14).
+
+    This is a state production is allowed to be in: `allow_test_data=true` is a documented override,
+    it warns rather than refuses, and `purge-test-data` is the thing that removes it later.
+    """
+    return publish_version(
+        repo=repo,
+        storage=storage,
+        settings=settings,
+        namespace="just-dna-seq",
+        name="test_coronary",
+        version=version,
+        changelog="seed",
+        owner="just-dna-seq",
+        files={
+            "module_spec.yaml": _TEST_YAML.encode(),
+            "variants.csv": _VARIANTS.encode(),
+            "studies.csv": _STUDIES.encode(),
+        },
+        allow_test_data=True,
+    )
+
+
+def test_upgrade_re_publishes_test_prefixed_data_it_did_not_admit(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """`upgrade` must not re-ask a question that was already answered when the data was admitted.
+
+    The test-data guard is **prospective** (`CLAUDE.md`): it exists so a mistyped namespace cannot
+    spend a version number and a global `content_hash` that only a purge frees. An `upgrade` re-publish
+    spends neither on a new identifier — the module is already in the catalog under that exact name,
+    admitted either by an `allow_test_data=true` override or by a deployment whose mode says this is
+    the data it is for. Refusing there prevents nothing and makes the 0.17 catalog-wide re-baseline
+    impossible to finish on any instance holding such a module.
+
+    Driven on a **prod**-mode instance on purpose, because that is the case a mode flag cannot fix:
+    the data is legitimately there and the operator has no way to pass the override through `upgrade`.
+    """
+    repo, storage = app.state.repo, app.state.storage
+    assert settings.is_test_instance is False
+    manifest = _publish_test_named(repo, storage, settings)
+
+    result = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="test_coronary", version="1.0.0",
+        manifest=manifest, recompile=True,
+    )
+
+    assert result is not None, "the upgrade was a no-op, so this test proves nothing"
+    new_version, new_manifest = result
+    assert new_version == "1.0.1"
+    assert new_manifest.identity.name == "test_coronary"
+    # The predecessor is untouched, exactly as for any other upgrade.
+    assert repo.get_manifest_json("just-dna-seq", "test_coronary", "1.0.0") is not None

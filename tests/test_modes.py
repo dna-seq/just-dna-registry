@@ -430,3 +430,56 @@ def test_no_flag_leaves_the_environment_alone(monkeypatch) -> None:
         assert captured["port"] == DEFAULT_PORTS["test"]  # and honoured
     finally:
         get_settings.cache_clear()
+
+
+def test_every_admin_command_can_be_told_the_mode(monkeypatch, tmp_path) -> None:
+    """The flag is on the root callback, so it reaches `upgrade` and not only `serve`.
+
+    A deployment sets `REGISTRY_MODE` in its unit file or compose env, which the *server* process
+    inherits and an operator's interactive shell does not. So `registry upgrade --apply --force` run by
+    hand on the polygon read the default — `prod` — and applied production's rules to the test box's
+    catalog, refusing the test-prefixed data the polygon exists to hold. The mode was invisible until
+    the rule fired, and the flag that would have said otherwise existed on one command out of thirty.
+
+    Driven through the real CLI so the option's *position* is covered too: it precedes the subcommand.
+    """
+    from typer.testing import CliRunner
+
+    from just_dna_registry import cli
+    from just_dna_registry.config import get_settings
+
+    monkeypatch.delenv("REGISTRY_MODE", raising=False)
+    # An empty catalog of its own: `upgrade --dry-run` iterates whatever DB it is pointed at, and
+    # reading a developer's local one would make this test's cost and output depend on their machine.
+    monkeypatch.setenv("REGISTRY_DB_PATH", str(tmp_path / "registry.db"))
+    monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    try:
+        result = CliRunner().invoke(cli.app, ["--mode", "test", "upgrade", "--dry-run"])
+        assert result.exit_code == 0, result.output
+        # The mode is echoed by the two catalog-wide ops, which is what makes a wrong one visible
+        # before it refuses anything rather than after.
+        assert "mode=test" in result.output
+        assert os.environ["REGISTRY_MODE"] == "test"
+    finally:
+        os.environ.pop("REGISTRY_MODE", None)
+        get_settings.cache_clear()
+
+
+def test_the_root_flag_rejects_a_typo_before_running_a_command(monkeypatch, tmp_path) -> None:
+    """Same refusal as `serve`'s, for the same reason: neither mode is a safe guess for a typo."""
+    from typer.testing import CliRunner
+
+    from just_dna_registry import cli
+    from just_dna_registry.config import get_settings
+
+    monkeypatch.delenv("REGISTRY_MODE", raising=False)
+    monkeypatch.setenv("REGISTRY_DB_PATH", str(tmp_path / "registry.db"))
+    get_settings.cache_clear()
+    try:
+        result = CliRunner().invoke(cli.app, ["--mode", "testing", "upgrade", "--dry-run"])
+        assert result.exit_code != 0
+        assert "REGISTRY_MODE" not in os.environ  # nothing was stamped on the way out
+    finally:
+        os.environ.pop("REGISTRY_MODE", None)
+        get_settings.cache_clear()
