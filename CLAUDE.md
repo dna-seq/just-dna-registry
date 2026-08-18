@@ -62,13 +62,23 @@ not predict `compile` for two shapes, which is S6's rule one tier down; RM97 —
 below). The reasons are written into the `pyproject.toml` pins beside each floor, which is where the
 next person will look.
 
-**And the three tiers can move apart: `just-dna-enricher` floors at 0.6.2 while the other two stay at
+**And the three tiers can move apart: `just-dna-enricher` floors at 0.6.3 while the other two stay at
 0.6.1.** The network tier touches no parquet, model or manifest field, so upstream can cut it alone —
-and 0.6.2 is a hard floor for the *opposite* of the usual reason. Not a symbol missing below it, but
-one whose meaning changes at it: our adapters catch `FrequencyUnavailable` and its siblings, which on
-0.6.1 nothing raises, so those arms would be dead code and `/check` would 500 over an outage again.
-Read what a patch *does* before assuming a partial cut is optional; upgrading all three in step here
-would have been wrong.
+and neither enricher floor is a symbol missing below it. **0.6.2** is one whose *meaning changes at*
+it: our adapters catch `FrequencyUnavailable` and its siblings, which on 0.6.1 nothing raises, so those
+arms would be dead code and `/check` would 500 over an outage again. **0.6.3** is the same shape moved
+onto an argument — `load_dotenv_file` had reached none of the six cache resolvers, so the `False` we
+had always passed to them was inert, and the release that makes the flag work is the release where
+*keeping* it becomes the change. Read what a patch **does** before assuming a partial cut is optional,
+and check the flags you already pass as well as the symbols you already import: upgrading all three in
+step here would have been wrong, and so would treating an enricher patch as beneath reading.
+
+**A version-gap check belongs to the thing that has versions.** Most of 0.6.3 is upstream's ClinVar and
+ClinPGx *drafters*, and the honest answer for this service was that it has none — drafting is
+authoring-side, so "modules published before this need a re-draft" is a message for module authors and
+not a `registry upgrade` sweep. Nothing recompiles here: the compiler stayed at 0.6.1, and a compiler
+patch is deliberately not a gap. Say that in the release rather than leaving a reader to infer it, or
+the next operator runs the UPGRADE.md sweep expecting it to fix a drafted module, and it cannot.
 
 ---
 

@@ -453,6 +453,23 @@ an explicit guard:
   catalog. That is an event to watch for, not a release to schedule — a deployment that has run
   `registry upgrade` over its whole catalog is done, and one that has not, is not.
 
+## 0.18.1 — enricher 0.6.3 adoption ✅
+
+- **An argument we already passed stopped being inert, which is a dependency bump with no import to
+  grep for.** Upstream S39 threads `load_dotenv_file` through the six cache resolvers, where it had
+  reached none of them. `available_references` had passed `False` from the start on the reasoning that
+  `config.py` loads the `.env` — true in a checkout, false in a container, because python-dotenv walks
+  up from the *installed package* and the enricher walks up from the **CWD**. Flag dropped, so the
+  report reads what the run reads; measured showing the pre-fix code reporting the host's stray
+  platformdirs cache rather than the configured one, which is `configured_caches`'s forbidden ambient
+  discovery arriving through the reporting door.
+- **The rest of 0.6.3 is upstream's drafters (S41, S44) and does not reach this service**, which is
+  itself the finding worth recording: "modules published before this need a re-draft" is authoring-side
+  and has no `registry upgrade` answer. Said explicitly in the release and in
+  [UPGRADE.md](UPGRADE.md) so nobody runs the sweep expecting it to fix a drafted module.
+- **No sweep, no migration, no schema move.** Format and compiler stay at 0.6.1; a compiler patch is
+  deliberately not a contract gap (0.18.0), and this is not even that.
+
 ## Next registry version (post-0.11)
 
 - **Adopt `manifest.readme` when format 0.6 lands** (**done in 0.17**). Shipped as filed: publish

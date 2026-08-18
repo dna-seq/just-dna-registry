@@ -256,14 +256,33 @@ def available_references(settings: Settings) -> dict[str, Optional[Path]]:
     build the arguments `enrich()` is called with (see `configured_caches` for why). Resolves through
     the same ladder the enricher would, so what this reports is what a run would find.
 
-    `load_dotenv_file=False` because `config.py` already loaded it — and since enricher 0.5.2 that
-    flag no longer suppresses the whole of it: `_cache_dir` now calls `load_env()` itself, which the
-    flag does not reach. Harmless here, and it is the *fix* for a bug this caller was structurally
-    immune to. Each `resolve_*_reference` receives its `default_*_cache_dir()` as an argument, so the
-    default was computed before the ladder's own `load_env()` ran — meaning the first resolve in a
-    process read platformdirs and every later one read `.env`. We never saw it because `config.py`
-    loads `.env` at import, long before any of this. `override=False` throughout, so a real
-    environment variable still wins and the setting we pass still takes precedence over both.
+    **The `.env` is loaded here, and dropping `load_dotenv_file=False` in 0.18.1 is what keeps that
+    sentence true.** We passed `False` from the start, on the reasoning that `config.py` had already
+    loaded the file. Through enricher 0.6.2 the argument was inert — `_cache_dir` called `load_env()`
+    unconditionally, so the ladder read the `.env` whatever we asked for — and enricher 0.6.3 (S39)
+    threads the flag through, which makes *keeping* it the behaviour change rather than the upgrade.
+
+    What it would have changed is a report that no longer predicts its own run. `enrich()` calls
+    `resolve_*_reference` with the default, so the run still loads the `.env`; only the reporting
+    caller would have stopped. The two loads do not search the same place: `config.py` uses
+    python-dotenv's frame-walking `find_dotenv()`, which starts from wherever *this package* is
+    installed, while the enricher uses `usecwd=True` and starts from the process CWD. In a checkout
+    those are the same tree. In a container — package in `site-packages`, `.env` beside the compose
+    file in the working directory — they are not, and the old docstring's "`config.py` loads `.env` at
+    import" is simply false there. Measured rather than reasoned, in the test below: the
+    frame-walking load returns nothing while the enricher's finds the file. And the result is worse
+    than an absence — with the flag restored the ladder falls through to **platformdirs** and reports
+    whatever stray `~/.cache/just-dna-pipelines` the host happens to have, which is exactly the ambient
+    discovery `configured_caches` exists to forbid. So a deployment pointing at its snapshots from a
+    `.env` in the working directory would have had the boot check and `warm-caches` describe somebody
+    else's cache while enrichment ran against the right one.
+
+    That is S6's rule one layer down — a read-only pre-flight must predict the operation it precedes —
+    and it is why this resolves through the ladder in the first place. `override=False` throughout, so
+    a real environment variable still wins and the configured setting still takes precedence over
+    both; loading twice is therefore idempotent. It does mutate `os.environ` from library code, which
+    is upstream's RM102 and a real sharp edge — but it is the same mutation the run path already
+    performs, so the honest choice is to match it, not to diverge from it silently.
 
     Never downloads: that is `registry warm-caches`, deliberately not a request-path concern.
     """
@@ -288,10 +307,7 @@ def available_references(settings: Settings) -> dict[str, Optional[Path]]:
         "pharmvar": resolve_pharmvar_reference,
         "clinpgx": resolve_clinpgx_reference,
     }
-    return {
-        name: resolve(configured[name], load_dotenv_file=False)
-        for name, resolve in resolvers.items()
-    }
+    return {name: resolve(configured[name]) for name, resolve in resolvers.items()}
 
 
 def vrs_coverage(mint: Any) -> VrsCoverage:

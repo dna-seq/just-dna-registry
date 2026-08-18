@@ -8,11 +8,19 @@ every module, and `version.contract_compatible` treats a `0.x` minor as breaking
 to a 0.6 server is **refused**, and the first symptom of skipping step 0 is a blanket publish
 rejection with no obvious cause.
 
-**The enricher is one patch ahead of the other two, and that is not a typo.** 0.6.2 is enricher-only
-(upstream RM101); format and compiler are unchanged at 0.6.1, so `uv sync` installs `0.6.1 / 0.6.1 /
-0.6.2` and that is the correct state. It is a hard floor rather than a preference: this server's
-`/check` adapters catch the unavailability subclasses 0.6.2 introduces, and on 0.6.1 nothing raises
-them — those handlers would be dead code and an upstream outage would go back to being a `500`.
+**The enricher runs ahead of the other two, and that is not a typo.** 0.6.2 and 0.6.3 are both
+enricher-only cuts (upstream RM101, then S39/S41–S44); format and compiler are unchanged at 0.6.1, so
+`uv sync` installs `0.6.1 / 0.6.1 / 0.6.3` as of registry 0.18.1, and that is the correct state. The
+enricher floor is a hard one rather than a preference: this server's `/check` adapters catch the
+unavailability subclasses 0.6.2 introduces, and on 0.6.1 nothing raises them — those handlers would be
+dead code and an upstream outage would go back to being a `500`.
+
+**Nothing in this document changes for 0.6.3, and that is the point of saying so.** It moves no schema,
+no signature and no digest, so an operator already on 0.6.1/0.6.1/0.6.2 upgrades by `uv sync` and stops
+— there is no revalidate and no re-baseline to run. In particular, upstream's note that ClinVar-drafted
+modules published before 0.6.3 need a **re-draft** is not a job for step 2 below: drafting happens where
+the spec is authored, this registry has no drafter, and recompiling an already-drafted `variants.csv`
+reproduces exactly the rows the drafter dropped. Those modules need a new upload from their publisher.
 
 **Install `0.6.1`, never `0.6.0`.** Upstream cut 0.6.0 on 2026-08-17 and 0.6.1 the next day with eight
 defects fixed; this repo's floors name `0.6.1` and `uv sync` will refuse the older one. It changes no

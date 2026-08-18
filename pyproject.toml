@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.18.0"
+version = "0.18.1"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -109,8 +109,22 @@ server = [
     # this floor's predecessor was raised to fix. Running 0.6.1 here would silently reinstate it.
     # `just-dna-format` and `just-dna-compiler` did *not* move and stay at 0.6.1; this is a partial cut
     # and upgrading all three in step would be wrong.
+    #
+    # **0.6.3 is a third partial cut, and the floor is hard for a third distinct reason: an argument we
+    # already pass changes from inert to real.** Most of that release is upstream's ClinVar and ClinPGx
+    # *drafters* (S41, S44), which this service does not have and never calls — drafting is
+    # authoring-side, so none of it reaches an endpoint here. The one item that does is S39:
+    # `load_dotenv_file` had reached none of the six cache resolvers, because each passed its
+    # `default_*_cache_dir()` as an argument and `_cache_dir` loaded the `.env` unconditionally. From
+    # 0.6.3 the flag is threaded through and works. `services/enrich.available_references` had passed
+    # `False` since it was written, so on 0.6.3 *keeping* it would have been the behaviour change — a
+    # reporting caller that stops reading the `.env` while `enrich()`, which calls the same resolvers
+    # with the default, goes on reading it. The flag is dropped rather than the floor left at 0.6.2:
+    # both versions then behave identically here, and a deployment that installs 0.6.2 anyway gets the
+    # same answer from the same code. The floor moves regardless so the pair is impossible to
+    # mis-assemble, and because 0.6.2's own hard reason (the unavailability subclasses) is unaffected.
     "just-dna-compiler>=0.6.1",
-    "just-dna-enricher>=0.6.2",
+    "just-dna-enricher>=0.6.3",
 ]
 
 [build-system]

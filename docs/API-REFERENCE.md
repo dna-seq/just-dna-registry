@@ -3,11 +3,13 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.17.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.18.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
-  five counters to every `resolution` object; see *Format 0.6 fields* below). Written against the server at that version; a
+  five counters to every `resolution` object; see *Format 0.6 fields* below. **0.18 adds no route
+  either**: 0.18.0 changed what `registry upgrade` acts on, which is an admin CLI behaviour with no
+  HTTP surface, and 0.18.1 is an enricher floor bump). Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).

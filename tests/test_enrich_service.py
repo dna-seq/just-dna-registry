@@ -13,6 +13,7 @@ Three things worth pinning that no HTTP test reaches:
   whether a deployment can be pinned at all.
 """
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -183,6 +184,60 @@ def test_available_references_ignores_ambient_state_when_configured(
     monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", "/another/place")
     settings = Settings(ensembl_cache=tmp_path / "empty")
     assert available_references(settings)["ensembl"] is None
+
+
+def test_the_report_reads_the_same_dotenv_the_run_would(tmp_path: Path) -> None:
+    """`available_references` must not suppress the `.env` that `enrich()` goes on to load.
+
+    We passed `load_dotenv_file=False` until 0.18.1, which was inert while enricher `_cache_dir`
+    loaded the file unconditionally. Enricher 0.6.3 (S39) threads the flag through, so from that
+    version on the argument really does suppress the load — for the *reporting* caller only, since
+    `enrich()` calls the same resolvers with the default. The result is a boot check and a
+    `warm-caches` describing a different cache from the one a publish enriches against.
+
+    Driven in a subprocess with a controlled CWD, because the two loaders disagree only about *where*
+    to look: `config.py` uses python-dotenv's frame-walking `find_dotenv()` (from the installed
+    package), the enricher uses `usecwd=True` (from the process CWD). In this checkout those coincide,
+    which is exactly why the divergence was invisible here and would have shown up in a container.
+    `JUST_DNA_ENSEMBL_CACHE` is the key under test precisely because this repo's own `.env` does not
+    set it, so the checkout's file cannot mask the result either way.
+
+    Run against the flag restored, this fails — with whatever the ladder falls through to once the
+    `.env` is suppressed, which is host-dependent and is the sharpest part of the bug: `None` on a
+    clean machine, and on a developer's box the stray `~/.cache/just-dna-pipelines/ensembl_variations`
+    that `configured_caches` exists to keep out. That is what it printed when this was watched failing.
+    """
+    reference = tmp_path / "ref" / "ensembl_variations"
+    (reference / "data").mkdir(parents=True)
+    (reference / "data" / "variations.parquet").write_bytes(b"")  # presence is all the ladder checks
+
+    # Three directories, and the separation is the whole experiment. The `.env` sits in the CWD, which
+    # is where the enricher looks; the probe script sits somewhere that walks up to neither, which is
+    # where python-dotenv looks when `config.py` calls it. It must be a **file** rather than
+    # `python -c`: with `-c` there is no `__main__.__file__`, python-dotenv takes itself to be
+    # interactive and falls back to the CWD, and both loaders find the file for the wrong reason.
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".env").write_text(f"JUST_DNA_ENSEMBL_CACHE={reference}\n")
+    runner = tmp_path / "runner"
+    runner.mkdir()
+    probe = runner / "probe.py"
+    probe.write_text(
+        "from just_dna_registry.config import Settings\n"
+        "from just_dna_registry.services.enrich import available_references\n"
+        "print(available_references(Settings())['ensembl'])\n"
+    )
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("JUST_DNA_")}
+    out = subprocess.run(
+        [sys.executable, str(probe)],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip() == str(reference), out.stdout
 
 
 # ── What the cost guard is actually counting ──────────────────────────────────

@@ -6,6 +6,59 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.18.1] — 2026-08-19
+
+**Client surface: unchanged.** No endpoint and no `RegistryClient` method moves.
+
+**Adopts `just-dna-enricher` 0.6.3.** A third partial cut — `just-dna-format` and `just-dna-compiler`
+stay at **0.6.1**, so `uv sync` now installs `0.6.1 / 0.6.1 / 0.6.3`. **No sweep follows this
+release**: nothing recompiles, no signature or digest moves, and there is no revalidate step. An
+operator already on 0.6.2 upgrades by `uv sync` and stops.
+
+### The one item that reaches this service: a flag we passed that had never done anything
+
+Most of upstream 0.6.3 is their ClinVar and ClinPGx **drafters** (S41, S44) — code this registry does
+not have and never calls, because drafting happens where a spec is authored. Their note that *modules
+published before this need a re-draft* is therefore a message for module authors, not a job for
+[UPGRADE.md](UPGRADE.md) step 2: recompiling an already-drafted `variants.csv` reproduces exactly the
+rows the drafter dropped. Those modules need a fresh upload from their publisher, and no command here
+substitutes for one.
+
+What does land is upstream **S39**. `load_dotenv_file` had reached none of the six cache resolvers —
+each `resolve_*_reference` passes its `default_*_cache_dir()` as an *argument*, evaluated before the
+resolver looks at its own flag, and `_cache_dir` loaded the `.env` unconditionally. 0.6.3 threads the
+flag through, and that makes **keeping** the argument the behaviour change rather than the upgrade.
+
+`services/enrich.available_references` had passed `load_dotenv_file=False` since it was written, on
+the reasoning that `config.py` loads the `.env` at import. That reasoning is false off a checkout, and
+the argument is now dropped. The two loads do not search the same place: `config.py` uses
+python-dotenv's frame-walking `find_dotenv()`, which starts from wherever the package is *installed*,
+while the enricher uses `usecwd=True` and starts from the process **CWD**. In a checkout those are one
+tree, which is why this was invisible here. In a container — package in `site-packages`, `.env` beside
+the compose file — they are not.
+
+Measured rather than argued, in a subprocess with the two directories deliberately separated: with the
+flag left in place, `available_references` does not merely report the snapshot absent, it falls through
+to **platformdirs** and reports whatever stray `~/.cache/just-dna-pipelines` the host happens to have.
+That is the ambient discovery `configured_caches` exists to forbid, arriving through the reporting door
+instead. A deployment pointing at its snapshots from a working-directory `.env` would have had its boot
+check and `registry warm-caches` describe someone else's cache while enrichment ran against the right
+one — the report contradicting the run it exists to predict, which is S6's rule one layer down.
+
+`enrich()` calls the same resolvers with the default, so dropping the flag makes the report match the
+run in every layout, and makes 0.6.2 and 0.6.3 behave identically here. The floor still moves to 0.6.3
+so the pair cannot be mis-assembled. `override=False` throughout, so a real environment variable still
+wins and a configured setting still beats both; the double load is idempotent. It does mutate
+`os.environ` from library code (upstream's RM102, a genuine sharp edge) — but it is the same mutation
+the run path already performs, so matching it is the honest option and diverging silently is not.
+
+**Two rules worth carrying forward.** Check the flags you already *pass* on a dependency bump, not only
+the symbols you already import: an inert argument becoming live is a behaviour change with no import to
+grep for. And an off-switch needs a probe — upstream tagged this `@off-switch-needs-a-probe` after two
+in two days, and the test added here (`test_the_report_reads_the_same_dotenv_the_run_would`) runs the
+*disabling* value in a controlled CWD for exactly that reason. It was watched failing against the
+restored flag before being kept.
+
 ## [0.18.0] — 2026-08-18
 
 **Client surface: unchanged.** No endpoint and no `RegistryClient` method moves.
