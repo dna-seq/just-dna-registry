@@ -67,6 +67,7 @@ from just_dna_registry.specfiles import (
     has_spec_data,
 )
 from just_dna_registry.storage.base import StorageBackend, version_key
+from just_dna_registry.version import contract_compatible, installed_compiler
 
 # The columns `VariantRow.upgraded()` may set, mirrored back into the CSV. `state` stays present
 # (trimmed to a derived mirror of `direction`); the booleans are only ever set True or left blank.
@@ -262,6 +263,133 @@ def trim_unknown_yaml_keys(yaml_text: str) -> tuple[str, list[str]]:
     return yaml.safe_dump(doc, sort_keys=False), [path for _, _, path in offenders]
 
 
+#: The scales a contract gap comes in. `contract` is the only one that acts on its own, because it is
+#: the only one where the stored parquet is a *different shape* from what this server now compiles.
+GAP_NONE: str = "none"
+GAP_PATCH: str = "patch"
+GAP_CONTRACT: str = "contract"
+GAP_UNKNOWN: str = "unknown"
+
+
+class ContractGap(BaseModel):
+    """How far behind the contract a published version was compiled under is, and how we know.
+
+    **This replaces a boolean that was frozen at one era boundary, and the freeze is the lesson.**
+    The predecessor asked "is `content_signature` absent", which is true only of a pre-0.5 manifest —
+    so it answered *no gap* for every 0.5-era version the moment this server moved to 0.6, and the
+    catalog-wide re-baseline the flag exists to automate silently became a no-op an operator had to
+    know to override with `--force`. Measured at the 0.6 cut: 5 of 11 reference modules skipped. A
+    one-era witness is a witness that stops being one, so this compares versions instead of testing
+    for a landmark.
+
+    `witness` says which comparison produced `scale`, because the two have different reach and a
+    reader has to be able to tell "I compared 0.5.4 against 0.6.1" from "I found no signature, which
+    only means older than 0.5". It is also the field that keeps `unknown` honest: a manifest whose
+    compiler cannot be identified is neither current nor stale, and reporting it as either is how the
+    original defect happened. Unknown does **not** act by default and is counted separately, so an
+    operator sees the bucket and can aim `--force` at it deliberately.
+    """
+
+    compiled_under: Optional[str] = Field(
+        default=None, description="The compiler version that produced the stored artifact, if known"
+    )
+    current: Optional[str] = Field(
+        default=None, description="The compiler version this server would recompile with"
+    )
+    scale: str = Field(default=GAP_UNKNOWN, description=f"one of {GAP_NONE}/{GAP_PATCH}/{GAP_CONTRACT}/{GAP_UNKNOWN}")
+    witness: str = Field(
+        default="none",
+        description="What decided `scale`: `compiler_version`, `content_signature`, or `none`",
+    )
+
+    @property
+    def acts_by_default(self) -> bool:
+        """Whether this gap is reason enough to re-publish without `--force`.
+
+        Only `contract`. A **patch** difference must not act: the compiler patch is not a schema
+        change, so re-publishing would mint a fresh PATCH per module and move every
+        `artifact.digest` to record that we upgraded a dependency — the sweep would never be finished
+        because the next patch release starts it again. That is what `--force` is for, and with the
+        contract gap detected it is finally what its name says: an override, not the normal path.
+        """
+        return self.scale == GAP_CONTRACT
+
+    def describe(self) -> str:
+        """One clause naming the gap, for an operator report and for an immutable changelog entry."""
+        if self.scale == GAP_CONTRACT:
+            under = self.compiled_under or "a pre-0.5 contract"
+            return f"compiled under {under}, this server compiles with {self.current or 'unknown'}"
+        if self.scale == GAP_PATCH:
+            return f"compiler patch differs ({self.compiled_under} → {self.current}), same contract"
+        if self.scale == GAP_UNKNOWN:
+            return "the compiler that produced it cannot be identified"
+        return "already on this contract"
+
+
+def stamped_compiler_version(manifest: ModuleManifest) -> Optional[str]:
+    """The bare SemVer out of `compilation.compiler_version`, or None if it is not one.
+
+    The compiler stamps `"just-dna-compiler 0.6.1"` — a name and a version, not a version — and
+    `"just-dna-compiler unknown"` when it cannot read its own metadata. So the last whitespace-separated
+    token is the candidate and it is *validated* by parsing rather than assumed: an unparseable stamp
+    (a foreign compiler, an `unknown`, a spelling upstream changes) has to reach `GAP_UNKNOWN` rather
+    than crash a catalog-wide sweep or, worse, be read as up to date.
+    """
+    stamp = manifest.compilation.compiler_version
+    if not stamp:
+        return None
+    candidate = stamp.split()[-1]
+    try:
+        parse_version(candidate)
+    except ValueError:
+        return None
+    return candidate
+
+
+def contract_gap(manifest: ModuleManifest) -> ContractGap:
+    """How far behind the current compile contract this stored version is.
+
+    Compiler against compiler, which is apples to apples: the stamp on the manifest is a
+    `just-dna-compiler` version and so is what this process would recompile with. The *format* minor is
+    the contract that actually moves the parquet schema, and comparing compilers inherits it — this
+    workspace floors format and compiler at the same minor and upstream cuts them together (0.6.1 /
+    0.6.1, with only the enricher free to move alone, which touches no artifact).
+
+    The rule is `version.contract_compatible`, unchanged and deliberately shared with the wire check:
+    a differing MAJOR, or a differing MINOR while MAJOR is 0. If a 0.5 client may not exchange
+    artifacts with a 0.6 server, then a 0.5-compiled artifact sitting in a 0.6 server's catalog is the
+    same disagreement with nobody to report it to — which is exactly what a re-baseline fixes.
+
+    Falls back to the pre-0.5 `content_signature` witness when the stamp says nothing, because that one
+    still works where the stamp does not: the compiler began writing signatures in 0.5, so its absence
+    dates a manifest without needing to parse anything.
+    """
+    current = installed_compiler()
+    stamped = stamped_compiler_version(manifest)
+    if stamped is None:
+        if manifest.content_signature is None:
+            return ContractGap(
+                compiled_under=None, current=current,
+                scale=GAP_CONTRACT, witness="content_signature",
+            )
+        return ContractGap(compiled_under=None, current=current, scale=GAP_UNKNOWN, witness="none")
+    if current is None:
+        # Nothing to compare against. Not "current" — this process cannot say, and saying so is the
+        # whole point of the field.
+        return ContractGap(
+            compiled_under=stamped, current=None, scale=GAP_UNKNOWN, witness="compiler_version"
+        )
+    if not contract_compatible(current, stamped):
+        scale = GAP_CONTRACT
+    elif stamped != current:
+        scale = GAP_PATCH
+    else:
+        scale = GAP_NONE
+    return ContractGap(
+        compiled_under=stamped, current=current, scale=scale, witness="compiler_version"
+    )
+
+
 class VersionUpgradePlan(BaseModel):
     """Everything a re-publish of one published version needs, plus a report of what would change:
     the 0.3 back-population (`variants_plan`), any lossy `--trim` column drops, and the prepared
@@ -283,21 +411,21 @@ class VersionUpgradePlan(BaseModel):
         default_factory=dict, description="Prepared re-publish inputs (empty when blocked)"
     )
 
-    #: Set when the predecessor predates the 0.5 contract, so a recompile is genuinely needed rather
-    #: than merely available. Makes the catalog-wide 0.5 migration `registry upgrade --apply` instead
-    #: of a `--force` an operator has to know to pass.
-    needs_contract_recompile: bool = False
+    #: How far behind the current compile contract the predecessor is — the reason a catalog-wide
+    #: re-baseline is `registry upgrade --apply` rather than a `--force` an operator has to know to
+    #: pass. See `ContractGap`: only a `contract`-scale gap acts on its own.
+    gap: ContractGap = Field(default_factory=ContractGap)
 
     def would_act(self, *, recompile: bool) -> bool:
-        """Whether re-publishing this version is worthwhile: it has 0.3 drift, trimmed something,
-        predates the current contract, or a `recompile` was explicitly requested. Never acts while
+        """Whether re-publishing this version is worthwhile: it has 0.3 drift, trimmed something, was
+        compiled under an older contract, or a `recompile` was explicitly requested. Never acts while
         blocked."""
         if self.blocked:
             return False
         return (
             self.variants_plan.needed
             or bool(self.dropped)
-            or self.needs_contract_recompile
+            or self.gap.acts_by_default
             or recompile
         )
 
@@ -366,7 +494,7 @@ def prepare_version_upgrade(
         if "variants.csv" in specs
         else UpgradePlan(total_rows=0, upgradable_rows=0, migrated_variants_csv="")
     )
-    contract_recompile = needs_contract_recompile(manifest)
+    gap = contract_gap(manifest)
     # Carry every recognized spec file forward, plus the logo (version-independent branding, out of
     # the digest); then override the text ones with the migrated/trimmed content. Logs and provenance
     # are intentionally NOT carried: they describe how the *predecessor* was built, and this
@@ -387,7 +515,7 @@ def prepare_version_upgrade(
         variants_plan=plan,
         dropped=dropped,
         files=files,
-        needs_contract_recompile=contract_recompile,
+        gap=gap,
     )
 
 
@@ -402,29 +530,25 @@ def _upgrade_changelog(prep: VersionUpgradePlan, version: str) -> str:
     if prep.dropped:
         detail = "; ".join(f"{f}: {', '.join(items)}" for f, items in prep.dropped.items())
         parts.append(f"trimmed columns/keys the current contract rejects ({detail})")
-    if prep.needs_contract_recompile:
-        # Not "no content change". The authored data is untouched, but 0.5 re-baselined `variant_key`
-        # onto the VRS allele id, so `artifact.digest` moves — and the module gains a resolution
-        # table and licensing facts it did not have. Saying otherwise sends whoever compares the two
-        # digests looking for a corruption that is not there.
+    if prep.gap.acts_by_default:
+        # Not "no content change". The authored data is untouched, but a contract cut re-shapes the
+        # parquet, so `artifact.digest` moves — and the module can gain tables it did not have (0.5
+        # re-baselined `variant_key` onto the VRS allele id; 0.6 places positional rows from
+        # `resolution.csv`). Saying otherwise sends whoever compares the two digests looking for a
+        # corruption that is not there.
+        #
+        # **The versions are named from the gap, never written down here.** This sentence goes into a
+        # published manifest, which is immutable — and the hardcoded "under just-dna-format 0.5" it used
+        # to carry would have been stamped, permanently and wrongly, onto every version re-baselined at
+        # the 0.6 cut. A migration that misdates its own record is worse than one that says less.
         parts.append(
-            "recompiled under just-dna-format 0.5: the authored data is unchanged, but "
-            "`variant_key` was re-baselined onto the VRS allele identity, so `artifact.digest` "
-            "differs from the predecessor's. The predecessor stays published and verifiable"
+            f"recompiled to the current contract ({prep.gap.describe()}): the authored data is "
+            f"unchanged, but the parquet shape and therefore `artifact.digest` differ from the "
+            f"predecessor's. The predecessor stays published and verifiable"
         )
     if not parts:
         parts.append("recompiled to the current just-dna-format contract (no content change)")
     return f"Automated upgrade of {version}: " + "; ".join(parts) + "."
-
-
-def needs_contract_recompile(manifest: ModuleManifest) -> bool:
-    """Whether this version predates the 0.5 contract and would genuinely benefit from a recompile.
-
-    Keyed on `content_signature`, which the compiler began stamping in 0.5 — the same witness
-    `db.facets` uses, and for the same reason: `compilation.compiler_version` holds a prefixed string
-    rather than a bare SemVer, so parsing it fails quietly in the wrong direction.
-    """
-    return manifest.content_signature is None
 
 
 def is_latest_version(repo: Repository, namespace: str, name: str, version: str) -> bool:

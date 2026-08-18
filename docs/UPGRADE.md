@@ -30,7 +30,7 @@ step**, no risk of merged dedup claims, and no version loses its `409 duplicate_
 **Every command below takes `--mode`, and on the polygon you must pass it (0.17.1).** A deployment
 sets `REGISTRY_MODE` in its unit file or compose env, which the server process inherits and your shell
 does not — so `registry upgrade` run by hand on the polygon applies *production's* rules to the test
-box's catalog. Spell it: `registry --mode test upgrade --apply --force`. The flag goes before the
+box's catalog. Spell it: `registry --mode test upgrade --apply`. The flag goes before the
 subcommand, and `revalidate`/`upgrade` echo `mode=… db=…` up front so a wrong one is visible before it
 refuses anything. On production the default is already right and the flag is optional.
 
@@ -52,22 +52,37 @@ publishers, rather than discovering it a third of the way through a catalog-wide
 `just-dna-enricher hint recover` reports which rs-number GRCh37 dbSNP records at a coordinate, which
 is the diagnostic for an RM48 refusal.
 
-**2. `registry upgrade --apply --force --limit N` — the digest re-baseline.** Every module recompiled
+**2. `registry upgrade --apply --limit N` — the digest re-baseline.** Every module recompiled
 under 0.6 gets a different `artifact.digest`, exactly as 0.5 did to 0.4. This is a one-time,
 catalog-wide event and it is not corruption: `upgrade` re-publishes as a new PATCH and never mutates
 the predecessor, so old versions stay published and verifiable and a client pinned to one is
 unaffected. Only a client tracking `latest` sees new bytes, which is what a new PATCH means. With
 enrichment in the loop this is still the longest-running operation the registry has — batch it.
 
-**`--force` is not optional here, and this line said `--apply` alone until it was measured.** Plain
-`upgrade` acts only where there is *back-population* to do; a module already on-contract is a
-deliberate no-op, so it skips exactly the versions a schema-only re-baseline exists for. Driven over
-the real `v0.5.4` reference corpus: without `--force`, **five of eleven** were skipped as no-ops
-(`apoe_epsilon`, `cyp2c19_star_alleles`, `hfe_compound_het`, `htt_repeat_expansion`,
-`slco1b1_simvastatin`) and their digests stayed on the 0.5 parquet shape. `--force` (spelled
-`--recompile` too) re-emits them. This is the same distinction § "Upgrading a stale module" draws
-between an additive-column upgrade and a schema-only migration; 0.6 needs the second for the whole
-catalog and the first for whatever `revalidate` also flagged.
+**`--force` is no longer needed here, and the history of this line is worth two minutes (0.18.0).**
+It first read `--apply` alone; driving the real `v0.5.4` reference corpus showed **five of eleven**
+skipped as no-ops (`apoe_epsilon`, `cyp2c19_star_alleles`, `hfe_compound_het`, `htt_repeat_expansion`,
+`slco1b1_simvastatin`) with their digests still on the 0.5 parquet shape, so the line was corrected to
+`--apply --force`. That was the wrong repair: the tool could not see a gap it had everything it needed
+to compute, and the fix belonged in the tool. `upgrade` now compares each version's
+`compilation.compiler_version` stamp against the installed compiler, under the same rule that refuses a
+0.5 client on a 0.6 server — so a stale parquet is found the way a stale client is, and those five
+upgrade under plain `--apply`.
+
+What `--force` means now is what its name says: recompile where there is **no** detectable gap. Two
+cases. A version already on this contract (you are re-emitting for some other reason). And a version
+whose compiler cannot be identified — a foreign `compiled_by`, or a stamp the compiler wrote as
+`unknown`. Those are **counted and named** in the summary rather than silently skipped, because
+"unidentifiable" and "up to date" are the same silence otherwise, and that silence is what made this
+step wrong for two releases. Aim `--force -m <module>` at them once you know what they are.
+
+A compiler **patch** difference is deliberately not a gap: it moves no schema, so acting on it would
+mint a new PATCH per module to record a dependency bump, and the next upstream patch would start the
+sweep over. `--force` is the switch for that too, if you ever want it.
+
+This is the same distinction § "Upgrading a stale module" draws between an additive-column upgrade and
+a schema-only migration; 0.6 needs the second for the whole catalog and the first for whatever
+`revalidate` also flagged. Both are now detected, so one command does both.
 
 **And back-population *does* move `content_signature`, which is not a contradiction of §0's promise.**
 0.6 moves no signature — measured 0/11 upstream, and 0/11 again here through this registry's own
@@ -257,7 +272,10 @@ A contract bump does **not** break anything already deployed:
 - **Published manifests are immutable and stay valid.** They were compiled under the contract in
   force at publish time; `artifact.digest` is unchanged; existing installs keep verifying by digest.
 - **Every version self-declares its contract** — `compilation.compiler_version` (e.g.
-  `"just-dna-compiler 0.2.0"`) and `schema_version` are in each manifest.
+  `"just-dna-compiler 0.2.0"`) and `schema_version` are in each manifest. Since 0.18.0 `upgrade` reads
+  that first field rather than asking an operator whether a re-baseline is due; this line was already
+  true when the detector was a one-era landmark test, which is what makes the old version of it a
+  missed opportunity rather than a missing capability.
 - **Spec inputs are retained** — `module_spec.yaml` / `variants.csv` / `studies.csv` are stored as
   `inputs[]`, so any version can be re-validated on demand.
 
@@ -290,11 +308,16 @@ truth** — knowing which published modules would fail *today's* contract.
      upgraded** — the original is immutable and stays drifted, so an older version already superseded
      by a newer one is skipped (and `revalidate` reports it `superseded`, not `upgradable`).
      Idempotent: once the latest is on-contract, re-running does nothing (no endless patch chain).
-   - **Schema-only migration is `registry upgrade --force` (aka `--recompile`).** After a contract
-     minor that only moves the parquet shape (e.g. 0.3→0.4), an already-on-contract module has no
-     back-population to do, so plain `upgrade` skips it. `--force` re-emits the latest in the current
-     schema anyway — non-lossy (the authored data is unchanged; only the compiled `artifact.digest`
-     moves). Use it to bring a whole catalog onto the new parquet shape for 0.4 consumers.
+   - **Schema-only migration is plain `registry upgrade` too, since 0.18.0.** After a contract minor
+     that only moves the parquet shape (e.g. 0.3→0.4), an already-on-contract module has no
+     back-population to do — but it *does* have a stale parquet, and the planner now sees that by
+     comparing the version's `compilation.compiler_version` stamp against the installed compiler. So
+     one command brings a whole catalog onto the new shape; it is non-lossy (the authored data is
+     unchanged, only the compiled `artifact.digest` moves) and it is idempotent, because a version this
+     server compiled is not a gap. `--force` (aka `--recompile`) remains for the two cases no
+     comparison can settle: a version already on this contract that you want re-emitted anyway, and one
+     whose compiler cannot be identified — those are counted and named in the summary rather than
+     skipped in silence.
    - **Columns/keys the new contract rejects need `--trim` (LOSSY, so `--force`-gated).** 0.4 made
      the row models *and* the `module_spec.yaml` blocks (`module:`/`defaults:`/`panel:`/`authorship:`
      + top level) `extra="forbid"`; older lax schemas only *warned* on an unknown column/key, so a

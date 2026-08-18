@@ -6,6 +6,74 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.18.0] — 2026-08-18
+
+**Client surface: unchanged.** No endpoint and no `RegistryClient` method moves.
+
+**What changes is what `registry upgrade` does, and one direction of it could surprise you: plain
+`--apply` now acts on versions compiled under an older contract, where it previously skipped them in
+silence.** If you scripted `--apply --force` per 0.17's procedure, nothing changes — `--force` is a
+superset, and an already-re-baselined version is not a gap, so a sweep half-finished under `--force` can
+be finished under plain `--apply` with no cleanup. Read [UPGRADE.md](UPGRADE.md) § 0.17 step 2 before the
+next one: the command in it got shorter.
+
+### `upgrade` detects the contract gap instead of being told about it
+
+The trigger for "this version needs recompiling" was `content_signature is None` — true only of a
+pre-0.5 manifest. **A witness for one era is a witness that stops being one.** The moment this server
+moved to 0.6, every 0.5-era version answered *no gap*, so the re-baseline that flag exists to automate
+became a no-op. Measured at the 0.6 cut: **5 of 11** reference modules skipped, digests still on the 0.5
+parquet shape, and the sweep reporting success. 0.17 corrected the operator doc to `--apply --force`.
+That was the wrong repair — the tool had everything it needed to compute the answer — and this is the
+right one.
+
+`ContractGap` compares the version's `compilation.compiler_version` stamp against the installed
+compiler, under `version.contract_compatible`: the **same** rule that refuses a 0.5 client on a 0.6
+server. A 0.5-compiled artifact in a 0.6 catalog is that disagreement with nobody to report it to, which
+is what a re-baseline fixes. Four scales, and the three that do *not* act matter as much as the one that
+does:
+
+- **`contract`** — differing MAJOR, or differing MINOR while MAJOR is 0. Acts without `--force`.
+- **`patch`** — same contract, different compiler patch. **Does not act.** It moves no schema, so acting
+  would mint a PATCH per module to record a dependency bump and the next upstream patch would restart
+  the sweep. That is what `--force` is for.
+- **`unknown`** — a foreign compiler, or the compiler's own `"just-dna-compiler unknown"` fallback.
+  Does not act, and is **counted and named** in the summary: "unidentifiable" and "up to date" are the
+  same silence otherwise, and that silence is the whole defect. `--force -m <module>` once you know.
+- **`none`** — compiled here, under this contract. Keeps the sweep idempotent.
+
+`witness` records which comparison decided, because "I compared 0.5.4 against 0.6.1" and "I found no
+signature, which only means older than 0.5" are different claims. The pre-0.5 signature test is kept as
+the fallback for a manifest with no parseable stamp — it still reaches where the stamp does not.
+
+**A second defect the same freeze caused, and this one wrote to immutable data.** The re-publish
+changelog said "recompiled under just-dna-format 0.5" as a literal, so every version the 0.6 sweep did
+touch would have carried that wrong date in its published manifest forever. The sentence now names the
+versions out of the gap. A migration that misdates its own record is worse than one that says less.
+
+`--force` keeps working and keeps gating `--trim`; its help now says what it means. Pinned in
+`tests/test_upgrade.py`: all four scales, the fallback witness, and an end-to-end sweep on a version
+whose 0.3 drift is exhausted first — so the contract gap is the only possible reason to act, which is
+the shape the 0.6 cut actually skipped. The scale test and the end-to-end one were both shown failing
+under the old one-era rule before the new one was kept; the *fallback* test passes under both, which is
+correct rather than weak — the old rule is exactly the witness it covers, and the point of keeping it is
+that it still reaches a manifest with no parseable stamp.
+
+The first draft of the end-to-end test passed under the old rule, and the reason is worth recording: the
+fixture spec carries legacy `state` cells, so the 0.3 data gap made the upgrade act for a reason that had
+nothing to do with the contract. A test that cannot fail for the right reason is not a test of that
+reason — the drift is now exhausted first.
+
+**416 passed**, three more than 0.17.1.
+
+### One latent flake removed next door
+
+`test_recompile_republishes_on_contract_version` asserted two publishes of one spec share an
+`artifact.digest`. They share `content_signature`; the digest is a coin flip on how long the compile
+took, because a spec authoring no `sources.csv` gets a fresh one per compile with `fetched_at` at second
+resolution and `sources.parquet` is in `ARTIFACT_PARQUETS`. Same defect 0.16.1 removed one file over,
+surviving in a second place. Now asserts the data identity, which is what the test meant.
+
 ## [0.17.1] — 2026-08-18
 
 **Client surface: unchanged.** Nothing in `RegistryClient` moves and no endpoint changes. Both fixes

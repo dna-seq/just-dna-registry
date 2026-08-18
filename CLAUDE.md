@@ -33,6 +33,21 @@ code; do not re-implement compilation or the manifest schema here. `just-dna-pip
 consumer*, not this service's dependency — an earlier version of this line said otherwise, which is
 worth knowing if you meet the claim again somewhere it has been copied to.
 
+**A migration must detect its own trigger, not be told about it.** `registry upgrade` decides whether a
+published version needs recompiling by comparing its `compilation.compiler_version` stamp against the
+installed compiler, under `version.contract_compatible` — the *same* rule that refuses a 0.5 client on a
+0.6 server, because a 0.5-compiled artifact sitting in a 0.6 catalog is that same disagreement with
+nobody to report it to. Before 0.18.0 the test was `content_signature is None`, true only of a pre-0.5
+manifest: a witness for one era, which answered *no gap* for every 0.5-era version the moment we moved
+to 0.6. The catalog-wide re-baseline silently became a no-op (5 of 11 reference modules), the operator
+doc was corrected to say `--force`, and the hardcoded "recompiled under just-dna-format 0.5" sentence
+would have been stamped — permanently, since manifests are immutable — onto everything the 0.6 sweep did
+touch. **Never date a stored artifact by testing for a landmark; compare versions.** Three properties to
+keep: a compiler *patch* is not a gap (it moves no schema, and acting would mint a PATCH per module per
+dependency bump), an *unidentifiable* compiler is neither current nor stale and is counted and named
+rather than skipped in silence, and `--force` means "no gap detected, do it anyway" — if it is ever the
+documented normal path again, the detector is what is broken.
+
 **The floor is a lockstep, not a minimum.** `version.contract_compatible` treats a `0.x` minor as a
 breaking contract change, so the installed minor must match what clients speak; adopting a new format
 minor is a coordinated cut with an operator procedure, never a dependency bump. See

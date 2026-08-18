@@ -68,6 +68,16 @@ class VersionInfo(BaseModel):
         )
 
 
+def installed_compiler() -> Optional[str]:
+    """The `just-dna-compiler` version this process would recompile with, or None if not installed.
+
+    Public because the upgrade planner compares a stored manifest's compiler stamp against it to
+    decide whether a version's parquet predates the current contract. `None` means *cannot say* there
+    — a client install has no compiler tier at all — and must never be read as "up to date".
+    """
+    return _installed(_COMPILER_PKG)
+
+
 def contract_compatible(server_format: Optional[str], client_format: Optional[str]) -> bool:
     """Whether two `just-dna-format` versions can safely exchange compiled artifacts.
 

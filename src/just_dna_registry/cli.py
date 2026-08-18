@@ -26,6 +26,7 @@ from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
 from just_dna_registry.services.upgrade import (
+    GAP_UNKNOWN,
     VersionUpgradePlan,
     is_latest_version,
     prepare_version_upgrade,
@@ -613,10 +614,10 @@ def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
     if prep.dropped:
         dropped = sum(len(c) for c in prep.dropped.values())
         bits.append(f"{dropped} column(s)/key(s) trimmed")
-    if prep.needs_contract_recompile:
-        bits.append("0.5 recompile (digest moves: variant_key re-baselined)")
-    if not bits:  # only a schema recompile is left
-        bits.append("schema recompile (no content change)")
+    if prep.gap.acts_by_default:
+        bits.append(f"contract recompile — {prep.gap.describe()} (digest moves)")
+    if not bits:  # only a forced schema recompile is left
+        bits.append(f"schema recompile, no content change ({prep.gap.describe()})")
     return ", ".join(bits)
 
 
@@ -630,8 +631,8 @@ def upgrade(
     ),
     force: bool = typer.Option(
         False, "--force", "--recompile",
-        help="Recompile the latest to the current contract even with no 0.3 drift (a non-lossy "
-             "schema migration); also required to enable the lossy --trim",
+        help="Recompile even where no gap is detected — a same-contract or unidentifiable version. "
+             "A contract gap is found on its own and does NOT need this. Required for --trim",
     ),
     trim: bool = typer.Option(
         False, "--trim",
@@ -644,13 +645,23 @@ def upgrade(
 ) -> None:
     """Migrate published versions to the current `just-dna-format` contract and re-publish as a PATCH.
 
-    Automatic: back-populates the additive 0.3 axes (direction/stat_significance/clin_sig) for any
-    version whose `variants.csv` still carries only the legacy `state`/booleans. `--force`
-    (`--recompile`) additionally re-emits an already-on-contract module in the current parquet schema
-    (non-lossy). `--trim` drops columns 0.4 now forbids (old schemas only warned) so a stale spec
-    compiles — LOSSY, so it requires `--force`. A version with such columns and no `--trim` is
-    reported *blocked*. Re-publish runs the full server-side compile path; the predecessor is never
-    mutated. Dry-run by default. See docs/UPGRADE.md."""
+    **Two gaps, both detected, neither needing a flag.** A *data* gap is the additive 0.3 axes
+    (direction/stat_significance/clin_sig) back-populated from the legacy `state`/booleans. A
+    *contract* gap is a version whose parquet was compiled under an older contract than this server
+    runs — measured by comparing its `compilation.compiler_version` stamp against the installed
+    compiler under the same rule the wire check uses, so a 0.5-compiled artifact in a 0.6 catalog is
+    found the way a 0.5 client talking to a 0.6 server is.
+
+    So a catalog-wide re-baseline is `--apply`, and `--force` is an override again: it recompiles where
+    there is *no* detectable gap — a same-contract version, or one whose compiler cannot be identified
+    (counted and named in the summary rather than silently skipped). A compiler **patch** difference is
+    deliberately not a gap: it moves no schema, so acting on it would mint a PATCH per module for a
+    dependency bump and the sweep would restart with every upstream patch release.
+
+    `--trim` drops columns 0.4 now forbids (old schemas only warned) so a stale spec compiles — LOSSY,
+    so it requires `--force`. A version with such columns and no `--trim` is reported *blocked*.
+    Re-publish runs the full server-side compile path; the predecessor is never mutated. Dry-run by
+    default. See docs/UPGRADE.md."""
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
@@ -660,6 +671,11 @@ def upgrade(
     repo = Repository(conn)
     storage = _storage(settings)
     planned = upgraded = blocked = 0
+    # Counted rather than merely skipped. A version this planner cannot date is the one shape that
+    # reads identically to "already current", which is the confusion that made `--force` the normal
+    # path in the first place — so it gets its own number in the summary and a name an operator can
+    # aim `--force -m <module>` at.
+    unidentifiable: list[str] = []
     # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
     # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
     for row in repo.list_all_versions(namespace):
@@ -684,6 +700,8 @@ def upgrade(
             blocked += 1
             continue
         if not prep.would_act(recompile=force):
+            if prep.gap.scale == GAP_UNKNOWN:
+                unidentifiable.append(f"{ns}/{name}@{ver}")
             continue
         if not apply:
             planned += 1
@@ -708,6 +726,15 @@ def upgrade(
     else:
         typer.echo(
             f"\n{planned} version(s) would upgrade{blocked_note}  (dry-run; pass --apply to publish)"
+        )
+    if unidentifiable and not force:
+        typer.secho(
+            f"{len(unidentifiable)} version(s) skipped because the compiler that produced them "
+            f"cannot be identified — unchecked, not up to date: "
+            f"{', '.join(unidentifiable[:5])}"
+            + (f" … ({len(unidentifiable)} total)" if len(unidentifiable) > 5 else "")
+            + ". Re-run with --force to recompile them anyway.",
+            fg=typer.colors.YELLOW,
         )
 
 

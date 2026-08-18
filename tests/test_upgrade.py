@@ -18,6 +18,11 @@ from just_dna_registry.config import Settings
 from just_dna_registry.services.publish import publish_version
 from just_dna_registry.services.revalidate import revalidate_version
 from just_dna_registry.services.upgrade import (
+    GAP_CONTRACT,
+    GAP_NONE,
+    GAP_PATCH,
+    GAP_UNKNOWN,
+    contract_gap,
     is_latest_version,
     offending_columns,
     offending_yaml_keys,
@@ -28,6 +33,7 @@ from just_dna_registry.services.upgrade import (
     upgrade_version,
 )
 from just_dna_registry.storage.base import version_key
+from just_dna_registry.version import installed_compiler
 
 _YAML = """\
 schema_version: "1.0"
@@ -183,7 +189,14 @@ def test_recompile_republishes_on_contract_version(
     client: TestClient, api_key: str, app, settings: Settings
 ) -> None:
     """`recompile=True` re-emits a module with no 0.3 drift as the next PATCH (a schema migration);
-    the default is a no-op. Within one contract the recompile is deterministic → identical digest."""
+    the default is a no-op, because a same-contract version is not a gap.
+
+    Sameness is asserted on `content_signature`, **not** on `artifact.digest`, and the distinction is
+    the one `CLAUDE.md` draws: the digest names bytes and the signature names data. This spec authors no
+    `sources.csv`, so the enricher writes one per compile with `fetched_at` stamped at second
+    resolution, and `sources.parquet` is in `ARTIFACT_PARQUETS` — so two compiles of identical inputs
+    produce different digests whenever they straddle a second. A digest assertion here was a coin flip
+    on how long the compile took, which is the same defect 0.16.1 removed one file over."""
     manifest = _publish(client, api_key)
     repo, storage = app.state.repo, app.state.storage
     _, upgraded = upgrade_version(
@@ -206,8 +219,9 @@ def test_recompile_republishes_on_contract_version(
     new_version, new_manifest = result
     assert new_version == "1.0.2"
     assert new_manifest.compilation.compile_success
-    # Non-lossy: identical spec recompiled under the same contract yields the same content identity.
-    assert new_manifest.artifact.digest == upgraded.artifact.digest
+    # Non-lossy: identical spec recompiled under the same contract is the same *data*.
+    assert new_manifest.content_signature == upgraded.content_signature
+    assert new_manifest.content_signature is not None  # or the line above passes on two Nones
 
 
 # ── Column trim (--trim, lossy) ───────────────────────────────────────────────────
@@ -538,3 +552,130 @@ def test_upgrade_re_publishes_test_prefixed_data_it_did_not_admit(
     assert new_manifest.identity.name == "test_coronary"
     # The predecessor is untouched, exactly as for any other upgrade.
     assert repo.get_manifest_json("just-dna-seq", "test_coronary", "1.0.0") is not None
+
+
+# ── The contract gap, detected rather than asserted by a flag ─────────────────────
+
+
+def _manifest_compiled_under(manifest: ModuleManifest, compiler: str | None) -> ModuleManifest:
+    """The same manifest as if an older (or unidentifiable) compiler had produced it.
+
+    A copy rather than a mutation, and the stamp is written in the compiler's own spelling — a name
+    and a version — because parsing that spelling is exactly what is under test.
+    """
+    clone = manifest.model_copy(deep=True)
+    clone.compilation.compiler_version = compiler
+    return clone
+
+
+def test_the_gap_is_measured_against_the_installed_compiler(
+    client: TestClient, api_key: str
+) -> None:
+    """A version compiled under an older *contract* is found without anybody passing `--force`.
+
+    This is the defect that made `--force` the documented normal path at the 0.6 cut: the predecessor
+    of this function asked "is `content_signature` absent", true only of a pre-0.5 manifest, so every
+    0.5-era version answered *no gap* and a catalog-wide re-baseline skipped 5 of 11 reference modules
+    while reporting success. The rule is now a comparison, so it cannot go stale at the next cut.
+
+    All four scales are driven, and the two that must **not** act are the point as much as the one that
+    must: a compiler patch moves no schema, and an unidentifiable stamp is not evidence of anything.
+    """
+    manifest = _publish(client, api_key)
+    current = installed_compiler()
+    assert current is not None, "the server tier is installed in this suite"
+
+    fresh = contract_gap(manifest)
+    assert (fresh.scale, fresh.witness) == (GAP_NONE, "compiler_version")
+    assert fresh.acts_by_default is False
+
+    older_contract = contract_gap(
+        _manifest_compiled_under(manifest, "just-dna-compiler 0.5.4")
+    )
+    assert older_contract.scale == GAP_CONTRACT
+    assert older_contract.acts_by_default is True
+    assert older_contract.compiled_under == "0.5.4" and older_contract.current == current
+    assert "0.5.4" in older_contract.describe()
+
+    patch_only = contract_gap(
+        _manifest_compiled_under(manifest, "just-dna-compiler 0.6.0")
+    )
+    assert patch_only.scale == GAP_PATCH
+    assert patch_only.acts_by_default is False, "a patch moves no schema; --force is for that"
+
+    for stamp in ("just-dna-compiler unknown", "some-other-compiler 3", None):
+        unknown = contract_gap(_manifest_compiled_under(manifest, stamp))
+        assert unknown.scale == GAP_UNKNOWN, stamp
+        assert unknown.acts_by_default is False, stamp
+        assert "cannot be identified" in unknown.describe()
+
+
+def test_a_pre_0_5_manifest_is_still_dated_without_a_parseable_stamp(
+    client: TestClient, api_key: str
+) -> None:
+    """The old witness is kept as a fallback, because it reaches where the stamp does not.
+
+    The compiler began writing `content_signature` in 0.5, so its absence dates a manifest with no
+    parsing at all. `witness` says which comparison decided — the field exists so "I compared 0.5.4
+    against 0.6.1" is distinguishable from "I found no signature, which only means older than 0.5".
+    """
+    manifest = _manifest_compiled_under(_publish(client, api_key), None)
+    manifest.content_signature = None
+
+    gap = contract_gap(manifest)
+    assert (gap.scale, gap.witness) == (GAP_CONTRACT, "content_signature")
+    assert gap.acts_by_default is True
+    assert gap.compiled_under is None
+    assert "pre-0.5" in gap.describe()
+
+
+def test_upgrade_acts_on_a_contract_gap_with_no_force(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """End to end: `upgrade_version` with `recompile=False` re-publishes an older-contract version.
+
+    **Driven on a version with no 0.3 drift left, and that is the whole design of this test.** The
+    fixture spec carries legacy `state` cells, so a data gap would make the upgrade act for a reason
+    that has nothing to do with the contract — which is precisely the population the 0.6 sweep did
+    *not* skip. The five it skipped were the ones already on-contract in their data, where the stale
+    parquet was the only thing left to fix. So this upgrades once to exhaust the drift, then stamps the
+    successor as 0.5.4-compiled: after that the gap is the only possible reason to act.
+
+    The same call is a no-op for a version this server just compiled, which is what keeps the sweep
+    idempotent — run it twice and the second run does nothing.
+    """
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+
+    # Exhaust the 0.3 data gap first: 1.0.1 is on-contract in its rows.
+    _, on_contract = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    )
+    assert prepare_version_upgrade(
+        storage, "just-dna-seq", "coronary", "1.0.1", on_contract
+    ).variants_plan.needed is False, "the drift must be gone, or the gap is not what is under test"
+
+    # Now the only difference is the stamp: as if 0.5.4 had produced these very bytes.
+    stale = _manifest_compiled_under(on_contract, "just-dna-compiler 0.5.4")
+    repo.set_version_manifest("just-dna-seq", "coronary", "1.0.1", stale)
+
+    result = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.1", manifest=stale,
+    )
+    assert result is not None, "a contract gap must not need --force"
+    new_version, new_manifest = result
+    assert new_version == "1.0.2"
+    # The immutable changelog names the versions it compared instead of a hardcoded era. The old text
+    # said "under just-dna-format 0.5" and would have stamped that, permanently, onto every version
+    # re-baselined at the 0.6 cut.
+    changelog = repo.get_version_changelog("just-dna-seq", "coronary", "1.0.2")
+    assert changelog is not None
+    assert "0.5.4" in changelog and str(installed_compiler()) in changelog
+
+    # And the successor, compiled here and now, is not a gap.
+    assert upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version=new_version, manifest=new_manifest,
+    ) is None
