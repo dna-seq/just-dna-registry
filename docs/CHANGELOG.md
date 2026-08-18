@@ -223,10 +223,33 @@ one-tuple → none), because a guard reporting zero proves nothing until it is s
   is in the pinned warning-text catalogue, so a reword upstream would have flipped the verdict from
   "unchecked" to "your table is broken".
 
+### The operator procedure was driven over the real 0.5.4 corpus, and step 2 was wrong
+
+The 0.17 procedure had been written against the contract delta rather than run. Driving all **11
+`v0.5.4` reference example specs** through this registry's own publish and upgrade path — from the tag,
+not the working tree, since the checkout carries 0.6-era specs — found two documentation defects:
+
+- **Step 2 needs `--force`.** It read `registry upgrade --apply`, which acts only where there is
+  *back-population* to do; a module already on-contract is a deliberate no-op, so plain `upgrade`
+  skips exactly the population a schema-only re-baseline exists for. Five of eleven were skipped and
+  kept their 0.5 parquet shape. An operator following the step would have declared the catalog
+  re-baselined with 45% of it untouched.
+- **The 0.3 back-population *does* move `content_signature`**, four lines below §0's promise that it
+  does not. Both are true and they are about different things: 0.6 the *contract* moves no signature
+  (0/11 upstream, 0/11 again here), while `upgrade` rewrites authored cells on the six modules
+  carrying legacy `state`/booleans — 2 to 328 rows each — and rewritten authored data is new content by
+  definition. The successor claims a new `409 duplicate_content` slot; the predecessor keeps its own.
+
+Both are pinned in `tests/test_upgrade.py`, driven over the real corpus and asserted as partitions
+rather than as counts, so the numbers can move with the corpus while the properties cannot. The
+`name_mismatch` guard also earned its keep in passing: three of the eleven live in a directory named for
+their subject rather than their module (`grch37_build` declares `hfe_grch37`), and publish refused the
+directory name.
+
 ### Measured, not assumed
 
 **The suite is green on 0.6.1 with nothing else changed**: 395 passed, which is the measurement that
-says the patch bump itself costs no adoption work — everything below it is ours. **407 with the twelve
+says the patch bump itself costs no adoption work — everything below it is ours. **409 with the fourteen
 new guards** (0.6.2 adds four: the AST ordering walk and its own self-test, the ACMG `skip` pair, and
 the parent arm that is not an outage).
 

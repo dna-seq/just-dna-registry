@@ -5,13 +5,17 @@ performs the migrate + re-publish, never mutating the predecessor."""
 
 import csv
 import io
+import subprocess
+from pathlib import Path
 
+import pytest
 import yaml
 from fastapi.testclient import TestClient
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.spec import StudyRow, VariantRow
 
 from just_dna_registry.config import Settings
+from just_dna_registry.services.publish import publish_version
 from just_dna_registry.services.revalidate import revalidate_version
 from just_dna_registry.services.upgrade import (
     is_latest_version,
@@ -343,3 +347,130 @@ def test_trim_drops_yaml_keys_and_republishes(
     # registry stamps `Identity.version` regardless, so keeping the author's marker costs nothing.
     # It is not a trim offender either: the trim only removes keys no model accepts.
     assert yaml.safe_load(stored_yaml)["module"]["version"] == "2"
+
+
+# ── The documented 0.5.4 → 0.6 catalog procedure ──────────────────────────────
+
+
+_V054_CORPUS = Path("/data/sources/just-dna-format")
+
+
+def _v054_specs(tmp_path: Path) -> list[Path]:
+    """The real `v0.5.4` reference example specs, from the tag rather than the working tree.
+
+    The tag matters: `main` and the checkout both carry 0.6-era specs (rewritten onto `licensing.csv`,
+    new fact tables), so a corpus taken from the tree cannot answer "what does a 0.5-era catalog do".
+    Skips rather than fails where the sibling repo is not present — this is the one test here that
+    reaches outside its own tree.
+    """
+    if not (_V054_CORPUS / ".git").is_dir():
+        pytest.skip("sibling just-dna-format checkout not available")
+    out = tmp_path / "v054"
+    out.mkdir()
+    extract = subprocess.run(
+        ["git", "archive", "v0.5.4", "reference_examples"],
+        cwd=_V054_CORPUS, capture_output=True,
+    )
+    if extract.returncode != 0:
+        pytest.skip("v0.5.4 tag not present in the sibling checkout")
+    subprocess.run(["tar", "-x", "-C", str(out)], input=extract.stdout, check=True)
+    specs = sorted(d for d in (out / "reference_examples").iterdir() if d.is_dir())
+    assert len(specs) == 11, f"expected the 11-spec 0.5.4 corpus, got {len(specs)}"
+    return specs
+
+
+def _declared_name(spec_dir: Path) -> str:
+    """The module's own name. Three of the eleven live in a directory named for their subject
+    instead (`grch37_build` declares `hfe_grch37`), and publish enforces the match."""
+    return yaml.safe_load((spec_dir / "module_spec.yaml").read_text())["module"]["name"]
+
+
+def test_the_0_5_4_corpus_needs_force_for_the_digest_rebaseline(
+    tmp_path: Path, settings: Settings, app
+) -> None:
+    """UPGRADE.md § 0.17 step 2 promises a catalog-wide digest re-baseline. Plain `upgrade` cannot
+    deliver one, and this is the test that found it.
+
+    `upgrade` acts only where there is *back-population* to do, so a module already on-contract is a
+    deliberate no-op — which is exactly the population a schema-only re-baseline exists for. The step
+    read `--apply` alone until this was driven over the real corpus: five of the eleven were skipped
+    and kept their 0.5 parquet shape. Asserted as a partition rather than as counts, so the numbers
+    can move with the corpus while the property cannot.
+    """
+    repo, storage = app.state.repo, app.state.storage
+    repo.add_namespace("just-dna-seq", repo.create_account("ops"))
+
+    skipped_without_force, acted_without_force = [], []
+    for spec_dir in _v054_specs(tmp_path):
+        name = _declared_name(spec_dir)
+        files = {f.name: f.read_bytes() for f in spec_dir.iterdir() if f.is_file()}
+        manifest = publish_version(
+            repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+            version="1.0.0", changelog="0.5.4-era", owner="just-dna-seq", files=files,
+        )
+        plain = upgrade_version(
+            repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+            version="1.0.0", manifest=manifest,
+        )
+        (acted_without_force if plain is not None else skipped_without_force).append(name)
+
+        if plain is None:
+            # The step-2 claim: with `--force` it re-emits anyway, and the digest moves.
+            forced = upgrade_version(
+                repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+                version="1.0.0", manifest=manifest, recompile=True,
+            )
+            assert forced is not None, f"{name}: --force must re-emit an on-contract module"
+            _, remade = forced
+            # Same authored data, so the content identity holds; only the compiled bytes move.
+            assert remade.content_signature == manifest.content_signature
+            assert remade.compilation.compile_success
+
+    # The finding: plain `upgrade` is not a catalog-wide re-baseline, because some modules are skipped.
+    assert skipped_without_force, (
+        "no module was a no-op — either the corpus changed or `upgrade` now re-emits unconditionally; "
+        "if the latter, UPGRADE.md § 0.17 step 2 can drop --force"
+    )
+    assert acted_without_force, "no module had back-population — the 0.3 half of step 2 is untested"
+
+
+def test_back_population_moves_the_content_signature(
+    tmp_path: Path, settings: Settings, app
+) -> None:
+    """§ 0's "content_signature does not move" is about the *contract*, not about `upgrade`.
+
+    0.6 moves no signature. The 0.3 back-population `upgrade` applies on the way past does, because it
+    rewrites authored cells — and a rewritten cell is new content by definition. Worth pinning
+    separately from the step above: the two claims sit four lines apart in the document and read as one.
+    """
+    repo, storage = app.state.repo, app.state.storage
+    repo.add_namespace("just-dna-seq", repo.create_account("ops"))
+
+    moved = []
+    for spec_dir in _v054_specs(tmp_path):
+        name = _declared_name(spec_dir)
+        files = {f.name: f.read_bytes() for f in spec_dir.iterdir() if f.is_file()}
+        manifest = publish_version(
+            repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+            version="1.0.0", changelog="0.5.4-era", owner="just-dna-seq", files=files,
+        )
+        status, _ = revalidate_version(
+            storage, "just-dna-seq", name, "1.0.0", manifest, settings=settings,
+        )
+        out = upgrade_version(
+            repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+            version="1.0.0", manifest=manifest,
+        )
+        if out is None:
+            assert status != "upgradable", f"{name}: revalidate said upgradable and upgrade did nothing"
+            continue
+        _, upgraded = out
+        # Exactly the modules `revalidate` flags are the ones whose authored data is rewritten, and a
+        # rewrite of authored data must move the content identity.
+        assert status == "upgradable", f"{name}: upgrade acted on a version revalidate called {status}"
+        assert upgraded.content_signature != manifest.content_signature, (
+            f"{name}: back-population rewrote authored cells without moving content_signature"
+        )
+        moved.append(name)
+
+    assert moved, "no module was back-populated — this assertion would be vacuous"

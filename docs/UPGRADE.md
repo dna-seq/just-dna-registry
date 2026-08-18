@@ -45,17 +45,45 @@ publishers, rather than discovering it a third of the way through a catalog-wide
 `just-dna-enricher hint recover` reports which rs-number GRCh37 dbSNP records at a coordinate, which
 is the diagnostic for an RM48 refusal.
 
-**2. `registry upgrade --apply --limit N` — the digest re-baseline.** Every module recompiled under
-0.6 gets a different `artifact.digest`, exactly as 0.5 did to 0.4. This is a one-time, catalog-wide
-event and it is not corruption: `upgrade` re-publishes as a new PATCH and never mutates the
-predecessor, so old versions stay published and verifiable and a client pinned to one is unaffected.
-Only a client tracking `latest` sees new bytes, which is what a new PATCH means. With enrichment in
-the loop this is still the longest-running operation the registry has — batch it.
+**2. `registry upgrade --apply --force --limit N` — the digest re-baseline.** Every module recompiled
+under 0.6 gets a different `artifact.digest`, exactly as 0.5 did to 0.4. This is a one-time,
+catalog-wide event and it is not corruption: `upgrade` re-publishes as a new PATCH and never mutates
+the predecessor, so old versions stay published and verifiable and a client pinned to one is
+unaffected. Only a client tracking `latest` sees new bytes, which is what a new PATCH means. With
+enrichment in the loop this is still the longest-running operation the registry has — batch it.
+
+**`--force` is not optional here, and this line said `--apply` alone until it was measured.** Plain
+`upgrade` acts only where there is *back-population* to do; a module already on-contract is a
+deliberate no-op, so it skips exactly the versions a schema-only re-baseline exists for. Driven over
+the real `v0.5.4` reference corpus: without `--force`, **five of eleven** were skipped as no-ops
+(`apoe_epsilon`, `cyp2c19_star_alleles`, `hfe_compound_het`, `htt_repeat_expansion`,
+`slco1b1_simvastatin`) and their digests stayed on the 0.5 parquet shape. `--force` (spelled
+`--recompile` too) re-emits them. This is the same distinction § "Upgrading a stale module" draws
+between an additive-column upgrade and a schema-only migration; 0.6 needs the second for the whole
+catalog and the first for whatever `revalidate` also flagged.
+
+**And back-population *does* move `content_signature`, which is not a contradiction of §0's promise.**
+0.6 moves no signature — measured 0/11 upstream, and 0/11 again here through this registry's own
+publish path. What moves one is the **0.3** back-population that `upgrade` applies on the way past: it
+rewrites authored cells (`direction`/`stat_significance`/`clin_sig` derived from the legacy
+`state`/booleans), and rewritten authored data is by definition new content. Six of the eleven are in
+that state, carrying 2 to 328 upgradable rows each. Two consequences worth knowing before you start:
+
+- The successor claims a **new** `409 duplicate_content` slot; the predecessor keeps its own. Nothing
+  is lost and nothing is merged, but a re-publish of the *original* data under another name is still
+  claimed by the version that already holds it.
+- A consumer keying on `content_signature` to mean "same authored data" sees the upgraded version as
+  different data, correctly — the cells really did change. This is why the migration is a new PATCH
+  rather than an in-place fix.
 
 **What you do *not* have to run, and why.**
 
-- **No `rederive-signatures`.** `content_signature` did not move. Running it anyway is not harmful,
-  but it is a long read of every stored spec to confirm nothing changed.
+- **No `rederive-signatures`.** *The contract* moved no `content_signature` — measured 0/11 upstream and
+  0/11 again through this registry's publish path. Running it anyway is not harmful, but it is a long
+  read of every stored spec to confirm nothing changed. Note this is a different statement from step 2's:
+  the **0.3 back-population** does move a signature on the six corpus modules that carry legacy
+  `state`/boolean cells, because it rewrites authored data. `rederive-signatures` recomputes a signature
+  from unchanged bytes; `upgrade` changes the bytes. Neither is the other's substitute.
 - **No trust migration**, unlike 0.11.3. The trust rule *did* change — it reads RM44's counts now
   instead of matching warning prose — but only for manifests that carry the new counters, and no
   version already in your catalog does. The pre-0.6 branch is the 0.5 rule unchanged, asserted
