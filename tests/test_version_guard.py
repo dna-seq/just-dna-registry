@@ -14,7 +14,6 @@ from just_dna_registry.version import (
     contract_compatible,
 )
 
-
 # ── Pure compatibility logic ─────────────────────────────────────────────────────
 
 

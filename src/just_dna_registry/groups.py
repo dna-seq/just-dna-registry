@@ -12,7 +12,6 @@ Each group is a thin preset over the primitives `search_modules` already support
 """
 
 import re
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +44,7 @@ def test_namespaces(repo: Repository, pattern: str) -> list[str]:
     return [ns for ns in repo.distinct_module_namespaces() if matcher.match(ns)]
 
 
-def group_filters(group: Optional[str], repo: Repository, pattern: str) -> dict[str, object]:
+def group_filters(group: str | None, repo: Repository, pattern: str) -> dict[str, object]:
     """Translate a group key into `search_modules` kwargs (sort / featured / namespace scope).
 
     `test` isolates the test/sandbox spaces; every other group (and the default, `group=None`)

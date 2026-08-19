@@ -4,7 +4,7 @@ models. Everything is a projection of `manifest.json`, so ingest rebuilds rows f
 """
 
 import sqlite3
-from typing import Any, Optional
+from typing import Any
 
 from just_dna_format.identity import latest as latest_version
 from just_dna_format.manifest import ModuleManifest
@@ -45,22 +45,22 @@ class Repository:
         self.conn.commit()
         return int(cur.lastrowid)
 
-    def account_by_install_id(self, install_id: str) -> Optional[sqlite3.Row]:
+    def account_by_install_id(self, install_id: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT id, name, install_id FROM accounts WHERE install_id = ?", (install_id,)
         ).fetchone()
 
-    def account_by_name(self, name: str) -> Optional[sqlite3.Row]:
+    def account_by_name(self, name: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT id, name, install_id FROM accounts WHERE name = ?", (name,)
         ).fetchone()
 
-    def namespace_owner(self, namespace: str) -> Optional[sqlite3.Row]:
+    def namespace_owner(self, namespace: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT account_id FROM namespaces WHERE name = ?", (namespace,)
         ).fetchone()
 
-    def namespace_flags(self, namespace: str) -> Optional[sqlite3.Row]:
+    def namespace_flags(self, namespace: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT featured, blacklisted FROM namespaces WHERE name = ?", (namespace,)
         ).fetchone()
@@ -96,14 +96,14 @@ class Repository:
             )
         self.conn.commit()
 
-    def account_for_key(self, key: str) -> Optional[sqlite3.Row]:
+    def account_for_key(self, key: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT a.id, a.name FROM api_keys k JOIN accounts a ON a.id = k.account_id "
             "WHERE k.key = ?",
             (key,),
         ).fetchone()
 
-    def get_account(self, account_id: int) -> Optional[sqlite3.Row]:
+    def get_account(self, account_id: int) -> sqlite3.Row | None:
         """Full account row incl. the profile fields (email/display_name/avatar_url/funding_url/type)."""
         return self.conn.execute(
             "SELECT id, name, email, display_name, avatar_url, funding_url, type "
@@ -111,7 +111,7 @@ class Repository:
             (account_id,),
         ).fetchone()
 
-    def account_type(self, account_id: int) -> Optional[str]:
+    def account_type(self, account_id: int) -> str | None:
         """The account's `user`/`org` discriminator (drives the org-role cascade)."""
         row = self.conn.execute(
             "SELECT type FROM accounts WHERE id = ?", (account_id,)
@@ -122,10 +122,10 @@ class Repository:
         self,
         account_id: int,
         *,
-        email: Optional[str] = None,
-        display_name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        funding_url: Optional[str] = None,
+        email: str | None = None,
+        display_name: str | None = None,
+        avatar_url: str | None = None,
+        funding_url: str | None = None,
     ) -> None:
         """Self-service profile update. Only the fields passed are changed; an empty string clears a
         field to NULL (so a user can remove an email/name/userpic/funding link)."""
@@ -153,22 +153,13 @@ class Repository:
         )
         self.conn.commit()
 
-    def namespaces_for_account(self, account_id: int) -> list[str]:
-        """Every namespace the account belongs to (owner OR contributor) — feeds `Account.namespaces`
-        and thus the publish membership check."""
-        rows = self.conn.execute(
-            "SELECT namespace FROM namespace_members WHERE account_id = ? ORDER BY namespace",
-            (account_id,),
-        ).fetchall()
-        return [r["namespace"] for r in rows]
-
     def account_owns_namespace(self, account_id: int, namespace: str) -> bool:
         """Whether the account is an owner of the namespace (membership-aware)."""
         return self.namespace_role(namespace, account_id) == "owner"
 
     # ── Namespace membership (0.6.0) ─────────────────────────────────────────
 
-    def namespace_role(self, namespace: str, account_id: int) -> Optional[str]:
+    def namespace_role(self, namespace: str, account_id: int) -> str | None:
         """The account's explicit role in the namespace (`owner`/`admin`/`member`), or None. This is
         the per-namespace grant only; the effective role also folds in org cascade (see deps)."""
         row = self.conn.execute(
@@ -214,7 +205,7 @@ class Repository:
 
     # ── Org membership (0.9.0) ───────────────────────────────────────────────
 
-    def org_role(self, org_id: int, account_id: int) -> Optional[str]:
+    def org_role(self, org_id: int, account_id: int) -> str | None:
         """The account's role in the org (`owner`/`admin`/`member`), or None if not a member."""
         row = self.conn.execute(
             "SELECT role FROM org_members WHERE org_id = ? AND account_id = ?",
@@ -255,7 +246,7 @@ class Repository:
         ).fetchone()
         return int(row["n"])
 
-    def version_author(self, namespace: str, name: str, version: str) -> Optional[int]:
+    def version_author(self, namespace: str, name: str, version: str) -> int | None:
         """The account id that published a version (`published_by`), or None (unattributed/legacy)."""
         row = self.conn.execute(
             "SELECT v.published_by FROM versions v JOIN modules m ON m.id = v.module_id "
@@ -264,7 +255,7 @@ class Repository:
         ).fetchone()
         return int(row["published_by"]) if row and row["published_by"] is not None else None
 
-    def funding_for_module(self, namespace: str, name: str) -> dict[str, Optional[str]]:
+    def funding_for_module(self, namespace: str, name: str) -> dict[str, str | None]:
         """The two funding links a module surfaces: the owning **org**'s (when the namespace is
         org-owned) and the **author** of the latest non-yanked version. Either may be None."""
         org = self.conn.execute(
@@ -286,7 +277,7 @@ class Repository:
 
     # ── Lookups ─────────────────────────────────────────────────────────────
 
-    def get_module_row(self, namespace: str, name: str) -> Optional[sqlite3.Row]:
+    def get_module_row(self, namespace: str, name: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT * FROM modules WHERE namespace = ? AND name = ?", (namespace, name)
         ).fetchone()
@@ -426,7 +417,18 @@ class Repository:
         self.conn.commit()
 
     def namespaces_for_account(self, account_id: int) -> list[str]:
-        """Namespaces this account *owns* (the `namespaces.account_id` grant, not a membership)."""
+        """Namespaces this account *owns* (the `namespaces.account_id` grant, not a membership).
+
+        **There were two of these until 0.18.2**, this one and a 0.9.0 predecessor reading
+        `namespace_members`; Python kept whichever came last in the file, which since 0.12.0 has
+        been this one. The duplicate is gone rather than renamed because the query
+        it ran was the wrong half regardless: claiming a namespace writes a `namespaces` row and
+        **no** `namespace_members` row, so a plain owner is absent from that table and the 0.9.0
+        version would have answered `[]` for them. Neither query is the union, which is what
+        `whoami` arguably wants — see the note on `Account.namespaces` in `api/deps.py`.
+        Authorization does not read this: `effective_role()` reconciles the grant and the
+        membership itself.
+        """
         return [
             r["name"] for r in self.conn.execute(
                 "SELECT name FROM namespaces WHERE account_id = ? ORDER BY name", (account_id,)
@@ -558,7 +560,7 @@ class Repository:
 
     def get_manifest_json(
         self, namespace: str, name: str, version: str
-    ) -> Optional[str]:
+    ) -> str | None:
         row = self.conn.execute(
             "SELECT v.manifest_json FROM versions v JOIN modules m ON m.id = v.module_id "
             "WHERE m.namespace = ? AND m.name = ? AND v.version = ?",
@@ -569,7 +571,7 @@ class Repository:
     # ── Ingest (manifest -> projection) ──────────────────────────────────────
 
     def upsert_module(
-        self, manifest: ModuleManifest, updated_at: str, readme: Optional[str] = None
+        self, manifest: ModuleManifest, updated_at: str, readme: str | None = None
     ) -> int:
         """Insert or update the module-level row from a manifest. Returns module id.
 
@@ -631,7 +633,7 @@ class Repository:
         manifest: ModuleManifest,
         changelog: str,
         created_at: str,
-        published_by: Optional[int] = None,
+        published_by: int | None = None,
     ) -> int:
         """Insert a version row + facet rows from a manifest. Returns version id. `published_by` is
         the authoring account (drives RBAC own-scoping + author funding); None for legacy imports."""
@@ -692,7 +694,7 @@ class Repository:
         self.recompute_latest(int(module["id"]))
         return True
 
-    def get_version_changelog(self, namespace: str, name: str, version: str) -> Optional[str]:
+    def get_version_changelog(self, namespace: str, name: str, version: str) -> str | None:
         """The version's changelog, or None if the version doesn't exist ('' is a valid value)."""
         row = self.conn.execute(
             "SELECT v.changelog FROM versions v JOIN modules m ON m.id = v.module_id "
@@ -715,7 +717,7 @@ class Repository:
         self.conn.commit()
         return cur.rowcount > 0
 
-    def list_all_versions(self, namespace: Optional[str] = None) -> list[sqlite3.Row]:
+    def list_all_versions(self, namespace: str | None = None) -> list[sqlite3.Row]:
         """Every published version with its `(namespace, name, version)` — for ops-wide audits."""
         sql = (
             "SELECT m.namespace, m.name, v.version, v.manifest_json, v.needs_upgrade "
@@ -744,7 +746,7 @@ class Repository:
         return cur.rowcount > 0
 
     def all_versions_for_signature(
-        self, namespace: Optional[str] = None
+        self, namespace: str | None = None
     ) -> list[sqlite3.Row]:
         """Every version's `(id, namespace, name, version, content_hash, manifest_json)`.
 
@@ -860,8 +862,8 @@ class Repository:
         account_id: int,
         *,
         rating: int,
-        verdict: Optional[str],
-        notes: Optional[str],
+        verdict: str | None,
+        notes: str | None,
         now: str,
     ) -> None:
         """Create or replace the caller's review of a specific version (one per account per version).
@@ -897,7 +899,7 @@ class Repository:
         self.conn.commit()
         return cur.rowcount > 0
 
-    def list_reviews(self, module_id: int, version: Optional[str] = None) -> list[sqlite3.Row]:
+    def list_reviews(self, module_id: int, version: str | None = None) -> list[sqlite3.Row]:
         """Reviews for a module (optionally one version), highlighted first, then newest. Joins the
         reviewer's account name."""
         where = "r.module_id = ?"
@@ -931,23 +933,23 @@ class Repository:
     def search_modules(
         self,
         *,
-        q: Optional[str] = None,
-        category: Optional[str] = None,
-        gene: Optional[str] = None,
-        genome_build: Optional[str] = None,
-        owner: Optional[str] = None,
-        license: Optional[str] = None,
-        namespace: Optional[str] = None,
-        featured: Optional[bool] = None,
+        q: str | None = None,
+        category: str | None = None,
+        gene: str | None = None,
+        genome_build: str | None = None,
+        owner: str | None = None,
+        license: str | None = None,
+        namespace: str | None = None,
+        featured: bool | None = None,
         include_blacklisted: bool = False,
-        exclude_namespaces: Optional[list[str]] = None,
-        only_namespaces: Optional[list[str]] = None,
+        exclude_namespaces: list[str] | None = None,
+        only_namespaces: list[str] | None = None,
         curated_only: bool = False,
-        has_gene_validity: Optional[bool] = None,
-        has_clinical_assertions: Optional[bool] = None,
-        has_gwas_effects: Optional[bool] = None,
-        has_frequencies: Optional[bool] = None,
-        weighting_declared: Optional[bool] = None,
+        has_gene_validity: bool | None = None,
+        has_clinical_assertions: bool | None = None,
+        has_gwas_effects: bool | None = None,
+        has_frequencies: bool | None = None,
+        weighting_declared: bool | None = None,
         sort: str = "name",
         limit: int = 20,
         offset: int = 0,
@@ -1068,7 +1070,7 @@ class Repository:
     # ── Moderation & key ops ────────────────────────────────────────────────
 
     def set_namespace_flags(
-        self, namespace: str, *, featured: Optional[bool] = None, blacklisted: Optional[bool] = None
+        self, namespace: str, *, featured: bool | None = None, blacklisted: bool | None = None
     ) -> bool:
         """Set featured/blacklisted on a namespace. Returns False if the namespace doesn't exist."""
         sets, params = [], []

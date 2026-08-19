@@ -15,7 +15,8 @@ The server (FastAPI app, compiler, storage, admin CLI) is an optional extra —
 ``pip install just-dna-registry[server]``.
 """
 
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 from just_dna_registry.client import (  # noqa: F401  (public re-exports)
     RegistryClient,

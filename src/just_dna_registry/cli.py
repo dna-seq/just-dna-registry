@@ -7,7 +7,6 @@ import json
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
 
 import httpx
 import typer
@@ -21,7 +20,6 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
-from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
@@ -32,14 +30,15 @@ from just_dna_registry.services.upgrade import (
     prepare_version_upgrade,
     upgrade_version,
 )
+from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.storage.base import StorageBackend
-from just_dna_registry.testdata import accepted_anyway, test_data_refusal
 from just_dna_registry.storage.local import LocalStorage
+from just_dna_registry.testdata import accepted_anyway, test_data_refusal
 
 app = typer.Typer(help="just-dna-registry admin CLI", no_args_is_help=True)
 
 
-def _apply_mode(mode: Optional[str]) -> None:
+def _apply_mode(mode: str | None) -> None:
     """Point this process at one deployment's rules, by setting `REGISTRY_MODE`.
 
     Set the variable rather than build a `Settings`, for `serve`'s reason (uvicorn imports the app by
@@ -774,7 +773,7 @@ def warm_caches(
         False, "--pgx/--no-pgx",
         help="The licence-gated PGx snapshots (cpic, clinpgx) — only the `?pgx=` check reads them",
     ),
-    use: Optional[str] = typer.Option(
+    use: str | None = typer.Option(
         None, "--use",
         help=(
             "Declared use for the gated snapshots: unstated | non_commercial | commercial. "
@@ -1006,7 +1005,7 @@ def rederive_signatures(
         return
 
     marker = {"unchanged": "·", "derived": "+", "moved": "⇧", "moved_build": "⇧", "skipped": "–"}
-    counts: dict[str, int] = {k: 0 for k in ("unchanged", "derived", "moved", "moved_build", "skipped")}
+    counts: dict[str, int] = dict.fromkeys(("unchanged", "derived", "moved", "moved_build", "skipped"), 0)
     for change in changes:
         counts[change.bucket] += 1
         if change.bucket == "unchanged":

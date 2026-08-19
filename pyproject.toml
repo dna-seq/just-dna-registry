@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.18.1"
+version = "0.18.2"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -123,8 +123,26 @@ server = [
     # both versions then behave identically here, and a deployment that installs 0.6.2 anyway gets the
     # same answer from the same code. The floor moves regardless so the pair is impossible to
     # mis-assemble, and because 0.6.2's own hard reason (the unavailability subclasses) is unaffected.
+    #
+    # **0.6.4 is the first floor in this file that is NOT hard, and saying so is the point of the
+    # paragraph.** Every one above it was forced by something: a symbol that did not exist, a subclass
+    # whose meaning changed, an argument that went from inert to live. 0.6.4 is none of those. It is a
+    # single fix inside `clinvar_draft.py` (upstream S45) adding one private helper, in the ClinVar
+    # **drafter** — authoring-side code this service does not have and never calls. No public symbol
+    # moves, no pass this server runs behaves differently, and a deployment left on 0.6.3 loses
+    # nothing here.
+    #
+    # It moves for two reasons that are about assembly rather than function. The lock resolves 0.6.4
+    # (the `>=0.6.3` constraint picked it up on the next relock), and the suite gating this release
+    # ran on exactly `0.6.1 / 0.6.1 / 0.6.4` — so a floor left at 0.6.3 would permit a trio nobody
+    # tested while shipping a lock for one we did. And 0.18.2's release note corrects advice this
+    # project published about re-drafting; a notice needs a version to point at.
+    #
+    # Worth preserving rather than flattening: a reader who treats every floor here as load-bearing
+    # will not question the next one either, and the reason the 0.6.2 and 0.6.3 comments run long is
+    # that both were easy to mistake for optional. This one genuinely is optional.
     "just-dna-compiler>=0.6.1",
-    "just-dna-enricher>=0.6.3",
+    "just-dna-enricher>=0.6.4",
 ]
 
 [build-system]
@@ -147,9 +165,65 @@ dev = [
     "just-dna-registry[server]",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.8.0",
 ]
 
 [tool.pytest.ini_options]
 # `auto` so `async def test_*` run without a per-test marker (used by the client SDK suite, which
 # bridges the sync client onto a worker thread while the ASGI app is driven in-process).
 asyncio_mode = "auto"
+
+[tool.ruff]
+# Mirrors `just-dna-format`'s section, deliberately: the two repos are edited in the same sitting by
+# the same people, and a rule that fires upstream but not here (or the reverse) turns a lint run into
+# a question about which checkout you are standing in. Adopt upstream's changes to this block rather
+# than diverging locally; the three adaptations below are the only intended differences.
+#
+# Every member pins `requires-python = ">=3.13"`. Saying so here is load-bearing: the rules that offer
+# a modern spelling (PEP 604 `X | None`) resolve against the floor, not against whichever interpreter
+# runs.
+target-version = "py313"
+# Not enforced as a lint (E501 is deliberately unselected) — this is what `ruff format` would wrap to,
+# and it matches the prose-heavy docstrings and long diagnostic strings the codebase actually has.
+line-length = 110
+# **Adaptation 1.** `.claude/` holds the triage-loop scripts, which are a copy of the published gist
+# with `INBOX` repointed (see CLAUDE.md). Sync is one-way and by hand, so a `--fix` that reformatted
+# them here would silently fork the pattern from its canonical copy.
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9",   # pycodestyle, minus the purely-formatting opinions
+    "F",                # pyflakes
+    "I",                # import order — "absolute imports only" is a house rule; this keeps it stable
+    "UP",               # pyupgrade. The floor is 3.13, so the modern spelling is always available
+    "B",                # bugbear
+    "C4",               # comprehensions
+    "SIM", "FURB", "PIE", "FLY",
+]
+ignore = [
+    # Typer's entire API is `def cmd(x: T = typer.Option(...))`: the call in the default *is* the
+    # declaration, and "Typer for every CLI" is a house rule, so there is no alternative spelling.
+    # FastAPI's `Depends(...)` / `Query(...)` / `File()` defaults are the same shape, and this repo is
+    # mostly FastAPI — `dependencies=[Depends(rate_limit("publish"))]` is on nearly every route.
+    "B008",
+]
+
+# Deliberately NOT selected, so the reasons are recorded rather than rediscovered:
+#   BLE001 — `except Exception` around a network call is this tier's contract, not a swallowed error.
+#            Every site logs or records a finding. The handful that exist already carry an explanatory
+#            `# noqa: BLE001 — …`, which is the convention to follow if a new one is genuinely right.
+#   ISC004 — a long diagnostic written as one implicitly-concatenated f-string is the idiom of the
+#            validation and enrichment reporters. Consistent and intentional.
+#   E501   — see `line-length` above.
+#   PLC0415 (import-outside-top-level) — "no inline imports" is a house rule, but the one deliberate
+#            exception is load-bearing: `services/enrich.py` imports `just_dna_enricher` *inside* its
+#            functions so the compile path cannot reach the network tier (CONSTITUTION Principle 2),
+#            and a test asserts that boundary. Selecting this would flag the thing we require.
+
+[tool.ruff.lint.per-file-ignores]
+# **Adaptation 2.** Upstream's glob is `*/tests/*` for its three nested member packages; this repo's
+# suite is a single top-level `tests/`, so the pattern has to be rooted here or it matches nothing.
+# A test that asserts a bad row is rejected does not care which exception class carries the rejection —
+# the point is that *something* refuses it.
+"tests/*" = ["B017"]

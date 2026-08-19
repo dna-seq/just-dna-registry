@@ -4,12 +4,9 @@ catalog's card/detail/version shapes, projected from stored manifests.
 """
 
 import re
-from typing import Generic, Optional, TypeVar
 
 from just_dna_format.manifest import ModuleManifest
 from pydantic import BaseModel, Field, field_validator
-
-T = TypeVar("T")
 
 
 class CardStats(BaseModel):
@@ -33,9 +30,9 @@ class ResolutionInfo(BaseModel):
     different thing from a strict one, and collapsing them loses which.
     """
 
-    mode: Optional[str] = Field(default=None, description="strict | best_effort | null (legacy)")
+    mode: str | None = Field(default=None, description="strict | best_effort | null (legacy)")
     fully_resolved: bool = False
-    trusted: Optional[bool] = Field(
+    trusted: bool | None = Field(
         default=None,
         description=(
             "Whether this version is fully-baked. false when the compiler reported a table that no "
@@ -46,7 +43,7 @@ class ResolutionInfo(BaseModel):
     )
     vrs_alleles: int = 0
     vrs_alleles_identified: int = 0
-    vrs_complete: Optional[bool] = Field(
+    vrs_complete: bool | None = Field(
         default=None, description="null when there are no alleles — complete-out-of-zero is vacuous"
     )
     # ── 0.6 counters (RM44 / S31 / S33). `null` is *not measured*, and never `0`. ──
@@ -56,7 +53,7 @@ class ResolutionInfo(BaseModel):
     # found no one-to-many expansion". Coalescing the two would say something false about an existing
     # catalog — that a 1,482-row PGx artifact has no positional rows — which is the vacuous
     # `fully_resolved` failure re-made inside the fields written to close it.
-    resolution_subjects: Optional[int] = Field(
+    resolution_subjects: int | None = Field(
         default=None,
         description=(
             "Variant rows `fully_resolved` was evaluated over, after rsID expansion. Read it beside "
@@ -64,22 +61,22 @@ class ResolutionInfo(BaseModel):
             "version predates 0.6 and did not count."
         ),
     )
-    positional_rows: Optional[int] = Field(
+    positional_rows: int | None = Field(
         default=None,
         description="Rows across pharm_variants/haplotypes/heteroplasmy. 0 = no such table; null = not counted.",
     )
-    positional_rows_placed: Optional[int] = Field(
+    positional_rows_placed: int | None = Field(
         default=None,
         description=(
             "Of those, how many carry chrom+start and therefore join to a VCF by position. Complete "
             "is `placed == rows` — parts rather than a ratio, so a shortfall's size is visible."
         ),
     )
-    expanded_keys: Optional[int] = Field(
+    expanded_keys: int | None = Field(
         default=None,
         description="Authored identities that resolved onto more than one locus (null = not counted).",
     )
-    expanded_rows: Optional[int] = Field(
+    expanded_rows: int | None = Field(
         default=None,
         description=(
             "Rows those keys became. Only one member per genotype can match; the difference from "
@@ -87,7 +84,7 @@ class ResolutionInfo(BaseModel):
         ),
     )
     sources: list[str] = Field(default_factory=list)
-    signature: Optional[str] = None
+    signature: str | None = None
 
 
 class LicensingInfo(BaseModel):
@@ -101,8 +98,8 @@ class LicensingInfo(BaseModel):
     whole module share-alike for it would be a false positive.
     """
 
-    commercial_use: Optional[bool] = None
-    redistribution: Optional[bool] = None
+    commercial_use: bool | None = None
+    redistribution: bool | None = None
     share_alike_layers: list[str] = Field(default_factory=list)
     noncommercial_layers: list[str] = Field(default_factory=list)
     nonredistributable_layers: list[str] = Field(default_factory=list)
@@ -126,9 +123,9 @@ class WeightingInfo(BaseModel):
     as *do not*.
     """
 
-    scale: Optional[str] = None
-    method: Optional[str] = None
-    note: Optional[str] = None
+    scale: str | None = None
+    method: str | None = None
+    note: str | None = None
 
 
 class GwasEffectsInfo(BaseModel):
@@ -168,15 +165,15 @@ class VerificationCheck(BaseModel):
     check: str
     subjects: int = 0
     findings: int = 0
-    skipped: Optional[str] = Field(
+    skipped: str | None = Field(
         default=None,
         description="Why the check did not run. null = it ran. `subjects: 0` with no reason is a "
         "check that ran and had nothing to look at, which is not the same as one that was skipped.",
     )
-    detail: Optional[str] = None
-    source: Optional[str] = None
-    release: Optional[str] = None
-    checked_at: Optional[str] = None
+    detail: str | None = None
+    source: str | None = None
+    release: str | None = None
+    checked_at: str | None = None
 
 
 class VerificationInfo(BaseModel):
@@ -211,14 +208,14 @@ class VerificationInfo(BaseModel):
         description="A closure survived the compiler's re-binding: a human declared this module "
         "final and the authored bytes have not moved since. The one field here with a check behind it.",
     )
-    closed_at: Optional[str] = None
-    closed_by: Optional[str] = Field(
+    closed_at: str | None = None
+    closed_by: str | None = Field(
         default=None, description="Free text. Who they say they are, not who they are."
     )
-    producer: Optional[str] = Field(
+    producer: str | None = Field(
         default=None, description="Tool and version that last wrote the attestation. Untrusted."
     )
-    produced_at: Optional[str] = None
+    produced_at: str | None = None
     checks: list[VerificationCheck] = Field(default_factory=list)
 
 
@@ -248,11 +245,11 @@ class ModuleCard(BaseModel):
     icon: str
     icon_set: str = "fomantic"
     color: str
-    logo_url: Optional[str] = None  # served logo, when the module ships one; else fall back to icon
-    latest_version: Optional[str]
+    logo_url: str | None = None  # served logo, when the module ships one; else fall back to icon
+    latest_version: str | None
     genome_build: str
-    license: Optional[str]
-    owner: Optional[str]
+    license: str | None
+    owner: str | None
     stats: CardStats
     downloads: int
     stars: int = 0
@@ -262,10 +259,10 @@ class ModuleCard(BaseModel):
     starred_by_me: bool = False  # true when the authenticated caller has starred this module
     featured: bool = False
     review_count: int = 0
-    avg_rating: Optional[float] = None  # mean 1-5 rating across reviews, None when unreviewed
+    avg_rating: float | None = None  # mean 1-5 rating across reviews, None when unreviewed
     curated: bool = False  # has ≥1 owner-highlighted review/audit (the `curated` group)
-    author_funding_url: Optional[str] = None  # latest version's author's donation link
-    org_funding_url: Optional[str] = None  # owning org's donation link (when the namespace is org-owned)
+    author_funding_url: str | None = None  # latest version's author's donation link
+    org_funding_url: str | None = None  # owning org's donation link (when the namespace is org-owned)
     # Projected from the latest version's manifest, the same way `stats` is (0.11).
     resolution: ResolutionInfo = Field(default_factory=ResolutionInfo)
     licensing: LicensingInfo = Field(default_factory=LicensingInfo)
@@ -306,13 +303,13 @@ class ModuleDetail(ModuleCard):
 
     readme: str
     versions: list[VersionSummary]
-    latest_manifest: Optional[ModuleManifest]
-    verification: Optional[VerificationInfo] = None
-    weighting: Optional[WeightingInfo] = None
-    gwas_effects: Optional[GwasEffectsInfo] = None
+    latest_manifest: ModuleManifest | None
+    verification: VerificationInfo | None = None
+    weighting: WeightingInfo | None = None
+    gwas_effects: GwasEffectsInfo | None = None
 
 
-class Page(BaseModel, Generic[T]):
+class Page[T](BaseModel):
     """Paginated envelope: `{items, total, page, per_page}`."""
 
     items: list[T]
@@ -328,10 +325,10 @@ class WhoAmI(BaseModel):
     account: str  # the unique handle (used in URLs and as reviewer attribution)
     namespaces: list[str]
     type: str = "user"  # GitHub-style discriminator: `user` | `org`
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None  # userpic (public http(s) URL)
-    funding_url: Optional[str] = None  # donation/sponsor link (public http(s) URL)
-    email: Optional[str] = None
+    display_name: str | None = None
+    avatar_url: str | None = None  # userpic (public http(s) URL)
+    funding_url: str | None = None  # donation/sponsor link (public http(s) URL)
+    email: str | None = None
 
 
 # Account identity vocab + light checks (regex-based, to avoid an email-validator / URL dep).
@@ -344,14 +341,14 @@ class ProfileUpdate(BaseModel):
     """Body for `PATCH /auth/whoami` — the account edits its own profile. Omitted fields are left
     unchanged; an empty string clears a field. `type` is not self-editable (admin/creation-time)."""
 
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    funding_url: Optional[str] = None
+    email: str | None = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    funding_url: str | None = None
 
     @field_validator("email")
     @classmethod
-    def _validate_email(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_email(cls, v: str | None) -> str | None:
         if v is None or v == "":  # "" clears the field
             return v
         if not _EMAIL_RE.match(v):
@@ -360,7 +357,7 @@ class ProfileUpdate(BaseModel):
 
     @field_validator("avatar_url", "funding_url")
     @classmethod
-    def _validate_http_url(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_http_url(cls, v: str | None) -> str | None:
         if v is None or v == "":  # "" clears the field
             return v
         if not _HTTP_URL_RE.match(v):
@@ -404,14 +401,14 @@ class RoleUpdate(BaseModel):
 class OrgSettings(BaseModel):
     """Body for `PATCH /orgs/{org}/settings` — org profile edits (funding link, display, etc.)."""
 
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    funding_url: Optional[str] = None
-    email: Optional[str] = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    funding_url: str | None = None
+    email: str | None = None
 
     @field_validator("avatar_url", "funding_url")
     @classmethod
-    def _validate_http_url(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_http_url(cls, v: str | None) -> str | None:
         if v is None or v == "":
             return v
         if not _HTTP_URL_RE.match(v):
@@ -437,14 +434,14 @@ class ReviewRequest(BaseModel):
     """Body for posting a review/audit of a version — a 1-5 rating plus an optional audit verdict."""
 
     rating: int = Field(ge=1, le=5, description="Overall rating, 1-5")
-    verdict: Optional[str] = Field(
+    verdict: str | None = Field(
         default=None, description=f"Optional audit tier, one of {sorted(VALID_VERDICTS)}"
     )
-    notes: Optional[str] = Field(default=None, description="Free-text review/audit notes")
+    notes: str | None = Field(default=None, description="Free-text review/audit notes")
 
     @field_validator("verdict")
     @classmethod
-    def _validate_verdict(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_verdict(cls, v: str | None) -> str | None:
         if v is not None and v not in VALID_VERDICTS:
             raise ValueError(f"verdict must be one of {sorted(VALID_VERDICTS)}")
         return v
@@ -456,8 +453,8 @@ class Review(BaseModel):
     reviewer: str = Field(description="Reviewer account name")
     version: str
     rating: int
-    verdict: Optional[str] = None
-    notes: Optional[str] = None
+    verdict: str | None = None
+    notes: str | None = None
     highlighted: bool = False  # the namespace owner accepted/highlighted this review
     created_at: str
     updated_at: str
@@ -499,7 +496,7 @@ class SpecStats(CardStats):
     """
 
     unique_rsids: int = 0
-    module_name: Optional[str] = None
+    module_name: str | None = None
     table_rows: dict[str, int] = Field(
         default_factory=dict,
         description=(
@@ -522,7 +519,7 @@ class ValidationReport(BaseModel):
         description="Accepted but noteworthy: keys the server dropped, a version it coerced",
     )
     stats: SpecStats = Field(default_factory=SpecStats)
-    content_signature: Optional[str] = Field(
+    content_signature: str | None = Field(
         default=None,
         description="Content identity of the authored rows; None when a data CSV will not parse",
     )
@@ -573,7 +570,7 @@ class RefMismatchEntry(BaseModel):
     claimed: str
     actual: str
     genome_build: str = "GRCh38"
-    shift: Optional[int] = None
+    shift: int | None = None
 
 
 class ClinSigConflictEntry(BaseModel):
@@ -588,7 +585,7 @@ class ClinSigConflictEntry(BaseModel):
     start: int
     authored: str
     clinvar: str
-    condition: Optional[str] = None
+    condition: str | None = None
     opposed: bool = Field(
         default=False, description="Opposed calls (pathogenic vs benign), not merely different"
     )
@@ -600,7 +597,7 @@ class StaleRsidEntry(BaseModel):
 
     rsid: str
     state: str = Field(description="live | merged | absent | withdrawn")
-    current: Optional[str] = Field(default=None, description="The surviving rsID, when merged")
+    current: str | None = Field(default=None, description="The surviving rsID, when merged")
     fatal: bool = Field(
         default=False, description="`withdrawn` only: refuses in both modes, not just strict"
     )
@@ -616,7 +613,7 @@ class VrsCoverage(BaseModel):
 
     alleles: int = 0
     identified: int = 0
-    complete: Optional[bool] = Field(
+    complete: bool | None = Field(
         default=None, description="None when there are no alleles — complete-out-of-zero is vacuous"
     )
     unmintable_reasons: dict[str, int] = Field(
@@ -686,7 +683,7 @@ class LiteratureCheck(BaseModel):
 class AcmgCheck(BaseModel):
     """Authored `acmg_sf` flags against the ACMG secondary-findings list."""
 
-    list_version: Optional[str] = None
+    list_version: str | None = None
     checked: int = 0
     mismatches: list[str] = Field(default_factory=list)
     unverifiable: list[str] = Field(
@@ -716,8 +713,8 @@ class FunctionConflictEntry(BaseModel):
 
     gene: str
     allele: str
-    authored: Optional[str] = None
-    reported: Optional[str] = None
+    authored: str | None = None
+    reported: str | None = None
     source: str
 
 
@@ -816,7 +813,7 @@ class IdentifierCheck(BaseModel):
             "Chromosome granularity only, so a row naming a distal regulatory target is not accused"
         ),
     )
-    gene_loci_not_checked: Optional[str] = Field(
+    gene_loci_not_checked: str | None = Field(
         default=None,
         description=(
             "Why the comparison above did not run, or null when it did. Read it before believing an "
@@ -833,7 +830,7 @@ class IdentifierCheck(BaseModel):
             "finding about the module and never a publish gate"
         ),
     )
-    clean: Optional[bool] = Field(
+    clean: bool | None = Field(
         default=None,
         description=(
             "`null` when nothing was checked — clean out of zero identifiers says nothing. Folds in "
@@ -873,7 +870,7 @@ class EnrichmentReport(BaseModel):
     ref_mismatches: list[RefMismatchEntry] = Field(default_factory=list)
     clin_sig_conflicts: list[ClinSigConflictEntry] = Field(default_factory=list)
     #: Read this **before** believing an empty `clin_sig_conflicts` (enricher 0.5.2 / S4).
-    clin_sig_not_checked: Optional[str] = Field(
+    clin_sig_not_checked: str | None = Field(
         default=None,
         description=(
             "Why the ClinVar clin_sig cross-check did not run, or null when it did. An empty "
@@ -895,19 +892,19 @@ class EnrichmentReport(BaseModel):
         default_factory=list,
         description="Degradations that are not findings — e.g. a snapshot that was not provisioned",
     )
-    frequencies: Optional[FrequencyCheck] = None
-    literature: Optional[LiteratureCheck] = None
-    identifiers: Optional[IdentifierCheck] = None
-    acmg: Optional[AcmgCheck] = None
-    pgx: Optional[PgxCheck] = None
+    frequencies: FrequencyCheck | None = None
+    literature: LiteratureCheck | None = None
+    identifiers: IdentifierCheck | None = None
+    acmg: AcmgCheck | None = None
+    pgx: PgxCheck | None = None
 
 
 class CheckReport(BaseModel):
     """`POST /modules/{ns}/{name}/check` — the full publish dry run."""
 
     validation: ValidationReport
-    enrichment: Optional[EnrichmentReport] = None
-    skipped_reason: Optional[str] = Field(
+    enrichment: EnrichmentReport | None = None
+    skipped_reason: str | None = Field(
         default=None,
         description="Why enrichment was not attempted, e.g. `invalid_spec` (nothing to enrich yet)",
     )
@@ -934,8 +931,8 @@ class LookupBatch(BaseModel):
 class LookupMatch(BaseModel):
     """One key and everything published under it."""
 
-    digest: Optional[str] = None
-    signature: Optional[str] = None
+    digest: str | None = None
+    signature: str | None = None
     matches: list[VersionRef] = Field(default_factory=list)
 
 

@@ -65,8 +65,8 @@ def update_profile(repo: RepoDep, account: AccountDep, body: ProfileUpdate) -> W
             account.id, email=body.email, display_name=body.display_name,
             avatar_url=body.avatar_url, funding_url=body.funding_url,
         )
-    except sqlite3.IntegrityError:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail="email_taken")
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="email_taken") from exc
     return _whoami(repo, account)
 
 

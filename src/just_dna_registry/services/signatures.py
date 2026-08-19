@@ -34,7 +34,6 @@ import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from just_dna_compiler.compiler import content_signature
 from just_dna_format.manifest import ModuleManifest
@@ -56,9 +55,9 @@ class SignatureChange:
     name: str
     version: str
     old: str
-    new: Optional[str]
+    new: str | None
     genome_build: str
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def module(self) -> str:
@@ -85,7 +84,7 @@ class SignatureChange:
 
 def rederive_version_signature(
     storage: StorageBackend, namespace: str, name: str, version: str
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Recompute one version's signature from its stored spec. Returns `(signature, error)`.
 
     Reads what storage actually holds rather than what `manifest.inputs` lists: the two disagree for
@@ -116,7 +115,7 @@ def rederive_version_signature(
 
 
 def plan_rederivation(
-    repo: Repository, storage: StorageBackend, *, namespace: Optional[str] = None
+    repo: Repository, storage: StorageBackend, *, namespace: str | None = None
 ) -> list[SignatureChange]:
     """Recompute every version's signature (optionally within one namespace). Writes nothing."""
     changes: list[SignatureChange] = []

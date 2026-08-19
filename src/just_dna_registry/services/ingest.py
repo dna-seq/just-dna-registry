@@ -5,8 +5,7 @@ Used by the publish finalize path (M4) and by seeding/tests. Kept separate from 
 manifest produced by the server-side compile can be indexed with one call.
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from just_dna_format.manifest import ModuleManifest
 
@@ -15,7 +14,7 @@ from just_dna_registry.db.repository import Repository
 
 def now_iso() -> str:
     """Current UTC time as an ISO-8601 string with a trailing Z."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def ingest_manifest(
@@ -24,8 +23,8 @@ def ingest_manifest(
     *,
     changelog: str = "",
     created_at: str | None = None,
-    published_by: Optional[int] = None,
-    readme: Optional[str] = None,
+    published_by: int | None = None,
+    readme: str | None = None,
 ) -> int:
     """
     Insert a published version into the projection and refresh the module's latest pointer.

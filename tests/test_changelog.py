@@ -1,6 +1,6 @@
 """Changelog amendment — metadata is mutable; the artifact/digest stay immutable."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 from just_dna_format.manifest import ModuleManifest

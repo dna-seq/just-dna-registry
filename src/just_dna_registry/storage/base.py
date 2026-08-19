@@ -10,7 +10,7 @@ same interface and is wired in a later milestone.
 """
 
 from collections.abc import Mapping
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 def version_key(namespace: str, name: str, version: str) -> str:
@@ -34,7 +34,7 @@ class StorageBackend(Protocol):
         """Return the raw bytes of `name` under `key`."""
         ...
 
-    def file_url(self, key: str, name: str) -> Optional[str]:
+    def file_url(self, key: str, name: str) -> str | None:
         """
         An external (CDN/presigned) URL for `name`, or `None` when the backend has no external
         URL and the API should serve the bytes itself (the local backend's behavior).

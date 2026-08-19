@@ -6,6 +6,113 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.18.2] — 2026-08-19
+
+**Client surface: unchanged.** No endpoint and no `RegistryClient` method moves. The lint sweep below
+touches many files and none of their signatures.
+
+**Adopts `just-dna-enricher` 0.6.4** — a fourth partial cut, `just-dna-format` and `just-dna-compiler`
+stay at **0.6.1**, so `uv sync` installs `0.6.1 / 0.6.1 / 0.6.4`. **No sweep follows this release**:
+nothing recompiles, no signature or digest moves, no revalidate step. An operator upgrades by
+`uv sync` and stops. Also adopts `ruff` as the project linter and applies it.
+
+### 0.6.4 is the first enricher floor here that is not hard, and the note says so
+
+Every floor above it in `pyproject.toml` was forced by something concrete: a symbol that did not exist
+(0.5.x), a subclass whose meaning changed (0.6.2), an argument that went from inert to live (0.6.3).
+0.6.4 is none of those. It is one fix inside upstream's `clinvar_draft.py` adding one private helper,
+in the ClinVar **drafter** — authoring-side code this service does not have and never calls. No public
+symbol moves and no pass this server runs behaves differently; a deployment left on 0.6.3 loses
+nothing.
+
+It moves anyway, for assembly rather than function. The lock had already resolved 0.6.4 on its next
+relock (the constraint was `>=0.6.3`), and this release's suite ran on exactly `0.6.1 / 0.6.1 / 0.6.4`
+— so a floor left behind would permit a trio nobody tested while shipping a lock for one we did. The
+distinction is recorded rather than flattened: a reader who treats every floor in that file as
+load-bearing will not question the next one either.
+
+### The part that matters: advice this project published was incomplete
+
+[0.18.1](#0181--2026-08-19) relayed upstream's remediation for the 0.6.3 drafting fixes as *those
+modules need a fresh upload from their publisher*. Upstream 0.6.4 (S45) is them measuring the half the
+0.6.3 note explicitly did not claim to have measured, and the answer was worse than assumed. Our
+sentence is not wrong so much as readable in the way that fails.
+
+**The two 0.6.3 drafting fixes remediate differently.** S44 *skipped* rows, so a re-draft recovers them
+exactly — a stale ClinPGx module of 18,691 rows re-drafts to 18,895 with 0 missing and 0 stale, which
+is a fresh draft, and needs no caveat. S41 *wrote rows under an identity that has since moved*, and
+drafting **appends and never mutates**. Re-running the fixed drafter over the same spec therefore adds
+the coordinate-keyed rows **beside** the collapsed rsid-only row they replace rather than in place
+of it, and the leftover is the row bearing the mislabelled expansion. Measured on `MLH1` at
+`min_review_stars=2`: a stale module of 996 rows re-drafts to **1,061** against a fresh draft's
+**1,030** — 0 identities missing, but **31 rows a fresh draft does not contain**. Following the shorter
+instruction leaves a module worse-formed than either the old one or a new one.
+
+So the remediation to pass to a publisher is a **fresh spec directory reconciled against the old
+module**, not a re-draft of the directory they have. [UPGRADE.md](UPGRADE.md) is corrected to say so.
+From 0.6.4 a re-draft at least *names* what it superseded (`_superseded_rsid_rows`, reported after the
+append) but never removes it, which is the right call: by then a drafted row is authored material
+whose `genotype`, `state` and `conclusion` a human may have curated, and deleting curated work to
+repair a drafting defect is a trade only the author can make.
+
+**There is no registry-side check to add, and that is worth recording before someone tries to build
+one.** The superseded rows are undetectable from inside a published module — a coordinate-identity row
+carries no `rsid`, so the obvious predicate (an rsid-only row whose rsID also appears on a coordinate
+row) finds **0 of the 31**. Only the running pass can identify them, because only it holds the set of
+rsIDs it is writing by coordinate that run. A facet, a `revalidate` rule or an `upgrade` gap test would
+each report clean on an affected module, which is worse than having none.
+
+This is the same shape as the rule 0.18.1 added to `CLAUDE.md` — *a version-gap check belongs to the
+thing that has versions* — met from the other side. Last time the point was that this service has no
+drafter, so there is no sweep to run. This time it is that the advice we forwarded on the drafter's
+behalf was ours to correct once it turned out to be wrong.
+
+### ruff, configured and applied
+
+`[tool.ruff]` mirrors `just-dna-format`'s config rather than being invented here: the two repos are
+edited in the same sitting, and a rule that fires in one and not the other turns a lint run into a
+question about which checkout you are standing in. Three local differences are recorded in the block —
+`.claude/` excluded (those scripts are a gist-synced copy, one-way by hand), the `tests/*` glob rooted
+for a single suite instead of three member packages, and FastAPI's `Depends`/`Query`/`File` defaults
+folded into the existing B008 Typer exemption. `ruff>=0.8.0` joins the dev group; `uv run ruff check .`
+is clean and the suite is unchanged at **417 passing**.
+
+403 findings went to zero across 54 files. Most were mechanical (330 `Optional[X]` → `X | None`, import
+ordering, `typing` → `collections.abc`). Four things in it were not:
+
+- **A lint rule that would have introduced a real bug.** `SIM118` wants `"downloads" in row.keys()`
+  rewritten to `"downloads" in row`. Catalog rows are `sqlite3.Row`, whose `__contains__` scans
+  **values**, not keys — `'colA' in row` is `False` for a column that genuinely exists. Applying it
+  would have silently switched off `featured`, `needs_upgrade`, `downloads` and the signed check
+  across every listing. The four sites carry a `noqa` and `services/catalog.py` carries the proof.
+- **A shadowed method, live since 0.12.0.** `db/repository.py` held two `namespaces_for_account`
+  definitions — a 0.9.0 one reading `namespace_members` and a 0.12.0 one reading the `namespaces`
+  ownership grant — and Python kept the later. The dead one is removed with **no behaviour change**,
+  since it never ran. See the reporting gap below.
+- **`B904` chaining on 18 sites**, `from exc` where the cause informs a reader and `from None` on the
+  two `typer.Exit` control-flow paths. No status code, response body or exit code moves.
+- **An "unused" import that was a re-export.** Removing `LICENSING_CSV` from `specfiles.py` broke test
+  collection, because the suite imports it from us. Restored with a `noqa`. A `--fix` on this codebase
+  needs the suite behind it.
+
+`Capability` becomes a `StrEnum` and `Page` / `run_at_low_priority` take PEP 695 type parameters; the
+first was checked against every use in `src` and `tests` before applying, since `StrEnum` changes what
+`str(cap)` produces and that enum is the RBAC vocabulary.
+
+### Known: `whoami` under-reports namespaces (not fixed here)
+
+The shadowing above has a consequence that outlived it. `Account.namespaces` — what `GET /auth/whoami`
+and the `issue-key` response return — is the **ownership** grant only, so a non-owner member of someone
+else's namespace does not appear in their own identity response. **This is not an authorization
+defect**: every gate runs through `deps.effective_role()`, which reads the per-namespace membership and
+the org cascade directly and never consults that list. The removed 0.9.0 query was not the fix either —
+claiming a namespace writes a `namespaces` row and no `namespace_members` row, so it would have
+answered `[]` for an ordinary owner. The correct value is the union of the two, which changes what an
+existing response field contains and is therefore minor-sized rather than patch-sized under this
+project's own sizing rule. The reasoning is written beside `effective_role` in `api/deps.py`, and
+`CLAUDE.md`'s description of `403 not_namespace_member` describes a gate that no longer exists in `src`
+— both to reconcile in one edit when the field is widened.
+
 ## [0.18.1] — 2026-08-19
 
 **Client surface: unchanged.** No endpoint and no `RegistryClient` method moves.
@@ -22,7 +129,9 @@ not have and never calls, because drafting happens where a spec is authored. The
 published before this need a re-draft* is therefore a message for module authors, not a job for
 [UPGRADE.md](UPGRADE.md) step 2: recompiling an already-drafted `variants.csv` reproduces exactly the
 rows the drafter dropped. Those modules need a fresh upload from their publisher, and no command here
-substitutes for one.
+substitutes for one. *(**0.18.2 sharpens this**: upstream S45 measured the remediation and a re-draft of
+the existing spec is not enough — it appends the corrected rows beside the ones they supersede. The
+publisher needs a **fresh spec directory**, not a re-draft of the one they have.)*
 
 What does land is upstream **S39**. `load_dotenv_file` had reached none of the six cache resolvers —
 each `resolve_*_reference` passes its `default_*_cache_dir()` as an *argument*, evaluated before the

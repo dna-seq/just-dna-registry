@@ -1,7 +1,7 @@
 """Read/catalog + download endpoint contract tests (SPEC §8.1–§8.5, §13)."""
 
 import sqlite3
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient

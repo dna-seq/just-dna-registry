@@ -26,9 +26,10 @@ import os
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Optional
 
 from just_dna_compiler.compiler import content_signature, validate_spec
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
@@ -130,7 +131,7 @@ class EnrichOutcome:
     ran: bool
     mode: str = "best_effort"
     offline: bool = True
-    skipped_reason: Optional[str] = None
+    skipped_reason: str | None = None
     fully_resolved: bool = True
     unresolved: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
@@ -225,7 +226,7 @@ def enricher_available() -> bool:
     return True
 
 
-def configured_caches(settings: Settings) -> dict[str, Optional[Path]]:
+def configured_caches(settings: Settings) -> dict[str, Path | None]:
     """The cache paths to hand the enricher — **as configured**, not as resolved.
 
     The distinction is load-bearing and cost a bug. `enrich()` runs the resolver ladder itself, and
@@ -249,7 +250,7 @@ def configured_caches(settings: Settings) -> dict[str, Optional[Path]]:
     }
 
 
-def available_references(settings: Settings) -> dict[str, Optional[Path]]:
+def available_references(settings: Settings) -> dict[str, Path | None]:
     """Which reference snapshots this deployment can actually read, without downloading anything.
 
     Used for *reporting* — the boot check, `registry warm-caches`, and the `503` decision — never to
@@ -287,7 +288,7 @@ def available_references(settings: Settings) -> dict[str, Optional[Path]]:
     Never downloads: that is `registry warm-caches`, deliberately not a request-path concern.
     """
     if not enricher_available():
-        return {name: None for name in REFERENCE_NAMES}
+        return dict.fromkeys(REFERENCE_NAMES)
 
     from just_dna_enricher.locations import (
         resolve_clinpgx_reference,
@@ -374,7 +375,7 @@ def enrichment_subject_count(stats: SpecStats) -> int:
     )
 
 
-def clin_sig_skip_note(reason: Optional[str]) -> Optional[str]:
+def clin_sig_skip_note(reason: str | None) -> str | None:
     """Turn `EnrichmentResult.clin_sig_not_checked` into a line for a publisher, or `None`.
 
     Exists because an empty `clin_sig_conflicts` is ambiguous in the one direction that matters:
@@ -465,7 +466,7 @@ def _render_notes(result: Any) -> list[str]:
 
 
 def enrich_spec(
-    spec_dir: Path, settings: Settings, *, action: Optional[Any] = None
+    spec_dir: Path, settings: Settings, *, action: Any | None = None
 ) -> EnrichOutcome:
     """Produce `resolution.csv` in `spec_dir`, ahead of the compile. Never raises on findings.
 
@@ -541,7 +542,9 @@ def enrich_spec(
         # In best-effort the reachable causes are an invalid CSV (which validation should already
         # have caught) and a withdrawn rsID, which is fatal in both modes because dbSNP repudiating
         # the variant means the annotation may describe nothing.
-        raise PublishError("enrich_failed", errors=[part.strip() for part in str(exc).split(";")])
+        raise PublishError(
+            "enrich_failed", errors=[part.strip() for part in str(exc).split(";")]
+        ) from exc
 
     outcome = EnrichOutcome(
         ran=True,
@@ -619,8 +622,8 @@ def validation_report(
     name: str,
     strict: bool,
     *,
-    normalized: Optional[list[str]] = None,
-    extra_warnings: Optional[list[str]] = None,
+    normalized: list[str] | None = None,
+    extra_warnings: list[str] | None = None,
 ) -> ValidationReport:
     """The offline half of a dry run: validate, sign the content, and pre-check dedup.
 
@@ -646,7 +649,7 @@ def validation_report(
     # on, so a caller can see the rejection coming. `ValueError` when a data CSV will not parse —
     # which the validation findings already explain, so it degrades to `None` rather than 500ing.
     try:
-        signature: Optional[str] = content_signature(spec_dir)
+        signature: str | None = content_signature(spec_dir)
     except ValueError:
         signature = None
 
@@ -858,7 +861,7 @@ def _run_enrichment_passes(
     settings: Settings,
     spec_dir: Path,
     offline: bool,
-    caches: dict[str, Optional[Path]],
+    caches: dict[str, Path | None],
     frequencies: bool,
     literature: bool,
     identifiers: bool,
@@ -899,7 +902,7 @@ def _run_enrichment_passes(
     except EnrichmentError as exc:
         raise PublishError(
             "enrichment_failed", errors=[part.strip() for part in str(exc).split(";")]
-        )
+        ) from exc
 
     # A missing snapshot is a degradation to report, not a refusal. Offline it means nothing can be
     # resolved; online it only means the slower path was taken, since live Ensembl needs no snapshot.
@@ -1328,7 +1331,7 @@ def _pgx_leg_nomenclature(
     offline: bool,
     declared_use: str,
     use_pharmvar: bool,
-    caches: dict[str, Optional[Path]],
+    caches: dict[str, Path | None],
 ) -> None:
     """PharmVar + CPIC allele nomenclature, via `enrich_pgx`.
 
@@ -1402,8 +1405,8 @@ def _pgx_leg_clinpgx(
     *,
     offline: bool,
     declared_use: str,
-    caches: dict[str, Optional[Path]],
-    present: dict[str, Optional[Path]],
+    caches: dict[str, Path | None],
+    present: dict[str, Path | None],
 ) -> None:
     """Authored evidence levels against the ClinPGx snapshot. Snapshot-only — it has no live route."""
     from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
@@ -1573,7 +1576,7 @@ def _pgx_check(
         # at acquisition, so nothing was fetched. Deliberately *not* handled per leg, unlike every
         # transport failure below it: the declaration is one statement about the whole request, so
         # the first refusal ends it rather than being reported three times.
-        raise PublishError("license_refused", errors=[str(exc)])
+        raise PublishError("license_refused", errors=[str(exc)]) from exc
 
     check.sources = sorted(sources)
     return check

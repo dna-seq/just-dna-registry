@@ -1,12 +1,12 @@
 """Test fixtures: an isolated app (temp DB + local storage) plus a manifest-seeding helper."""
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pytest
 from fastapi.testclient import TestClient
 from just_dna_format.identity import canonical_id
-from just_dna_format.integrity import artifact_digest
+from just_dna_format.integrity import artifact_digest, sha256_bytes
 from just_dna_format.manifest import (
     Artifact,
     Compilation,
@@ -16,7 +16,6 @@ from just_dna_format.manifest import (
     ModuleManifest,
     Stats,
 )
-from just_dna_format.integrity import sha256_bytes
 
 from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings

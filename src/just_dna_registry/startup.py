@@ -8,7 +8,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from just_dna_registry.config import Settings
 
@@ -28,7 +27,7 @@ _OBSOLETE_ENV: dict[str, str] = {
 }
 
 
-def legacy_db_message(db_path: Path) -> Optional[str]:
+def legacy_db_message(db_path: Path) -> str | None:
     """The 0.9 rename moved the default DB path `data/marketplace.db` → `data/registry.db`. If the
     configured DB is absent but a non-empty legacy `marketplace.db` sits beside it, return an
     actionable message (else None) — so we never silently create/serve an empty catalog after upgrade."""

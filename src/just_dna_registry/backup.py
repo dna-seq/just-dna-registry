@@ -23,9 +23,8 @@ import logging
 import re
 import shutil
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.schema import connect
@@ -49,7 +48,7 @@ def backup_dir(settings: Settings) -> Path:
 
 def _stamp() -> str:
     """UTC, second resolution, filename-safe and lexically sortable."""
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def next_index(target_dir: Path) -> int:
@@ -74,7 +73,7 @@ def next_index(target_dir: Path) -> int:
     return highest + 1
 
 
-def create_backup(settings: Settings, *, reason: str) -> Optional[Path]:
+def create_backup(settings: Settings, *, reason: str) -> Path | None:
     """Snapshot the catalog DB and return the file, or `None` when there is no DB yet.
 
     `reason` goes in the filename, so `ls` alone tells an operator what a snapshot was taken ahead of

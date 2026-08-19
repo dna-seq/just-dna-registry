@@ -14,11 +14,10 @@ namespace is the *highest* of the two (see `higher_role` + `deps.effective_role`
 downgrades to the OWN variant when the caller authored the resource (see `deps.require_capability`).
 """
 
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 
-class Capability(str, Enum):
+class Capability(StrEnum):
     PUBLISH = "publish"
     AMEND_OWN = "amend_own"
     AMEND_ANY = "amend_any"
@@ -61,12 +60,12 @@ OWN_FALLBACK: dict[Capability, Capability] = {
 }
 
 
-def role_has(role: Optional[str], cap: Capability) -> bool:
+def role_has(role: str | None, cap: Capability) -> bool:
     """Whether `role` grants `cap` (None role → nothing)."""
     return role is not None and cap in ROLE_CAPS.get(role, frozenset())
 
 
-def higher_role(a: Optional[str], b: Optional[str]) -> Optional[str]:
+def higher_role(a: str | None, b: str | None) -> str | None:
     """The higher-privileged of two roles (None = no role); the org-cascade vs per-namespace union."""
     ranked = [r for r in (a, b) if r in ROLE_RANK]
     return max(ranked, key=ROLE_RANK.__getitem__) if ranked else None

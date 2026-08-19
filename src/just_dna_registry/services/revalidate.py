@@ -11,7 +11,6 @@ import csv
 import io
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 from just_dna_compiler.compiler import compile_module, validate_spec
 from just_dna_format.manifest import MARKETPLACE_COMPILED_BY, ModuleManifest
@@ -25,6 +24,7 @@ from just_dna_registry.services.upgrade import plan_variants_upgrade
 from just_dna_registry.specfiles import RECOGNIZED_SPEC_FILES, SPEC_YAML, has_spec_data
 from just_dna_registry.storage.base import StorageBackend, version_key
 
+
 def revalidate_version(
     storage: StorageBackend,
     namespace: str,
@@ -32,7 +32,7 @@ def revalidate_version(
     version: str,
     manifest: ModuleManifest,
     *,
-    settings: Optional[Settings] = None,
+    settings: Settings | None = None,
     strict_check: bool = False,
     recompile_check: bool = False,
 ) -> tuple[str, list[str]]:

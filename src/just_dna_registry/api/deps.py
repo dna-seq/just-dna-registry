@@ -6,14 +6,14 @@ resolves to an account; publishing under a namespace requires that account to ow
 """
 
 from dataclasses import dataclass
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.jwtauth import decode_jwt
-from just_dna_registry.permissions import Capability, OWN_FALLBACK, higher_role, role_has
+from just_dna_registry.permissions import OWN_FALLBACK, Capability, higher_role, role_has
 from just_dna_registry.storage.base import StorageBackend
 
 
@@ -47,7 +47,7 @@ class Pagination:
 def pagination(
     settings: Annotated[Settings, Depends(settings_dep)],
     page: int = Query(1, ge=1),
-    per_page: Optional[int] = Query(None, ge=1),
+    per_page: int | None = Query(None, ge=1),
 ) -> Pagination:
     """Clamp `per_page` to the configured maximum; default when unset."""
     resolved = per_page or settings.default_per_page
@@ -57,7 +57,7 @@ def pagination(
 def require_account(
     repo: Annotated[Repository, Depends(get_repo)],
     settings: Annotated[Settings, Depends(settings_dep)],
-    authorization: Annotated[Optional[str], Header()] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> Account:
     """Resolve the bearer credential to an account, or 401.
 
@@ -88,8 +88,8 @@ def require_account(
 def optional_account(
     repo: Annotated[Repository, Depends(get_repo)],
     settings: Annotated[Settings, Depends(settings_dep)],
-    authorization: Annotated[Optional[str], Header()] = None,
-) -> Optional[Account]:
+    authorization: Annotated[str | None, Header()] = None,
+) -> Account | None:
     """Resolve the bearer credential to an account when present and valid; otherwise None.
 
     For otherwise-anonymous reads that want to personalise a response (e.g. `starred_by_me`) without
@@ -109,12 +109,21 @@ def optional_account(
     return None
 
 
-def effective_role(repo: Repository, account: Account, namespace: str) -> Optional[str]:
+#: `Account.namespaces` is `repo.namespaces_for_account()`, which is the **ownership** grant only —
+#: a non-owner member of somebody else's namespace does not appear in it, so `GET /auth/whoami` and
+#: the `issue-key` response under-report what the caller can actually publish to. This is a reporting
+#: gap, not an authorization one: every gate goes through `effective_role()` below, which reads the
+#: per-namespace membership and the org cascade directly and never consults this list. Widening it to
+#: the union of owned and member-of namespaces is the obvious fix and is a response-shape change, so
+#: it is written down here rather than done in passing.
+
+
+def effective_role(repo: Repository, account: Account, namespace: str) -> str | None:
     """The caller's effective role on a namespace: the highest of their explicit per-namespace grant
     and — when the namespace is owned by an **org** they belong to — their org role (the cascade).
     This is the single place the two ownership sources are reconciled."""
     per_ns = repo.namespace_role(namespace, account.id)
-    org_role: Optional[str] = None
+    org_role: str | None = None
     owner_row = repo.namespace_owner(namespace)
     if owner_row is not None:
         owning_id = int(owner_row["account_id"])
@@ -129,7 +138,7 @@ def require_capability(
     namespace: str,
     cap: Capability,
     *,
-    resource_author: Optional[int] = None,
+    resource_author: int | None = None,
 ) -> None:
     """Raise 403 unless `account` has `cap` on `namespace`. For an `*_ANY` capability, auto-downgrade
     to the matching `*_OWN` variant when the caller authored the resource (`resource_author`)."""

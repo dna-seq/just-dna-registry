@@ -3,7 +3,7 @@
 popularity (views + search-hits), and download/last-updated refinements.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 

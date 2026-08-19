@@ -25,21 +25,20 @@ from just_dna_registry.config import Settings
 from just_dna_registry.models.api import SpecStats
 from just_dna_registry.services.enrich import (
     ENRICHMENT_SUBJECT_TABLES,
-    EnrichmentGate,
-    enricher_available,
-    EnrichOutcome,
     PULLABLE_REFERENCES,
     REFERENCE_NAMES,
     RESOLUTION_REFERENCES,
+    EnrichmentGate,
+    EnrichOutcome,
     _render_notes,
     available_references,
     clin_sig_skip_note,
     configured_caches,
+    enricher_available,
     enrichment_subject_count,
     unresolved_hint,
     vrs_coverage,
 )
-
 
 # ── The tier boundary ─────────────────────────────────────────────────────────
 
@@ -269,7 +268,7 @@ def test_a_pgx_module_is_not_zero_subjects(tmp_path: Path) -> None:
 def test_every_subject_table_is_counted() -> None:
     """`variants.csv` plus each table the enricher collects from, and no double-count of the core."""
     stats = SpecStats.model_validate(
-        {"variant_count": 5, "table_rows": {csv: 2 for csv in ENRICHMENT_SUBJECT_TABLES}}
+        {"variant_count": 5, "table_rows": dict.fromkeys(ENRICHMENT_SUBJECT_TABLES, 2)}
     )
     assert enrichment_subject_count(stats) == 5 + 2 * len(ENRICHMENT_SUBJECT_TABLES)
     # `heteroplasmy.csv` earns its place in the tuple: enricher 0.5.3 added it to `_collect_subjects`,
@@ -522,7 +521,7 @@ def test_the_boot_gate_covers_only_what_a_publish_reads(
     from just_dna_registry.startup import validate_enrichment_caches
 
     provisioned = tmp_path / "snapshot"
-    resolution_only = {name: None for name in REFERENCE_NAMES}
+    resolution_only = dict.fromkeys(REFERENCE_NAMES)
     resolution_only["ensembl"] = resolution_only["clinvar"] = provisioned
     monkeypatch.setattr(enrich_service, "available_references", lambda _s: resolution_only)
 

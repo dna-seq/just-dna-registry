@@ -8,7 +8,7 @@ is what the `curated` listing group keys on. Mirrors the stars surface: mutate â
 review set.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/modules", tags=["reviews"])
 
 RepoDep = Annotated[Repository, Depends(get_repo)]
 AccountDep = Annotated[Account, Depends(require_account)]
-CallerDep = Annotated[Optional[Account], Depends(optional_account)]
+CallerDep = Annotated[Account | None, Depends(optional_account)]
 
 
 def _module_id(repo: Repository, namespace: str, name: str) -> int:
@@ -45,7 +45,7 @@ def _require_version(repo: Repository, namespace: str, name: str, version: str) 
     return _module_id(repo, namespace, name)
 
 
-def _reviews(repo: Repository, module_id: int, version: Optional[str]) -> list[Review]:
+def _reviews(repo: Repository, module_id: int, version: str | None) -> list[Review]:
     return [
         Review(
             reviewer=r["reviewer"],

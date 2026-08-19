@@ -6,7 +6,7 @@ after an out-of-digest amendment (a logo swap), and the 0.11 backfill migration.
 implementation anywhere is a catalog that filters differently from how it indexes.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from just_dna_compiler.compiler import UNJOINABLE_PHRASE
 from just_dna_format.manifest import ModuleManifest
@@ -42,7 +42,7 @@ def predates_positional_counts(manifest: ModuleManifest) -> bool:
     return manifest.compilation.positional_rows is None
 
 
-def positionally_joinable(manifest: ModuleManifest) -> Optional[bool]:
+def positionally_joinable(manifest: ModuleManifest) -> bool | None:
     """Whether every positional row in this version carries `chrom`+`start`. `None` = cannot say.
 
     The structured half of what `joins_nothing_positionally` reads out of prose, and the preferred
@@ -100,7 +100,7 @@ def joins_nothing_positionally(manifest: ModuleManifest) -> bool:
     return any(UNJOINABLE_PHRASE in w for w in manifest.compilation.warnings)
 
 
-def is_trusted(manifest: ModuleManifest) -> Optional[bool]:
+def is_trusted(manifest: ModuleManifest) -> bool | None:
     """Whether a consumer should treat this version as fully-baked. `None` = we cannot say.
 
     The rule the format documents is a **disjunction**, and both halves are load-bearing:
@@ -221,7 +221,7 @@ def version_facets(manifest: ModuleManifest) -> dict[str, Any]:
     }
 
 
-def _counters(manifest: ModuleManifest) -> dict[str, Optional[int]]:
+def _counters(manifest: ModuleManifest) -> dict[str, int | None]:
     """The 0.6 counters, or `None` for every one of them on a manifest that predates them.
 
     `resolution_subjects` needs the era gate more than its siblings, not less: the other four are
@@ -248,5 +248,5 @@ def _counters(manifest: ModuleManifest) -> dict[str, Optional[int]]:
     }
 
 
-def _tri(value: Optional[bool]) -> Optional[int]:
+def _tri(value: bool | None) -> int | None:
     return None if value is None else int(value)

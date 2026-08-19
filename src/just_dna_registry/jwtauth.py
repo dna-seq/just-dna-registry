@@ -5,7 +5,6 @@ bearer alongside static keys. HS256; short-lived.
 """
 
 import datetime
-from typing import Optional
 
 import jwt
 
@@ -20,7 +19,7 @@ def jwt_enabled(settings: Settings) -> bool:
 
 def issue_jwt(settings: Settings, *, account_id: int, name: str) -> tuple[str, int]:
     """Mint a JWT for an account. Returns (token, expires_in_seconds)."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     ttl = settings.jwt_ttl_seconds
     payload = {
         "sub": name,
@@ -32,7 +31,7 @@ def issue_jwt(settings: Settings, *, account_id: int, name: str) -> tuple[str, i
     return token, ttl
 
 
-def decode_jwt(settings: Settings, token: str) -> Optional[dict]:
+def decode_jwt(settings: Settings, token: str) -> dict | None:
     """Return the claims of a valid, unexpired JWT, or None (disabled / malformed / expired)."""
     if not jwt_enabled(settings):
         return None

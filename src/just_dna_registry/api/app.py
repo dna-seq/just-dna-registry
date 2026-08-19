@@ -8,8 +8,8 @@ local artifact dir.
 
 import logging
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
 from just_dna_format.signing import public_key_b64_from_pem
@@ -17,7 +17,6 @@ from just_dna_format.signing import public_key_b64_from_pem
 from just_dna_registry import __version__
 from just_dna_registry.api.routers import auth, modules, namespaces, orgs, publish, reviews
 from just_dna_registry.config import API_PREFIX, Settings, get_settings
-from just_dna_registry.version import VersionInfo
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.logging_setup import configure_logging
@@ -32,6 +31,7 @@ from just_dna_registry.startup import (
 )
 from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
+from just_dna_registry.version import VersionInfo
 
 _request_log = logging.getLogger("registry.request")
 
@@ -46,7 +46,7 @@ def _build_storage(settings: Settings) -> StorageBackend:
     raise ValueError(f"unsupported storage_backend {settings.storage_backend!r} (use 'local' or 'hf')")
 
 
-def create_app(settings: Optional[Settings] = None) -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
     warn_obsolete_env()  # a stale .env key that no longer does anything must not pass in silence

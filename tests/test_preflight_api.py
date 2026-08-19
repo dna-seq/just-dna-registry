@@ -29,7 +29,6 @@ own error type reaches every line the real 5xx would. That half was untested and
 
 import socket
 from pathlib import Path
-from typing import Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -353,7 +352,7 @@ def test_validate_requires_publish_capability(tmp_path: Path) -> None:
 # ── /check ─────────────────────────────────────────────────────────────────────
 
 
-def _check(client: TestClient, *, spec: Optional[dict] = None, **params) -> tuple[int, dict]:
+def _check(client: TestClient, *, spec: dict | None = None, **params) -> tuple[int, dict]:
     """POST `/check` with `params` as the query string and `spec` overriding the uploaded parts.
 
     `spec` is a separate argument rather than another `**params` key on purpose: everything in `params`
@@ -915,7 +914,7 @@ def test_the_identifier_pass_grades_traits_and_genes_without_gating_publish(
     assert body["would_publish"] is True
 
 
-def _ontology_placing_the_gene_on(chromosome: Optional[str]):
+def _ontology_placing_the_gene_on(chromosome: str | None):
     """A stand-in HGNC/OLS4 client that approves every symbol and puts it on `chromosome`.
 
     `location` is a cytogenetic band because that is what HGNC serves and what `GeneStatus.chromosome`
@@ -1089,9 +1088,10 @@ def _bundle(**over):
     """A `LookupClients`-shaped stand-in. Every leg explicit, so a slip builds no live client."""
     from types import SimpleNamespace
 
-    base = dict(
-        ensembl=None, gnomad=None, eutils=None, europepmc=None, crossref=None, ontology=None,
-    )
+    base = {
+        "ensembl": None, "gnomad": None, "eutils": None,
+        "europepmc": None, "crossref": None, "ontology": None,
+    }
     base.update(over)
     return SimpleNamespace(**base)
 

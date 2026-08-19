@@ -8,19 +8,47 @@ every module, and `version.contract_compatible` treats a `0.x` minor as breaking
 to a 0.6 server is **refused**, and the first symptom of skipping step 0 is a blanket publish
 rejection with no obvious cause.
 
-**The enricher runs ahead of the other two, and that is not a typo.** 0.6.2 and 0.6.3 are both
-enricher-only cuts (upstream RM101, then S39/S41–S44); format and compiler are unchanged at 0.6.1, so
-`uv sync` installs `0.6.1 / 0.6.1 / 0.6.3` as of registry 0.18.1, and that is the correct state. The
-enricher floor is a hard one rather than a preference: this server's `/check` adapters catch the
-unavailability subclasses 0.6.2 introduces, and on 0.6.1 nothing raises them — those handlers would be
-dead code and an upstream outage would go back to being a `500`.
+**The enricher runs ahead of the other two, and that is not a typo.** 0.6.2, 0.6.3 and 0.6.4 are all
+enricher-only cuts (upstream RM101, then S39/S41–S44, then S45); format and compiler are unchanged at
+0.6.1, so `uv sync` installs `0.6.1 / 0.6.1 / 0.6.4` as of registry 0.18.2, and that is the correct
+state. The **0.6.2** floor is a hard one rather than a preference: this server's `/check` adapters
+catch the unavailability subclasses it introduces, and on 0.6.1 nothing raises them — those handlers
+would be dead code and an upstream outage would go back to being a `500`. **0.6.4 is not hard**, and
+the difference is worth carrying: it is one fix in the ClinVar drafter, nothing this service runs, and
+a deployment left on 0.6.3 is not broken. It is the floor because it is the trio the release was
+tested on.
 
-**Nothing in this document changes for 0.6.3, and that is the point of saying so.** It moves no schema,
-no signature and no digest, so an operator already on 0.6.1/0.6.1/0.6.2 upgrades by `uv sync` and stops
-— there is no revalidate and no re-baseline to run. In particular, upstream's note that ClinVar-drafted
-modules published before 0.6.3 need a **re-draft** is not a job for step 2 below: drafting happens where
-the spec is authored, this registry has no drafter, and recompiling an already-drafted `variants.csv`
-reproduces exactly the rows the drafter dropped. Those modules need a new upload from their publisher.
+**Nothing in this document changes for 0.6.3 or 0.6.4, and that is the point of saying so.** Neither
+moves a schema, a signature or a digest, so an operator already on 0.6.1/0.6.1/0.6.2 upgrades by
+`uv sync` and stops — there is no revalidate and no re-baseline to run. In particular, upstream's note
+that ClinVar-drafted modules published before 0.6.3 need a **re-draft** is not a job for step 2 below:
+drafting happens where the spec is authored, this registry has no drafter, and recompiling an
+already-drafted `variants.csv` reproduces exactly the rows the drafter dropped.
+
+**And "needs a re-draft" turned out to be an incomplete instruction — 0.6.4 is upstream measuring the
+half 0.6.3 did not claim to have measured (S45).** The two 0.6.3 drafting fixes remediate differently.
+S44 *skipped* rows, so a re-draft recovers them exactly: a stale ClinPGx module of 18,691 rows
+re-drafts to 18,895 with 0 missing and 0 stale, which is a fresh draft. S41 *wrote rows under an
+identity that has since moved*, and drafting **appends and never mutates** — so re-running the fixed
+drafter over the same spec adds the coordinate-keyed rows **beside** the collapsed rsid-only row they
+replace, rather than instead of it. On `MLH1` at `min_review_stars=2`: a stale module of 996 rows
+re-drafts to **1,061** where a fresh draft is **1,030** — 0 identities missing, but **31 rows a fresh
+draft does not contain**, and the stale one carries the mislabelled expansion. A re-draft in place
+leaves the module worse-formed than either the old one or a new one.
+
+So the remediation to pass on to a publisher is a **fresh spec directory, reconciled against the old
+module** — not a re-draft of the directory they have. From 0.6.4 a re-draft at least *names* the
+superseded rows (`_superseded_rsid_rows` reports them after the append) but deliberately never removes
+them: by the time a re-draft runs, a drafted row is authored material whose `genotype`, `state` and
+`conclusion` a human may have curated, and deleting curated work to repair a drafting defect is a
+trade only the author can make.
+
+**There is no registry-side detection to build here, and the reason is worth recording before someone
+tries.** The superseded rows are invisible from inside a published module: a coordinate-identity row
+carries no `rsid`, so the obvious predicate — an rsid-only row whose rsID also appears on a coordinate
+row — finds **0 of the 31**. Only the running pass can tell, because only it holds the set of rsIDs it
+is writing by coordinate this run. A facet, a `revalidate` check or an `upgrade` gap test would all
+report clean on an affected module, which is worse than not having one.
 
 **Install `0.6.1`, never `0.6.0`.** Upstream cut 0.6.0 on 2026-08-17 and 0.6.1 the next day with eight
 defects fixed; this repo's floors name `0.6.1` and `uv sync` will refuse the older one. It changes no

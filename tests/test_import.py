@@ -107,7 +107,7 @@ def test_import_captures_bundled_logs(client: TestClient, api_key: str) -> None:
     log_names = {e["name"] for e in resp.json()["logs"]}
     assert any(n.endswith(".log") for n in log_names), log_names
     # The bundled log is fetchable via the files endpoint.
-    log = sorted(log_names)[0]
+    log = min(log_names)
     got = client.get(f"/api/v1/modules/just-dna-seq/{name}/versions/1.0.0/files/{log}")
     assert got.status_code == 200 and got.content
 

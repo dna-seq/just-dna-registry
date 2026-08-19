@@ -8,7 +8,7 @@ from just_dna_registry.db.repository import Repository
 
 
 def _seed_catalog(seed) -> None:
-    common = dict(categories=["c"])
+    common = {"categories": ["c"]}
     seed("just-dna-seq", "coronary", "1.0.0", genes=["LPA"], created_at="2025-01-01T00:00:00Z", **common)
     seed("acme", "cancer", "1.0.0", genes=["BRCA1"], created_at="2025-02-01T00:00:00Z", **common)
     seed("sandbox-alice", "toy", "1.0.0", genes=["X"], created_at="2025-03-01T00:00:00Z", **common)

@@ -4,12 +4,11 @@ Read/catalog + download endpoints (SPEC §8.1–§8.5). All anonymous.
 
 import io
 import tarfile
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from just_dna_format.manifest import ModuleManifest
-from pydantic import BaseModel
 
 from just_dna_registry.api.deps import (
     Account,
@@ -45,7 +44,7 @@ RepoDep = Annotated[Repository, Depends(get_repo)]
 StorageDep = Annotated[StorageBackend, Depends(get_storage)]
 SettingsDep = Annotated[Settings, Depends(settings_dep)]
 PageDep = Annotated[Pagination, Depends(pagination)]
-CallerDep = Annotated[Optional[Account], Depends(optional_account)]
+CallerDep = Annotated[Account | None, Depends(optional_account)]
 AccountDep = Annotated[Account, Depends(require_account)]
 
 
@@ -58,7 +57,7 @@ def _refs(rows) -> list[VersionRef]:
     ]
 
 
-def _lookup_one(repo: Repository, *, digest: Optional[str], signature: Optional[str]) -> LookupMatch:
+def _lookup_one(repo: Repository, *, digest: str | None, signature: str | None) -> LookupMatch:
     """Resolve one identity. Exactly one of `digest`/`signature` is set (the route enforces it)."""
     rows = (
         repo.find_versions_by_digest(digest)
@@ -74,24 +73,24 @@ def list_modules(
     settings: SettingsDep,
     page: PageDep,
     caller: CallerDep,
-    q: Optional[str] = None,
-    category: Optional[str] = None,
-    gene: Optional[str] = None,
-    genome_build: Optional[str] = None,
-    owner: Optional[str] = None,
-    license: Optional[str] = None,
-    namespace: Optional[str] = None,
-    featured: Optional[bool] = None,
+    q: str | None = None,
+    category: str | None = None,
+    gene: str | None = None,
+    genome_build: str | None = None,
+    owner: str | None = None,
+    license: str | None = None,
+    namespace: str | None = None,
+    featured: bool | None = None,
     include_blacklisted: bool = False,
     # Format-0.6 fact tables (0.17). Tri-state: omitted means "do not filter", which is not `false`.
     # Scoped to each module's current version, like `gene` and `category`.
-    has_gene_validity: Optional[bool] = Query(
+    has_gene_validity: bool | None = Query(
         None, description="Modules whose latest version carries a ClinGen/GenCC validity table"
     ),
-    has_clinical_assertions: Optional[bool] = Query(
+    has_clinical_assertions: bool | None = Query(
         None, description="Modules whose latest version carries a ClinVar clinical-assertion table"
     ),
-    has_gwas_effects: Optional[bool] = Query(
+    has_gwas_effects: bool | None = Query(
         None,
         description=(
             "Modules whose latest version carries published GWAS effect sizes. Read the detail's "
@@ -99,17 +98,17 @@ def list_modules(
             "unit means the betas are on different scales and must not be pooled."
         ),
     ),
-    has_frequencies: Optional[bool] = Query(
+    has_frequencies: bool | None = Query(
         None, description="Modules whose latest version carries an allele-frequency table"
     ),
-    weighting_declared: Optional[bool] = Query(
+    weighting_declared: bool | None = Query(
         None,
         description=(
             "Modules that state what their authored `weight` column means. `false` finds the ones "
             "that have not said — which is not the same as saying their weights are comparable."
         ),
     ),
-    group: Optional[str] = Query(None, pattern="^(all|featured|curated|popular|new|test)$"),
+    group: str | None = Query(None, pattern="^(all|featured|curated|popular|new|test)$"),
     sort: str = Query("name", pattern="^(downloads|recent|name|stars|popular)$"),
 ) -> Page[ModuleCard]:
     return catalog.list_modules(
@@ -146,7 +145,7 @@ def list_groups() -> list[GroupInfo]:
 
 @router.get("/lookup", response_model=LookupMatch, dependencies=[Depends(rate_limit("search"))])
 def lookup(
-    repo: RepoDep, digest: Optional[str] = None, signature: Optional[str] = None
+    repo: RepoDep, digest: str | None = None, signature: str | None = None
 ) -> LookupMatch:
     """Find published versions by artifact digest **or** by content signature. Exactly one.
 

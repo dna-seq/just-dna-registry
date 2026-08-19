@@ -25,22 +25,21 @@ the column/key trim like `variants.csv` and `module_spec.yaml`.
 
 import csv
 import io
-from typing import Optional
 
 import yaml
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.binning import (
     ActivityPhenotypeRow,
     CopyNumberRow,
     HeteroplasmyRow,
     RepeatAlleleRow,
 )
-from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
-from just_dna_format.layout import sidecar_spellings
 from just_dna_format.identity import parse_version
+from just_dna_format.layout import sidecar_spellings
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import Contribution, GenePanelSpec, ModuleManifest
 from just_dna_format.pgs import PgsRow
@@ -215,7 +214,7 @@ def trim_unknown_columns(csv_text: str, model: type[BaseModel]) -> tuple[str, li
 _TEXT_SPECS: frozenset[str] = frozenset({SPEC_YAML}) | frozenset(_ROW_MODELS)
 
 
-_YAML_BLOCK_MODELS: tuple[tuple[Optional[str], type[BaseModel], frozenset[str]], ...] = (
+_YAML_BLOCK_MODELS: tuple[tuple[str | None, type[BaseModel], frozenset[str]], ...] = (
     (None, ModuleSpecConfig, frozenset()),
     ("module", ModuleInfo, frozenset(_REGISTRY_OWNED_MODULE_KEYS)),
     ("defaults", Defaults, frozenset()),
@@ -290,10 +289,10 @@ class ContractGap(BaseModel):
     operator sees the bucket and can aim `--force` at it deliberately.
     """
 
-    compiled_under: Optional[str] = Field(
+    compiled_under: str | None = Field(
         default=None, description="The compiler version that produced the stored artifact, if known"
     )
-    current: Optional[str] = Field(
+    current: str | None = Field(
         default=None, description="The compiler version this server would recompile with"
     )
     scale: str = Field(default=GAP_UNKNOWN, description=f"one of {GAP_NONE}/{GAP_PATCH}/{GAP_CONTRACT}/{GAP_UNKNOWN}")
@@ -326,7 +325,7 @@ class ContractGap(BaseModel):
         return "already on this contract"
 
 
-def stamped_compiler_version(manifest: ModuleManifest) -> Optional[str]:
+def stamped_compiler_version(manifest: ModuleManifest) -> str | None:
     """The bare SemVer out of `compilation.compiler_version`, or None if it is not one.
 
     The compiler stamps `"just-dna-compiler 0.6.1"` — a name and a version, not a version — and
@@ -438,7 +437,7 @@ def prepare_version_upgrade(
     manifest: ModuleManifest,
     *,
     trim: bool = False,
-) -> Optional[VersionUpgradePlan]:
+) -> VersionUpgradePlan | None:
     """Compute the re-publish plan for a version from its stored spec inputs, or None when they
     aren't all retrievable (a legacy import — cannot be upgraded).
 
@@ -579,11 +578,11 @@ def upgrade_version(
     name: str,
     version: str,
     manifest: ModuleManifest,
-    changelog: Optional[str] = None,
+    changelog: str | None = None,
     recompile: bool = False,
     trim: bool = False,
-    prepared: Optional[VersionUpgradePlan] = None,
-) -> Optional[tuple[str, ModuleManifest]]:
+    prepared: VersionUpgradePlan | None = None,
+) -> tuple[str, ModuleManifest] | None:
     """Re-publish a version's spec as the next PATCH after migrating it to the current contract.
 
     Applies the 0.3 back-population and (with `trim`) drops columns the current contract rejects,

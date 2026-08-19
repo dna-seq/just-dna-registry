@@ -34,12 +34,11 @@ import contextvars
 import logging
 import os
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 logger = logging.getLogger("registry.lowpriority")
-
-T = TypeVar("T")
 
 #: Set once, the first time renicing is refused, so a container without the privilege says so once
 #: rather than on every publish.
@@ -72,7 +71,7 @@ def _renice(increment: int) -> None:
             )
 
 
-async def run_at_low_priority(fn: Callable[..., T], nice: int = 10, /, **kwargs: Any) -> T:
+async def run_at_low_priority[T](fn: Callable[..., T], nice: int = 10, /, **kwargs: Any) -> T:
     """Await `fn(**kwargs)` on a fresh, niced thread. The thread is discarded when it returns.
 
     `fn` and `nice` are **positional-only**, and that is not style. Every remaining keyword belongs

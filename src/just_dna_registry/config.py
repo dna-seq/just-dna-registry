@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: The two deployment modes. `test` is the polygon (`module-polygon.just-dna.life`); `prod` is the
 #: catalog everyone else installs from.
@@ -20,7 +21,6 @@ VALID_MODES = frozenset({VALID_MODES_PROD, VALID_MODES_TEST})
 #: Default listen port per mode: prod 8000, polygon +100. One number apart so a misdirected client
 #: gets a connection refusal rather than the wrong catalog answering on the right port.
 DEFAULT_PORTS: dict[str, int] = {VALID_MODES_PROD: 8000, VALID_MODES_TEST: 8100}
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
 

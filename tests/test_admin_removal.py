@@ -1,6 +1,6 @@
 """Ops-only hard removal: purges DB rows + artifacts and frees the namespace (not yank)."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from just_dna_format.manifest import ModuleManifest
 

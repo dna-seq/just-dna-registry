@@ -15,8 +15,8 @@ already present wherever the client runs. `just-dna-compiler` ships in the `comp
 extras rather than the base install, so its version is reported as None on a bare client.
 """
 
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
-from typing import Optional
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 from just_dna_format.identity import parse_version
 from pydantic import BaseModel, Field
@@ -30,7 +30,7 @@ _FORMAT_PKG = "just-dna-format"
 _COMPILER_PKG = "just-dna-compiler"
 
 
-def _installed(pkg: str) -> Optional[str]:
+def _installed(pkg: str) -> str | None:
     try:
         return _pkg_version(pkg)
     except PackageNotFoundError:
@@ -43,11 +43,11 @@ class VersionInfo(BaseModel):
 
     api: str = Field(default=API_VERSION, description="REST API contract version (path `v1`)")
     registry: str = Field(description="just-dna-registry package version")
-    format: Optional[str] = Field(default=None, description="just-dna-format contract version")
-    compiler: Optional[str] = Field(
+    format: str | None = Field(default=None, description="just-dna-format contract version")
+    compiler: str | None = Field(
         default=None, description="just-dna-compiler version (server tier only; None on a client)"
     )
-    mode: Optional[str] = Field(
+    mode: str | None = Field(
         default=None,
         description=(
             "`prod` or `test` — which deployment this is (server tier only; None on a client, and "
@@ -68,7 +68,7 @@ class VersionInfo(BaseModel):
         )
 
 
-def installed_compiler() -> Optional[str]:
+def installed_compiler() -> str | None:
     """The `just-dna-compiler` version this process would recompile with, or None if not installed.
 
     Public because the upgrade planner compares a stored manifest's compiler stamp against it to
@@ -78,7 +78,7 @@ def installed_compiler() -> Optional[str]:
     return _installed(_COMPILER_PKG)
 
 
-def contract_compatible(server_format: Optional[str], client_format: Optional[str]) -> bool:
+def contract_compatible(server_format: str | None, client_format: str | None) -> bool:
     """Whether two `just-dna-format` versions can safely exchange compiled artifacts.
 
     Rule: same MAJOR, and while MAJOR is 0 (pre-1.0) also the same MINOR — a 0.x minor is a breaking
@@ -97,7 +97,7 @@ def contract_compatible(server_format: Optional[str], client_format: Optional[st
     return True
 
 
-def compatibility_error(server: VersionInfo, client: VersionInfo) -> Optional[str]:
+def compatibility_error(server: VersionInfo, client: VersionInfo) -> str | None:
     """A human, actionable message if `server` and `client` are contract-incompatible, else None.
 
     Only genuine wire/artifact breakers are fatal (API version; `just-dna-format` contract). A
@@ -119,7 +119,7 @@ def compatibility_error(server: VersionInfo, client: VersionInfo) -> Optional[st
     return None
 
 
-def _is_pre_1_0(*versions: Optional[str]) -> bool:
+def _is_pre_1_0(*versions: str | None) -> bool:
     for v in versions:
         if v:
             try:

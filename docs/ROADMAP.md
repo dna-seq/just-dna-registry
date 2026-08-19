@@ -453,6 +453,33 @@ an explicit guard:
   catalog. That is an event to watch for, not a release to schedule — a deployment that has run
   `registry upgrade` over its whole catalog is done, and one that has not, is not.
 
+## 0.18.2 — enricher 0.6.4 adoption + ruff ✅
+
+- **A floor that is deliberately not hard, and labelled as such.** Upstream 0.6.4 is one fix in the
+  ClinVar drafter (S45): no public symbol moves, no pass this server runs behaves differently, and a
+  deployment left on 0.6.3 is not broken. The pin moves because the lock had already resolved 0.6.4
+  and the release's suite ran on `0.6.1 / 0.6.1 / 0.6.4`, so leaving it behind would permit an
+  assembly nobody tested. Recorded as the first soft floor in `pyproject.toml`, because the long
+  arguments attached to 0.6.2 and 0.6.3 stop working if every floor reads as mandatory.
+- **A remediation this project relayed turned out to be incomplete, and correcting it is the release.**
+  0.18.1 forwarded upstream's *those modules need a fresh upload from their publisher*. S45 measured
+  it: drafting appends, so re-drafting an existing spec adds the corrected rows **beside** the ones
+  they supersede (`MLH1`: 996 → 1,061 where a fresh draft is 1,030, with 31 rows a fresh draft does
+  not contain). The publisher needs a fresh spec directory. Corrected in
+  [UPGRADE.md](UPGRADE.md) and the changelog.
+- **No detector to build, and the reason is recorded.** The superseded rows cannot be seen from inside
+  a published module — coordinate rows carry no `rsid`, so the obvious predicate finds 0 of 31. A
+  facet or `revalidate` rule would report clean on every affected module.
+- **ruff adopted and applied**, config mirrored from `just-dna-format` rather than invented. 403
+  findings → 0 across 54 files, suite unchanged at 417. The sweep found a shadowed
+  `namespaces_for_account` live since 0.12.0 (removed; it never ran) and one rule that would have
+  introduced a bug — `SIM118` against `sqlite3.Row`, whose `__contains__` scans values rather than
+  keys.
+- **Open, deliberately not in this release:** `whoami` reports owned namespaces only, not the union
+  with membership. Not an authorization defect (`effective_role` reads membership directly); widening
+  it changes what an existing response field contains, which is minor-sized here. Reasoning is beside
+  `effective_role` in `api/deps.py`.
+
 ## 0.18.1 — enricher 0.6.3 adoption ✅
 
 - **An argument we already passed stopped being inert, which is a dependency bump with no import to

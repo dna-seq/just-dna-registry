@@ -9,7 +9,6 @@ here went stale twice, and a partial list of commands reads as a complete one.
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from dotenv import load_dotenv
@@ -39,7 +38,7 @@ _UNREACHABLE_PASSES: tuple[str, ...] = (
 )
 
 
-def _client(url: Optional[str], token: Optional[str], *, need_token: bool = False) -> RegistryClient:
+def _client(url: str | None, token: str | None, *, need_token: bool = False) -> RegistryClient:
     base = url or os.getenv(_URL_ENV) or "http://127.0.0.1:8000"
     tok = token or os.getenv(_TOKEN_ENV)
     if need_token and not tok:
@@ -55,7 +54,7 @@ TokenOpt = typer.Option(None, "--token", help=f"API key for publish (or ${_TOKEN
 
 
 @app.command("version")
-def show_versions(url: Optional[str] = UrlOpt) -> None:
+def show_versions(url: str | None = UrlOpt) -> None:
     """Show this client's and the server's versions, and whether they're contract-compatible."""
     with _client(url, None) as c:
         local = c.local_version
@@ -79,19 +78,19 @@ def show_versions(url: Optional[str] = UrlOpt) -> None:
 
 @app.command("list")
 def list_modules(
-    q: Optional[str] = typer.Option(None, help="Full-text query"),
-    gene: Optional[str] = typer.Option(None),
-    category: Optional[str] = typer.Option(None),
-    genome_build: Optional[str] = typer.Option(None, "--genome-build"),
-    namespace: Optional[str] = typer.Option(None),
-    owner: Optional[str] = typer.Option(None),
-    license: Optional[str] = typer.Option(None),
-    featured: Optional[bool] = typer.Option(None, "--featured/--not-featured"),
-    group: Optional[str] = typer.Option(None, help="Tab: all|featured|curated|popular|new|test"),
+    q: str | None = typer.Option(None, help="Full-text query"),
+    gene: str | None = typer.Option(None),
+    category: str | None = typer.Option(None),
+    genome_build: str | None = typer.Option(None, "--genome-build"),
+    namespace: str | None = typer.Option(None),
+    owner: str | None = typer.Option(None),
+    license: str | None = typer.Option(None),
+    featured: bool | None = typer.Option(None, "--featured/--not-featured"),
+    group: str | None = typer.Option(None, help="Tab: all|featured|curated|popular|new|test"),
     sort: str = typer.Option("name", help="downloads|recent|name|stars|popular"),
     page: int = typer.Option(1, help="1-based page number"),
     per_page: int = typer.Option(20, "--per-page", help="Page size (max 100)"),
-    url: Optional[str] = UrlOpt,
+    url: str | None = UrlOpt,
 ) -> None:
     """List / search catalog modules."""
     with _client(url, None) as c:
@@ -123,7 +122,7 @@ def download(
         "flat", "--layout",
         help="flat (as the manifest names them) | split (machine-written tables under derived/)",
     ),
-    url: Optional[str] = UrlOpt,
+    url: str | None = UrlOpt,
 ) -> None:
     """Download a version's artifact (+ logs): verify-then-install, or a single tar.gz.
     `version` accepts `latest`.
@@ -153,19 +152,19 @@ def import_module(
     version: str,
     archive: Path = typer.Argument(..., help="A zip/tar.gz spec archive (or legacy parquet-only)"),
     changelog: str = typer.Option("", "--changelog"),
-    title: Optional[str] = typer.Option(None, help="Display metadata for legacy parquet-only imports"),
-    description: Optional[str] = typer.Option(None),
-    report_title: Optional[str] = typer.Option(None),
-    icon: Optional[str] = typer.Option(None),
-    color: Optional[str] = typer.Option(None),
-    genome_build: Optional[str] = typer.Option(
+    title: str | None = typer.Option(None, help="Display metadata for legacy parquet-only imports"),
+    description: str | None = typer.Option(None),
+    report_title: str | None = typer.Option(None),
+    icon: str | None = typer.Option(None),
+    color: str | None = typer.Option(None),
+    genome_build: str | None = typer.Option(
         None,
         "--genome-build",
         help="Assembly of a bare parquet archive that carries no manifest.json (default GRCh38). "
         "Not display metadata: the build decides the variant_key identity.",
     ),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Publish a module from a zip/tar.gz archive (in-house packaging / legacy import)."""
     display = {
@@ -184,8 +183,8 @@ def publish(
     version: str,
     spec_dir: Path = typer.Argument(..., help="Spec directory (module_spec.yaml + CSVs [+ logs])"),
     changelog: str = typer.Option("", "--changelog"),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Publish a spec as a new module version (server-side recompile)."""
     with _client(url, token, need_token=True) as c:
@@ -200,11 +199,11 @@ def publish(
 @app.command()
 def register(
     account: str,
-    install_id: Optional[str] = typer.Option(
+    install_id: str | None = typer.Option(
         None, "--install-id", help="Existing install-id; omit to grind a fresh one"
     ),
     difficulty: int = typer.Option(20, help="Proof-of-work bits when generating an install-id"),
-    url: Optional[str] = UrlOpt,
+    url: str | None = UrlOpt,
 ) -> None:
     """Self-register an account from an install-id (proof-of-work) and print an API key."""
     if not install_id:
@@ -218,7 +217,7 @@ def register(
 
 
 @app.command("namespace-available")
-def namespace_available(namespace: str, url: Optional[str] = UrlOpt) -> None:
+def namespace_available(namespace: str, url: str | None = UrlOpt) -> None:
     """Check whether a namespace is free to claim."""
     with _client(url, None) as c:
         info = c.namespace_available(namespace)
@@ -229,7 +228,7 @@ def namespace_available(namespace: str, url: Optional[str] = UrlOpt) -> None:
 
 @app.command("claim-namespace")
 def claim_namespace(
-    namespace: str, url: Optional[str] = UrlOpt, token: Optional[str] = TokenOpt
+    namespace: str, url: str | None = UrlOpt, token: str | None = TokenOpt
 ) -> None:
     """Claim an available namespace for your account (token)."""
     with _client(url, token, need_token=True) as c:
@@ -240,11 +239,11 @@ def claim_namespace(
 
 @app.command("find-by-hash")
 def find_by_hash(
-    digest: Optional[str] = typer.Argument(None, help="sha256:… artifact digest"),
-    manifest_path: Optional[Path] = typer.Option(
+    digest: str | None = typer.Argument(None, help="sha256:… artifact digest"),
+    manifest_path: Path | None = typer.Option(
         None, "--manifest", help="Read the digest from a local manifest.json instead"
     ),
-    url: Optional[str] = UrlOpt,
+    url: str | None = UrlOpt,
 ) -> None:
     """Check whether an artifact digest is already published (dedup / provenance check)."""
     if manifest_path is not None:
@@ -269,8 +268,8 @@ def amend_changelog(
     version: str,
     changelog: str,
     append: bool = typer.Option(False, "--append", help="Append to the existing changelog"),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Amend a published version's changelog (metadata only; the artifact stays immutable)."""
     with _client(url, token, need_token=True) as c:
@@ -284,8 +283,8 @@ def amend_logo(
     name: str,
     version: str,
     logo: Path = typer.Argument(..., help="Logo image (png/jpg/jpeg)"),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Replace a published version's logo (metadata only; out of the digest, so no version bump)."""
     with _client(url, token, need_token=True) as c:
@@ -299,14 +298,14 @@ def amend_readme(
     namespace: str,
     name: str,
     version: str,
-    readme: Optional[Path] = typer.Argument(
+    readme: Path | None = typer.Argument(
         None, help="Markdown file with the card prose, or `-` to read it from stdin"
     ),
     clear: bool = typer.Option(
         False, "--clear", help="Blank the card instead of setting prose (no PATH)"
     ),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Replace a published version's readme — the prose on its card (out of the digest, no bump).
 
@@ -348,8 +347,8 @@ def update_module_version(
     version: str,
     spec_dir: Path = typer.Argument(..., help="Updated spec directory"),
     changelog: str = typer.Option("", "--changelog"),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Publish a higher version of an existing module (checks it supersedes the current latest)."""
     with _client(url, token, need_token=True) as c:
@@ -359,7 +358,7 @@ def update_module_version(
             if exc.status_code == 404:
                 raise typer.BadParameter(
                     f"{namespace}/{name} does not exist yet — use `publish` for the first version"
-                )
+                ) from exc
             raise
         latest = detail.get("latest_version")
         if latest and parse_version(version) <= parse_version(latest):
@@ -399,8 +398,8 @@ def validate(
         True, "--strict/--no-strict", help="Grade findings under the mode publish compiles in"
     ),
     pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Validate a spec directory server-side, without publishing. Exits 1 when it would be rejected.
 
@@ -456,15 +455,15 @@ def check(
     pgx: bool = typer.Option(
         False, "--pgx", help="function_status vs PharmVar/CPIC/ClinPGx/ClinGen (needs --use)"
     ),
-    use: Optional[str] = typer.Option(
+    use: str | None = typer.Option(
         None,
         "--use",
         help="unstated | non-commercial | commercial. Every PGx source forbids sale, so without a "
              "declaration each is skipped rather than queried.",
     ),
     pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
-    url: Optional[str] = UrlOpt,
-    token: Optional[str] = TokenOpt,
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
 ) -> None:
     """Full publish dry run: validation plus the network-tier checks. Exits 1 unless it would publish.
 
@@ -511,7 +510,7 @@ def check(
                     "(no ceiling), or ask the operator to raise REGISTRY_ENRICH_MAX_VARIANTS.",
                     fg=typer.colors.YELLOW,
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
             if detail.get("error") != "enrichment_unavailable":
                 raise
             # A bare "HTTP 503: {...}" here becomes a support ticket. Name the fix instead, for both
@@ -523,7 +522,7 @@ def check(
                 f"--offline for the checks that need no reference.",
                 fg=typer.colors.RED,
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
 
     _echo_findings(report.validation)
     if report.skipped_reason:
@@ -624,7 +623,7 @@ def signature(
     lookup: bool = typer.Option(
         False, "--lookup", help="Also ask the registry whether this data is already published"
     ),
-    url: Optional[str] = UrlOpt,
+    url: str | None = UrlOpt,
 ) -> None:
     """Print a spec's content signature, computed locally — no upload, no recompile.
 

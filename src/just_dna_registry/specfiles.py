@@ -31,12 +31,12 @@ Deliberately *not* a validation rule: composition is the compiler's judgement, n
 back from `validate_spec` as a proper finding with the compiler's own wording.
 """
 
+from collections.abc import Iterable
 from pathlib import PurePosixPath
-from typing import Iterable
 
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
-    LICENSING_CSV,
+    LICENSING_CSV,  # noqa: F401 — re-exported: the sidecar's canonical spelling, imported from here
     SIDECAR_SPELLINGS,
     SOURCES_CSV,
     VERIFICATION_JSON,

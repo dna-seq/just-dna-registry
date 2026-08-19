@@ -1,6 +1,6 @@
 """Auth, publish (server-side recompile), and yank contract tests (SPEC §8.6–§8.9, §13)."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 from just_dna_format.integrity import verify_manifest

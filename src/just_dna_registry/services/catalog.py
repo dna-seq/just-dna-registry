@@ -4,14 +4,13 @@ Card stats are pulled from each module's latest-version manifest (the source of 
 """
 
 import sqlite3
-from typing import Optional
 
 from just_dna_format.manifest import ModuleManifest
 
 from just_dna_registry import groups
 from just_dna_registry.config import API_PREFIX
-from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.facets import is_trusted, version_facets
+from just_dna_registry.db.repository import Repository
 from just_dna_registry.models.api import (
     CardStats,
     FactTablesInfo,
@@ -34,27 +33,34 @@ def _manifest_url(namespace: str, name: str, version: str) -> str:
     return f"{API_PREFIX}/modules/{namespace}/{name}/versions/{version}/manifest"
 
 
-def _logo_url(namespace: str, name: str, version: str, manifest: Optional[ModuleManifest]) -> Optional[str]:
+def _logo_url(namespace: str, name: str, version: str, manifest: ModuleManifest | None) -> str | None:
     if manifest is None or manifest.logo is None:
         return None
     return f"{API_PREFIX}/modules/{namespace}/{name}/versions/{version}/files/{manifest.logo.name}"
 
 
-def _latest_manifest(repo: Repository, row: sqlite3.Row) -> Optional[ModuleManifest]:
+def _latest_manifest(repo: Repository, row: sqlite3.Row) -> ModuleManifest | None:
     if not row["latest_version"]:
         return None
     raw = repo.get_manifest_json(row["namespace"], row["name"], row["latest_version"])
     return ModuleManifest.model_validate_json(raw) if raw else None
 
 
+#: **`.keys()` here is load-bearing — do not let a linter talk you out of it.** These rows are
+#: `sqlite3.Row`, not dicts: `Row` implements `__contains__` as a *sequence* scan over its **values**,
+#: so `"downloads" in row` asks whether some column holds the string "downloads" and answers `False`
+#: for a column that is genuinely present. Rewriting these four to `key in row` (ruff SIM118, which
+#: assumes dict semantics) would make every optional projection read as absent: `featured` always
+#: false, `needs_upgrade` always false, `downloads` always 0, and every version reported unsigned.
+#: `.keys()` returns a real list of column names, which is the only correct test.
 def _featured(repo: Repository, row: sqlite3.Row) -> bool:
-    if "featured" in row.keys():  # search rows carry it (no extra query)
+    if "featured" in row.keys():  # noqa: SIM118 — sqlite3.Row, see note above (search rows carry it)
         return bool(row["featured"])
     flags = repo.namespace_flags(row["namespace"])
     return bool(flags["featured"]) if flags else False
 
 
-def _resolution_from_manifest(manifest: Optional[ModuleManifest]) -> ResolutionInfo:
+def _resolution_from_manifest(manifest: ModuleManifest | None) -> ResolutionInfo:
     """The trust facet, from a manifest. Used on the card, where the manifest is already loaded."""
     if manifest is None:
         return ResolutionInfo()
@@ -114,7 +120,7 @@ _COUNTER_COLUMNS: tuple[str, ...] = (
 )
 
 
-def _counters_from_manifest(manifest: ModuleManifest) -> dict[str, Optional[int]]:
+def _counters_from_manifest(manifest: ModuleManifest) -> dict[str, int | None]:
     """The same counters `version_facets` projects, for the card's manifest-side path.
 
     Delegated rather than re-read off `manifest.compilation`, so the era gate that turns a pre-0.6
@@ -124,7 +130,7 @@ def _counters_from_manifest(manifest: ModuleManifest) -> dict[str, Optional[int]
     return {name: facets[name] for name in _COUNTER_COLUMNS}
 
 
-def _licensing(manifest: Optional[ModuleManifest]) -> LicensingInfo:
+def _licensing(manifest: ModuleManifest | None) -> LicensingInfo:
     """What the module's sources permit. Tri-state throughout: `None` means undetermined, and an
     undetermined permission has not been shown to exist."""
     sources = manifest.sources if manifest else None
@@ -143,7 +149,7 @@ def _licensing(manifest: Optional[ModuleManifest]) -> LicensingInfo:
     )
 
 
-def _facts(manifest: Optional[ModuleManifest]) -> FactTablesInfo:
+def _facts(manifest: ModuleManifest | None) -> FactTablesInfo:
     """Which derived fact tables the version carries. Presence only — see `FactTablesInfo`.
 
     Read off the manifest blocks rather than off `artifact.files`: a block is present exactly when
@@ -169,7 +175,7 @@ def _facts(manifest: Optional[ModuleManifest]) -> FactTablesInfo:
     )
 
 
-def _verification(manifest: Optional[ModuleManifest]) -> Optional[VerificationInfo]:
+def _verification(manifest: ModuleManifest | None) -> VerificationInfo | None:
     """The publisher's attestation, or `None` when the module said nothing.
 
     `None` and an empty block are **not** collapsed: absent means no attestation survived into the
@@ -202,7 +208,7 @@ def _verification(manifest: Optional[ModuleManifest]) -> Optional[VerificationIn
     )
 
 
-def _weighting(manifest: Optional[ModuleManifest]) -> Optional[WeightingInfo]:
+def _weighting(manifest: ModuleManifest | None) -> WeightingInfo | None:
     """What the module says its weights mean — verbatim, or `None` if it has not said."""
     if manifest is None or manifest.weighting is None:
         return None
@@ -213,7 +219,7 @@ def _weighting(manifest: Optional[ModuleManifest]) -> Optional[WeightingInfo]:
     )
 
 
-def _gwas_effects(manifest: Optional[ModuleManifest]) -> Optional[GwasEffectsInfo]:
+def _gwas_effects(manifest: ModuleManifest | None) -> GwasEffectsInfo | None:
     """The GWAS sidecar's facets, with the two that decide usability carried alongside the count."""
     if manifest is None or manifest.gwas_effects is None:
         return None
@@ -231,7 +237,7 @@ def _gwas_effects(manifest: Optional[ModuleManifest]) -> Optional[GwasEffectsInf
     )
 
 
-def _card(repo: Repository, row: sqlite3.Row, starred_by: Optional[int] = None) -> ModuleCard:
+def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> ModuleCard:
     manifest = _latest_manifest(repo, row)
     stats = manifest.stats if manifest else None
     card_stats = CardStats(
@@ -288,9 +294,9 @@ def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSumm
         compile_success=bool(row["compile_success"]),
         yanked=bool(row["yanked"]),
         signed=_version_signed(row),
-        needs_upgrade=bool(row["needs_upgrade"]) if "needs_upgrade" in row.keys() else False,
+        needs_upgrade=bool(row["needs_upgrade"]) if "needs_upgrade" in row.keys() else False,  # noqa: SIM118
         resolution=_resolution_from_row(row),
-        downloads=int(row["downloads"]) if "downloads" in row.keys() else 0,
+        downloads=int(row["downloads"]) if "downloads" in row.keys() else 0,  # noqa: SIM118
         created_at=row["created_at"],
         changelog=row["changelog"],
         manifest_url=_manifest_url(namespace, name, row["version"]),
@@ -299,7 +305,7 @@ def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSumm
 
 def _version_signed(row: sqlite3.Row) -> bool:
     """Whether a version's stored manifest carries a signature (projected from manifest_json)."""
-    if "manifest_json" not in row.keys() or not row["manifest_json"]:
+    if "manifest_json" not in row.keys() or not row["manifest_json"]:  # noqa: SIM118
         return False
     manifest = ModuleManifest.model_validate_json(row["manifest_json"])
     return manifest.signature is not None
@@ -310,8 +316,8 @@ def list_modules(
     *,
     page: int,
     per_page: int,
-    starred_by: Optional[int] = None,
-    group: Optional[str] = None,
+    starred_by: int | None = None,
+    group: str | None = None,
     test_pattern: str,
     **filters: object,
 ) -> Page[ModuleCard]:
@@ -333,8 +339,8 @@ def list_modules(
 
 
 def module_detail(
-    repo: Repository, namespace: str, name: str, starred_by: Optional[int] = None
-) -> Optional[ModuleDetail]:
+    repo: Repository, namespace: str, name: str, starred_by: int | None = None
+) -> ModuleDetail | None:
     row = repo.get_module_row(namespace, name)
     if row is None:
         return None
@@ -358,7 +364,7 @@ def module_detail(
 
 def version_page(
     repo: Repository, namespace: str, name: str, *, page: int, per_page: int
-) -> Optional[Page[VersionSummary]]:
+) -> Page[VersionSummary] | None:
     row = repo.get_module_row(namespace, name)
     if row is None:
         return None
@@ -375,6 +381,6 @@ def version_page(
 
 def get_manifest(
     repo: Repository, namespace: str, name: str, version: str
-) -> Optional[ModuleManifest]:
+) -> ModuleManifest | None:
     raw = repo.get_manifest_json(namespace, name, version)
     return ModuleManifest.model_validate_json(raw) if raw else None

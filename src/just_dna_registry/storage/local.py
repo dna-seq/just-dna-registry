@@ -9,7 +9,6 @@ file bytes itself via the files endpoint.
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Optional
 
 
 class LocalStorage:
@@ -34,7 +33,7 @@ class LocalStorage:
     def read_file(self, key: str, name: str) -> bytes:
         return (self._dir(key) / name).read_bytes()
 
-    def file_url(self, key: str, name: str) -> Optional[str]:
+    def file_url(self, key: str, name: str) -> str | None:
         # Local backend has no external URL; the API streams the bytes instead.
         return None
 

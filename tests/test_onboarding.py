@@ -1,6 +1,6 @@
 """Install-id proof-of-work, self-registration, namespace claim, and batch digest lookup (0.3)."""
 
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient

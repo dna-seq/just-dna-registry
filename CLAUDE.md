@@ -62,9 +62,9 @@ not predict `compile` for two shapes, which is S6's rule one tier down; RM97 —
 below). The reasons are written into the `pyproject.toml` pins beside each floor, which is where the
 next person will look.
 
-**And the three tiers can move apart: `just-dna-enricher` floors at 0.6.3 while the other two stay at
+**And the three tiers can move apart: `just-dna-enricher` floors at 0.6.4 while the other two stay at
 0.6.1.** The network tier touches no parquet, model or manifest field, so upstream can cut it alone —
-and neither enricher floor is a symbol missing below it. **0.6.2** is one whose *meaning changes at*
+and none of the three enricher floors is a symbol missing below it. **0.6.2** is one whose *meaning changes at*
 it: our adapters catch `FrequencyUnavailable` and its siblings, which on 0.6.1 nothing raises, so those
 arms would be dead code and `/check` would 500 over an outage again. **0.6.3** is the same shape moved
 onto an argument — `load_dotenv_file` had reached none of the six cache resolvers, so the `False` we
@@ -73,12 +73,31 @@ had always passed to them was inert, and the release that makes the flag work is
 and check the flags you already pass as well as the symbols you already import: upgrading all three in
 step here would have been wrong, and so would treating an enricher patch as beneath reading.
 
+**And having read one, be willing to say it is not load-bearing. `0.6.4` is the first enricher floor
+here that is *not* hard** — one fix in upstream's ClinVar drafter, no public symbol moved, nothing this
+service runs behaving differently, and a deployment left on 0.6.3 is not broken. It is the floor
+because the lock had already resolved it and the release's suite ran on that trio, so leaving the floor
+behind would permit an assembly nobody tested. Record which kind a floor is when you add one: the
+0.6.2 and 0.6.3 comments run long because both were easy to mistake for optional, and that whole
+argument is wasted if a later reader learns to skim every floor as mandatory.
+
 **A version-gap check belongs to the thing that has versions.** Most of 0.6.3 is upstream's ClinVar and
 ClinPGx *drafters*, and the honest answer for this service was that it has none — drafting is
 authoring-side, so "modules published before this need a re-draft" is a message for module authors and
 not a `registry upgrade` sweep. Nothing recompiles here: the compiler stayed at 0.6.1, and a compiler
 patch is deliberately not a gap. Say that in the release rather than leaving a reader to infer it, or
 the next operator runs the UPGRADE.md sweep expecting it to fix a drafted module, and it cannot.
+
+**The other half of that: advice forwarded on somebody else's behalf is still ours to correct.** 0.18.1
+passed upstream's remediation along as *those modules need a fresh upload from their publisher*, and
+0.6.4 (S45) is upstream measuring what 0.6.3 had not — a re-draft of the existing spec **appends** the
+corrected rows beside the ones they supersede, so the shorter instruction produces a module worse-formed
+than either the old one or a new one. The publisher needs a fresh spec directory. Two things generalise.
+A remediation we relay is a claim we made, so re-read it when its source is re-measured. And **before
+building a detector for a defect like this, ask whether the artifact can even carry the evidence** — the
+superseded rows are invisible from inside a published module (coordinate rows carry no `rsid`; the
+obvious predicate finds 0 of 31), so a facet or `revalidate` rule would report clean on every affected
+module, which is worse than having none.
 
 ---
 
@@ -111,6 +130,21 @@ stale wrapper.
   contract. FastAPI response models should be explicit Pydantic types, not bare dicts.
 - **Typer CLI**: Mandatory for all CLI tools.
 - **Logging**: Use the standard-library `logging` system logger.
+- **Linting is ruff, and the config is a mirror**: `uv run ruff check .` must pass. `[tool.ruff]` in
+  `pyproject.toml` is copied from `just-dna-format`'s, deliberately — the two repos are edited in the
+  same sitting, and a rule that fires in one and not the other turns a lint run into a question about
+  which checkout you are standing in. Take upstream's changes to that block rather than diverging;
+  the recorded local differences are the `.claude/` exclude (gist-synced scripts, one-way by hand),
+  the `tests/*` glob (one suite, not three member packages), and FastAPI's `Depends`/`Query`/`File`
+  defaults folded into the existing B008 exemption. Reasons for the *unselected* rules live in that
+  block too — add to them rather than rediscovering why BLE001 is off.
+  **The one rule that must never be auto-applied here is SIM118.** Catalog rows are `sqlite3.Row`,
+  whose `__contains__` scans **values**, not keys: `"downloads" in row` is `False` for a column that
+  is genuinely present, so ruff's `key in dict` rewrite silently turns every optional projection off
+  (`featured`, `needs_upgrade`, `downloads`, and the signed check). The four sites carry a `noqa` and
+  `services/catalog.py` carries the proof. More generally, a `--fix` on this codebase needs the
+  suite behind it: an "unused" import may be a **re-export** a test imports from us
+  (`specfiles.LICENSING_CSV` is exactly that, and removing it broke collection).
 - **Pay attention to terminal warnings**: Always check output for warnings, especially deprecation
   ones. AI knowledge of APIs can be outdated; these warnings are critical hints to update code.
 - **No placeholders**: Never use `/my/custom/path/` or fabricated example values in code.

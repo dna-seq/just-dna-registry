@@ -7,7 +7,7 @@ import io
 import logging
 import tarfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from just_dna_format.integrity import verify_manifest
@@ -164,7 +164,7 @@ class ModeMismatchError(RegistryError):
     exists only on the polygon — which is the same fact from the other side.
     """
 
-    def __init__(self, *, expected: str, actual: Optional[str], base_url: str) -> None:
+    def __init__(self, *, expected: str, actual: str | None, base_url: str) -> None:
         seen = actual or "nothing (a server older than 0.13 does not report its mode)"
         super().__init__(
             409,
@@ -181,11 +181,11 @@ class RegistryClient:
     def __init__(
         self,
         base_url: str,
-        token: Optional[str] = None,
+        token: str | None = None,
         timeout: float = 600.0,  # publishes recompile server-side; large modules take minutes
-        transport: Optional[httpx.BaseTransport] = None,
+        transport: httpx.BaseTransport | None = None,
         check_version: bool = True,
-        expect_mode: Optional[str] = None,
+        expect_mode: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.local_version = VersionInfo.local()
@@ -228,7 +228,7 @@ class RegistryClient:
 
     # ── Version guard ───────────────────────────────────────────────────────────
 
-    def server_version(self) -> Optional[VersionInfo]:
+    def server_version(self) -> VersionInfo | None:
         """The server's advertised versions, or None if it's too old to report them (pre-0.7.1:
         `GET /version` 404s). Never raises for a plain missing endpoint."""
         resp = self._http.get("/version")
@@ -301,21 +301,21 @@ class RegistryClient:
     def list_modules(
         self,
         *,
-        q: Optional[str] = None,
-        category: Optional[str] = None,
-        gene: Optional[str] = None,
-        genome_build: Optional[str] = None,
-        owner: Optional[str] = None,
-        license: Optional[str] = None,
-        namespace: Optional[str] = None,
-        featured: Optional[bool] = None,
+        q: str | None = None,
+        category: str | None = None,
+        gene: str | None = None,
+        genome_build: str | None = None,
+        owner: str | None = None,
+        license: str | None = None,
+        namespace: str | None = None,
+        featured: bool | None = None,
         include_blacklisted: bool = False,
-        has_gene_validity: Optional[bool] = None,
-        has_clinical_assertions: Optional[bool] = None,
-        has_gwas_effects: Optional[bool] = None,
-        has_frequencies: Optional[bool] = None,
-        weighting_declared: Optional[bool] = None,
-        group: Optional[str] = None,
+        has_gene_validity: bool | None = None,
+        has_clinical_assertions: bool | None = None,
+        has_gwas_effects: bool | None = None,
+        has_frequencies: bool | None = None,
+        weighting_declared: bool | None = None,
+        group: str | None = None,
         sort: str = "name",
         page: int = 1,
         per_page: int = 20,
@@ -422,7 +422,7 @@ class RegistryClient:
             raise RegistryError(resp.status_code, resp.text)
         return resp.content
 
-    def pubkey(self) -> Optional[str]:
+    def pubkey(self) -> str | None:
         """The server's Ed25519 public key (base64) for pinning, or None if it doesn't sign."""
         resp = self._http.get("/pubkey")
         if resp.status_code == 404:
@@ -438,7 +438,7 @@ class RegistryClient:
         *,
         include_logs: bool = True,
         include_inputs: bool = False,
-        public_key: Optional[str] = None,
+        public_key: str | None = None,
         layout: str = "flat",
     ) -> ModuleManifest:
         """Download a version's artifact (+ logs/logo/provenance) into `dest` and verify it.
@@ -528,12 +528,15 @@ class RegistryClient:
         """
         try:
             from just_dna_compiler.compiler import content_signature
-        except ImportError:
+        except ImportError as exc:
+            # Chained deliberately: the missing name may be a *transitive* dependency of the
+            # compiler rather than the compiler itself, and the hint above would then be misleading
+            # on its own.
             raise RegistryError(
                 0,
                 "computing a content signature needs just-dna-compiler — install "
                 "`just-dna-registry[compiler]`",
-            )
+            ) from exc
         return content_signature(Path(spec_dir))
 
     def lookup_by_signature(self, signature: str) -> list[VersionRef]:
@@ -554,7 +557,7 @@ class RegistryClient:
         }
 
     def is_published(
-        self, spec_dir: Path, *, namespace: Optional[str] = None, name: Optional[str] = None
+        self, spec_dir: Path, *, namespace: str | None = None, name: str | None = None
     ) -> list[VersionRef]:
         """Where this spec's data is already published, under any name.
 
@@ -625,7 +628,7 @@ class RegistryClient:
         identifiers: bool = False,
         acmg: bool = False,
         pgx: bool = False,
-        declared_use: Optional[str] = None,
+        declared_use: str | None = None,
         pack: bool = False,
     ) -> CheckReport:
         """The full publish dry run: validation plus what the server's network tier finds.
@@ -718,7 +721,7 @@ class RegistryClient:
         archive_path: Path,
         *,
         changelog: str = "",
-        display: Optional[dict] = None,
+        display: dict | None = None,
     ) -> ModuleManifest:
         """Publish from a zip/tar.gz archive (spec archive or legacy parquet-only + `display`).
 
@@ -807,10 +810,10 @@ class RegistryClient:
     def update_profile(
         self,
         *,
-        email: Optional[str] = None,
-        display_name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        funding_url: Optional[str] = None,
+        email: str | None = None,
+        display_name: str | None = None,
+        avatar_url: str | None = None,
+        funding_url: str | None = None,
     ) -> dict:
         """Edit the caller's own profile. Only the fields passed are sent; pass `""` to clear one.
         `type` is not self-editable. Returns the updated identity."""
@@ -865,7 +868,7 @@ class RegistryClient:
         """Remove an org member (admin+; removing an owner needs owner)."""
         return self._json(self._http.delete(f"/orgs/{org}/members/{member}"))
 
-    def update_org_settings(self, org: str, **fields: Optional[str]) -> dict:
+    def update_org_settings(self, org: str, **fields: str | None) -> dict:
         """Edit an org's profile (owner-only): `funding_url`, `display_name`, `avatar_url`, `email`."""
         body = {k: v for k, v in fields.items() if v is not None}
         return self._json(self._http.patch(f"/orgs/{org}/settings", json=body))
@@ -933,7 +936,7 @@ class RegistryClient:
         """Remove the caller's star (idempotent)."""
         return self._json(self._http.delete(f"/modules/{namespace}/{name}/star"))
 
-    def reviews(self, namespace: str, name: str, version: Optional[str] = None) -> list[dict]:
+    def reviews(self, namespace: str, name: str, version: str | None = None) -> list[dict]:
         """Reviews/audits for a module, or one version — highlighted first. Anonymous."""
         path = f"/modules/{namespace}/{name}"
         path += f"/versions/{version}/reviews" if version is not None else "/reviews"
@@ -946,8 +949,8 @@ class RegistryClient:
         version: str,
         *,
         rating: int,
-        verdict: Optional[str] = None,
-        notes: Optional[str] = None,
+        verdict: str | None = None,
+        notes: str | None = None,
     ) -> list[dict]:
         """Post/update the caller's review of a version (one per account per version). Returns the
         version's current review list."""
@@ -980,7 +983,7 @@ class RegistryClient:
         """The listing groups (tabs) the catalog defines: `[{key, label, description}]`."""
         return self._json(self._http.get("/modules/groups"))
 
-    def catalog_stats(self, namespace: Optional[str] = None, *, group: Optional[str] = None) -> dict:
+    def catalog_stats(self, namespace: str | None = None, *, group: str | None = None) -> dict:
         """Aggregate catalog stats by paging the listing — there is no dedicated stats endpoint, so
         this rolls up the card fields (`get_module`/`list_modules`). Optionally scoped to a namespace
         or a group. Returns totals across the matched modules."""

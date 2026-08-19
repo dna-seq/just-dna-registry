@@ -10,8 +10,8 @@ Requires a write-capable token (validated at startup by `startup.validate_hf_acc
 **public** dataset repo so `resolve` URLs are fetchable without auth. Server-tier only.
 """
 
+import contextlib
 from collections.abc import Mapping
-from typing import Optional
 
 from huggingface_hub import HfApi, HfFileSystem
 from huggingface_hub.hf_api import CommitOperationAdd
@@ -21,7 +21,7 @@ class HfStorage:
     """Version-scoped store over an HF dataset repo."""
 
     def __init__(
-        self, repo_id: str, token: Optional[str] = None, *, prefix: str = "data", revision: str = "main"
+        self, repo_id: str, token: str | None = None, *, prefix: str = "data", revision: str = "main"
     ) -> None:
         self.repo_id = repo_id
         self.prefix = prefix
@@ -54,19 +54,19 @@ class HfStorage:
     def read_file(self, key: str, name: str) -> bytes:
         return self._fs.cat_file(self._fs_path(key, name))
 
-    def file_url(self, key: str, name: str) -> Optional[str]:
+    def file_url(self, key: str, name: str) -> str | None:
         return (
             f"https://huggingface.co/datasets/{self.repo_id}/resolve/"
             f"{self.revision}/{self._repo_path(key, name)}"
         )
 
     def remove(self, key: str) -> None:
-        try:
+        # Broad on purpose and unchanged in substance: removal is idempotent, so an already-absent
+        # folder (or any other failure to delete one) is not worth propagating to the caller.
+        with contextlib.suppress(Exception):
             self._api.delete_folder(
                 path_in_repo=f"{self.prefix}/{key}",
                 repo_id=self.repo_id,
                 repo_type="dataset",
                 revision=self.revision,
             )
-        except Exception:  # noqa: BLE001 — idempotent: already-absent is fine
-            pass

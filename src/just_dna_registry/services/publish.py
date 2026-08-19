@@ -25,8 +25,9 @@ import shutil
 import tarfile
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Mapping, Optional
+from typing import Any
 
 import yaml
 from eliot import start_action
@@ -338,8 +339,8 @@ def publish_version(
     changelog: str,
     owner: str,
     files: Mapping[str, bytes],
-    published_by: Optional[int] = None,
-    gate: Optional[Any] = None,
+    published_by: int | None = None,
+    gate: Any | None = None,
     allow_test_data: bool = False,
 ) -> ModuleManifest:
     """Publish from individually-uploaded spec files.
@@ -383,10 +384,10 @@ def import_archive(
     changelog: str,
     owner: str,
     archive: bytes,
-    display: Optional[dict] = None,
+    display: dict | None = None,
     allow_test_data: bool = False,
-    published_by: Optional[int] = None,
-    gate: Optional[Any] = None,
+    published_by: int | None = None,
+    gate: Any | None = None,
 ) -> ModuleManifest:
     """Publish from a zip/tar.gz archive: a spec archive is compiled directly; a legacy
     parquet-only archive is reverse-engineered (with client-supplied `display` metadata) first.
@@ -400,25 +401,24 @@ def import_archive(
         with start_action(
             action_type="import_archive", namespace=namespace, name=name, version=version,
             archive_bytes=len(archive),
-        ) as action:
-            with tempfile.TemporaryDirectory() as tmp:
-                extracted = Path(tmp) / "extracted"
-                extracted.mkdir()
-                _extract_archive(archive, extracted, settings)
-                root = _module_root(extracted)
-                is_spec = (root / "module_spec.yaml").is_file()
-                action.log(message_type="archive_extracted", mode="spec" if is_spec else "reverse",
-                           root=str(root.relative_to(extracted)) or ".")
-                if is_spec:
-                    spec_dir = root
-                else:
-                    spec_dir = Path(tmp) / "reversed"
-                    reverse_module(root, spec_dir, module_name=name, **(_reverse_kwargs(display)))
-                return _finalize(
-                    repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
-                    version=version, changelog=changelog, owner=owner, published_by=published_by,
-                    spec_dir=spec_dir, allow_test_data=allow_test_data,
-                )
+        ) as action, tempfile.TemporaryDirectory() as tmp:
+            extracted = Path(tmp) / "extracted"
+            extracted.mkdir()
+            _extract_archive(archive, extracted, settings)
+            root = _module_root(extracted)
+            is_spec = (root / "module_spec.yaml").is_file()
+            action.log(message_type="archive_extracted", mode="spec" if is_spec else "reverse",
+                       root=str(root.relative_to(extracted)) or ".")
+            if is_spec:
+                spec_dir = root
+            else:
+                spec_dir = Path(tmp) / "reversed"
+                reverse_module(root, spec_dir, module_name=name, **(_reverse_kwargs(display)))
+            return _finalize(
+                repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
+                version=version, changelog=changelog, owner=owner, published_by=published_by,
+                spec_dir=spec_dir, allow_test_data=allow_test_data,
+            )
     finally:
         if gate is not None:
             gate.release()
@@ -438,7 +438,7 @@ def _finalize(
     changelog: str,
     owner: str,
     spec_dir: Path,
-    published_by: Optional[int] = None,
+    published_by: int | None = None,
     allow_test_data: bool = False,
 ) -> ModuleManifest:
     """Validate, enrich, recompile a prepared spec dir, store the version, and index it.
@@ -636,7 +636,7 @@ def _finalize(
 
 def _reject_duplicate_content(
     repo: Repository, spec_dir: Path, namespace: str, name: str, action: Any,
-    *, scope_account: Optional[int] = None,
+    *, scope_account: int | None = None,
 ) -> str:
     """Refuse a republish of data already listed under a *different* `(namespace, name)`.
 
@@ -814,7 +814,7 @@ def _extract_archive(data: bytes, dest: Path, settings: Settings) -> None:
             _reject_expansion(sum(m.size for m in tf.getmembers() if m.isfile()), settings)
             tf.extractall(dest, filter="data")  # 'data' filter blocks traversal/special files
     except tarfile.TarError as exc:
-        raise PublishError("bad_archive", errors=[f"not a valid zip or tar.gz: {exc}"])
+        raise PublishError("bad_archive", errors=[f"not a valid zip or tar.gz: {exc}"]) from exc
 
 
 def _module_root(extracted: Path) -> Path:
@@ -829,7 +829,7 @@ def _module_root(extracted: Path) -> Path:
     )
 
 
-def _reverse_kwargs(display: Optional[dict]) -> dict:
+def _reverse_kwargs(display: dict | None) -> dict:
     """Filter client-supplied metadata to `reverse_module`'s accepted, non-null keys.
 
     `genome_build` is on this list and is not display metadata — it is the one value here that is

@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.permissions import (
-    Capability,
     ROLE_CAPS,
+    Capability,
     higher_role,
     role_has,
 )

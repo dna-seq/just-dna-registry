@@ -216,9 +216,8 @@ def test_a_worker_that_never_starts_does_not_strand_the_permit() -> None:
         with mock.patch(
             "just_dna_registry.lowpriority.ThreadPoolExecutor.submit",
             side_effect=RuntimeError("can't start new thread"),
-        ):
-            with pytest.raises(RuntimeError):
-                await _run_queued(never_runs, gate, settings)
+        ), pytest.raises(RuntimeError):
+            await _run_queued(never_runs, gate, settings)
 
         assert gate.active == 0, "the permit must not outlive a worker that never started"
         # And the gate is genuinely usable again, which is the thing that actually broke.

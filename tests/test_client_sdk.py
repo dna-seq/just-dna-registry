@@ -203,7 +203,10 @@ async def test_the_cli_prints_a_pass_that_reached_nothing(capsys, monkeypatch) -
     """
     from just_dna_registry import client_cli
     from just_dna_registry.models.api import (
-        CheckReport, EnrichmentReport, FrequencyCheck, ValidationReport,
+        CheckReport,
+        EnrichmentReport,
+        FrequencyCheck,
+        ValidationReport,
     )
 
     report = CheckReport(
@@ -789,7 +792,7 @@ def test_split_and_flatten_are_inverses(tmp_path) -> None:
 
     plan = plan_layout(uploaded)
     assert plan.conflicts == []
-    assert {src: dest for src, dest in plan.renames.items()} == {
+    assert dict(plan.renames.items()) == {
         f"{DERIVED_DIR}/{name}": name for name in DERIVED_FILES
     }
     assert "logs/reviewer.log" not in plan.renames, "the one subtree the manifest attests by path"

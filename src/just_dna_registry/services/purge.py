@@ -25,7 +25,7 @@ production namespace — see `PurgePlan.disowned_versions`.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from just_dna_registry.storage.base import StorageBackend
 
@@ -162,7 +162,7 @@ def plan_purge(
     return plan
 
 
-def apply_purge(repo: Any, storage: Optional[StorageBackend], plan: PurgePlan) -> PurgePlan:
+def apply_purge(repo: Any, storage: StorageBackend | None, plan: PurgePlan) -> PurgePlan:
     """Execute `plan`. Ordered so no step leaves a foreign key dangling.
 
     Modules first (which cascades versions, facets, stars and reviews), then namespace grants, then the

@@ -34,9 +34,9 @@ from just_dna_registry.api.deps import (
     get_repo,
     get_storage,
     rate_limit,
-    settings_dep,
     require_account,
     require_capability,
+    settings_dep,
 )
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
@@ -209,7 +209,7 @@ async def publish(
             allow_test_data=allow_test_data,
         )
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc)
+        raise _publish_http_error(exc) from exc
     return manifest.model_dump()
 
 
@@ -230,12 +230,12 @@ async def import_archive(
     archive: Annotated[UploadFile, File()],
     changelog: Annotated[str, Form()] = "",
     allow_test_data: Annotated[bool, Form()] = False,
-    title: Annotated[Optional[str], Form()] = None,
-    description: Annotated[Optional[str], Form()] = None,
-    report_title: Annotated[Optional[str], Form()] = None,
-    icon: Annotated[Optional[str], Form()] = None,
-    color: Annotated[Optional[str], Form()] = None,
-    genome_build: Annotated[Optional[str], Form()] = None,
+    title: Annotated[str | None, Form()] = None,
+    description: Annotated[str | None, Form()] = None,
+    report_title: Annotated[str | None, Form()] = None,
+    icon: Annotated[str | None, Form()] = None,
+    color: Annotated[str | None, Form()] = None,
+    genome_build: Annotated[str | None, Form()] = None,
 ) -> dict:
     """Publish from a zip/tar.gz archive (in-house packaging / legacy import).
 
@@ -300,7 +300,7 @@ async def import_archive(
             allow_test_data=allow_test_data,
         )
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc)
+        raise _publish_http_error(exc) from exc
     return manifest.model_dump()
 
 
@@ -318,7 +318,7 @@ async def import_archive(
 
 
 async def _preflight_uploads(
-    files: list[UploadFile], archive: Optional[UploadFile], settings: Settings
+    files: list[UploadFile], archive: UploadFile | None, settings: Settings
 ) -> dict[str, bytes]:
     """Accept a spec as loose multipart parts **or** as one compressed archive, and return the same
     `{name: bytes}` either way.
@@ -366,8 +366,10 @@ async def validate_spec_endpoint(
     account: AccountDep,
     namespace: str,
     name: str,
-    files: Annotated[list[UploadFile], File()] = [],
-    archive: Annotated[Optional[UploadFile], File()] = None,
+    # Not a shared-mutable-default bug: FastAPI rebinds this per request and nothing here mutates
+    # it — the list is only iterated. Same exemption as B008 above, one rule along.
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI default, never mutated
+    archive: Annotated[UploadFile | None, File()] = None,
     strict: bool = Query(True, description="Grade findings under the mode publish compiles in"),
 ) -> ValidationReport:
     """Validate a spec server-side without publishing it. Writes nothing; the module need not exist.
@@ -398,7 +400,7 @@ async def validate_spec_endpoint(
             _validate_worker, repo, settings, uploads, namespace, name, strict
         )
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc)
+        raise _publish_http_error(exc) from exc
 
 
 def _validate_worker(
@@ -429,8 +431,10 @@ async def check_spec(
     account: AccountDep,
     namespace: str,
     name: str,
-    files: Annotated[list[UploadFile], File()] = [],
-    archive: Annotated[Optional[UploadFile], File()] = None,
+    # Not a shared-mutable-default bug: FastAPI rebinds this per request and nothing here mutates
+    # it — the list is only iterated. Same exemption as B008 above, one rule along.
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI default, never mutated
+    archive: Annotated[UploadFile | None, File()] = None,
     strict: bool = Query(True, description="Grade findings under the mode publish compiles in"),
     offline: bool = Query(False, description="Clamp to the server's local caches; zero egress"),
     frequencies: bool = Query(False, description="gnomAD frequencies — online only, ~6s/20 variants"),
@@ -440,7 +444,7 @@ async def check_spec(
     ),
     acmg: bool = Query(False, description="Authored acmg_sf flags vs the ACMG SF list"),
     pgx: bool = Query(False, description="function_status vs PharmVar/CPIC/ClinPGx/ClinGen"),
-    declared_use: Optional[str] = Query(
+    declared_use: str | None = Query(
         None,
         description=(
             "unstated | non_commercial | commercial. Gates the PGx-family sources, every one of "
@@ -531,12 +535,12 @@ async def check_spec(
                 ),
                 timeout=settings.enrich_timeout_seconds,
             )
-        except TimeoutError:
+        except TimeoutError as exc:
             # Frees the client and the connection. It does NOT stop the work: the worker runs to
             # completion and only then releases its gate permit, which is why occupancy stays honest.
             raise HTTPException(
                 status.HTTP_504_GATEWAY_TIMEOUT, detail="enrichment_timeout"
-            )
+            ) from exc
     except enrich_service.EnrichmentUnavailable as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -545,9 +549,9 @@ async def check_spec(
                 "missing": exc.missing,
                 "errors": [str(exc)],
             },
-        )
+        ) from exc
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc)
+        raise _publish_http_error(exc) from exc
 
 
 @router.patch("/{namespace}/{name}/versions/{version}")
@@ -609,7 +613,7 @@ async def amend_logo(
             if exc.detail == "version_not_found"
             else status.HTTP_422_UNPROCESSABLE_CONTENT
         )
-        raise HTTPException(code, detail={"error": exc.detail, "errors": exc.errors})
+        raise HTTPException(code, detail={"error": exc.detail, "errors": exc.errors}) from exc
     return {
         "namespace": namespace, "name": name, "version": version,
         "logo": manifest.logo.model_dump() if manifest.logo else None,
@@ -658,7 +662,7 @@ async def amend_readme(
             if exc.detail == "version_not_found"
             else status.HTTP_422_UNPROCESSABLE_CONTENT
         )
-        raise HTTPException(code, detail={"error": exc.detail, "errors": exc.errors})
+        raise HTTPException(code, detail={"error": exc.detail, "errors": exc.errors}) from exc
     return {"namespace": namespace, "name": name, "version": version, "readme": text}
 
 

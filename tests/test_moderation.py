@@ -1,6 +1,6 @@
 """Featured + blacklisted namespaces, and API-key revocation (0.4 moderation/ops)."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 from just_dna_format.manifest import ModuleManifest
