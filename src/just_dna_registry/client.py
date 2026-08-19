@@ -114,10 +114,18 @@ def split_derived(module_dir: Path) -> list[str]:
     tree is safe in the other direction — the server flattens it back, and none of these files is in
     `SIGNATURE_INPUTS`, so the module's content identity does not move either way.
 
-    Today this moves less than it will: the derived CSVs are stored server-side but the manifest
-    attests none of them, so a downloader only receives what `artifact.files`/`inputs`/`logs` list.
-    Filed upstream (see `docs/CONSUMER_SUGGESTIONS.md` in `just-dna-format`); the folder is created
-    only when something actually lands in it.
+    What lands here is `DERIVED_FILES`, and a downloader does receive them: `manifest.derived`
+    attests each one, so `download(include_inputs=True)` fetches them and `check_derived=True`
+    re-hashes them before this runs. Through 0.16 none of that was true — the manifest had no field
+    for these tables — and the paragraph saying so outlived its own fix by a release (upstream `S26`,
+    answered by RM49 in format 0.6; ours is `S13`). The folder is still created only when something
+    actually lands in it: `file_entries` skips what is absent, so a module carrying no sidecars gets
+    no `derived/` rather than an empty one.
+
+    Names are matched at the root because everything this registry publishes was flattened there by
+    `normalize_spec` before the compile. Upstream a `FileEntry.name` may carry `derived/…` for a tree
+    compiled elsewhere; such a module downloads straight into the folder and this is a no-op, which
+    is the right answer and not a gap.
     """
     module_dir = Path(module_dir)
     derived_dir = module_dir / DERIVED_DIR

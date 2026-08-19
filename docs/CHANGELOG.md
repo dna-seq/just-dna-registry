@@ -6,6 +6,89 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.18.3] — 2026-08-20
+
+**Client surface: unchanged.** No endpoint, no `RegistryClient` method, no signature. This release
+changes a docstring and the tests behind it.
+
+### A comment that outlived its own fix
+
+`split_derived` in `client.py` closed with a paragraph saying the derived CSVs are stored server-side
+but *"the manifest attests none of them, so a downloader only receives what
+`artifact.files`/`inputs`/`logs` list"*, and pointed at an open filing upstream. That stopped being
+true in **0.17**, when format 0.6 landed `manifest.derived` (upstream `S26`, answered by RM49) — and
+forty lines below it in the same file, `download` had been reading `manifest.derived` and
+`verify_manifest(check_derived=True)` ever since. Two sentences describing one mechanism, disagreeing,
+in the file a client author reads *instead of* the reference. Reported as **S13** by
+`just-module-creator`, who were writing author-facing guidance from it and correctly refused to
+believe it.
+
+Note where the staleness was and was not: [CLIENT.md](CLIENT.md) has said the right thing since 0.17,
+names `S26`, and describes the hash-check. The reference doc was updated and the docstring beside the
+code was not, which is the reporter's point rather than an aside — a stale *reference* is found by the
+next person who reads the reference, and a stale docstring is found by nobody, because it reads as
+current by construction. It carries no date and no version guard.
+
+The paragraph is **replaced, not deleted**, as the reporter argued: it answers a question a reader
+genuinely has at that point ("does the folder I am creating actually get anything in it?"), and the
+current answer is a good one. It now says what lands there, that `manifest.derived` attests each name,
+that `file_entries` skips absent files so a module with no sidecars gets no folder rather than an empty
+one, and — a nuance the report did not have — that names are matched at the **root** only because
+`normalize_spec` flattened them there before the compile. Upstream a `FileEntry.name` may carry
+`derived/…` for a tree compiled elsewhere; such a module downloads straight into the folder and the
+split is a no-op.
+
+### The half nobody reported: nothing in the suite disagreed with the docstring
+
+`test_download_split_layout` already published and downloaded with `include_inputs=True,
+layout="split"` — and asserted only that the authored files and parquets were on disk. It said nothing
+about `derived/`, so the end-to-end behaviour 0.17 shipped had no test, and two docstrings could go on
+denying it against a green suite. `test_split_and_flatten_are_inverses` carried the same stale sentence
+in its own docstring, where it was doing worse than describing: it was the stated *reason* the test
+worked on a hand-built tree.
+
+The download test now asserts the correspondence — every name in `manifest.derived` lands in `derived/`
+and nothing is left at the root — against the manifest rather than a literal list, because what a
+server-side compile writes is the enricher's business and only the correspondence is ours. Measured on
+the real path, a publish of the SDK fixture spec attests `resolution.csv` and `verification.json`. The
+inverses test keeps its hand-built tree and now says why: a real publish only produces the sidecars its
+own enrichment produced, so covering all of `DERIVED_FILES` needs one built by hand.
+
+This is not a test that would have caught the bug — the code was correct throughout, and only the prose
+was wrong. It is a test that pins the behaviour the prose denied, so the next such claim contradicts
+something green.
+
+### Citing an inbox that empties on reply
+
+Filed by the reporter as data rather than as an item, and adopted: a comment pointing at
+`docs/CONSUMER_SUGGESTIONS.md` cannot ever come to *look* false, because an answered item is moved out
+of that file by design. The citation outlives its subject and reads as a live limitation forever. A new
+guard in `tests/test_client_sdk.py` requires any `CONSUMER_SUGGESTIONS` reference under `src/` to name
+an `S<n>` alongside it, over a small window so wrapped prose still counts. It is deliberately not a ban
+on naming the inbox: filing an item that is still open is a reasonable thing to record and it has no
+history entry to point at yet. The id is what makes either state checkable by hand, so the id is what
+is required. The guard demonstrably fires on the 0.18.2 text it was written for; `src/` has no
+remaining offender.
+
+### Two hazards in the triage loop itself
+
+Both found by running it on S13 and recorded in
+[CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md) §5; both are pattern-level rather than
+repo-level, so the gist owes an update and the runbook header now says so rather than letting the
+two copies drift silently.
+
+`--backfill` stamps a fingerprint that can never match, if used on a reply written in the same pass:
+with no marker present the ledger cannot tell where a multi-paragraph reply ends, so it hashes our
+own prose as the reporter's. The marker then terminates the reply properly and every later run
+disagrees with it. Write the marker by hand, carrying the value the ledger printed while the section
+still read `new`.
+
+And a document footer after the last section is archived as that section's prose — the inbox's own
+`*One item is open: S13.*` followed S13 into the history file, under an item that is closed. The
+archiver's fingerprint check reports the move clean because the footer sat inside the fingerprint on
+both sides. It is the same shape as the known title-is-not-a-group failure, at the other end of the
+file: a verifier that checks one property is silent while a different one breaks.
+
 ## [0.18.2] — 2026-08-19
 
 **Client surface: unchanged.** No endpoint and no `RegistryClient` method moves. The lint sweep below

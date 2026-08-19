@@ -9,8 +9,9 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
   five counters to every `resolution` object; see *Format 0.6 fields* below. **0.18 adds no route
   either**: 0.18.0 changed what `registry upgrade` acts on, which is an admin CLI behaviour with no
-  HTTP surface, 0.18.1 is an enricher floor bump, and 0.18.2 is another one plus a lint sweep that
-  moved no signature). Written against the server at that version; a
+  HTTP surface, 0.18.1 is an enricher floor bump, 0.18.2 is another one plus a lint sweep that
+  moved no signature, and 0.18.3 corrects a client docstring and the test coverage behind it).
+  Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).

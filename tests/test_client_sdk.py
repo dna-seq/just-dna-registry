@@ -9,6 +9,7 @@ no stubbed HTTP layer."""
 import asyncio
 import inspect
 import io
+import re
 from pathlib import Path
 
 import pytest
@@ -749,7 +750,7 @@ async def test_download_split_separates_the_machine_written_tables(sdk, tmp_path
     await asyncio.to_thread(lambda: sdk.publish(_NS, "split_dl", _VER, spec))
 
     dest = tmp_path / "dl"
-    await asyncio.to_thread(
+    manifest = await asyncio.to_thread(
         lambda: sdk.download(_NS, "split_dl", _VER, dest, include_inputs=True, layout="split")
     )
     # A bare download is the compiled parquets and nothing else — `/download` lists `artifact.files`
@@ -757,6 +758,17 @@ async def test_download_split_separates_the_machine_written_tables(sdk, tmp_path
     assert (dest / "module_spec.yaml").is_file() and (dest / "variants.csv").is_file()
     assert (dest / "weights.parquet").is_file()
     assert (dest / "manifest.json").is_file()
+
+    # And the derived half, which is the whole reason `layout="split"` has somewhere to put anything.
+    # Asserted against `manifest.derived` rather than a literal list: the server enriches before it
+    # compiles, so what it writes is the enricher's business and only the *correspondence* is ours.
+    # Nothing checked this until 0.18.3 — which is how two docstrings went on saying a downloader
+    # receives no sidecar for a release after that stopped being true (S13).
+    attested = {e.name for e in manifest.derived or []}
+    assert attested, "a server-side compile writes resolution.csv, so the block cannot be empty"
+    landed = {p.name for p in (dest / DERIVED_DIR).iterdir()} - {"WHERE-THIS-CAME-FROM.md"}
+    assert landed == attested
+    assert not [n for n in attested if (dest / n).exists()], "split moves, it does not copy"
 
     bare = tmp_path / "bare"
     await asyncio.to_thread(lambda: sdk.download(_NS, "split_dl", _VER, bare))
@@ -768,13 +780,45 @@ async def test_download_split_separates_the_machine_written_tables(sdk, tmp_path
         )
 
 
-def test_split_and_flatten_are_inverses(tmp_path) -> None:
-    """The round-trip, at the level where both halves are actually visible today.
+def test_an_upstream_filing_is_cited_by_id_not_by_the_inbox_it_sits_in() -> None:
+    """A comment pointing at `docs/CONSUMER_SUGGESTIONS.md` cannot become false-looking when the item
+    is answered, because that file is *emptied* on reply by design — the answered section moves to the
+    history file. So the citation survives its own subject and reads as a live limitation forever.
 
-    A downloader receives no derived CSV yet (the manifest attests none of them — filed upstream), so
-    this drives `split_derived` over a tree that has them and checks that the uploader's own planner
-    puts every one back exactly where it came from. If the two ever disagree, a downloaded module
-    stops being republishable.
+    That is not hypothetical: it is how `split_derived` spent a release telling readers the manifest
+    attests no derived file, months after upstream `S26` shipped `manifest.derived`. The reporting
+    consumer (S13) noticed the docstring disagreed with `download` forty lines below it, and offered
+    the rule: cite the `S<n>`, which is greppable across both of their files, rather than the inbox,
+    which is greppable across neither once answered.
+
+    Deliberately not a ban on naming the inbox — filing an item that is still open is a legitimate
+    thing to write down, and it has no history entry to point at yet. The id is what makes either
+    state checkable by hand, so the id is what is required.
+    """
+    offenders: list[str] = []
+    src = Path(__file__).resolve().parent.parent / "src"  # not cwd — pytest may run from anywhere
+    for path in sorted(src.rglob("*.py")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for number, line in enumerate(lines, 1):
+            if "CONSUMER_SUGGESTIONS" not in line:
+                continue
+            # A window, not the line: prose wraps, and an id on the next line is still a citation by
+            # id. Three either side is the paragraph a reader would take the two sentences from.
+            window = "\n".join(lines[max(0, number - 4) : number + 3])
+            if not re.search(r"\bS\d+\b", window):
+                offenders.append(f"{path}:{number}: {line.strip()}")
+    assert offenders == [], "cite the item id, not the inbox it is filed in:\n" + "\n".join(offenders)
+
+
+def test_split_and_flatten_are_inverses(tmp_path) -> None:
+    """The round-trip, over every name in `DERIVED_FILES` rather than the ones a publish happens to
+    write.
+
+    A downloader does receive these (`manifest.derived`, since 0.17) and
+    `test_download_split_separates_the_machine_written_tables` proves it on a real one — but a real publish only produces the sidecars its own enrichment produced, so this
+    drives `split_derived` over a hand-built tree carrying *all* of them and checks that the
+    uploader's own planner puts every one back exactly where it came from. If the two ever disagree,
+    a downloaded module stops being republishable.
     """
     module_dir = tmp_path / "module"
     module_dir.mkdir()

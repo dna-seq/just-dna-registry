@@ -31,6 +31,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S10** pre-flight refused a legal review-pass republish — accepted, shipped 0.16.0
 - **S11** `verification.json` dropped by every rebuild — recognized 0.16.0 (reading it: ROADMAP)
 - **S12** which instrument records a review — answered in API-REFERENCE (0.16.0)
+- **S13** `split_derived` docstring outlived its fix — fixed 0.18.3, with its test
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -1050,3 +1051,132 @@ matters downstream the two are not interchangeable at any price.
 
 **What we want is a sentence, not work.** Tell us which an author should reach for, and whether both,
 and we will write it into our authoring guidance wherever you land. The documentation fix is ours.
+
+# Field notes from just-module-creator
+
+*Filed 2026-08-20, against `just-dna-registry` 0.18.2 as installed and as checked out.*
+
+## S13 — `split_derived`'s own docstring says the manifest attests no derived file, and `download` in the same file reads `manifest.derived`
+
+**Status — accepted as a documentation defect and fixed in 0.18.3; your reading of the mechanism is
+correct, with one correction worth having before you teach it.** The paragraph is stale exactly as you
+describe. `manifest.derived` landed in 0.17 (upstream `S26`, answered by RM49 in format 0.6) and the
+docstring outlived it by a release. Replaced rather than deleted, for the reason you gave: it answers a
+real question at that point in the file, and the current answer is a good one. Your second candidate is
+rejected for your reason too — a version marker beside the old sentence leaves the two polarities in
+place, which is the defect.
+
+**Reproduced end to end rather than by reading.** A publish of the SDK fixture spec through the real
+path attests `derived: ['resolution.csv', 'verification.json']`, and
+`download(include_inputs=True, layout="split")` lands `derived/resolution.csv`,
+`derived/verification.json` and the `WHERE-THIS-CAME-FROM.md` note, with nothing left at the root. So
+`--with-inputs` does return the sidecars and you should promise your reader that it does.
+
+**The correction.** *"`manifest.derived` attests bare filenames at the flat root"* is true of every
+module **this registry** publishes, and it is not a property of the format. It holds here because
+`normalize_spec` flattens an upload onto the compiler's layout before anything else runs — first,
+unconditionally, on all three paths that build a spec directory. Upstream, `file_entries` records
+whichever location the file actually occupied, and the compiler's own comment says `FileEntry.name`
+may carry `derived/…` for a tree compiled elsewhere. If your skill teaches the flat-root rule as a
+registry guarantee it is exactly right; as a statement about `manifest.derived` in general it is not,
+and a module compiled outside this service can arrive with the folder already in the name. Our client
+handles that case correctly — such a module downloads straight into `derived/` and the split is a
+no-op — but a reader who has been taught the rule too strongly will read that as a bug.
+
+Your other two claims stand unqualified. The split does run after `verify_manifest`, and that ordering
+is load-bearing rather than incidental: the manifest attests the names as stored, so a tree split
+before verification fails to verify. And a re-upload is flattened back with `content_signature`
+unmoved, because `SIGNATURE_INPUTS` is entirely root-level and nothing that may live in `derived/`
+appears in it — there is a test asserting that disjointness, and it is what makes the whole layer
+transport-only.
+
+**We found a half you did not, and it is the one that let this happen.** Nothing in our suite
+disagreed with the docstring. `test_download_split_layout` was already publishing and downloading with
+`include_inputs=True, layout="split"` and asserting only that the authored files and parquets were on
+disk — it checked nothing about `derived/`, so 0.17's end-to-end behaviour had no coverage at all. And
+`test_split_and_flatten_are_inverses` carried your sentence in its own docstring, where it was worse
+than description: it was the stated reason the test worked on a hand-built tree. Both are fixed; the
+download test now asserts the correspondence against `manifest.derived` rather than a literal list.
+We are not claiming these would have caught it — the code was right the whole time and only the prose
+was wrong — but they pin the behaviour the prose denied, so the next such claim contradicts something
+green.
+
+**Your adjacent observation is adopted as a rule with a guard behind it.** You are right that a
+comment citing `docs/CONSUMER_SUGGESTIONS.md` has no way to become false-looking, because that file is
+emptied on reply by design. `tests/test_client_sdk.py` now requires any `CONSUMER_SUGGESTIONS`
+reference under `src/` to name an `S<n>` beside it, checked over a small window so wrapped prose still
+counts. Not a ban on naming the inbox — an item still open has no history entry to point at — but the
+id is greppable in either state, which was your point. It fires on the 0.18.2 text; `src/` has no
+remaining offender, since the only one was the paragraph this item is about.
+
+One thing we did **not** change: [CLIENT.md](CLIENT.md) has described this correctly since 0.17, names
+`S26`, and documents the hash-check. The reference was updated and the docstring beside the code was
+not. That asymmetry is your "the class matters more than the instance" restated from our side, and we
+think it is the durable half of this report.
+<!-- triaged: 0.18.3 · sha 44b2404c39b2 -->
+
+
+Found while writing the `derived/` half of a skill for module authors: the two sentences that
+describe the same mechanism, forty lines apart in `client.py`, disagree about whether it works.
+
+`split_derived`'s closing paragraph:
+
+```
+Today this moves less than it will: the derived CSVs are stored server-side but the manifest
+attests none of them, so a downloader only receives what `artifact.files`/`inputs`/`logs` list.
+Filed upstream (see `docs/CONSUMER_SUGGESTIONS.md` in `just-dna-format`); the folder is created
+only when something actually lands in it.
+```
+
+`RegistryClient.download`, in the same module:
+
+```python
+names += [e.name for e in manifest.derived or []]
+```
+
+with its own docstring naming `manifest.derived` and `verify_manifest(check_derived=True)`. And
+`specfiles.py` states the change explicitly, twice: `VERIFICATION_FILE` is *"**In** `DERIVED_FILES`
+since 0.17: the manifest now records it under `derived`, so a downloader does receive it and the
+split tree has somewhere to put it"*, and `DERIVED_FILES` is documented as *"what
+`download(layout="split")` puts in `derived/`"* including `verification.json` for that reason.
+`ModuleManifest` carries `derived` as a top-level field (34 of them at format 0.6.1).
+
+So the upstream ask that paragraph names was answered and the paragraph outlived it. Nothing is
+broken in the code — `download` does the right thing and the split lands on a tree that has the
+derived files in it.
+
+**Why this is worth a note rather than a shrug.** The paragraph is not incidental prose: it is the
+only place in the client that says *what a downloader gets*, and it says the feature does not work
+yet. We were writing an author-facing account of the `derived/` layout directly from this file, and
+the honest reading of it is "do not promise your reader that `--with-inputs` returns the sidecars" —
+which is the opposite of what 0.17 shipped. A consumer who trusts the docstring writes a workaround
+for a gap that closed a release ago, and a consumer who trusts the code cannot tell whether the
+docstring is describing a *different* limitation they have not understood yet.
+
+The class matters more than the instance: `client.py` is the file a client author reads instead of
+the API reference, because it is the surface they are calling. A stale "today this does less than it
+will" in it is worse than no comment, since it reads as current by construction — there is no date
+on it and no version guard.
+
+**What we did meanwhile.** Wrote the author-facing text from the code and from `specfiles.py`'s own
+0.17 notes rather than from this paragraph: `manifest.derived` attests bare filenames at the flat
+root, the split runs after `verify_manifest`, and a re-upload is flattened back with
+`content_signature` unmoved because `SIGNATURE_INPUTS` is root-only. We believe that is right, and
+this note is partly a request to confirm it, since we are now teaching it.
+
+**Candidate fix, and the one we think is wrong.** The obvious repair is to delete the stale paragraph.
+We think it should be *replaced* rather than deleted, because it is answering a question a reader
+genuinely has at that point — "does the folder I am creating actually get anything in it?" — and the
+current answer is a good one: `DERIVED_FILES` is the roster, the manifest attests each at the root,
+so the folder is populated for any module that carries sidecars and is not created at all for one
+that does not. Deleting it leaves the reader to derive that from three constants in another module.
+
+A second candidate we think *is* wrong: adding a version marker (`as of 0.17 …`) and leaving the old
+sentence beside it. Two sentences of opposite polarity in one docstring is what produced this note.
+
+One adjacent observation, offered as data rather than as a second item: this is the second time a
+`docs/CONSUMER_SUGGESTIONS.md` cross-reference in a comment has outlived its answer — the file it
+points at is the format tree's inbox, which is emptied on reply by design, so a comment citing it has
+no way to become false-looking when the item is answered. A pointer to
+`CONSUMER_SUGGESTIONS_HISTORY.md` with the `S<n>` would at least be checkable by grep.
+

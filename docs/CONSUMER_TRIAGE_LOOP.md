@@ -13,6 +13,10 @@ one-way and by hand.** If you change the *pattern* (the algorithm, a script's co
 running it), it belongs in the gist too; if you change something only true of this repo — the release
 table below, the routing destinations, a path — it does not.
 
+**Two findings are currently owed to the gist**: the `--backfill` stamping hazard and the
+archived-footer one, both in §5 and both found here on 2026-08-20. It is pattern-level rather than repo-level — the ledger's fallback rule is the gist's own —
+so it belongs there, and this line stays until the trip is made.
+
 **The most recent trip in that direction was 2026-08-16**, carrying the trailing-rule normalization in
 `fingerprint` — found here (§5) and missing from the gist for five days. It went back with its own §5
 entry and a cross-reference: the gist had recorded an item that read `revised` over prose git showed
@@ -436,6 +440,30 @@ found upstream, some here, one still owed back to the gist:
   the consumer's own prose still counts as their text. Worth fixing rather than tolerating: once
   answered items are archived, `revised` is the only thing that catches a genuine consumer edit, and a
   verdict that cries wolf on every append is one a maintainer learns to ignore.
+- **A document footer after the last section is archived as that section's prose.** A body runs to the
+  next heading, so an inbox that ends `*One item is open: S13.*` hands that line to S13 — and the move
+  verifies clean, because the footer was inside the fingerprint on both sides. It is the same failure
+  as the title-is-not-a-group entry below, at the other end of the file: **document furniture inside a
+  section span**, and the fingerprint check is blind to it for the same reason both times. Found here
+  on S13, which left `*One item is open: S13.*` sitting in the history file under a closed item.
+  Repair: delete the footer from the history file, re-run the ledger for the new value, and hand-edit
+  the marker — legitimate here, and the one case where `revised` over unchanged prose is expected,
+  because the removed line was never the reporter's. Then restore the inbox's own footer, which the
+  report had overwritten. Archiving the last item of a group also leaves its `#` heading and dateline
+  behind with nothing under them; remove those by hand.
+- **`--backfill` is for replies older than the ledger, and stamps the wrong sha on a reply you just
+  wrote.** It computes the fingerprint from the file *as it stands*, and with no marker present yet
+  `reply_end` falls back to the single-paragraph rule — so paragraphs two onward of a fresh
+  multi-paragraph reply are hashed as if the reporter had written them. The stamp lands, the marker
+  then terminates the reply properly, the next run recomputes over the reporter's prose alone, and the
+  section reads `revised` forever against text nobody edited. It is the *"a marker can carry a sha that
+  never matched its section"* failure above, reached from the opposite end: not a hand-stamp mistake
+  but the tool used one step outside its remit. Found here on S13, whose reply runs eight paragraphs.
+  **Write the marker yourself when you write the reply, carrying the fingerprint the ledger printed
+  while the section still read `new`** — that value is the reporter's prose by construction, which is
+  the whole definition. Then re-run the ledger: `current` on the same sha it showed before you replied
+  is the confirmation, and `revised` means you stamped the wrong one. The one-paragraph case is safe
+  by luck rather than by design, which is why this bites exactly the replies worth writing carefully.
 - **Splitting a wrapped paragraph is a substantive change** and correctly reports as `revised`. Only
   trailing whitespace, blank-run length and a trailing rule are normalized away.
 - **An id can appear twice as a heading** (a top-level item and a `###` follow-up nested elsewhere). Key on
