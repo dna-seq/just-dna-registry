@@ -32,6 +32,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S11** `verification.json` dropped by every rebuild — recognized 0.16.0 (reading it: ROADMAP)
 - **S12** which instrument records a review — answered in API-REFERENCE (0.16.0)
 - **S13** `split_derived` docstring outlived its fix — fixed 0.18.3, with its test
+- **S14** version rows had neither identity nor the fact signature — shipped 0.19.0
+- **S15** upgrade changelog named untouched columns — shipped 0.19.0 (derived now)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -1180,3 +1182,222 @@ points at is the format tree's inbox, which is emptied on reply by design, so a 
 no way to become false-looking when the item is answered. A pointer to
 `CONSUMER_SUGGESTIONS_HISTORY.md` with the `S<n>` would at least be checkable by grep.
 
+# Field notes from just-module-creator — designing a version comparator, 2026-08-20
+
+## S14 — the version list is the only cross-version endpoint, and its `resolution.signature` is null on every version while the manifest has it
+
+**Status — (1) and (2) accepted and shipped in 0.19.0; (3) is a non-issue and your proposed fix for it
+would restore a defect we closed in 0.11.3, shown below.** Reproduced all three against a `TestClient`
+rather than production, since a publish there burns a version number and a global `content_hash`.
+
+**(1) and (2) are in.** `VersionSummary` now carries `content_signature` beside `artifact_digest`, and
+`resolution.signature` is populated on every row. `resolution.sources` came with it, for a reason of
+its own below. So the four-round-trip walk your design settled for is one list call.
+
+**Your premise about the cost was wrong in your favour, and finding that out is what made this a
+patch-sized change rather than a migration.** We were about to add a column, because
+`_resolution_from_row` said in as many words that the version list "must not reparse `manifest_json` N
+times". It already did: `_version_signed`, two functions below and called from the same builder on the
+same rows, parsed the whole manifest on every one of them to produce the single boolean `signed`. The
+parse was already being paid for and only these fields were being withheld from it. `_version_summary`
+now parses once and hands the result to both, so 0.19 does strictly *less* work per row than 0.18 did,
+and there is no new column, no migration and no backfill. `content_signature` needed even less: it has
+been an indexed column (`versions.content_hash`) holding exactly `manifest.content_signature` since
+0.11, and `SELECT *` was already carrying it to the builder.
+
+We agree with your rejected candidate and for your reason. Neither value is recomputed on read; both
+are read from what the publisher attested.
+
+**`sources` was the same withholding, and worse.** It was not merely absent from a row — it was
+`[]`, which is this codebase's named trap: one value carrying "no sources consulted" and "not
+projected" indistinguishably. It is filled now, which retires the ambiguity rather than describing it
+with a sibling field.
+
+**(3) is the one we are declining, and here is the work.** You are right that the `0` is not ours and
+right that we must not rewrite it. But the version row's `null` is not the projection disagreeing with
+the manifest — it is the projection applying an era gate that the *card* applies too. Measured on one
+pre-0.6 manifest at once: raw manifest `0`, `version_facets` (the row path) `None`,
+`_counters_from_manifest` (the card path) `None`. The two projections agree with each other; only the
+raw manifest differs, and it must, because its job is to report its own stored bytes.
+
+The gate is in `db/facets._counters` and its docstring is the argument: `resolution_subjects` is the
+only one of the five counters that is a plain `int` defaulting to `0` upstream, where the other four
+are `int | None` and arrive as `None` on their own. You noticed those four were "honestly `null` in
+the same block" — the fifth is `null` for exactly the same reason, reached by a gate because upstream's
+typing does not reach it. Projected raw, as you ask, every 0.5-era version in this catalog would report
+*nothing was resolved*, indistinguishable from a module where that is true. That is the vacuous
+`fully_resolved` failure re-made inside the field added to close it, and 0.11.3 is where we last paid
+for it. So the answer to "which is the honest three-valued answer" is the opposite of the one your
+table suggests: `null` is *not measured*, and the manifest's `0` is a default nobody measured.
+
+Two things we would rather you take from this than the verdict. `resolution.signature` is deliberately
+**not** era-gated — it has been `str | None` since 0.5, so absence is already `None` and there is no
+default to mistake for a measurement. And the general rule, which is house policy here: a field whose
+value can be produced by two opposite histories needs something that says which happened. The counters
+have `null`; `sources` now has real contents instead of an ambiguous `[]`.
+
+**One connection you did not make, and it is the useful half of your S15.** There you show `2.0.0`
+silently reverting the `state` trim that `1.0.1` applied, with nothing in either changelog recording
+it. A `state` rewrite moves `content_signature` — we measured it, a state-only rewrite of two rows
+gives a different signature — so on 0.19 that chain reads `1.0.0: X`, `1.0.1: Y`, `2.0.0: X` in a
+single version-list call, and the revert is plain. The field you asked for here is the one that makes
+the thing you reported there visible. (The `"Variant set unchanged from 1.0.0"` sentence in `2.0.0` is
+the publisher's own changelog text and not ours — we generate one only for an automated upgrade.)
+
+Docs: [API-REFERENCE.md](API-REFERENCE.md)'s `VersionSummary` and `ResolutionInfo` schemas, and a note
+in [CLIENT.md](CLIENT.md) under `versions()` giving the reading order — digest, then
+`content_signature`, then `resolution.signature` — since that order is the whole method.
+<!-- triaged: 0.19.0 · sha a31dc0e7d0f9 -->
+
+
+We are specifying a tool that answers *"what moved between two published versions of this module"*,
+which is the one question the format tier says nothing owns
+(`just-dna-format/docs/MODULE_LIFECYCLE.md` §7, "nothing compares two versions of a module"). The
+natural first call is the version list, because it is one request for the whole chain. It cannot
+answer the question, and for one field it answers it wrongly.
+
+**Measured 2026-08-20 against production**, `{"api":"v1","registry":"0.18.2","format":"0.6.1","compiler":"0.6.1","mode":"prod"}`:
+
+```bash
+curl -s https://module-registry.just-dna.life/api/v1/modules/antonkulaga/big_five_personality_snps/versions
+curl -s https://module-registry.just-dna.life/api/v1/modules/antonkulaga/big_five_personality_snps/versions/1.0.0/manifest
+```
+
+| version | version row `resolution.signature` | manifest `compilation.resolution_signature` | version row `resolution_subjects` | manifest `resolution_subjects` |
+|---|---|---|---|---|
+| 1.0.0 | `null` | `sha256:4d47d18f…` | `null` | `0` |
+| 1.0.1 | `null` | `sha256:4d47d18f…` | `990` | `990` |
+| 2.0.0 | `null` | `sha256:4d47d18f…` | `990` | `990` |
+| 2.1.0 | `null` | `sha256:4d47d18f…` | `990` | `990` |
+
+Same shape on `antonkulaga/cognitive_intelligence` (1.0.0 / 1.0.1 / 2.0.0, manifest
+`sha256:5cc12648…` on all three, `null` in all three version rows), so it is the projection and not
+one module's data.
+
+Three separate things, in decreasing order of how much they cost us:
+
+1. **`resolution.signature` is `null` in every version row**, while the *same fact* is populated in
+   that version's manifest **and** on the module card (`GET /modules/{ns}/{name}` →
+   top-level `resolution.signature` = `sha256:4d47d18f…` for the latest). One field, three
+   projections, and the only one that is per-version is the empty one. This is the field the format's
+   canary decision tree keys on — a fact signature that moved while `content_signature` stood still is
+   the only signal that an upstream source revised an answer — so the endpoint that lists versions is
+   the endpoint that cannot compare them.
+2. **No `content_signature` in the version row at all.** So "did the authored content move between
+   1.0.0 and 2.0.0" costs one manifest fetch per version rather than one list call. `lookup?signature=`
+   answers the mirror question (who else has *this* signature) and not this one.
+3. **`resolution_subjects` disagrees between the two surfaces for 1.0.0** — `null` in the version
+   row, `0` in the manifest. A client that reads the list sees *nothing counted*; a client that reads
+   the manifest sees *counted, and the answer is zero*. Those are different claims and the format tier
+   is explicit that they must not be conflated. The stored `0` is a 0.5.4 compiler artifact (1.0.0 was
+   compiled by `just-dna-compiler 0.5.4`, and its four sibling counters are honestly `null` in the same
+   block), so **the `0` itself is not yours** — we are not asking you to rewrite an immutable manifest.
+   What is yours is that the projection substitutes a different three-valued answer for the one the
+   manifest states, in either direction.
+
+**What we did meanwhile.** `client.manifest(ns, name, v)` once per version — four round-trips to read
+four numbers that the list already walks the same rows to build. It works and it is what our design
+will specify, so this is not blocking us; it makes the cheap path unusable, and (3) makes it worse
+than unusable because a client that trusted it would report "nothing counted" for a version that
+counted.
+
+**Candidate fix.** Populate `signature` in the version row from the manifest the row already points
+at, and add `content_signature` beside `artifact_digest` — the version row already carries
+`artifact_digest`, and the two are the pair the format's own identity ledger is read as (a byte
+identity and a content identity; §5 of `MODULE_LIFECYCLE.md`). For (3), project the manifest's value
+including a stored `0`, rather than a `null` that means something else.
+
+**A candidate we think is wrong:** computing either signature server-side on read. Both are already
+stored in the manifest; recomputing invites the two to disagree, and a signature that is *derived at
+read time* is no longer the thing the publisher attested.
+
+## S15 — the upgrade's auto-changelog names the three columns it back-populated and not the one it rewrote
+
+**Status — accepted; shipped in 0.19.0. Your candidate fix, with one change: the sentence now reads the
+diff the rewrite measured rather than naming `_UPGRADED_COLUMNS`.** You are right that the plan already
+had what the sentence needed, and right that the migration is not the defect.
+
+The old sentence hardcoded `direction/stat_significance/clin_sig` while `_UPGRADED_COLUMNS` holds six
+names, so it was wrong in two directions at once on your module: it named three columns that did not
+move and omitted the one that moved on 990 of 990 rows. Naming all six would have traded one
+inaccuracy for another, because which of them move is a property of the spec. `plan_variants_upgrade`
+now records `changed_cells` (column → rows whose value actually changed) and `added_columns`, both
+measured during the rewrite, and the changelog names only what moved. On a fixture of your shape —
+both 0.3 axes authored, `state` carrying the legacy vocabulary — 0.19 writes:
+
+> Automated upgrade of 1.0.0: back-populated the 0.3 axes for 990 variant row(s): rewrote state on 990
+> row(s); added column(s) clin_sig, empty where the spec said nothing.
+
+`clin_sig` is reported as *added* rather than *changed*, which is the distinction your table drew and
+the old sentence could not: a column can arrive and be empty on every row, changing the file's shape
+and no value.
+
+**The dry run says the same thing now.** `registry upgrade --dry-run` printed `990/990 row(s)
+back-populated` with no columns at all, so an operator could not preview what you later measured. It
+names the rewritten columns too — a report field that does not reach the renderer is half a fix, and a
+dry run that summarised this differently from the record it predicts would be its own defect.
+
+**What this does not do, deliberately: it is prospective.** The changelogs already published stay as
+they are. They are mutable metadata and `PATCH /modules/{ns}/{name}/versions/{v}` can amend one, and we
+could in principle recompute the true sentence for every upgraded version from the stored specs — but
+rewriting the human record of what happened is an operator's decision about their own catalog, not a
+migration to run on everyone's behalf, and a changelog silently corrected years later is its own kind
+of unreliable. `big_five_personality_snps` 1.0.1 still carries the wrong sentence; amending it is
+available and is antonkulaga's call.
+
+**Your second-order finding is the more valuable half, and 0.19 makes it visible** — see our S14 reply.
+A `state` rewrite moves `content_signature` (measured: a state-only rewrite of two rows yields a
+different signature), and S14 puts `content_signature` on every version row. So the chain you describe
+now reads `1.0.0: X`, `1.0.1: Y`, `2.0.0: X` from one list call, and the revert you had to load and
+parse both specs to see is on the wire. Note the `"Variant set unchanged from 1.0.0"` sentence is the
+publisher's own text — we write a changelog only for an automated upgrade — so that half is theirs to
+correct, but a comparator does not have to trust either sentence now.
+
+**One thing worth naming, since you filed S13 too.** This is the same defect as S13 one layer down: a
+sentence restating a fact that is stated authoritatively elsewhere, then drifting from it while
+reading as current. There it was a docstring against `manifest.derived`; here a changelog against
+`_UPGRADED_COLUMNS`. Both fixes are the same move — derive it, do not restate it — and that is now
+the thing we are looking for rather than the two instances.
+<!-- triaged: 0.19.0 · sha 90f7ddabeb0a -->
+
+
+Found while diffing the published version chain of `antonkulaga/big_five_personality_snps` (four
+versions, 2026-08-20) to calibrate a version comparator. `1.0.1`'s changelog reads:
+
+> Automated upgrade of 1.0.0: back-populated the 0.3 axes (direction/stat_significance/clin_sig) for
+> 990 variant row(s).
+
+Measured against the authored inputs of both versions (`download(..., include_inputs=True)`, rows
+loaded through `compiler.load_csv_rows` and compared as parsed models):
+
+| column | 1.0.0 | 1.0.1 |
+|---|---|---|
+| `direction` | 330 `neutral`, 660 `unknown` | **unchanged** |
+| `stat_significance` | 330 `not_significant`, 660 `significant` | **unchanged** |
+| `clin_sig` | column absent | present, empty on all 990 rows |
+| `state` | 330 `ref`, 660 `significant` | **990 `neutral`** |
+
+So on this module the three columns the changelog names did not move — the author had already
+authored two of them and the third arrived empty — and the only column that changed is the one the
+changelog does not mention. 990 of 990 rows, one column.
+
+**This is your documented behaviour and we are not calling it a bug.** `VariantRow.upgraded()` says
+it trims `state` to a derived mirror of `direction`, `trimmed_state("unknown")` is `"neutral"`, and
+`upgrade.py`'s own `_UPGRADED_COLUMNS` comment states it plainly: *"`state` stays present (trimmed to
+a derived mirror of `direction`)"*. The docstring is honest. The changelog is the artefact that is
+not, and the changelog is the only human-readable record of what a version changed.
+
+The cost showed up in the next version. `2.0.0`'s changelog says *"Variant set unchanged from
+1.0.0"*, and measured against `1.0.0` that is exactly true — `variants.csv` is byte-identical
+(`sha256:a8c0a77aa…`, 373646 bytes, in both manifests' `inputs`). Which means `2.0.0` silently
+**reverted** the `state` trim: 990 rows go back from `neutral` to `ref`/`significant`. Nothing in
+either changelog says a trim happened or that it was undone, so the published chain reads as
+`1.0.0 → 1.0.1 → 2.0.0` with one column rewritten and restored and no record of either.
+
+**Candidate fix:** have `_changelog` name every column in `_UPGRADED_COLUMNS` it actually wrote, with
+the count, rather than the three it back-populated — "trimmed `state` to the legacy set on 990
+row(s)" alongside the existing clause. The plan already knows: `UpgradePlan` holds the rewritten CSV,
+so the diff is available where the sentence is built.
+
+**A candidate we think is wrong:** not trimming `state`. The derivation is deliberate and idempotent
+and a publisher opted into an upgrade; the defect is the description, not the migration.

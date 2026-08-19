@@ -607,8 +607,15 @@ def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
     """One-line summary of what a re-publish of this version would change."""
     bits: list[str] = []
     if prep.variants_plan.needed:
+        # Name the columns, not just the row count. An operator reading `990/990 row(s)
+        # back-populated` cannot tell which of the six `_UPGRADED_COLUMNS` moved, and on a spec that
+        # already authored the 0.3 axes the honest answer is "only `state`" (S15). The changelog this
+        # run writes says exactly the same thing; a dry run that summarised it differently from the
+        # record it predicts would be its own defect.
+        touched = ", ".join(sorted(prep.variants_plan.changed_cells)) or "no existing cell"
         bits.append(
-            f"{prep.variants_plan.upgradable_rows}/{prep.variants_plan.total_rows} row(s) back-populated"
+            f"{prep.variants_plan.upgradable_rows}/{prep.variants_plan.total_rows} row(s) "
+            f"back-populated (rewrites {touched})"
         )
     if prep.dropped:
         dropped = sum(len(c) for c in prep.dropped.values())

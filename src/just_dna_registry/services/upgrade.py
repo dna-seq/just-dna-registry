@@ -86,6 +86,24 @@ class UpgradePlan(BaseModel):
     total_rows: int = Field(description="Variant rows in the spec")
     upgradable_rows: int = Field(description="Rows whose 0.3 axes can be back-populated")
     migrated_variants_csv: str = Field(description="The rewritten variants.csv (== input if none)")
+    changed_cells: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Column -> rows whose value this upgrade actually changed. Measured during the rewrite "
+            "rather than inferred from `_UPGRADED_COLUMNS`, because which of those six move is a "
+            "property of the module: a spec that already authored `direction` sees it untouched "
+            "while `state` is rewritten on every upgradable row (S14's reporter measured exactly "
+            "that). Columns with no change are absent, not zero."
+        ),
+    )
+    added_columns: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Columns the rewrite appended to the header. Separate from `changed_cells` because a "
+            "column can arrive and be empty on every row — true of `clin_sig` on a 0.2-era spec — "
+            "which changes the file's shape while changing no value."
+        ),
+    )
 
     @property
     def needed(self) -> bool:
@@ -110,6 +128,7 @@ def plan_variants_upgrade(variants_csv_text: str) -> UpgradePlan:
     out_fields = in_fields + [c for c in _UPGRADED_COLUMNS if c not in in_fields]
 
     out_rows: list[dict[str, str]] = []
+    changed: dict[str, int] = {}
     upgradable = 0
     total = 0
     for raw in reader:
@@ -128,7 +147,13 @@ def plan_variants_upgrade(variants_csv_text: str) -> UpgradePlan:
             upgradable += 1
             up = row.upgraded()
             for col in _UPGRADED_COLUMNS:
-                out[col] = _csv_cell(getattr(up, col))
+                cell = _csv_cell(getattr(up, col))
+                # Compare before assigning: `out` still holds the authored cell, and a column the
+                # spec never carried reads as "" here, which is what makes an arriving-but-empty
+                # `clin_sig` correctly count as no change rather than as 990 of them.
+                if cell != out.get(col, ""):
+                    changed[col] = changed.get(col, 0) + 1
+                out[col] = cell
         out_rows.append(out)
 
     buf = io.StringIO()
@@ -136,7 +161,13 @@ def plan_variants_upgrade(variants_csv_text: str) -> UpgradePlan:
     writer.writeheader()
     writer.writerows(out_rows)
     migrated = buf.getvalue() if total else variants_csv_text
-    return UpgradePlan(total_rows=total, upgradable_rows=upgradable, migrated_variants_csv=migrated)
+    return UpgradePlan(
+        total_rows=total,
+        upgradable_rows=upgradable,
+        migrated_variants_csv=migrated,
+        changed_cells=changed,
+        added_columns=tuple(c for c in out_fields if c not in in_fields),
+    )
 
 
 # A row CSV's allowed columns are exactly its row model's field names. just-dna-format 0.4 made the
@@ -518,14 +549,42 @@ def prepare_version_upgrade(
     )
 
 
+def _describe_variants_rewrite(plan: UpgradePlan) -> str:
+    """What the 0.3 back-population did to `variants.csv`, named per column and counted.
+
+    **The sentence used to hardcode `direction/stat_significance/clin_sig`, and that was wrong on
+    real modules (S15).** `_UPGRADED_COLUMNS` has six entries, and which of them move is a property
+    of the spec: the reporter measured a module whose `direction` and `stat_significance` were
+    already authored and whose `clin_sig` arrived empty, so all three named columns were untouched
+    while `state` — named nowhere — was rewritten on 990 of 990 rows. The changelog is the only
+    human-readable record of what a version changed, so it named the columns it did not touch and
+    omitted the one it did.
+
+    The repair is not a longer hardcoded list. It reads the diff the rewrite measured, so a column is
+    mentioned exactly when it moved. This is the same defect as S13 one layer down — a sentence
+    restating a fact that is stated authoritatively elsewhere, drifting from it — and the fix is the
+    same: derive it.
+    """
+    bits = [
+        f"{column} on {count} row(s)"
+        for column, count in sorted(plan.changed_cells.items())
+    ]
+    rewrote = f"rewrote {', '.join(bits)}" if bits else "changed no existing cell"
+    added = (
+        f"; added column(s) {', '.join(plan.added_columns)}, empty where the spec said nothing"
+        if plan.added_columns
+        else ""
+    )
+    return (
+        f"back-populated the 0.3 axes for {plan.upgradable_rows} variant row(s): {rewrote}{added}"
+    )
+
+
 def _upgrade_changelog(prep: VersionUpgradePlan, version: str) -> str:
     """A human changelog describing what the automated re-publish of `version` changed."""
     parts: list[str] = []
     if prep.variants_plan.needed:
-        parts.append(
-            f"back-populated the 0.3 axes (direction/stat_significance/clin_sig) for "
-            f"{prep.variants_plan.upgradable_rows} variant row(s)"
-        )
+        parts.append(_describe_variants_rewrite(prep.variants_plan))
     if prep.dropped:
         detail = "; ".join(f"{f}: {', '.join(items)}" for f, items in prep.dropped.items())
         parts.append(f"trimmed columns/keys the current contract rejects ({detail})")

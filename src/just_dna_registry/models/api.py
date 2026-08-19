@@ -83,8 +83,24 @@ class ResolutionInfo(BaseModel):
             "`expanded_keys` is **not** the count of non-matching rows."
         ),
     )
-    sources: list[str] = Field(default_factory=list)
-    signature: str | None = None
+    sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Reference sources the resolution consulted. Populated on every surface since 0.19; "
+            "through 0.18 a version-list row always reported `[]` regardless of the manifest, so an "
+            "empty list there meant 'not projected' and 'none consulted' indistinguishably (S14)."
+        ),
+    )
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "`compilation.resolution_signature` — the fact signature over what resolution decided. "
+            "It moves when an upstream source revises an answer while `content_signature` stands "
+            "still, which makes it the field a cross-version comparison keys on. Populated on the "
+            "version list since 0.19 (S14); `null` means the version carries none, not that it was "
+            "not read."
+        ),
+    )
 
 
 class LicensingInfo(BaseModel):
@@ -277,6 +293,18 @@ class VersionSummary(BaseModel):
 
     version: str
     artifact_digest: str
+    content_signature: str | None = Field(
+        default=None,
+        description=(
+            "The version's name-independent data identity — `manifest.content_signature`, the value "
+            "`409 duplicate_content` is keyed on. Beside `artifact_digest` deliberately: the digest "
+            "names the compiled **bytes** and moves whenever a recompile restamps a timestamp, while "
+            "this moves only when the authored data does, so 'did the content change between these "
+            "two versions' is the question only this one answers. Added in 0.19 (S14), so that "
+            "question costs one list call rather than one manifest fetch per version. `null` for a "
+            "pre-0.5 manifest that carries none."
+        ),
+    )
     compile_success: bool
     yanked: bool
     signed: bool = False  # carries an Ed25519 signature over artifact.digest (SPEC §5)

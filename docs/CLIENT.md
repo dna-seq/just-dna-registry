@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.18.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.19.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -101,6 +101,13 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
   `without_effect_allele` — a bare `row_count` reads as confidence the data may not support.
 - **`versions(namespace, name, *, page=1, per_page=20) -> dict`** — a `Page` of `VersionSummary`.
   The listing is paged server-side (`per_page` max 100), so a long history needs the second page.
+  - **This is the call for "what moved between two versions" (0.19).** Each row carries both
+    identities — `artifact_digest` for the compiled bytes, `content_signature` for the authored data
+    — plus `resolution.signature`, the fact signature. Read them in that order: a differing digest
+    over an equal `content_signature` is a recompile, and a differing `resolution.signature` over an
+    equal `content_signature` is an upstream source having revised an answer, which is the case no
+    digest comparison can see. Before 0.19 only the digest was here and the rest cost one
+    `manifest()` per version (S14).
 - **`manifest(namespace, name, version) -> ModuleManifest`** — the parsed `just_dna_format`
   manifest.
 - **`logs(namespace, name, version) -> list[dict]`** — `[{name, sha256, size, url}]`.

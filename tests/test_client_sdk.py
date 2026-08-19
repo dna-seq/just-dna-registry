@@ -347,6 +347,26 @@ async def test_versions_is_pageable(sdk, seed) -> None:
     assert listed == {"1.0.0", "1.1.0", "1.2.0"}
 
 
+async def test_the_version_list_reaches_the_client_with_both_identities(sdk, tmp_path) -> None:
+    """SDK parity for S14's two fields, driven through a real publish rather than a seed.
+
+    `versions()` returns the decoded body rather than a typed model, so the fields arrive without the
+    wrapper being touched — which is exactly why it needs a test: nothing in the client would fail if
+    the server stopped sending them. Asserted against the manifest the same publish produced, so the
+    check is that the list agrees with the document rather than that a key is present.
+    """
+    spec = _write_spec(tmp_path, name="identities")
+    published = await asyncio.to_thread(lambda: sdk.publish(_NS, "identities", _VER, spec))
+
+    listed = await asyncio.to_thread(lambda: sdk.versions(_NS, "identities"))
+    row = next(v for v in listed["items"] if v["version"] == _VER)
+
+    assert row["content_signature"] == published.content_signature
+    assert row["artifact_digest"] == published.artifact.digest
+    assert row["resolution"]["signature"] == published.compilation.resolution_signature
+    assert row["resolution"]["sources"] == list(published.compilation.resolution_sources)
+
+
 async def test_import_module_threads_genome_build(sdk, tmp_path) -> None:
     """`genome_build` is the one importable form field that is *inside* `artifact.digest`, and the
     SDK dropped it — so an SDK import of a GRCh37 archive silently produced GRCh38 identity keys.

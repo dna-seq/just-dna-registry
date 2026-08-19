@@ -459,11 +459,14 @@ found upstream, some here, one still owed back to the gist:
   section reads `revised` forever against text nobody edited. It is the *"a marker can carry a sha that
   never matched its section"* failure above, reached from the opposite end: not a hand-stamp mistake
   but the tool used one step outside its remit. Found here on S13, whose reply runs eight paragraphs.
-  **Write the marker yourself when you write the reply, carrying the fingerprint the ledger printed
-  while the section still read `new`** — that value is the reporter's prose by construction, which is
-  the whole definition. Then re-run the ledger: `current` on the same sha it showed before you replied
-  is the confirmation, and `revised` means you stamped the wrong one. The one-paragraph case is safe
-  by luck rather than by design, which is why this bites exactly the replies worth writing carefully.
+  **Write the marker yourself when you write the reply.** Stamp a placeholder — twelve zeros — and
+  run the ledger: with a marker present the reply is excluded whole, so the `revised` line prints the
+  true fingerprint (`sha <real>  (was 000000000000)`), and you paste that back. Then re-run: `current`
+  is the confirmation. Do not rely on having kept the value from when the section read `new` — it is
+  the same number, but a batch that took two items answered them after both had arrived, and only the
+  first was ever printed alone. The placeholder recipe needs nothing remembered. The one-paragraph
+  case is safe by luck rather than by design, which is why this bites exactly the replies worth
+  writing carefully.
 - **Splitting a wrapped paragraph is a substantive change** and correctly reports as `revised`. Only
   trailing whitespace, blank-run length and a trailing rule are normalized away.
 - **An id can appear twice as a heading** (a top-level item and a `###` follow-up nested elsewhere). Key on

@@ -22,6 +22,7 @@ from just_dna_registry.services.upgrade import (
     GAP_NONE,
     GAP_PATCH,
     GAP_UNKNOWN,
+    _describe_variants_rewrite,
     contract_gap,
     is_latest_version,
     offending_columns,
@@ -679,3 +680,59 @@ def test_upgrade_acts_on_a_contract_gap_with_no_force(
         repo=repo, storage=storage, settings=settings,
         namespace="just-dna-seq", name="coronary", version=new_version, manifest=new_manifest,
     ) is None
+
+
+def test_the_plan_reports_which_columns_it_actually_rewrote() -> None:
+    """S15: the changelog named three columns it did not touch and omitted the one it did.
+
+    The reporter measured `antonkulaga/big_five_personality_snps` 1.0.0 → 1.0.1: `direction` and
+    `stat_significance` were already authored and did not move, `clin_sig` arrived empty on all 990
+    rows, and `state` was rewritten on 990 of 990 — while the changelog read *"back-populated the 0.3
+    axes (direction/stat_significance/clin_sig)"*, a hardcoded list naming exactly the three that
+    stood still.
+
+    This fixture is that shape: both 0.3 axes authored, `state` carrying the legacy vocabulary that
+    `upgraded()` trims to a derived mirror of `direction`. The assertion is on the *measured* diff,
+    so it fails if the counts are inferred from `_UPGRADED_COLUMNS` rather than observed.
+    """
+    authored = (
+        "rsid,genotype,weight,state,conclusion,direction,stat_significance\n"
+        "rs1,A/G,0.4,ref,ok,neutral,not_significant\n"
+        "rs2,C/T,0.9,significant,ok,neutral,not_significant\n"
+    )
+    plan = plan_variants_upgrade(authored)
+    assert plan.upgradable_rows == 2, "the rows do need an upgrade — via `state`, not the axes"
+
+    # The heart of it: only the column that moved is reported, and with a real count.
+    assert plan.changed_cells == {"state": 2}
+    assert set(plan.changed_cells) & {"direction", "stat_significance"} == set()
+
+    rows = list(csv.DictReader(io.StringIO(plan.migrated_variants_csv)))
+    assert {r["state"] for r in rows} == {"neutral"}, "state really was rewritten"
+    assert {r["direction"] for r in rows} == {"neutral"}, "and direction really was not"
+
+    # A column that arrives and stays empty changes the shape, not a value — so it is reported as
+    # added and not as changed. Counting it among the changes is the error S15 is the mirror of.
+    assert "clin_sig" in plan.added_columns
+    assert "clin_sig" not in plan.changed_cells
+
+
+def test_the_upgrade_changelog_names_the_columns_it_moved() -> None:
+    """The sentence a published version keeps forever, and the reason S15 was worth a release.
+
+    A changelog is the only human-readable record of what a version changed, and this one is written
+    by us rather than by the publisher — so an inaccuracy here is ours and is immutable once the
+    version is published.
+    """
+    authored = (
+        "rsid,genotype,weight,state,conclusion,direction,stat_significance\n"
+        "rs1,A/G,0.4,ref,ok,neutral,not_significant\n"
+    )
+    plan = plan_variants_upgrade(authored)
+    sentence = _describe_variants_rewrite(plan)
+
+    assert "rewrote state on 1 row(s)" in sentence
+    for untouched in ("direction", "stat_significance"):
+        assert untouched not in sentence, f"{untouched} did not move and must not be claimed"
+    assert "clin_sig" in sentence, "it did arrive, and the header change is worth recording"
+    assert "added column(s)" in sentence

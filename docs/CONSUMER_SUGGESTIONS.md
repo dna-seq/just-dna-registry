@@ -26,7 +26,7 @@ reply moves to [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md
 the one-line summary of every one; the runbook for answering them is
 [CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md).
 
-### The next item is S14
+### The next item is S16
 
 **Claim ids from the ledger, never from what this file shows** — once answered items move out, an empty
 inbox says nothing about how many ids are taken, and the next report would be a second S1:

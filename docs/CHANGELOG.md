@@ -6,6 +6,80 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.19.0] — 2026-08-20
+
+**Client surface: unchanged.** No `RegistryClient` method signature moves and no route is added. Two
+new **response** fields reach `versions()` callers without the wrapper being touched — `VersionSummary.
+content_signature` and `resolution.signature`/`sources` on every copy — so a `v1` client that ignores
+them keeps working. Minor rather than patch because the fields are additive contract, per the release
+table in [CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md).
+
+Answers **S14** and **S15**, both from `just-module-creator`, both found while building a tool that
+compares two published versions of a module — the question the format tier says nothing owns.
+
+### The version list can now answer what moved (S14)
+
+It is the only cross-version endpoint, and through 0.18 it could not compare the versions it lists.
+`resolution.signature` was `null` on every row while the *same* field was populated on the module card
+and in each manifest, and there was no `content_signature` at all — so "did the authored data move
+between 1.0.0 and 2.0.0" cost one manifest fetch per version from the endpoint that had already walked
+those rows. Both are on the row now, and `resolution.sources` came with them.
+
+**The stated reason for withholding them was false, which is what made this small.** `_resolution_from_row`
+said the version list "must not reparse `manifest_json` N times" — while `_version_signed`, two
+functions below and called from the same builder on the same rows, parsed the whole manifest on every
+one of them to fill a single boolean. The parse was already paid for. `_version_summary` now parses
+**once** and hands the result to both, so this release does strictly less work per row than 0.18 did:
+no new column, no migration, no backfill. `content_signature` needed even less — `versions.content_hash`
+has been an indexed column holding exactly that value since 0.11, and `SELECT *` was already carrying
+it. Neither value is recomputed on read; both are what the publisher attested.
+
+`sources` deserves its own line, because it was not merely absent — it was `[]`, this codebase's named
+trap: one value meaning "no sources consulted" and "not projected" indistinguishably. Filling it
+retires the ambiguity outright, which beats adding a sibling field to describe it.
+
+**Declined, with the work shown: `resolution_subjects` is not going to pass a pre-0.6 `0` through.**
+The reporter read the row's `null` against the manifest's `0` as the projection contradicting the
+document. It is not: the era gate in `db/facets._counters` is applied once and shared, so the row and
+the **card** both say `None` and only the raw manifest differs — which it must, since its job is to
+report its own stored bytes. `resolution_subjects` is the only one of the five counters that is a
+plain `int` defaulting to `0` upstream; projected raw, every 0.5-era version in the catalog would
+report *nothing was resolved*, indistinguishable from a module where that is true. That is the vacuous
+`fully_resolved` failure re-made inside the field added to close it, and 0.11.3 is where we last paid
+for it. `resolution.signature` is deliberately **not** gated: nullable since 0.5, so absence is already
+`None` with no default to mistake for a measurement.
+
+### The upgrade changelog names what it moved, not what it might have (S15)
+
+`_upgrade_changelog` hardcoded *"back-populated the 0.3 axes (direction/stat_significance/clin_sig)"*
+while `_UPGRADED_COLUMNS` holds six names. On the reporter's module that sentence was wrong in both
+directions at once: those three did not move — two were already authored, the third arrived empty —
+and `state`, named nowhere, was rewritten on 990 of 990 rows. A changelog is the only human-readable
+record of what a version changed, it is written by this service rather than by the publisher, and it
+is immutable in practice once published.
+
+Naming all six would trade one inaccuracy for another, since which of them move is a property of the
+spec. So `plan_variants_upgrade` now measures the rewrite — `changed_cells` (column → rows actually
+changed) and `added_columns` — and the sentence reads only what moved. `clin_sig` is reported as
+*added* rather than *changed*, the distinction the old sentence could not draw: a column can arrive and
+be empty on every row, changing the file's shape and no value. `registry upgrade --dry-run` prints the
+same columns; it showed a bare row count before, so an operator could not preview any of this.
+
+**Prospective only.** Changelogs already published keep their sentence. They are mutable metadata and
+`PATCH …/versions/{v}` can amend one, but rewriting the human record of what happened is an operator's
+decision about their own catalog, not a migration to run on everyone's behalf.
+
+### The two items are one episode
+
+S15 reports `2.0.0` silently reverting the `state` trim `1.0.1` applied, with nothing in either
+changelog recording it. A `state` rewrite moves `content_signature` — measured — so with S14's field
+on the row that chain reads `1.0.0: X`, `1.0.1: Y`, `2.0.0: X` in one list call, and the revert the
+reporter had to download and parse both specs to see is on the wire.
+
+And S15 is S13 one layer down: a sentence restating a fact stated authoritatively elsewhere, drifting
+from it while reading as current. There a docstring against `manifest.derived`, here a changelog
+against `_UPGRADED_COLUMNS`. Both fixes are the same move — derive it, do not restate it.
+
 ## [0.18.3] — 2026-08-20
 
 **Client surface: unchanged.** No endpoint, no `RegistryClient` method, no signature. This release

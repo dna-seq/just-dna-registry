@@ -79,12 +79,26 @@ def _resolution_from_manifest(manifest: ModuleManifest | None) -> ResolutionInfo
     )
 
 
-def _resolution_from_row(row: sqlite3.Row) -> ResolutionInfo:
-    """The trust facet, from the projected columns — no manifest parse.
+def _resolution_from_row(row: sqlite3.Row, manifest: ModuleManifest | None = None) -> ResolutionInfo:
+    """The trust facet, from the projected columns, plus the two payload fields off `manifest`.
 
-    The version list renders one of these per row, so it must not reparse `manifest_json` N times.
-    `resolution_signature`/`sources` are deliberately absent here: they are payload rather than
-    filters, so they stay in the manifest and surface on the detail endpoint's inline copy.
+    Everything filterable comes from a column, which is what keeps a version list free of a per-row
+    parse. `signature` and `sources` cannot: they are payload, they have no column, and through 0.18
+    they were simply left empty here — the docstring said so and called it deliberate.
+
+    **The stated reason was wrong, and S14 is what showed it.** It read "the version list renders one
+    of these per row, so it must not reparse `manifest_json` N times" — while `_version_signed`, two
+    functions below and called from the same builder on the same rows, parsed `manifest_json` on
+    every one of them to fill `signed`. The parse was already being paid for; only these two fields
+    were being withheld from it. So `_version_summary` now parses **once** per row and hands the
+    result to both, which fills them in and does strictly less work than 0.18 did.
+
+    That mattered beyond tidiness. `signature` is the fact signature — the one signal that an
+    upstream source revised an answer while `content_signature` stood still — so the endpoint that
+    lists versions was the one endpoint that could not compare them, and the same field was populated
+    on the module card all along. And `sources: []` was the trap this codebase names elsewhere: one
+    value for "no sources" and "not projected", rendered identically. Filling it retires the
+    ambiguity outright, which is better than adding a sibling field to describe it.
     """
     keys = row.keys()
     if "trusted" not in keys:
@@ -106,6 +120,11 @@ def _resolution_from_row(row: sqlite3.Row) -> ResolutionInfo:
             for name in _COUNTER_COLUMNS
             if name in keys
         },
+        # Read straight through with no era gate, unlike the counters above: `resolution_signature`
+        # has been `str | None` since 0.5, so an absent one is already `None` upstream and there is
+        # no default value here that could be mistaken for a measurement.
+        sources=list(manifest.compilation.resolution_sources) if manifest else [],
+        signature=manifest.compilation.resolution_signature if manifest else None,
     )
 
 
@@ -288,14 +307,24 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> 
 
 
 def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSummary:
+    # One parse per row, shared. `signed` has always needed the manifest; since 0.19 the two payload
+    # fields of `resolution` do too, and parsing twice to read two parts of one document would be
+    # the actual waste. Through 0.18 this parsed once and spent it on a single boolean.
+    manifest = _row_manifest(row)
     return VersionSummary(
         version=row["version"],
         artifact_digest=row["digest"],
+        # The pair the format's identity ledger is read as: `artifact_digest` names the bytes and
+        # this names the data. Straight off the indexed `content_hash` column, which has held exactly
+        # `manifest.content_signature` since 0.11 — no parse, and no second derivation that could
+        # disagree with what the publisher attested. Empty for a pre-0.5 manifest that has none, and
+        # reported as `null` rather than `""` so "has none" cannot read as "is the empty signature".
+        content_signature=row["content_hash"] or None if "content_hash" in row.keys() else None,  # noqa: SIM118
         compile_success=bool(row["compile_success"]),
         yanked=bool(row["yanked"]),
-        signed=_version_signed(row),
+        signed=manifest is not None and manifest.signature is not None,
         needs_upgrade=bool(row["needs_upgrade"]) if "needs_upgrade" in row.keys() else False,  # noqa: SIM118
-        resolution=_resolution_from_row(row),
+        resolution=_resolution_from_row(row, manifest),
         downloads=int(row["downloads"]) if "downloads" in row.keys() else 0,  # noqa: SIM118
         created_at=row["created_at"],
         changelog=row["changelog"],
@@ -303,12 +332,15 @@ def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSumm
     )
 
 
-def _version_signed(row: sqlite3.Row) -> bool:
-    """Whether a version's stored manifest carries a signature (projected from manifest_json)."""
+def _row_manifest(row: sqlite3.Row) -> ModuleManifest | None:
+    """A version row's stored manifest, or `None` for a projection that did not select it.
+
+    The guard is not defensive padding: the search and listing queries project narrow column sets,
+    and a summary built from one of those has to degrade to the column-only answer rather than raise.
+    """
     if "manifest_json" not in row.keys() or not row["manifest_json"]:  # noqa: SIM118
-        return False
-    manifest = ModuleManifest.model_validate_json(row["manifest_json"])
-    return manifest.signature is not None
+        return None
+    return ModuleManifest.model_validate_json(row["manifest_json"])
 
 
 def list_modules(

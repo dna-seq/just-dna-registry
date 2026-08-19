@@ -3,14 +3,16 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.18.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.19.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
   five counters to every `resolution` object; see *Format 0.6 fields* below. **0.18 adds no route
   either**: 0.18.0 changed what `registry upgrade` acts on, which is an admin CLI behaviour with no
   HTTP surface, 0.18.1 is an enricher floor bump, 0.18.2 is another one plus a lint sweep that
-  moved no signature, and 0.18.3 corrects a client docstring and the test coverage behind it).
+  moved no signature, and 0.18.3 corrects a client docstring and the test coverage behind it.
+  **0.19 adds no route either** — it adds two fields to `VersionSummary`/`ResolutionInfo`, which a
+  `v1` client that ignores them keeps working against).
   Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
@@ -520,7 +522,8 @@ reflects the caller.
 `200 → Page<VersionSummary>` (paginated). `404 module_not_found`.
 
 ```json
-{"version":"2.0.0","artifact_digest":"sha256:…","compile_success":true,"yanked":false,
+{"version":"2.0.0","artifact_digest":"sha256:…","content_signature":"sha256:…",
+ "compile_success":true,"yanked":false,"resolution":{"signature":"sha256:…","sources":["Ensembl"],"…":"…"},
  "downloads":214,"created_at":"…","changelog":"…","manifest_url":"/api/v1/modules/…/versions/2.0.0/manifest"}
 ```
 
@@ -879,13 +882,29 @@ created_at, updated_at`. Version-scoped; `highlighted` is set by the namespace o
 is truncated to 3; in detail/manifest it's the full list.
 
 ### VersionSummary
-`version, artifact_digest, compile_success, yanked, signed, needs_upgrade, downloads, created_at,
-changelog, manifest_url, resolution: ResolutionInfo`. `downloads` is the per-version download count.
+`version, artifact_digest, content_signature, compile_success, yanked, signed, needs_upgrade,
+downloads, created_at, changelog, manifest_url, resolution: ResolutionInfo`. `downloads` is the
+per-version download count.
+
+`artifact_digest` and `content_signature` are the identity pair and answer different questions.
+The digest names the compiled **bytes** and moves whenever a recompile restamps a timestamp, so two
+publishes of one spec routinely differ; `content_signature` names the authored **data** and is what
+`409 duplicate_content` is keyed on. Comparing two versions of a module, the second is the one to
+read. Both are stored values off the manifest, never recomputed on read. `content_signature` is
+`null` on a pre-0.5 manifest that carries none. **Added in 0.19** (S14).
 
 ### ResolutionInfo
 `mode, fully_resolved, trusted, vrs_alleles, vrs_alleles_identified, vrs_complete,
 resolution_subjects, positional_rows, positional_rows_placed, expanded_keys, expanded_rows` (the
-last five are 0.17), plus `sources[]`/`signature` on the card's copy.
+last five are 0.17), plus `sources[]` and `signature`.
+
+`signature` is `compilation.resolution_signature`, the fact signature over what resolution decided.
+It moves when an upstream source revises an answer while `content_signature` stands still, which is
+the one situation the identity pair above cannot distinguish from a no-op recompile. **Through 0.18
+it and `sources[]` were populated only on the card**, so the version list — the only endpoint that
+sees a whole chain — was the one that could not compare it; both are on every copy since 0.19 (S14).
+Unlike the five counters, `signature` is not era-gated: it has been nullable since 0.5, so `null`
+means the version carries none rather than that it was not read.
 
 `trusted` is tri-state — `false` when the compiler reported a table no VCF can join by position,
 `null` when we have no verdict to offer.
