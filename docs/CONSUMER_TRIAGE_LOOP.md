@@ -13,11 +13,21 @@ one-way and by hand.** If you change the *pattern* (the algorithm, a script's co
 running it), it belongs in the gist too; if you change something only true of this repo — the release
 table below, the routing destinations, a path — it does not.
 
-**Two findings are currently owed to the gist**: the `--backfill` stamping hazard and the
-archived-footer one, both in §5 and both found here on 2026-08-20. It is pattern-level rather than repo-level — the ledger's fallback rule is the gist's own —
-so it belongs there, and this line stays until the trip is made.
+**The most recent trip was 2026-08-21, and it ran in both directions**, which is the first time it has.
+Outbound went the two findings owed since 2026-08-20: the archived-footer one, which the gist did not
+have in any form, and the `--backfill` stamping hazard, which it half had and half had **wrong** — its
+Step 3 warns you off the value the ledger prints while telling you `--backfill` writes the safe one, and
+both come from the same computation, so the paragraph talked an adopter out of the hazard and back into
+it in eight lines. The placeholder recipe below went with the correction.
 
-**The most recent trip in that direction was 2026-08-16**, carrying the trailing-rule normalization in
+Inbound came the watcher's `BRANCH` guard, which had been sitting in the gist unnoticed here: it pauses
+the watch while the tree is off `main`, because a feature branch or a detached HEAD is somebody's own
+work and this repo's loop **commits**. That is precisely the permit the guard is written against, so of
+the two copies the one that needed it most was the one without it. **A one-way sync still has to be read
+in both directions** — five days of "we owe them something" is also five days of not looking at what they
+had, and the fix we needed was already published.
+
+**The trip before it was 2026-08-16**, carrying the trailing-rule normalization in
 `fingerprint` — found here (§5) and missing from the gist for five days. It went back with its own §5
 entry and a cross-reference: the gist had recorded an item that read `revised` over prose git showed
 byte-identical and diagnosed it as a marker stamped wrong in its own pass, which is also exactly what a
@@ -101,6 +111,16 @@ memory of having armed anything, which is exactly why the event line names this 
 read a settling notification as the intended trigger rather than as a stale process. Arm it once and clear
 freely; only ending the session or `TaskStop` needs the arming repeated. Run the ledger yourself after a
 clear, though: the watcher never fires for a change that predates it, so a standing backlog stays quiet.
+
+**The watch pauses while the tree is off `main`** (`BRANCH`, adopted from the gist on 2026-08-21). This
+loop commits as it goes, and that permit is scoped to `main`: a feature branch — or a detached HEAD — is
+somebody's own work, and an unattended batch landing on top of what they are mid-way through is the one
+failure the commit rule in Step 5 cannot undo by staging carefully. Off `main` the watcher idles at
+`BRANCH_PAUSE` (900s), says so once, and says so again when it resumes; it does not touch `last` while
+paused, so an edit written during the pause is still picked up on the way back rather than lost. Set
+`BRANCH=` — empty, and note the spelling is `${BRANCH-main}` rather than `${BRANCH:-main}` — to switch it
+off entirely. **A pause is not a dead watcher**, and it prints the branch it saw so you can tell them
+apart.
 
 **Hooks cannot do this job.** Claude Code hooks fire on the agent's own lifecycle (`PreToolUse`,
 `PostToolUse`, `SessionStart`, `Stop`); a consumer editing a file triggers none of them. The trigger has to
@@ -221,7 +241,10 @@ delegate this step to a subagent: a summary of a charter drops the qualifier the
 **Legality sizes the release; severity only orders the queue inside it.** A severe finding whose fix is a
 new response field is still a minor release; a trivial one whose fix renames a query parameter is still
 major. What this service publishes is three things — the `v1` HTTP surface, the `RegistryClient` SDK, and
-the immutable published data — and each sizes differently:
+the immutable published data — and each sizes differently. The admin CLI is a **fourth** surface, sized on
+its own rows below and more cheaply, because it has no deployed callers: what can break there is an
+invocation someone already wrote down — a script, or one of [UPGRADE.md](UPGRADE.md)'s procedures — and an
+operator reads a release note before running a command by hand, which a client in the field cannot do.
 
 | change | release | why |
 |---|---|---|
@@ -232,6 +255,15 @@ the immutable published data — and each sizes differently:
 | changing the status or `code` a client already sees, renaming a query param, response field, settings key or SDK method, removing anything | **major** | clients branch on exactly these. A rename is a removal plus an addition, so the addition being legal does not make the rename legal |
 | turning a warning into a refusal, or tightening a default | **major** | it fails a request that used to succeed |
 | the SQLite index, a migration, a facet's derivation | **patch/minor** | the DB is a rebuildable projection of the manifests; only its effect on a *response* is contract |
+| a new `registry` command, or a new flag on an existing one | **patch** | the admin CLI publishes nothing; no deployed caller reaches it and every invocation already written keeps meaning what it meant. 0.17.1 put `--mode` on the root callback this way |
+| an existing `registry` invocation doing **more or different work** by default, while still succeeding | **minor** | the scripted invocation still runs, but no longer does what its author read when they wrote it — additive to the operator in the same sense a new response field is additive to a client. 0.18.0 is the case: `upgrade --apply` began acting on versions it had silently skipped |
+| removing or renaming a `registry` command or flag, or making one refuse where it used to act | **major** | it breaks an invocation already written down, and the ones in [UPGRADE.md](UPGRADE.md) are written down *by us* |
+
+**Our own version is not the API's, which is why most of this table is cheaper than it looks.** The HTTP
+surface is path-versioned `v1`, so no minor of this package can break a `v1` client by construction; the
+minor digit is really the SDK-and-ops digit. That is also why trap three outranks every row above — a
+lockstep `just-dna-format` minor is the one change that breaks a client the path version was supposed to
+protect, and it does so without any row here firing.
 
 Four traps, each of which costs more than its diff suggests:
 
@@ -382,7 +414,7 @@ the write is rejected if one changed.
 ## 5. Gotchas found by running it
 
 Each of these was a bug in the loop, not a hypothetical, and the scripts here carry the fixes — some
-found upstream, some here, one still owed back to the gist:
+found upstream, some here, and as of 2026-08-21 all of them are in both copies:
 
 - **A reply ends at its marker, not at the first blank line.** Skipping the `**Status` *paragraph* leaked
   paragraphs two onward into the fingerprint, so writing a multi-paragraph reply reported the section
@@ -467,6 +499,14 @@ found upstream, some here, one still owed back to the gist:
   first was ever printed alone. The placeholder recipe needs nothing remembered. The one-paragraph
   case is safe by luck rather than by design, which is why this bites exactly the replies worth
   writing carefully.
+- **An off-switch spelled `${VAR:-default}` is not an off-switch** (the gist's finding, arriving here
+  with the `BRANCH` guard on 2026-08-21). The knob is meant to take an empty value meaning *never
+  pause*, and `${BRANCH:-main}` silently turns that back into `main` — so the one setting an adopter
+  reaches for to disable the behaviour enables it instead. `${BRANCH-main}`, without the colon, is the
+  whole fix. It surfaced only because the off-switch was *run* rather than read: the two spellings look
+  alike and behave identically for every value except the empty one, which is the only one that matters
+  and the one nobody tests. Verified here on adoption — `BRANCH=` stays quiet, `BRANCH=nonexistent`
+  pauses, `BRANCH` unset watches `main`.
 - **Splitting a wrapped paragraph is a substantive change** and correctly reports as `revised`. Only
   trailing whitespace, blank-run length and a trailing rule are normalized away.
 - **An id can appear twice as a heading** (a top-level item and a `###` follow-up nested elsewhere). Key on
