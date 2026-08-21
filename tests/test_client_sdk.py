@@ -232,6 +232,49 @@ async def test_the_cli_prints_a_pass_that_reached_nothing(capsys, monkeypatch) -
     assert "✓ would publish" in printed
 
 
+async def test_the_cli_prints_a_quote_that_is_the_articles_own_title(capsys, monkeypatch) -> None:
+    """The three quote counters can all agree and still establish nothing (enricher 0.6.6 / RM118).
+
+    A `provenance_quote` that is the cited article's own title appears in that article's fulltext by
+    construction, so the grounding check *cannot* fail on it: `quotes_authored`, `quotes_found` and
+    `quotes_unchecked` come back 1/1/0 while no claim has been evidenced. The counters are the
+    literature pass's only summary, so without a line of its own the finding reaches nobody — the
+    same half-a-fix this file's outage test exists for.
+
+    Yellow, and `would_publish` stays true: it is a defect in the evidence an author can fix, not a
+    reason for this server to refuse the module.
+    """
+    from just_dna_registry import client_cli
+    from just_dna_registry.models.api import (
+        CheckReport,
+        EnrichmentReport,
+        LiteratureCheck,
+        ValidationReport,
+    )
+
+    report = CheckReport(
+        validation=ValidationReport(valid=True, strict=False, would_publish_module_level=True),
+        enrichment=EnrichmentReport(
+            literature=LiteratureCheck(
+                quotes_authored=1, quotes_found=1, quotes_unchecked=0,
+                titles_as_quotes=["31427789"],
+            ),
+        ),
+        would_publish=True,
+        elapsed_seconds=0.1,
+    )
+    monkeypatch.setattr(client_cli, "_client", lambda *a, **k: _StubCheck(report))
+    client_cli.check(
+        _NS, _NAME, Path("."), strict=False, offline=False, frequencies=False, literature=True,
+        identifiers=False, acmg=False, pgx=False, use=None, pack=False, url=None, token=None,
+    )
+
+    printed = capsys.readouterr().out
+    assert "31427789" in printed
+    assert "ground nothing" in printed
+    assert "✓ would publish" in printed
+
+
 class _StubCheck:
     """Returns one prepared report. The renderer is what is under test, not the transport."""
 

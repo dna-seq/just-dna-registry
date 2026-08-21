@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.19.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.20.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -420,6 +420,12 @@ a `· <pass>: no answer from …` line above the findings for exactly that reaso
 `--literature` and `--acmg` otherwise print nothing at all when they succeed *or* fail. An outage does
 not change `would_publish`: it is a degradation of the report, not a finding about your module. Until
 0.17 these came back as `HTTP 500`, so a retry was the only available reading of them.
+
+**`--literature` gained one finding of its own in 0.20**, and it is the only line that pass prints:
+`titles_as_quotes` names the PMIDs whose authored `provenance_quote` is the cited article's own title.
+A title is in its own fulltext, so the grounding check cannot fail on it — the pass comes back
+`quotes_authored == quotes_found`, `quotes_unchecked: 0`, and nothing has been evidenced. Yellow, and
+`would_publish` does not move: it is a defect in the module's evidence, which is the author's to fix.
 
 The other two print as their own line since
 0.13. `unreachable_rsids` names rsIDs live Ensembl never answered about — they appear in `unresolved`

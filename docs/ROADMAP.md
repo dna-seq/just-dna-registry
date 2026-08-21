@@ -418,6 +418,34 @@ an explicit guard:
   source row stops being reported as unused — which had been advising authors to delete the exact row the
   compile licence gate reads.
 
+## 0.20 — format/compiler/enricher 0.6.6 adoption ✅
+
+- **The partial-cut era ends, and not by choice.** 0.17–0.19 pinned the three tiers apart on purpose
+  (`0.6.1 / 0.6.1 / 0.6.2→0.6.4`), each floor argued in `pyproject.toml`. From upstream 0.6.5 the
+  compiler and enricher read format symbols that exist only there, and upstream's inter-package floors
+  are `>=0.6.6` — so the question "is a partial cut available?" now answers itself. Ask it anyway next
+  time; the method was right even though the answer changed.
+- **The format floor is hard for a shape not seen here before: a new authored *column*.**
+  `StudyRow.curator` (RM120) under `AuthoredModel`'s `extra="forbid"` — a spec carrying it is refused
+  by a 0.6.1 install, not merely stripped. `ProvenanceItem.outranks` (RM117) is the opposite case on a
+  permissive model. The `extra` setting is what decides which.
+- **A defect of upstream's whose only victim was our gene index (RM121).** `manifest.stats.genes` was
+  derived from `variants.csv` alone and `db/repository.py` fills the gene side table from it, so a
+  `haplotypes.csv`/`diplotypes.csv`-led module published `genes: []` and `?gene=` could not return it.
+  Nothing here changed to read it. **It reaches published versions only through `upgrade --force`** —
+  a compiler patch is deliberately not a gap (0.18.0), so the sweep will not run itself, which is the
+  detector working and is said out loud in the release for exactly that reason.
+- **A tightening operators must know about (RM107).** A duplicate `(source, layer)` row in the
+  licensing ledger is now a compile error in both `validate` and `compile`. A publish that worked can
+  `422`, and a `--force` recompile of such a version fails on already-published bytes. Measured that
+  the pre-flight and the gate agree (S6's rule), and swept the 27 sample specs: none carries one.
+- **One new response field**, `enrichment.literature.titles_as_quotes` (RM118 / their S54): the PMIDs
+  whose quote is the cited article's own title, which the grounding check cannot fail on. Reading it is
+  what makes the enricher floor hard again after 0.6.4's deliberately soft one — the floor followed the
+  adoption. It reaches `registry-client check`, because a field nothing prints reaches nobody.
+- **Owed: nothing new.** `content_signature` does not move, so no `rederive-signatures` and no trust
+  migration; the `db/facets.py` fallback recorded under 0.17 remains the only outstanding item.
+
 ## 0.17 — format/compiler 0.6.1 + enricher 0.6.2 adoption ✅
 
 - **A contract cut, not an attribute chase.** Every `artifact.digest` moves and a 0.5 client is

@@ -1126,6 +1126,11 @@ def _literature_check(spec_dir: Path, offline: bool, clients: Any) -> Literature
         quotes_authored=result.quotes_authored,
         quotes_found=result.quotes_found,
         quotes_unchecked=result.quotes_unchecked,
+        # Enricher 0.6.6 / RM118. `quotes_found` counts a title as a found quote, correctly — it *is*
+        # in the fulltext — so on a module whose quotes are all titles the three counters above agree
+        # with each other and establish nothing. This is the sibling field that says which of the two
+        # histories produced them, and it is why the enricher floor is hard again.
+        titles_as_quotes=list(result.titles_as_quotes),
         skipped_offline=result.skipped_offline,
     )
 

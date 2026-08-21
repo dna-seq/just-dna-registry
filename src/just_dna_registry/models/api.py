@@ -692,6 +692,15 @@ class LiteratureCheck(BaseModel):
     quotes_unchecked: int = Field(
         default=0, description="A quote that could not be checked is not a quote that passed"
     )
+    titles_as_quotes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "PMIDs whose `provenance_quote` is the cited article's own title. A title appears in its "
+            "own fulltext, so the quote check cannot fail on one: these PMIDs are counted in "
+            "`quotes_found` while nothing about the claim has been grounded. A warning about the "
+            "evidence, never a publish gate"
+        ),
+    )
     skipped_offline: bool = False
     unreachable: list[str] = Field(
         default_factory=list,

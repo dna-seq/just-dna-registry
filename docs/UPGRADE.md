@@ -1,5 +1,71 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.20 format 0.6.6 adoption (operator note — **not** a cut, with one re-baseline worth running)
+
+**All three tiers go to 0.6.6, and the partial-cut era ends here.** From upstream 0.6.5 the compiler
+and enricher read format symbols that exist only at that release, and upstream's own inter-package
+floors are `>=0.6.6` — so `0.6.1 / 0.6.1 / 0.6.4` was the last trio that could be pinned apart. `uv
+sync` installs `0.6.6 / 0.6.6 / 0.6.6`. (0.6.5 was tagged but never published to PyPI; the floor is
+0.6.6 for all three and nothing resolves to 0.6.5.)
+
+**This is not a contract cut.** The format minor stays `0.6`, so `version.contract_compatible` refuses
+nobody it did not already refuse, no `artifact.digest` moves for a version already on 0.6, and there is
+no `rederive-signatures` and no trust migration to run. An operator on 0.17-or-later upgrades by
+`uv sync` — but read the two items below before deciding you are finished, because one of them
+*is* worth a sweep and the other can refuse a publish that used to work.
+
+**1. `stats.genes` was reading one table, and it feeds `?gene=` (upstream RM121).** Through compiler
+0.6.5 the field was derived from `variants.csv` alone, so a module led by `haplotypes.csv`,
+`diplotypes.csv`, `allele_function.csv` or `copynumbers.csv` published `gene_count: 0, genes: []`
+however many of its rows named a gene — and this registry's gene side table is fed from exactly that
+field. The modules a gene search most obviously exists for were the ones it could not find. From 0.6.6
+the compiler unions the `gene` column over every authored gene-bearing kind.
+
+**Nothing back-fills that for you, and `registry upgrade` will not.** A compiler *patch* is
+deliberately not a gap (see `--force` below), so the sweep finds nothing to do and every already-
+published table-only module keeps its empty `genes` list. The re-baseline is therefore an explicit
+`--force`, which is precisely what `--force` means — *no gap detected, do it anyway*:
+
+```
+registry --mode <prod|test> upgrade --dry-run --force
+registry --mode <prod|test> upgrade --apply --force
+```
+
+Scope it with `-m <module>` if you know which ones carry no `variants.csv`; a whole-catalog `--force`
+mints a PATCH per module.
+
+**And `--force` here is not the 0.18.0 defect returning — it is the first case that strains the rule
+0.18.0 established.** That release stopped `upgrade` from needing `--force` for a *contract* gap
+(0.5-compiled bytes in a 0.6 catalog), and it still does not: 0.6.1 → 0.6.6 is a patch inside one
+contract, and a patch deliberately does not act, because acting on one would mint a PATCH per module
+every time a dependency moved. What is new is that this patch changed a **published field the catalog
+indexes**, which the "a patch changes nothing worth recompiling for" premise did not anticipate. The
+fix is *not* to teach the detector that 0.6.6 is special — that is dating an artifact by a landmark,
+which is what 0.18.0 removed. It is to look for the stale field itself, which is a `revalidate`
+predicate nobody has written yet; see `ContractGap.acts_by_default`. It costs a version number per module either way, so it is a decision, not
+housekeeping. If you skip it, the catalog is not *wrong* — it is as findable as it was yesterday, and
+every version published from here on is findable correctly.
+
+**2. A duplicate `(source, layer)` row is now a compile error (upstream RM107).** Through 0.6.5 a
+`licensing.csv`/`sources.csv` carrying two rows under one `(source, layer)` pair compiled green even
+under `--strict`, with a moved `source_signature` and the two rows free to claim opposite
+`commercial_use` in the one file the compile gate reads. From 0.6.6 both `validate_spec` and
+`compile_module` refuse it, naming the key. Consequences in both directions:
+
+* A publisher whose spec carries one now gets a `422` on a module that published before. Re-running the
+  enricher's licensing writer collapses the pair, but it keeps the **last** row under the key — so
+  where the two rows disagree, which is the case worth catching, choosing between them is the author's
+  call and not a tool's.
+* **A `--force` recompile of such a version will fail**, and it is an already-published module, so
+  there is nothing to fix in place. `--dry-run` first, always; that is what it is for. Swept
+  `data/input/`'s 27 sample specs before taking this floor and none carries a duplicate, so this is a
+  hazard to check for rather than one to expect.
+
+**And one report field is new**: `/check?literature=true` returns `titles_as_quotes` — the PMIDs whose
+authored `provenance_quote` is the cited article's own title, which the grounding check cannot fail on
+and which therefore inflates `quotes_found` without evidencing anything. `registry-client check` prints
+it. It never moves `would_publish`.
+
 ## 0.17 format 0.6 adoption (operator note — a coordinated cut)
 
 **This is the second contract cut, and it has the same shape as 0.11's.** `just-dna-format` and
@@ -10,8 +76,9 @@ rejection with no obvious cause.
 
 **The enricher runs ahead of the other two, and that is not a typo.** 0.6.2, 0.6.3 and 0.6.4 are all
 enricher-only cuts (upstream RM101, then S39/S41–S44, then S45); format and compiler are unchanged at
-0.6.1, so `uv sync` installs `0.6.1 / 0.6.1 / 0.6.4` as of registry 0.18.2, and that is the correct
-state. The **0.6.2** floor is a hard one rather than a preference: this server's `/check` adapters
+0.6.1, so `uv sync` installed `0.6.1 / 0.6.1 / 0.6.4` from registry 0.18.2 through 0.19.0, and that was
+the correct state for those releases (**superseded by the 0.20 section above**, where all three align at
+0.6.6). The **0.6.2** floor is a hard one rather than a preference: this server's `/check` adapters
 catch the unavailability subclasses it introduces, and on 0.6.1 nothing raises them — those handlers
 would be dead code and an upstream outage would go back to being a `500`. **0.6.4 is not hard**, and
 the difference is worth carrying: it is one fix in the ClinVar drafter, nothing this service runs, and

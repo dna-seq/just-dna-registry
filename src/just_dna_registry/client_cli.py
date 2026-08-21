@@ -573,6 +573,19 @@ def check(
                     f"of the check is unchecked, not clean. Re-run.",
                     fg=typer.colors.YELLOW,
                 )
+        # The literature pass has no summary line, so a finding that lives only in a list has to be
+        # printed here or it reaches nobody (the 0.17 lesson: a new report field is only half a fix).
+        # Yellow: a quote that is its own article's title grounds nothing, but it is a defect in the
+        # *evidence*, not a reason to refuse the module, and `would_publish` does not move for it.
+        if e.literature is not None and e.literature.titles_as_quotes:
+            pmids = e.literature.titles_as_quotes
+            typer.secho(
+                f"  ! {len(pmids)} quote(s) are the cited article's own title "
+                f"(PMID {', '.join(pmids[:5])}{'…' if len(pmids) > 5 else ''}) — counted as found, "
+                f"but a title cannot fail a fulltext check, so they ground nothing. Quote the "
+                f"sentence that states the claim.",
+                fg=typer.colors.YELLOW,
+            )
         if e.identifiers is not None:
             for line in e.identifiers.stale_traits + e.identifiers.stale_genes:
                 typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)

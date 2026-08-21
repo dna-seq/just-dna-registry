@@ -62,8 +62,13 @@ not predict `compile` for two shapes, which is S6's rule one tier down; RM97 —
 below). The reasons are written into the `pyproject.toml` pins beside each floor, which is where the
 next person will look.
 
-**And the three tiers can move apart: `just-dna-enricher` floors at 0.6.4 while the other two stay at
-0.6.1.** The network tier touches no parquet, model or manifest field, so upstream can cut it alone —
+**And the three tiers *could* move apart — through 0.19 the enricher floored at 0.6.4 while the other
+two stayed at 0.6.1. Since 0.20 all three are 0.6.6 and that is no longer available**, because from
+upstream 0.6.5 the compiler and enricher read format symbols that exist only there and upstream's own
+inter-package floors are `>=0.6.6`. The reasoning below is kept rather than deleted: a partial cut is
+still the right question to ask of the *next* enricher patch, and the three floors it describes were
+each correct when taken. What changed is the answer, not the method — check whether the tiers still
+resolve apart before assuming either way. The network tier touches no parquet, model or manifest field, so upstream can cut it alone —
 and none of the three enricher floors is a symbol missing below it. **0.6.2** is one whose *meaning changes at*
 it: our adapters catch `FrequencyUnavailable` and its siblings, which on 0.6.1 nothing raises, so those
 arms would be dead code and `/check` would 500 over an outage again. **0.6.3** is the same shape moved
@@ -456,6 +461,14 @@ predicts is worse than one that does not normalize at all.
   map would have stamped a deprecation warning into every published (and immutable) manifest and
   stored the one spelling that stops being read at all.
 
+  **And since compiler 0.6.6 (upstream RM107) a duplicate `(source, layer)` row in that table is an
+  error in both `validate` and `compile`, where it used to pass silently.** The pair was free to carry
+  opposite `commercial_use` in the one file the compile gate reads, which is the same class of false
+  facet as the 0.16.2 flip. Consequences to hold together: a spec that published before can now be a
+  `422`, and a `--force` recompile of such a published version fails with nothing left to fix in place —
+  so `upgrade --dry-run` before any forced sweep. The enricher's licensing writer collapses the pair but
+  keeps the **last** row, so where two rows disagree the choice is the author's, not a tool's.
+
   So: **never hardcode a spelling here again.** Upstream owns which names exist and which are
   deprecated; restating that is precisely how the two got out of step. **Three things must hold before
   adding a name to that map by hand:** the two names are one table with one row model upstream (not a
@@ -513,7 +526,15 @@ predicts is worse than one that does not normalize at all.
   `fully_resolved=True` from an `all()` over an empty list, and reading that as trust is how the
   catalog spent 0.11.x advertising PGx modules that join to no VCF as fully-baked (`db/facets.py`).
   Before any new facet leans on a compile-time flag, ask what it quantifies over and what an empty
-  quantifier means — a table-only module is the case that finds out. **Positional joinability is the
+  quantifier means — a table-only module is the case that finds out.
+  **`stats.genes` was the same lesson at a second field, and it was upstream's to fix (RM121, adopted in
+  0.20).** It quantified over `variants.csv` alone while `Stats`'s own docstring said *derived from the
+  spec*, so a module led by `haplotypes.csv` or `diplotypes.csv` published `genes: []` however many rows
+  named a gene — and `db/repository.py` feeds the gene side table from exactly that field, so `?gene=`
+  could not return the modules it most obviously exists for. Compiler 0.6.6 unions the column over every
+  authored gene-bearing kind. Note what this cost us to find: nothing here was wrong, so nothing here
+  failed, and the symptom was a facet quietly returning less than it should. **A field you only read is
+  still a field to ask "over what?" about.** **Positional joinability is the
   separate question**: rows with no `chrom`+`start` match nothing in a VCF, it is legal and stays a
   warning in both modes (compiler 0.5.3), and it must never become a publish gate — the remedy is a
   compiler change (upstream RM43), **which shipped in 0.6**: the fill places rsID-keyed positional rows

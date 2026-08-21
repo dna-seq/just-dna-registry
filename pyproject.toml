@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.19.0"
+version = "0.20.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -32,7 +32,22 @@ dependencies = [
     # claim (a `409 duplicate_content` slot only a purge frees), so a floor below the fix is a floor
     # that lets one be minted over a spelling upstream calls invalid. Same cut, no contract change:
     # 0.6.1 moves no schema surface and recompiles all sixteen reference examples byte-identical.
-    "just-dna-format>=0.6.1",
+    #
+    # **0.6.6, and the reason is a kind this file has not carried before: a new authored *column*.**
+    # `StudyRow` inherits `AuthoredModel`, whose `model_config` is `extra="forbid"` — so a column the
+    # installed model does not know is not ignored, it is a validation error. 0.6.5's RM120 adds
+    # `StudyRow.curator` (who located this row's quote — the field `VariantRow` has always had, on the
+    # table where the attestation actually lives), and every tool that writes a `studies.csv` is free
+    # to emit it from that release on. Against 0.6.1 such a spec is *refused*: `/validate` reports an
+    # error, publish returns `422`, and a module upstream calls valid cannot be published here at all.
+    # Strictness is what turns an additive column into a floor — a permissive model would merely drop
+    # the cell, which is the ordinary additive case and would not have moved this line.
+    #
+    # The asymmetric twin is worth knowing precisely because it is **not** a floor: `ProvenanceItem`
+    # (RM117 adds `outranks`) is a plain `BaseModel`, so a 0.6.1 install silently discards the field
+    # instead of refusing the document. Quiet data loss rather than a refusal — a reason to move, not
+    # a reason the floor is hard. Read the model's `extra` before assuming a new field is either.
+    "just-dna-format>=0.6.6",
 ]
 
 [project.optional-dependencies]
@@ -54,8 +69,14 @@ dependencies = [
 # endpoints this repo built for CI (`/validate`, `/check`) are pre-flights for the publish compile, and
 # S6's rule is that a read-only pre-flight must predict the operation it precedes. On 0.6.0 they could
 # not, for those two shapes.
+#
+# **0.6.6, and from here the three tiers stop being pinnable apart inside the minor.** From 0.6.5 the
+# compiler and the enricher read format symbols that exist only at that release (`base.merge_key`,
+# `TableKey.fallback`, `compiler.spec_tables`, `Literature.quotes_unchecked`) and upstream's own
+# inter-package floors are `>=0.6.6`. The 0.6.2–0.6.4 partial cuts were real and correctly taken; this
+# one is not partial, and treating it as though it were would resolve a trio that cannot run itself.
 compiler = [
-    "just-dna-compiler>=0.6.1",
+    "just-dna-compiler>=0.6.6",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -141,8 +162,52 @@ server = [
     # Worth preserving rather than flattening: a reader who treats every floor here as load-bearing
     # will not question the next one either, and the reason the 0.6.2 and 0.6.3 comments run long is
     # that both were easy to mistake for optional. This one genuinely is optional.
-    "just-dna-compiler>=0.6.1",
-    "just-dna-enricher>=0.6.4",
+    #
+    # **0.6.6 moves all three together, and on the compiler two of the reasons are this service's.**
+    #
+    # Lockstep first, for the reason spelled out on the `compiler` extra above: 0.6.5 is where the
+    # three packages stopped resolving apart.
+    #
+    # The one that is about *us*: **RM121 — `manifest.stats.genes` was derived from `variants.csv`
+    # alone**, and that field is what feeds this registry's gene index (`db/repository.py` writes it
+    # into the gene side table and `?gene=` joins it). A star-allele, copy-number or diplotype module
+    # published `gene_count: 0, genes: []` however many of its rows named a gene — measured upstream at
+    # 1,332 `CYP2C19` rows against an empty list — so the modules a gene search most obviously exists
+    # for were the ones it could not find. `module_stats` unions the `gene` column over every authored
+    # gene-bearing kind, derived fact sidecars excluded. **No code here changes to read it**; what
+    # changes is that the number arrives correct, and only for versions compiled from 0.6.6 on — see
+    # the `--force` re-baseline note in [docs/UPGRADE.md](docs/UPGRADE.md), because a compiler patch is
+    # deliberately not a gap and `registry upgrade` will therefore recompile nothing on its own.
+    #
+    # And one **tightening** to know before deploying, rather than to discover from a support mail:
+    # **RM107**. A duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` compiled green
+    # under `--strict` through 0.6.5; from 0.6.6 both `validate_spec` and `compile_module` refuse it
+    # (`"<file>: duplicate row for key ('<source>', '<layer>')"`). A publish that succeeded on 0.6.1
+    # can now be a `422`. That is upstream's call about what a licensing ledger may say — the pair was
+    # free to carry opposite `commercial_use` in the one file the compile gate reads — and our
+    # endpoints report it the way they report every other spec error. Swept `data/input/`'s 27 sample
+    # specs before taking the floor: none carries one.
+    #
+    # **0.6.6 on the enricher is hard again, where 0.6.4 was deliberately soft.** RM118 (our S54
+    # upstream) adds `LiteratureResult.titles_as_quotes` — the PMIDs whose `provenance_quote` is the
+    # cited article's own title. A title appears in its own fulltext, so the quote check *cannot* fail
+    # on one: `quotes_found` equals `quotes_authored` and nothing about any claim has been grounded.
+    # That is this repo's standing rule about a value two opposite histories produce, arriving at the
+    # one pass where the green number was the entire finding, so `/check` now surfaces it
+    # (`LiteratureCheck.titles_as_quotes`) and `registry-client check` prints it. Read against 0.6.4
+    # that attribute does not exist, which is an `AttributeError` inside a handler.
+    #
+    # What else moved in 0.6.5/0.6.6 lands on passes this service does not run, and is named here so
+    # the next reader does not re-derive it: **RM104** (`enrich_gene_metrics` raising `UnboundLocalError`
+    # out of the pass on an idempotent re-run — a genuine 0.6.4 landmine, and outside
+    # `GeneMetricsEnrichmentError` so nothing catches it, but neither `enrich()` nor any leg of
+    # `/check` runs that pass), **RM109** (its fetch-suppression key), **RM105** (the enricher's own
+    # HuggingFace publisher dropping an attested `logo.jpeg` — not the storage backend this service
+    # uses) and **RM125** (two `lookup_variant` message strings; that surface has no caller here). None
+    # of them would have moved this floor on its own, and the fact that the one *hard* enricher reason
+    # is a field we chose to start reading is worth noticing: the floor followed the adoption.
+    "just-dna-compiler>=0.6.6",
+    "just-dna-enricher>=0.6.6",
 ]
 
 [build-system]

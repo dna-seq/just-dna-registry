@@ -6,6 +6,102 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.20.0] — 2026-08-21
+
+**Client surface: unchanged.** No `RegistryClient` method signature moves and no route is added. One
+new **response** field reaches `check()` callers without the wrapper being touched —
+`enrichment.literature.titles_as_quotes` — so a `v1` client that ignores it keeps working. Minor rather
+than patch because the field is additive contract, per the release table in
+[CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md).
+
+Adopts `just-dna-format`, `just-dna-compiler` and `just-dna-enricher` **0.6.6**, from `0.6.1 / 0.6.1 /
+0.6.4`. Operator procedure in [UPGRADE.md](UPGRADE.md) § 0.20.
+
+### The three tiers align again, and this time a partial cut was not available
+
+0.18.x took three deliberate enricher-only floors and the reasoning behind each still stands. It stops
+applying here: from upstream 0.6.5 the compiler and the enricher read format symbols that exist only at
+that release (`base.merge_key`, `TableKey.fallback`, `compiler.spec_tables`, `Literature.quotes_unchecked`)
+and upstream's inter-package floors are `>=0.6.6`, so the three no longer resolve apart. Checked rather
+than assumed; 0.6.5 was tagged but never published, so every floor here is 0.6.6.
+
+**The format floor is hard for a reason this file has not carried before: a new authored *column*.**
+`StudyRow` inherits `AuthoredModel`, whose config is `extra="forbid"`, and 0.6.5 adds `StudyRow.curator`
+(RM120) — who located this row's quote. Every tool writing a `studies.csv` may emit it from that release
+on, and against 0.6.1 such a spec is not merely lossy, it is **refused**: `/validate` errors and publish
+returns `422` on a module upstream calls valid. Strictness is what promotes an additive column to a
+floor. The twin is worth knowing for being the opposite: `ProvenanceItem.outranks` (RM117) sits on a
+plain `BaseModel`, so 0.6.1 discards it silently. Read a model's `extra` before assuming which you have.
+
+### `?gene=` could not find a PGx module, and the field it reads was the reason (upstream RM121)
+
+`manifest.stats.genes` was derived from `variants.csv` alone, and `db/repository.py` fills this
+registry's gene side table from exactly that field. A module led by `haplotypes.csv`, `diplotypes.csv`,
+`allele_function.csv` or `copynumbers.csv` therefore published `gene_count: 0, genes: []` however many
+of its rows named a gene — measured upstream at 1,332 `CYP2C19` rows against an empty list — so the
+modules a gene facet most obviously exists for were the ones it could not return. From 0.6.6 the
+compiler unions the `gene` column over every authored gene-bearing kind, derived fact sidecars excluded.
+
+**No code here changed to read it**, which is the shape worth noting: the defect was upstream, the
+symptom was ours, and the repair arrives as a correct number in a field we were already indexing. The
+test drives a real publish of a `haplotypes.csv`-only module and asserts through `?gene=` rather than
+off the manifest — a count nobody joins on is not an index — and it was run against the old trio first,
+where it fails.
+
+**It reaches published versions only through an explicit `--force`.** A compiler patch is deliberately
+not a gap (0.18.0), so `registry upgrade` finds nothing to do and every already-published table-only
+module keeps its empty list. That is the detector working, not a bug in it — but it means the
+re-baseline is a decision an operator makes, and it costs a PATCH per module. UPGRADE.md § 0.20 has the
+commands. Saying this in the release rather than leaving it to be inferred is 0.18.2's lesson, at the
+release where the sweep genuinely *would* fix something and still will not run itself.
+
+### A quote that is the cited article's own title (upstream RM118, their S54)
+
+`/check?literature=true` gains `titles_as_quotes`. A `provenance_quote` that repeats the article's
+title appears in that article's fulltext by construction, so the grounding check **cannot** fail on it:
+the pass returns `quotes_authored == quotes_found` with `quotes_unchecked: 0` and nothing about any
+claim has been evidenced. Upstream measured 3,668 such quotes across four published modules.
+
+This is this repo's standing rule — a value two opposite histories can produce needs a sibling saying
+which — arriving at the one pass where the green number *was* the whole finding. And per the other half
+of that rule, the field reaches the renderer: `registry-client check` prints a yellow line naming the
+PMIDs, because the literature pass prints no summary of its own and a finding that lives only in JSON
+reaches nobody. It never moves `would_publish`: a weak citation is the author's to fix, not grounds for
+this server to refuse a publish.
+
+Adopting it is what makes the **enricher** floor hard again where 0.6.4's was deliberately soft — the
+attribute does not exist below 0.6.6, and reading it on 0.6.4 is an `AttributeError` inside a handler.
+Worth noticing that the floor followed the adoption rather than forcing it.
+
+### A tightening to know before deploying: duplicate licensing rows now refuse (upstream RM107)
+
+Two rows under one `(source, layer)` pair compiled green through 0.6.5, even under `--strict`, with a
+moved `source_signature` and the pair free to carry opposite `commercial_use` in the one file the
+compile gate reads. From 0.6.6 both `validate_spec` and `compile_module` refuse it, naming the key. **A
+publish that succeeded before can now be a `422`**, and a `--force` recompile of such a version will
+fail on an already-published module — so `--dry-run` first. Swept `data/input/`'s 27 sample specs
+before taking the floor: none carries one. The endpoints report it the way they report every other spec
+error, so no status contract moves; what moved is upstream's judgement of what a licensing ledger may
+say.
+
+### What did not move, and why it is not an omission
+
+Four of the six enricher fixes in 0.6.5/0.6.6 land on passes this service does not run, and they are
+named in `pyproject.toml` beside the floor so the next reader does not re-derive it: **RM104** (the
+gene-metrics re-run raising `UnboundLocalError` past the `except` written for that caller — a genuine
+0.6.4 landmine, but `enrich()` runs no gene-metrics pass and neither does any leg of `/check`),
+**RM109** (its fetch-suppression key), **RM105** (the enricher's own HuggingFace publisher dropping an
+attested `logo.jpeg` — not the storage backend this service uses) and **RM125** (two `lookup_variant`
+message strings, a surface with no caller here). **RM106** deduplicates the `faf95` arithmetic warning
+that `validate_spec` and the compile side each published, so a client counting
+`manifest.compilation.warnings` on a newly compiled module may see one fewer; the text is unchanged and
+nothing here counted them.
+
+`content_signature` does not move, so there is no `rederive-signatures` and no trust migration — the
+same shape as the 0.17 adoption, for the same reason: `stats` is compile *output*, outside
+`SIGNATURE_INPUTS`, and the format minor stays `0.6` so `version.contract_compatible` refuses nobody it
+did not already refuse.
+
 ## [0.19.0] — 2026-08-20
 
 **Client surface: unchanged.** No `RegistryClient` method signature moves and no route is added. Two

@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.19.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.20.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
@@ -11,6 +11,12 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   either**: 0.18.0 changed what `registry upgrade` acts on, which is an admin CLI behaviour with no
   HTTP surface, 0.18.1 is an enricher floor bump, 0.18.2 is another one plus a lint sweep that
   moved no signature, and 0.18.3 corrects a client docstring and the test coverage behind it.
+  **0.20 adds no route either** — it adopts `just-dna-format`/`-compiler`/`-enricher` **0.6.6** and
+  adds one field, `enrichment.literature.titles_as_quotes` on `/check`. Two behaviours move underneath
+  it without any route changing: `stats.genes` is now a union over every authored gene-bearing table
+  rather than `variants.csv` alone (so `?gene=` can find a PGx or copy-number module, for versions
+  compiled from 0.6.6 on), and a duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` is
+  now a compile **error**, so a spec that published before can come back `422`.
   **0.19 adds no route either** — it adds two fields to `VersionSummary`/`ResolutionInfo`, which a
   `v1` client that ignores them keeps working against).
   Written against the server at that version; a
@@ -239,6 +245,17 @@ believing `clin_sig_conflicts: []`. Two notes:
   longer costs the others their findings, and `routes` still lists only what answered. ClinPGx never appears in
   `unreachable`: the API was retired, so it has no live route to be unreachable on, and its failures are
   skips with a reason.
+
+**`?literature=true` carries `titles_as_quotes` (0.20), and it is the field to read before believing
+`quotes_found`.** A `provenance_quote` that is the cited article's own title appears in that article's
+fulltext by construction, so the grounding check *cannot* fail on it: the pass returns
+`quotes_authored == quotes_found` with `quotes_unchecked: 0` while nothing about the claim has been
+evidenced. `titles_as_quotes` lists the PMIDs where that happened. Same contract as
+`clin_sig_not_checked` and `unreachable` — a number produced by two opposite histories gets a sibling
+saying which — and, like every other finding on this pass, it never moves `would_publish`: it is a
+defect in the module's evidence for an author to fix, not grounds for this server to refuse a publish.
+The discriminator upstream uses is the article's **metadata**, not the shape of the string, because
+length cannot separate a 17-word title from a 17-word sentence.
 
 `?identifiers=true` checks authored `trait_efo_id` CURIEs against OLS4 and `gene` symbols against
 HGNC — the generalization of "is the source stale?" from datasets to identifiers, since an EFO

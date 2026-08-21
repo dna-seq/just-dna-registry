@@ -467,6 +467,82 @@ def test_a_module_that_joins_to_no_vcf_is_not_advertised_as_trusted(pgx_client) 
     assert card["resolution"]["fully_resolved"] is True
 
 
+def test_a_table_only_modules_genes_reach_the_catalog_gene_index(pgx_client) -> None:
+    """RM121, at the surface that was actually broken by it: `?gene=` could not find a PGx module.
+
+    `manifest.stats.genes` was derived from `variants.csv` alone through compiler 0.6.5, and
+    `db/repository.py` feeds the gene side table from exactly that field — so a module whose every
+    row names a gene, but which carries no `variants.csv`, published `gene_count: 0, genes: []` and
+    was unreachable by the one facet it most obviously exists for. The fixture is the same
+    `haplotypes.csv`-only module the unjoinable tests publish, whose two rows both name `CYP2C19`.
+
+    Asserted through the facet rather than off the manifest, because the manifest number was never
+    the point: a count nobody joins on is not an index. Set equality on both halves — the gene the
+    module names, and the modules the search returns — so a facet that starts matching everything
+    fails here too.
+    """
+    manifest = _publish_unjoinable(pgx_client)
+    assert manifest.stats.genes == ["CYP2C19"]
+    assert manifest.stats.gene_count == 1
+    # ...and it is genuinely a module with no variants.csv, which is the whole precondition.
+    assert manifest.stats.variant_count == 0
+    hits = pgx_client.get("/api/v1/modules", params={"gene": "CYP2C19"}).json()
+    assert {(m["namespace"], m["name"]) for m in hits["items"]} == {
+        ("just-dna-seq", "rsid_only_pgx")
+    }
+    # A gene the module does not name must not match it — otherwise the assertion above passes on a
+    # facet that has stopped filtering.
+    assert pgx_client.get("/api/v1/modules", params={"gene": "BRCA1"}).json()["items"] == []
+
+
+_DUPLICATE_LICENSING = (
+    "source,layer,license,declared_use\n"
+    "pharmvar,annotation,CC-BY-SA-4.0,non_commercial\n"
+    "pharmvar,annotation,proprietary,unstated\n"
+)
+
+
+def test_a_duplicate_licensing_row_is_refused_by_the_pre_flight_and_the_gate_alike(
+    pgx_client,
+) -> None:
+    """Compiler 0.6.6 / RM107, checked against S6's rule rather than assumed to satisfy it.
+
+    Two rows under one `(source, layer)` pair compiled green through 0.6.5 — the pair free to claim
+    opposite `commercial_use` in the one file the compile gate reads. Both `validate_spec` and
+    `compile_module` refuse it now, but *this service* runs the enricher between the two: a licensing
+    writer that merges on exactly that key runs on the publish path and not on `/validate`, so the two
+    could plausibly disagree with the pre-flight being the stricter one. Measured here rather than
+    reasoned about, because "a read-only pre-flight must predict the operation it precedes" is only
+    worth anything if somebody checks.
+
+    A `200` with `valid: false` on the pre-flight and a `422` at the gate is the *same* verdict in the
+    two shapes this repo's status contract specifies, not a divergence.
+    """
+    files = [
+        ("files", (SPEC_YAML, _UNJOINABLE_YAML.encode(), "text/yaml")),
+        ("files", ("haplotypes.csv", _UNJOINABLE_HAPLOTYPES.encode(), "text/csv")),
+        ("files", (LICENSING_CSV, _DUPLICATE_LICENSING.encode(), "text/csv")),
+    ]
+    auth = {"Authorization": "Bearer mk_live_testkey"}
+
+    pre = pgx_client.post(
+        "/api/v1/modules/just-dna-seq/dupe_licensing/validate", files=files, headers=auth
+    )
+    assert pre.status_code == 200, pre.text  # a finding is a 200 here; only an unbuildable request is 4xx
+    body = pre.json()
+    assert body["valid"] is False
+    assert any("duplicate row for key" in e for e in body["errors"]), body["errors"]
+
+    gate = pgx_client.post(
+        "/api/v1/modules/just-dna-seq/dupe_licensing/versions",
+        data={"version": "1.0.0"},
+        files=files,
+        headers=auth,
+    )
+    assert gate.status_code == 422, gate.text
+    assert any("duplicate row for key" in e for e in gate.json()["detail"]["errors"])
+
+
 def test_the_unjoinable_phrase_still_reaches_the_manifest(pgx_client) -> None:
     """The prose coupling behind `is_trusted`, pinned against the real compiler.
 

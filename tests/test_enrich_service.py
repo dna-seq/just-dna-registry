@@ -580,6 +580,42 @@ def test_a_clingen_fetch_failure_is_unreachable_and_a_bad_local_table_is_not(
     assert any("gene_metrics.csv is invalid" in w for w in authored.warnings)
 
 
+def test_a_quote_that_is_its_own_articles_title_survives_the_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The adapter must carry `titles_as_quotes` across, or the pass reports a clean grounding.
+
+    Enricher 0.6.6 / RM118, and the reason it is a floor rather than a nicety: a title is in its own
+    fulltext, so `quotes_found` counts it — correctly — and the module's three quote counters agree
+    with each other while nothing has been evidenced. Upstream's own measurement was 3,668 such
+    quotes across four published modules.
+
+    Driven through the real `LiteratureResult` dataclass rather than a stub shaped like one, so a
+    field renamed upstream fails here instead of passing against our own idea of the contract.
+    """
+    import just_dna_enricher.literature as literature
+
+    from just_dna_registry.services.enrich import _literature_check
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+
+    def all_quotes_are_titles(*_a, **_k):
+        return literature.LiteratureResult(
+            rows=[], cited=["31427789"], quotes_authored=1, quotes_found=1, quotes_checked=1,
+            quotes_unchecked=0, titles_as_quotes=["31427789"],
+        )
+
+    monkeypatch.setattr(literature, "enrich_literature", all_quotes_are_titles)
+    check = _literature_check(spec, offline=False, clients=None)
+
+    assert check.titles_as_quotes == ["31427789"]
+    # The point of the field: every counter beside it reads as a clean, complete grounding.
+    assert (check.quotes_authored, check.quotes_found, check.quotes_unchecked) == (1, 1, 0)
+    # And it is a finding about the evidence, never a degradation of the check itself.
+    assert check.unreachable == [] and check.warnings == []
+
+
 def test_every_pass_that_can_degrade_can_say_it_reached_nothing() -> None:
     """Enumerated from `EnrichmentReport`, not from a list in this file.
 

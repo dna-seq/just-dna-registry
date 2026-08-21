@@ -341,6 +341,22 @@ class ContractGap(BaseModel):
         `artifact.digest` to record that we upgraded a dependency — the sweep would never be finished
         because the next patch release starts it again. That is what `--force` is for, and with the
         contract gap detected it is finally what its name says: an override, not the normal path.
+
+        **Compiler 0.6.6 is the first patch to falsify the premise in that paragraph, and it is worth
+        writing down rather than patching around.** Upstream RM121 shipped, in a patch, a fix to
+        `manifest.stats.genes` — a published field this catalog *indexes*, so a 0.6.1-compiled
+        table-only module really is stale in a way an operator would want found. The rule above still
+        returns the right answer (`patch`, does not act): it says the parquet **shape** is unchanged,
+        which remains true, and a version rule that made an exception for `0.6.6` would be dating a
+        stored artifact by a landmark — the exact defect this class was built to end.
+
+        So the honest gap is not in the scale, it is that *nothing* looks for the stale field. The
+        durable answer is a **defect predicate, not a version exception**: for a stored version, do its
+        authored gene-bearing tables carry a gene its `manifest.stats.genes` does not? That evidence is
+        carriable — `revalidate` already rebuilds a spec dir from stored inputs — which is what
+        separates this from the 0.6.3 re-draft case, where the superseded rows were invisible from
+        inside a published module and a detector would have reported clean on every affected one. Not
+        built here; recorded so the next person builds the predicate rather than a version table.
         """
         return self.scale == GAP_CONTRACT
 
@@ -382,8 +398,9 @@ def contract_gap(manifest: ModuleManifest) -> ContractGap:
     Compiler against compiler, which is apples to apples: the stamp on the manifest is a
     `just-dna-compiler` version and so is what this process would recompile with. The *format* minor is
     the contract that actually moves the parquet schema, and comparing compilers inherits it — this
-    workspace floors format and compiler at the same minor and upstream cuts them together (0.6.1 /
-    0.6.1, with only the enricher free to move alone, which touches no artifact).
+    workspace floors format and compiler at the same minor and upstream cuts them together (0.6.6 /
+    0.6.6 as of registry 0.20; through 0.19 the enricher was free to move alone, which touches no
+    artifact, and from upstream 0.6.5 even that stopped resolving apart).
 
     The rule is `version.contract_compatible`, unchanged and deliberately shared with the wire check:
     a differing MAJOR, or a differing MINOR while MAJOR is 0. If a 0.5 client may not exchange
