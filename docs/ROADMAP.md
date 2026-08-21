@@ -418,6 +418,40 @@ an explicit guard:
   source row stops being reported as unused — which had been advising authors to delete the exact row the
   compile licence gate reads.
 
+## needs_rebuild — a third axis, specified and half-built ⏳
+
+Two questions are answered today and a third is not, which is why 0.20.0's gene-index fix needed an
+operator to know to pass `--force`:
+
+| axis | question | answered by | verdict on the 0.6.1 → 0.6.6 case |
+|---|---|---|---|
+| input legality | is the stored spec still legal? | `revalidate` (re-runs `validate_spec`) | `ok` — correctly, nothing is wrong with the spec |
+| contract | was this compiled under a contract-incompatible compiler? | `upgrade`'s `ContractGap` | `patch` — correctly, the parquet shape did not move |
+| **output drift** | **would recompiling produce different output?** | **nothing** | — |
+
+The third is the one RM121 raises, and we can only answer it by enriching into a scratch dir and
+recompiling, which *is* the operation rather than a triage for it. Shipped in **0.20.1**: the `patch`
+bucket is counted and named instead of skipped in silence, so the unanswered axis is at least visible.
+Filed upstream as **S62** — a `rebuild_hints(compiled_under, current)` keyed on the interval, with an
+explicit `unknown_interval`, `content_signature` on its own axis, and the declaration guarded by a diff
+of the reference examples rather than hand-kept.
+
+**When it can be built, the contract is:** `needs_rebuild` is **tri-state** — `yes` / `no` /
+`cannot_say` — never a bool, because the two histories behind a `False` are "checked and current" and
+"nothing could check". It composes the three axes above rather than replacing any of them, and it keeps
+the decision here: upstream supplies facts about what moved, this service decides whether a version
+number is worth spending, because that cost is ours and differs per consumer.
+
+**Two things not to do**, both already tried or already rejected once:
+
+- **Never date a stored artifact by a landmark.** A version exception for `0.6.6` is the 0.18.0 defect
+  with more entries. Compare versions, or check the data.
+- **Ask whether the artifact can carry the evidence before building a predicate.** The 0.6.3 re-draft
+  case could not (coordinate rows carry no `rsid`; the obvious predicate finds 0 of 31), so a detector
+  would have reported clean on every affected module. The `stats.genes` case *can* — `revalidate`
+  already rebuilds a spec dir from stored inputs — which is what makes a local predicate viable here and
+  not there.
+
 ## 0.20 — format/compiler/enricher 0.6.6 adoption ✅
 
 - **The partial-cut era ends, and not by choice.** 0.17–0.19 pinned the three tiers apart on purpose

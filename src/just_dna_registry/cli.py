@@ -24,6 +24,7 @@ from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
 from just_dna_registry.services.upgrade import (
+    GAP_PATCH,
     GAP_UNKNOWN,
     VersionUpgradePlan,
     is_latest_version,
@@ -682,6 +683,10 @@ def upgrade(
     # path in the first place — so it gets its own number in the summary and a name an operator can
     # aim `--force -m <module>` at.
     unidentifiable: list[str] = []
+    #: Versions on a different compiler PATCH. Not a gap, and deliberately not acted on — but counted,
+    #: for the reason `unidentifiable` is: the alternative is a silence, and a silence reads as an
+    #: all-clear. See the note printed below.
+    patch_gap: list[str] = []
     # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
     # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
     for row in repo.list_all_versions(namespace):
@@ -708,6 +713,8 @@ def upgrade(
         if not prep.would_act(recompile=force):
             if prep.gap.scale == GAP_UNKNOWN:
                 unidentifiable.append(f"{ns}/{name}@{ver}")
+            elif prep.gap.scale == GAP_PATCH:
+                patch_gap.append(f"{ns}/{name}@{ver}")
             continue
         if not apply:
             planned += 1
@@ -732,6 +739,29 @@ def upgrade(
     else:
         typer.echo(
             f"\n{planned} version(s) would upgrade{blocked_note}  (dry-run; pass --apply to publish)"
+        )
+    # **A patch is not a gap, and a patch bucket is not nothing.** The rule above is unchanged: a
+    # compiler patch moves no schema, so acting on one would mint a PATCH per module every time a
+    # dependency moved. What was wrong was reporting it as *silence* — `0 version(s) would upgrade`
+    # with no mention that eleven versions sit on a different compiler — because this codebase's own
+    # rule is that a value two opposite histories produce needs something saying which happened, and
+    # "nothing to do" and "something we cannot see from here" rendered identically.
+    #
+    # They are genuinely different: compiler 0.6.6 shipped RM121, a patch that changed
+    # `manifest.stats.genes` — a published field this catalog indexes — and RM106, which changed a
+    # published warning count. Whether a given patch moved compiled output is not knowable from a
+    # version comparison, and the only cheap answer would be a hint from upstream, filed as their S62.
+    # Until then the honest report is the bucket and the reason, and `--force` aimed by an operator
+    # who has read the upstream changelog.
+    if patch_gap and not force:
+        typer.secho(
+            f"{len(patch_gap)} version(s) sit on a different compiler patch "
+            f"({', '.join(patch_gap[:5])}"
+            + (f" … ({len(patch_gap)} total)" if len(patch_gap) > 5 else "")
+            + "). Same contract, so no gap acts by default — but whether that patch moved any "
+            "published field is not something this comparison can see. Check the upstream changelog "
+            "for the interval, and re-run with --force -m <module> if it did.",
+            fg=typer.colors.YELLOW,
         )
     if unidentifiable and not force:
         typer.secho(

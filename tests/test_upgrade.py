@@ -682,6 +682,66 @@ def test_upgrade_acts_on_a_contract_gap_with_no_force(
     ) is None
 
 
+def test_the_sweep_names_the_patch_bucket_instead_of_reporting_a_silence(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path
+) -> None:
+    """A patch is not a gap, and a patch bucket is not nothing (0.20.1).
+
+    The rule is unchanged and is still right: acting on a compiler patch would mint an immutable
+    PATCH per module every time a dependency moved. What was wrong was the *report* — a
+    patch-different version was `continue`d silently, so a whole-catalog sweep printed
+    `0 version(s) would upgrade` and said nothing about the versions it had just decided not to act
+    on. "Nothing to do" and "something this comparison cannot see" rendered identically, which is the
+    empty-list trap this codebase names everywhere else, at the one command an operator runs to find
+    out whether a re-baseline is owed.
+
+    It matters because a patch really can move published output: compiler 0.6.6 shipped RM121, which
+    changed `manifest.stats.genes` — the field this catalog's gene index is built from — and RM106,
+    which changed a published warning count. Filed upstream as **S62**, asking for a machine-readable
+    hint per interval; until there is one, the honest report is the bucket and the reason.
+
+    The stale stamp is *derived* from the installed compiler rather than written down, so this test
+    keeps meaning the same thing after the next floor bump — a hardcoded `0.6.1` would quietly become
+    a contract gap the day the installed minor moved, and would then be testing the other branch.
+    """
+    current = installed_compiler()
+    assert current is not None
+    major, minor, patch = (int(part) for part in current.split("."))
+    sibling_patch = f"{major}.{minor}.{patch + 1}"
+
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+    # Exhaust the 0.3 data drift so the stamp is the only thing left that could make it act.
+    _, on_contract = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    )
+    stale = _manifest_compiled_under(on_contract, f"just-dna-compiler {sibling_patch}")
+    assert contract_gap(stale).scale == GAP_PATCH, "the fixture must exercise the patch branch"
+    repo.set_version_manifest("just-dna-seq", "coronary", "1.0.1", stale)
+
+    from typer.testing import CliRunner
+
+    from just_dna_registry import cli
+    from just_dna_registry.config import get_settings
+
+    monkeypatch.setenv("REGISTRY_DB_PATH", str(settings.db_path))
+    monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(settings.local_storage_dir))
+    get_settings.cache_clear()
+    try:
+        result = CliRunner().invoke(cli.app, ["upgrade", "--dry-run"])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.exit_code == 0, result.output
+    # The rule still holds: a patch does not act.
+    assert "0 version(s) would upgrade" in result.output
+    # ...and it is now visible that a decision was taken, on which version, and why we cannot say more.
+    assert "just-dna-seq/coronary@1.0.1" in result.output
+    assert "sit on a different compiler patch" in result.output
+    assert "not something this comparison can see" in result.output
+
+
 def test_the_plan_reports_which_columns_it_actually_rewrote() -> None:
     """S15: the changelog named three columns it did not touch and omitted the one it did.
 

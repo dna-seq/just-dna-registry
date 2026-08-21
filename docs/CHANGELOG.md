@@ -6,6 +6,51 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.20.1] — 2026-08-21
+
+**Client surface: unchanged.** No route, no response field, no `RegistryClient` signature. A patch:
+`registry upgrade` prints one more line and takes no new action.
+
+### The sweep stopped reporting a decision as a silence
+
+`upgrade` scores each published version's `compilation.compiler_version` against the installed
+compiler and acts only on a **contract** gap. A **patch** difference deliberately does not act — acting
+would mint an immutable PATCH per module every time a dependency moved, and the next upstream patch
+would start the sweep over. That rule is unchanged and still right.
+
+What was wrong was the report. A patch-different version was skipped with a bare `continue`, so a
+whole-catalog dry run printed `0 version(s) would upgrade` and said nothing about the versions it had
+just decided not to act on — *nothing to do* and *something this comparison cannot see* rendered
+identically. That is the empty-list trap this codebase names everywhere else, arriving at the one
+command an operator runs to find out whether a re-baseline is owed. `unknown` has been counted and
+named since 0.18.0 for exactly this reason; `patch` now is too, with the versions listed and the reason
+stated.
+
+**It is not a cosmetic distinction, which is why this is worth a release.** 0.20.0 adopted compiler
+0.6.6, whose RM121 changed `manifest.stats.genes` — the published field this catalog's gene index is
+built from — and whose RM106 changed a published warning count. Both arrived in a *patch*. So the
+premise the patch rule rests on ("a compiler patch changes nothing about compiled output") is no longer
+reliable, while the rule itself remains the only sane default.
+
+### Filed upstream as S62 rather than worked around here
+
+The missing fact is *what a release changes about compiled output*, per interval — and only the
+compiler can state it cheaply. We can already compute it exactly, by enriching into a scratch dir and
+recompiling, but that is the operation we are trying to decide whether to run. The upstream ask is a
+machine-readable, offline-queryable `rebuild_hints(compiled_under, current)` with three properties: an
+explicit `unknown_interval` (never an empty result standing in for *nothing changed*), `content_signature`
+on its own axis (a signature here is a permanent global `409 duplicate_content` claim), and a guard that
+derives the declaration from a diff of the reference examples rather than from an author's recollection.
+Deliberately **not** asking for a `should_rebuild` verdict: the same fact costs a free cache rebuild in
+one consumer and an immutable version number here, so the decision stays ours.
+
+**Rejected on the way**: teaching the detector that `0.6.6` specifically is worth acting on. That is
+dating a stored artifact by a landmark, which is the defect 0.18.0 removed, and a hardcoded list of
+interesting versions is that defect with more entries. The shape recorded for whoever builds our half is
+a **defect predicate** — does a stored version's gene-bearing tables carry a gene its `stats.genes` does
+not? — because unlike the 0.6.3 re-draft case the evidence is carriable: `revalidate` already rebuilds a
+spec dir from stored inputs.
+
 ## [0.20.0] — 2026-08-21
 
 **Client surface: unchanged.** No `RegistryClient` method signature moves and no route is added. One

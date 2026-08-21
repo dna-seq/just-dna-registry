@@ -42,7 +42,12 @@ every time a dependency moved. What is new is that this patch changed a **publis
 indexes**, which the "a patch changes nothing worth recompiling for" premise did not anticipate. The
 fix is *not* to teach the detector that 0.6.6 is special — that is dating an artifact by a landmark,
 which is what 0.18.0 removed. It is to look for the stale field itself, which is a `revalidate`
-predicate nobody has written yet; see `ContractGap.acts_by_default`. It costs a version number per module either way, so it is a decision, not
+predicate nobody has written yet; see `ContractGap.acts_by_default`.
+
+**From 0.20.1 the sweep at least tells you the bucket exists.** `upgrade --dry-run` now lists the
+versions it skipped for being on a different compiler *patch*, and says that whether that patch moved
+any published field is not something a version comparison can see. It still does not act on them —
+`--force -m <module>` is how you act, after reading the upstream changelog for the interval. It costs a version number per module either way, so it is a decision, not
 housekeeping. If you skip it, the catalog is not *wrong* — it is as findable as it was yesterday, and
 every version published from here on is findable correctly.
 
