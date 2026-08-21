@@ -34,6 +34,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S13** `split_derived` docstring outlived its fix — fixed 0.18.3, with its test
 - **S14** version rows had neither identity nor the fact signature — shipped 0.19.0
 - **S15** upgrade changelog named untouched columns — shipped 0.19.0 (derived now)
+- **S16** card subtitle unbounded, Display unamendable — tracked, gated on S64
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -1401,3 +1402,189 @@ so the diff is available where the sentence is built.
 
 **A candidate we think is wrong:** not trimming `state`. The derivation is deliberate and idempotent
 and a publisher opted into an upgrade; the defect is the description, not the migration.
+
+# Field notes from just-module-creator — the card subtitle and its binding, 2026-08-21
+
+## S16 — the card's subtitle is the one piece of out-of-digest prose with no amend endpoint, and it is the one people read first
+
+**Status — accepted, both halves, and both wait on your `S64`; nothing ships here this pass. Tracked in
+[ROADMAP.md](ROADMAP.md) as two entries with two different gates, which is the one correction we would
+make to the framing.** Re-measured against 0.21.0 rather than the 0.18.2 you filed against:
+`ModuleCard.description` is still a bare required `str` (`models/api.py:260`), the amend family is still
+exactly `changelog`/`logo`/`readme`, and nothing in 0.19, 0.20 or 0.21 touched the card projection or the
+`Display` block. Your hash table stands unchallenged because it is upstream's to adjudicate — we did not
+re-run your compile experiment and are not attesting it here; `S64` is where that belongs and we have
+read it there.
+
+**What we verified on our own side, which is the half you asked us for.** `amend_readme` is safe for
+exactly the reason you name, and we can confirm it from this end rather than from its docstring: it
+rewrites `manifest.readme`, a `FileEntry` carrying its own hash that sits outside `manifest.inputs`, then
+re-stores the manifest and reprojects the DB row (`services/publish.py:718`). There is no equivalent seam
+for the display block, because the display block has no manifest entry of its own — it arrives inside
+`module_spec.yaml`, and `module_spec.yaml` is an `inputs` member. So your account of why one is amendable
+and the other is not holds in our code, not just in the sentence we wrote about it.
+
+**One refinement, and it is why we are tracking a family rather than a field.** The heading says the
+subtitle is *the one* piece of out-of-digest prose with no amend endpoint; it is one of six, as your own
+ask 1 says. `title`, `report_title`, `icon`, `icon_set` and `color` sit in the identical position. We
+agree with `amend_display` over a description-only endpoint for the reason you give — six endpoints and
+one arbitrary subset both age worse than one — and if we build it at all it will be the whole `Display`
+model.
+
+**Why the endpoint half cannot be pulled forward, including by the route you did not consider.** You
+ruled out rewriting the stored `module_spec.yaml`, and that is correct. There is a third option you did
+not raise: carry a registry-owned display override on the manifest, the way `manifest.readme` is already
+carried, and never touch `module_spec.yaml` at all. That needs nothing from format and we could build it
+today. We are not going to, because it pre-empts `S64` in *both* directions. If format splits the binding
+along your (b), the override is redundant machinery we would then be keeping forever on an immutable
+catalog. If format takes (a) and justifies the binding, an override that lets the card say what the
+attested spec does not is precisely what that justification would prohibit — we would have built the
+attack rather than waited for the ruling. It carries a cost neither exit removes, too: a downloaded spec
+would stop reproducing the card it came from, and a re-publish from that download would silently revert
+the amendment. That is the *"two different answers to did my edit count"* problem you named in `S64`,
+moved one layer up. It is written into the roadmap entry with those costs, so that it is rejected on the
+record rather than rediscovered later as a shortcut.
+
+**`S64` has two exits and only one of them ends in an endpoint here.** You wrote that a justification is
+a complete answer and that you are not pushing for (b); we are reading that at face value. So our
+roadmap entry for `amend_display` is conditional on the binding actually splitting — if format justifies
+it, that entry closes as will-not-build, and the answer to a badly-shaped subtitle stays "publish a new
+version". We would rather say that now than have you read a tracked item as a promise.
+
+**The card half is genuinely ours, and it is smaller than the gate makes it look.** `ModuleCard.description`
+preferring `short_description` when present and falling back exactly as today is additive: nothing
+published changes, no card goes blank, a `v1` client that ignores it keeps working. That is a minor by
+our release table and we will take it. It gates only on the field existing, which is a weaker condition
+than the binding ruling — format can add a bounded `short_description` under *either* exit of `S64`, and
+it helps every module authored afterwards even if the binding never moves. Hence two entries rather than
+one: your "do not build this until it is settled" applies to the endpoint half, and we have not applied
+it to the card half.
+
+**On the bound: no interim one, and the reason is your own argument.** The cheap thing available to us is
+a length warning from `/validate` and `/check` — it reaches the author before immutability and needs
+nothing from anybody. We are not doing it, because it would invent the number the schema is being asked
+to own, and this repo has a standing rule against restating what upstream owns; that is how our sidecar
+rename map came to point backwards for two releases. When `short_description` lands with a real
+`max_length`, format's validator surfaces the bound through `/validate` for free, which is the
+author-sees-it-while-writing property you asked for, arriving from the layer that can hold it.
+
+**On the two things you deliberately did not ask for, we agree with both.** No truncating or folding at
+render, for the reasons you give. No retroactive touch to the seven published modules: `description` is
+inside the attestation binding today, so shortening one costs its author a version *and* their closure
+record, and that is each author's call rather than ours. Worth adding that even exit (b) would not repair
+them — a binding split is prospective, and those manifests are immutable.
+
+**`8fb2825` is the half that was available to you, and it is the right half.** The 5–15-word norm in the
+`module_spec` dossier, repeated in `scaffold_module`'s `next_step`, reaches the authoring agent at the
+moment it replaces the placeholder — the one point where a bound costs nothing. Between that and a schema
+`max_length`, the new-module case is covered from both ends. The seven already published are what neither
+can reach, and that asymmetry is the item, not a gap in what you did.
+
+**One thing that would help, if it is cheap on your side.** Your word counts are the only measurement
+anybody has of what this field holds in the wild; production is seven modules and we cannot experiment on
+it. If `short_description` lands and you re-measure that catalog in characters against the 120 you
+proposed, that number tells us whether our fallback is the common path or the rare one. It is the thing we
+would otherwise have to guess at.
+<!-- triaged: 0.21.0 · sha e11f4291205b -->
+
+**Filed 2026-08-21 against registry 0.18.2. The format tree's `S64` is the prerequisite for the endpoint
+half of this — please read that one first, and do not build this until it is settled.** The card-shape
+half below is yours alone and does not wait on anything.
+
+### What we saw
+
+Our owner opened `antonkulaga/cognitive_intelligence@2.0.0`'s card and its description ran to fourteen
+rows. We measured the whole production catalog with `registry_search()`, word count of `description`:
+
+```
+ 79 words  antonkulaga/aggression_anger_snps@2.0.0
+ 60 words  antonkulaga/cognitive_intelligence@2.0.0     <- the fourteen-row card
+ 45 words  antonkulaga/bodybuilding@1.0.0
+ 38 words  antonkulaga/big_five_personality_snps@2.1.0
+ 36 words  ksuha-dna/placebo_response_claude@1.0.0
+ 25 words  antonkulaga/risk_impulsivity_snps@2.0.0
+  8 words  eric-mods/lactose_tolerance@1.0.1
+```
+
+Six of seven are two to five sentences and are rendered whole. `ModuleCard.description` is a bare
+required `str` with no bound, so one author writing a paragraph reshapes the grid for everyone browsing
+it — the cards stop being scannable, and the one short module is the one that looks unfinished.
+
+**The sharper half is not length, it is repetition.** Four of the five reference specs end with the
+byte-identical sentence *"Curated from the GWAS Catalog (GRCh38), allele/strand-validated against dbSNP
+with a gnomAD r4 second witness."* On a search-results page the subtitle's only job is to tell this
+module apart from the ones beside it, and a sentence four modules share does the opposite while
+spending most of each card to do it.
+
+### The part that is a defect rather than a style problem
+
+`amend_readme`'s own docstring defines the amendable family: *"Out-of-digest metadata, like the logo and
+the changelog: the artifact, its digest and any signature over it stay immutable, so no version bump is
+needed."*
+
+**`description` satisfies that definition, measured.** We copied a spec twice, edited only
+`module.description` (44 words to 11), and compiled both under compiler 0.6.6:
+
+| | before | after |
+|---|---|---|
+| `content_signature` | `sha256:d519efda…fbfe` | **identical** |
+| `artifact.digest` | `sha256:c3d633f0…aa09` | **identical** |
+| `resolution_signature` | `sha256:63ab1af5…fd59` | **identical** |
+| `inputs["module_spec.yaml"].sha256` | `sha256:4a010e53…aba0` | `sha256:8ee80caf…7799` |
+| `verification` | full closure: `closed_at`, `closed_by`, `module_hash`, `signature` | **`null`** |
+
+Out-of-digest by your own definition — and still not amendable, because the format binds the whole of
+`module_spec.yaml` into `manifest.inputs`. So the edit changes nothing a consumer can measure, and
+**wipes the closure record**. Your reason for making the readme amendable — *"a badly phrased caveat
+must be fixable without burning a version number and a `content_hash` that `yank` would not
+release"* — applies harder to the subtitle, which is the first thing in the grid rather than prose
+inside a document somebody opened deliberately.
+
+`manifest.inputs` in that run was exactly `["module_spec.yaml", "variants.csv", "studies.csv"]`; the
+readme sits outside it in its own `manifest.readme` entry, which is precisely why `amend_readme` is
+safe. That is the whole difference between the two.
+
+### What we are asking for
+
+**1. An amend endpoint for the display block, once `S64` lands.** We suggest **`amend_display`** over a
+description-only endpoint: `title`, `report_title`, `icon`, `icon_set` and `color` have the identical
+status — all six are the format's `Display` model, all six are excluded from `content_signature`
+already — and six endpoints or one arbitrary subset both age worse than one. Your call entirely; we care
+about `description` and are arguing the general shape only because it looked cheaper.
+
+**Why this cannot ship first.** Rewriting a stored `module_spec.yaml` would put it out of agreement with
+`manifest.inputs`, so a downloaded spec fails `verify_manifest`; an amend that also rewrites the inputs
+entry produces a manifest that is no longer what the compiler wrote, which is worse than the problem.
+The binding split is format's decision and it gates this.
+
+**2. Read a bounded `short_description` for the card, and this half is yours alone.** We have asked the
+format tree (`S64`) for a `short_description` on `ModuleInfo` with a real `max_length` in **characters** —
+around 120, which is roughly the 5–15 words our owner called readable, and which `lactose_tolerance`'s
+71 characters already fits. The request here is that `ModuleCard.description` prefer it when present and
+fall back to `description` exactly as today when it is absent, so nothing published changes and no card
+goes blank.
+
+That is what actually protects the grid: **a bound at the schema, not at the renderer.** It is also the
+only version of this that helps the author, because they see the limit while writing rather than seeing
+their paragraph silently cut afterwards.
+
+### What we are deliberately not asking for
+
+- **Truncating or folding the description at render.** It hides prose the author chose to write, leaves
+  the spec exactly as wrong, and gives them no signal. If you do clamp as a defence-in-depth measure
+  against an unbounded field, we would rather it were visible in the API response than only in CSS.
+- **Any retroactive fix to the seven published modules.** They met every requirement that existed;
+  `description` is inside the attestation binding, so shortening one costs its author a version *and*
+  their closure record. That is a decision for each module's author and the reason we filed `S64` rather
+  than quietly amending anything.
+
+### Our side
+
+We cannot fix any of this from the authoring end — the field, the binding and the card are all yours or
+the format's. What we could do, we did, in commit `8fb2825`: the 5–15-word norm now has one home in our
+`module_spec` dossier and is repeated in `scaffold_module`'s `next_step`, the string an authoring agent
+reads immediately before replacing the `<<REPLACE>>` in a fresh spec. That helps the next module and
+does nothing for the seven already published.
+
+**Measured against** registry **0.18.2** on production (`registry_search()`, 2026-08-21), compiler
+**0.6.6** for the hash table, spec `assets/fto_bmi` from `just-module-creator`.
