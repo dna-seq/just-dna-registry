@@ -18,7 +18,17 @@ Outbound went the two findings owed since 2026-08-20: the archived-footer one, w
 have in any form, and the `--backfill` stamping hazard, which it half had and half had **wrong** — its
 Step 3 warns you off the value the ledger prints while telling you `--backfill` writes the safe one, and
 both come from the same computation, so the paragraph talked an adopter out of the hazard and back into
-it in eight lines. The placeholder recipe below went with the correction.
+it in eight lines. The placeholder recipe below went with the correction, and a caveat went on the
+README's quick-start line, which is where an adopter actually reaches for the flag.
+
+**Filing it is what showed our own entry was wrong too.** Reproducing the hazard on a three-paragraph
+fixture — rather than restating it from the code, which is how both copies came to describe it — turned
+up two symptoms from the one root cause, and the copies had between them documented only the loud one.
+`--backfill` puts its marker at the end of the `**Status` paragraph rather than the end of the reply, so
+the contamination is stable and the section reads `current`, not `revised`. §5 now carries both, here
+and there. **A gist trip is a re-reading, not a transcription**: the finding had been sitting in this
+file for a day, described confidently and incorrectly, and nothing but going to copy it out would have
+caught that.
 
 Inbound came the watcher's `BRANCH` guard, which had been sitting in the gist unnoticed here: it pauses
 the watch while the tree is off `main`, because a feature branch or a detached HEAD is somebody's own
@@ -475,7 +485,7 @@ found upstream, some here, and as of 2026-08-21 all of them are in both copies:
 - **A document footer after the last section is archived as that section's prose.** A body runs to the
   next heading, so an inbox that ends `*One item is open: S13.*` hands that line to S13 — and the move
   verifies clean, because the footer was inside the fingerprint on both sides. It is the same failure
-  as the title-is-not-a-group entry below, at the other end of the file: **document furniture inside a
+  as the title-is-not-a-group entry above, at the other end of the file: **document furniture inside a
   section span**, and the fingerprint check is blind to it for the same reason both times. Found here
   on S13, which left `*One item is open: S13.*` sitting in the history file under a closed item.
   Repair: delete the footer from the history file, re-run the ledger for the new value, and hand-edit
@@ -486,11 +496,28 @@ found upstream, some here, and as of 2026-08-21 all of them are in both copies:
 - **`--backfill` is for replies older than the ledger, and stamps the wrong sha on a reply you just
   wrote.** It computes the fingerprint from the file *as it stands*, and with no marker present yet
   `reply_end` falls back to the single-paragraph rule — so paragraphs two onward of a fresh
-  multi-paragraph reply are hashed as if the reporter had written them. The stamp lands, the marker
-  then terminates the reply properly, the next run recomputes over the reporter's prose alone, and the
-  section reads `revised` forever against text nobody edited. It is the *"a marker can carry a sha that
-  never matched its section"* failure above, reached from the opposite end: not a hand-stamp mistake
-  but the tool used one step outside its remit. Found here on S13, whose reply runs eight paragraphs.
+  multi-paragraph reply are hashed as if the reporter had written them. Found here on S13, whose reply
+  runs eight paragraphs.
+
+  **One root cause, two symptoms, and this entry described the wrong one until 2026-08-21** — corrected
+  by running it rather than reading it, on a three-paragraph fixture against the ledger itself. Which
+  symptom you get depends on *where the marker ends up*:
+
+  - **Hand-stamping the value the ledger printed**, with the marker written at the end of the reply
+    where the Step 3 example puts it: the marker now terminates the reply properly, the next run
+    recomputes over the reporter's prose alone, and the section reads `revised` forever against text
+    nobody edited. This is the loud failure, and it is the one this entry used to describe.
+  - **`--backfill` itself**: it appends the marker to the end of the `**Status` *paragraph*, not to the
+    end of the reply. So `reply_end` stops at paragraph one on the next run exactly as it did on this
+    one, the contamination is *stable*, and the section reads **`current`**. That is the dangerous
+    symptom, and the entry missed it by assuming a placement the tool does not use: the fingerprint
+    permanently covers our own reply prose, nothing ever reports it, and the first thing that does is a
+    later edit to *our* paragraphs two onward showing up as a reporter revision.
+
+  The generalizable half: **a stable wrong answer outranks an unstable one**, and this entry preferred
+  the symptom that announces itself because that is the one a maintainer meets first. Reading the code
+  gave the root cause and the wrong consequence; the fixture gave both.
+
   **Write the marker yourself when you write the reply.** Stamp a placeholder — twelve zeros — and
   run the ledger: with a marker present the reply is excluded whole, so the `revised` line prints the
   true fingerprint (`sha <real>  (was 000000000000)`), and you paste that back. Then re-run: `current`
