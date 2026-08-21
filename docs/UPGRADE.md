@@ -1,5 +1,44 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.21 output drift (operator note — the sweep measures instead of asking you to)
+
+**`registry upgrade` now recompiles a published version when it can *measure* that the current
+compiler would derive a published field differently** — no `--force`, no reading an upstream changelog
+first. Concretely: 0.20.0's gene-index re-baseline is now `registry upgrade --apply`, scoped by the
+detector to the versions that actually drifted, instead of a catalog-wide `--force` that mints a PATCH
+per module whether or not it needed one.
+
+Nothing else about the command changed. A contract gap still acts, `--dry-run` still previews, `--trim`
+is still opt-in and lossy.
+
+**What it measures, and what it cannot.** For a manifest field that is a pure function of the authored
+rows, the current answer can be recomputed from stored inputs with no compile — upstream's
+`compiler.spec_tables` plus `compiler.module_stats`, both public since 0.6. Today one field pair is
+probed, `stats.genes` / `stats.gene_count`, because that is the one a compiler patch actually moved
+(RM121). The surfaces that still need a real compile — `artifact.digest` and `compilation.warnings` —
+are named in the dry-run output, and `--force` is how you act on those. That is the split filed
+upstream as **S62**.
+
+**Three outputs to expect from a sweep:**
+
+```
+⇧ ns/name@1.0.1: stats.genes is stale: 1 gene(s) this compiler finds and the manifest does not (CYP2C19)
+· 3 version(s) sit on a different compiler patch (…). Every probed field was recomputed and is
+  current; what cannot be checked without recompiling is artifact.digest (the parquet bytes),
+  compilation.warnings.
+✗ ns/name@2.0.0: stats.genes disagrees with this compiler's own derivation — recompiling cannot fix it
+```
+
+The third is an **anomaly** and the sweep deliberately will not act on it: the version was compiled by
+the compiler now installed, so a recompile derives the same value again and acting would mint a fresh
+PATCH on every run forever. It means something other than a compiler upgrade put a stale value into a
+published manifest — investigate the stored inputs. The most likely benign cause is a symbolic-allele
+row drop, which moves `stats` on the compile side and which a published manifest gives us no counter
+for; that gap is upstream hint 4 on S62.
+
+**Run `--apply` twice.** The second pass must report nothing to do. That is the property that separates
+this from a trigger that can never finish, and it is worth checking once on your own catalog.
+
 ## 0.20 format 0.6.6 adoption (operator note — **not** a cut, with one re-baseline worth running)
 
 **All three tiers go to 0.6.6, and the partial-cut era ends here.** From upstream 0.6.5 the compiler
@@ -33,6 +72,15 @@ registry --mode <prod|test> upgrade --apply --force
 
 Scope it with `-m <module>` if you know which ones carry no `variants.csv`; a whole-catalog `--force`
 mints a PATCH per module.
+
+> **Superseded for the `stats.genes` half by 0.21 — see the section above.** The `--force` below was
+> the correct use of a fallback and not a mistake to learn from: with nothing able to *measure* the
+> drift, it was the only thing standing between an operator and a dead end, which is exactly what a
+> fallback is for. 0.21 removes the dead end by measuring, so the everyday case is now plain `--apply`
+> and `--force` goes back to being the exception handler. The rule worth carrying: **a fallback being
+> exercised routinely is a signal the detector is missing something** — which is a different finding
+> from 0.17's step 2, where `--force` was documented as the normal path *because the detector was
+> broken*. Do not conflate them.
 
 **And `--force` here is not the 0.18.0 defect returning — it is the first case that strains the rule
 0.18.0 established.** That release stopped `upgrade` from needing `--force` for a *contract* gap

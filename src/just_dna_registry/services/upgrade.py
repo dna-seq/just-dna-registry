@@ -59,6 +59,11 @@ from just_dna_registry.services.publish import (
     _REGISTRY_OWNED_MODULE_KEYS,
     publish_version,
 )
+from just_dna_registry.services.rebuild import (
+    RebuildVerdict,
+    measure_output_drift,
+    rebuild_verdict,
+)
 from just_dna_registry.specfiles import (
     PROVENANCE_FILE,
     RECOGNIZED_SPEC_FILES,
@@ -463,16 +468,30 @@ class VersionUpgradePlan(BaseModel):
     #: pass. See `ContractGap`: only a `contract`-scale gap acts on its own.
     gap: ContractGap = Field(default_factory=ContractGap)
 
+    #: Whether recompiling would actually produce a different manifest — the axis `gap` cannot see
+    #: (0.21). A compiler *patch* moves no schema, so `gap` scores it `patch` and declines to act;
+    #: upstream RM121 nevertheless changed `stats.genes` in one. `services/rebuild.py` recomputes the
+    #: probed fields from these very `files` and reports the difference, so a measured gap acts under
+    #: plain `--apply` and `--force` goes back to meaning *act despite the detector*.
+    verdict: RebuildVerdict = Field(default_factory=RebuildVerdict)
+
     def would_act(self, *, recompile: bool) -> bool:
         """Whether re-publishing this version is worthwhile: it has 0.3 drift, trimmed something, was
-        compiled under an older contract, or a `recompile` was explicitly requested. Never acts while
-        blocked."""
+        compiled under an older contract, carries a **measured** output drift, or a `recompile` was
+        explicitly requested. Never acts while blocked.
+
+        `verdict.acts_by_default` is the 0.21 term, and it is deliberately *not* folded into
+        `gap.acts_by_default`: a gap is a statement about versions, a verdict is a measurement of an
+        artifact. Keeping them apart is what lets the verdict refuse to act on drift it measured under
+        the identical compiler — a distinction no version comparison could ever draw.
+        """
         if self.blocked:
             return False
         return (
             self.variants_plan.needed
             or bool(self.dropped)
             or self.gap.acts_by_default
+            or self.verdict.acts_by_default
             or recompile
         )
 
@@ -558,11 +577,25 @@ def prepare_version_upgrade(
         files[fname] = text.encode("utf-8")
     if "variants.csv" in specs:
         files["variants.csv"] = plan.migrated_variants_csv.encode("utf-8")
+    # **Measured only when the answer could still change the decision.** A contract gap, pending 0.3
+    # drift or a `--trim` drop each act on their own, and probing under a pending migration would
+    # measure the migration rather than the compiler: `files` carries the *migrated* rows, so the
+    # recomputation would legitimately disagree with a manifest compiled before them.
+    already_acting = gap.acts_by_default or plan.needed or bool(dropped)
+    drift, unmeasured = ([], []) if already_acting else measure_output_drift(manifest, files)
+    verdict = rebuild_verdict(
+        gap_scale=gap.scale,
+        gap_acts=already_acting,
+        drift=drift,
+        unmeasured=unmeasured,
+        identical_compiler=gap.scale == GAP_NONE,
+    )
     return VersionUpgradePlan(
         variants_plan=plan,
         dropped=dropped,
         files=files,
         gap=gap,
+        verdict=verdict,
     )
 
 

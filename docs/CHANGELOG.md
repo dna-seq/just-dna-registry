@@ -6,6 +6,129 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.21.0] — 2026-08-21
+
+**Client surface: unchanged.** No route, no response field, no `RegistryClient` signature —
+`VersionUpgradePlan` is internal and never API-serialized. Minor because `registry upgrade --apply`
+now acts on versions it previously skipped: the release table's *"an existing `registry` invocation
+doing more or different work by default, while still succeeding"*, which is 0.18.0's precedent exactly.
+
+### The third axis, measured
+
+Two questions were already answered, and both answered *correctly* while a defect sat in the catalog:
+`revalidate` asks whether the stored spec is still legal (`ok` — nothing is wrong with those specs) and
+`ContractGap` asks whether the compiler is contract-incompatible (`patch` — the parquet shape did not
+move). Neither is the question upstream RM121 raised, which is **would recompiling produce a different
+manifest?**
+
+`services/rebuild.py` answers it without a compile. For a manifest field that is a pure function of the
+authored rows, the current answer can be recomputed from stored inputs using `compiler.spec_tables`
+(RM116) and `compiler.module_stats` (RM121) — both public since 0.6, neither needs enrichment, parquet
+or network. `VersionUpgradePlan.files` already holds the prepared inputs, so the probe costs a temp dir
+and a CSV parse. One field pair is probed, `stats.genes`/`stats.gene_count`, because it is the one a
+compiler patch actually moved; the others each carry a compile-side adjustment this recomputation
+cannot see, and probing them would manufacture drift on modules that are current.
+
+`RebuildVerdict` is **tri-state** — `yes` / `no` / `cannot_say`, never a bool, because the two histories
+behind a `False` are *checked and current* and *nothing could check*. `cannot_say` names what it could
+not see rather than returning an empty list.
+
+### A measured gap acts without `--force`, and the reason is a delegation argument
+
+`--dry-run` against `--apply` is already this command's look-versus-act discriminator. `--force` exists
+to act **despite** the detector — to override what it concluded, and to remedy an overlook. Requiring
+`--force` for a gap the software has just measured asks an operator to confirm something the software
+already knows, which is the same misplacement 0.18.0 named one axis over: *the tool could not see a gap
+it had everything it needed to compute, and the fix belonged in the tool.* `--force` keeps its meaning
+exactly, and is still the only way to act on `artifact.digest` and `compilation.warnings`.
+
+**This does not make 0.20's `--force` a mistake.** With nothing able to measure the drift, it was the
+only thing between an operator and a dead end — which is what a fallback is for. What 0.21 changes is
+that the dead end is gone, so the lever goes back to being an exception handler. The rule worth
+carrying: **a fallback being exercised routinely is a signal the detector is missing something**, which
+is a different finding from 0.17 step 2, where `--force` was the documented normal path *because the
+detector was broken*.
+
+### The anomaly branch is what keeps it convergent
+
+Drift measured against the **identical** compiler cannot be repaired by recompiling — the recompile
+derives the same value again — so acting would mint a fresh PATCH every sweep, the precise failure the
+patch rule exists to prevent, re-entering through a different door. Those versions are reported in red
+and never acted on. This also bounds every false positive to **one** wasted PATCH per module ever,
+because the successor is always `gap=none`.
+
+It is reachable, not theoretical: `validate_spec` computes `stats` over the full row set
+(`compiler.py:3822`) while `compile_module` re-derives them over the survivors **only when the
+symbolic-allele drop removed something** (`compiler.py:4131`). A disagreeing `variant_count` is the
+structural signal that a drop happened, and it downgrades the comparison to `cannot_say` rather than
+reporting drift — cheaper and far more durable than reading warning prose, which upstream is free to
+reword. The residue is a drop inside a *kind* table, which moves no counter a published manifest
+carries; that is upstream hint 4 below.
+
+### S62 was answered while this was being built, and the reply changed the code
+
+**Accepted, filed as RM126 (the surface) and RM127 (the release class that sizes it, which blocks the
+first).** Nothing ships upstream yet, and their reply widened the case rather than narrowing it. They
+compiled all sixteen `reference_examples/` under `v0.6.1` and again under `0.6.6` — a pure patch
+interval, spec inputs byte-identical — and measured **16 of 16** changing at least one published
+manifest field, **10 of 16** moving `artifact.digest` (RM120's new `curator` column grew
+`studies.parquet` by 257 bytes apiece), and **0 of 16** moving `content_signature`. So the parquet
+schema *does* move across a patch interval, every rule we have is sound, and the composition was still
+blind. That is written into `UNPROBED_SURFACES` as the reason a digest comparison cannot stand in for
+this axis.
+
+**Two corrections to our own S62, carried rather than edited away.** RM106 is **not** an instance: their
+release table sizes a warning or a count as patch-level legibility work, so `compilation.warnings` was
+never promised stable across a patch and 0.20.1's changelog and test docstring claimed otherwise. The
+correction is worth keeping because it is the case *for* separating the axes — warning text is
+patch-legal and a corrected derivation is not, so one "did the output change" bit would have been
+useless here. And `version.contract_compatible` is **ours**, in `just_dna_registry/version.py`; S62
+attributed it to them, and a symbol nobody can grep for is exactly what survives in a record for years.
+
+**One instruction taken literally.** Their sweep is an offline compile, so it says nothing about
+enricher-written output; they asked that those be treated as *unmeasured rather than unchanged*.
+`literature.quotes_unchecked` (RM119) moved on three of the sixteen and is a published manifest field we
+cannot recompute — it derives from a sidecar, not from authored rows — so the enricher-written blocks
+are now named in `UNPROBED_SURFACES` rather than quietly assumed current.
+
+### Fed back to upstream as S65
+
+S62 was answered and archived the same day, so the follow-up is a new item. Five implementation hints,
+all earned by building this rather than by predicting it. The load-bearing
+one: **recomputability splits their planned API in half.** A per-release hints table is only needed for
+what a consumer *cannot* recompute, so publishing a roster of which manifest fields are pure functions
+of authored rows **shrinks** the surface they are planning. Also: convergence is a hard requirement on
+any acts-by-default trigger (their interval-keyed shape gets it free, and that is load-bearing rather
+than incidental); the pre-drop/post-drop asymmetry is the exact boundary that roster must draw; a
+`compilation.dropped_rows` counter would close the residue; and a hint that still needs a human to read
+a changelog and pass an override has relocated the work rather than removed it.
+
+**Retirement path, by construction.** `_DRIFT_PROBES` is the seam: when S62 lands, an upstream source
+attaches beside it (it answers per *interval*, not per field-value), and any probe whose field the hint
+covers retires by deletion from that tuple. Keeping one afterwards is a legitimate hedge rather than an
+oversight — a recomputation checks the artifact in front of us, a hint states what a release did in
+general.
+
+### S16 answered — accepted, tracked, no code this release
+
+`just-module-creator` filed the card subtitle: `ModuleCard.description` is unbounded, and the `Display`
+block is out of `artifact.digest` and `content_signature` yet unamendable, because it arrives inside
+`module_spec.yaml` and that file is a `manifest.inputs` member. Both halves are accepted and both are in
+[ROADMAP.md](ROADMAP.md); neither ships here, and the reasons are gates rather than effort.
+
+The endpoint half (`amend_display`) waits on upstream **S64**, which the reporter filed as the
+prerequisite — and it is **conditional**, not deferred: S64 offers format two exits, and if they justify
+the binding rather than split it, that entry closes as will-not-build. The card half (prefer a bounded
+`short_description`, fall back to `description`) waits only on the field existing, which is the weaker
+condition, so the two are tracked separately.
+
+**Two shortcuts rejected on the record.** An interim length warning from `/validate` would invent the
+number the schema is being asked to own — the sidecar-map lesson — and format's own `max_length` will
+surface through `/validate` for free once it lands. A registry-owned display override carried like
+`manifest.readme` would need nothing from format and was the tempting one; it pre-empts S64 in both
+directions, and it would make a downloaded spec stop reproducing the card it came from.
+
+
 ## [0.20.1] — 2026-08-21
 
 **Client surface: unchanged.** No route, no response field, no `RegistryClient` signature. A patch:

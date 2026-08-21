@@ -86,6 +86,28 @@ behind would permit an assembly nobody tested. Record which kind a floor is when
 0.6.2 and 0.6.3 comments run long because both were easy to mistake for optional, and that whole
 argument is wasted if a later reader learns to skim every floor as mandatory.
 
+**A fallback exercised routinely is a signal the detector is missing something — and that is not the
+same as the detector being broken.** 0.20 told operators to run `upgrade --apply --force` to pick up
+RM121's `stats.genes` fix, and that was the *correct* use of a fallback: nothing could measure the
+drift, so `--force` was the only thing between an operator and a permanently stale catalog. 0.21 builds
+the measurement (`services/rebuild.py`), so the everyday case is plain `--apply` and the lever goes back
+to being an exception handler. Keep the two failures apart: 0.17's step 2 documented `--force` as the
+normal path *because the detector was broken*, which is a defect; 0.20 reached for it *because the
+detector could not yet see this axis*, which is a fallback doing its job and a prompt to extend the
+detector. **The delegation rule underneath both**: `--dry-run` vs `--apply` is already the look-vs-act
+discriminator, so asking for `--force` on a gap the software has just *measured* makes an operator
+confirm what the software already knows.
+
+**And when you do extend it, the new trigger has to converge.** `rebuild.RebuildVerdict` refuses to act
+on drift measured against the **identical** compiler, because a recompile derives the same value again
+and acting would mint a fresh PATCH every sweep — the failure the patch rule exists to prevent, walking
+back in through a different door. That refusal is also what bounds every false positive to one wasted
+PATCH per module ever, since the successor is always `gap=none`. Two consequences to keep: a probe
+recomputes from **authored** rows while `manifest.stats` may have been re-derived after the
+symbolic-allele drop (`compiler.py:3822` vs `:4131`), so a disagreeing `variant_count` downgrades the
+comparison to `cannot_say` rather than reporting drift; and probe only fields with a *reason* — one
+added because a field merely exists is how a detector starts crying wolf.
+
 **A version-gap check belongs to the thing that has versions.** Most of 0.6.3 is upstream's ClinVar and
 ClinPGx *drafters*, and the honest answer for this service was that it has none — drafting is
 authoring-side, so "modules published before this need a re-draft" is a message for module authors and
@@ -668,6 +690,12 @@ directory. They were `.sh` until 2026-08-16.
   response field is minor; a trivial one fixed by renaming a query param is major. The table is in the
   runbook, along with the four traps (immutability, the global `content_hash` claim, the lockstep
   `just-dna-format` minor, and `REGISTRY_MODE` not being a repair).
+- **Never write a flush-left `#` inside a fenced block in one of these documents.** The ledger and the
+  archiver find an item's span with `BOUNDARY_RE = ^#{1,2} `, which knows nothing about code fences — so
+  a `# comment` at column 0 inside a ```python block ends the section there. Our S62 carried one, and it
+  truncated the item mid-fence: upstream's archiver moved half of it to their history file and left the
+  rest orphaned in the live inbox, reporting every fingerprint intact and being right to, because both
+  halves hashed the same truncated span. Indent the comment, or write the line without a leading `#`.
 - **A fifth route exists here: upstream.** If the fix belongs to the manifest, compiler or enricher, restate
   the item in *their* terms in `../just-dna-format/docs/CONSUMER_SUGGESTIONS.md` with an id from *their*
   ledger — that file is the one writable path in a sibling repo, append-only, and never committed by us.

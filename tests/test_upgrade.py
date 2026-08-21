@@ -16,6 +16,13 @@ from just_dna_format.spec import StudyRow, VariantRow
 
 from just_dna_registry.config import Settings
 from just_dna_registry.services.publish import publish_version
+from just_dna_registry.services.rebuild import (
+    REBUILD_CANNOT_SAY,
+    REBUILD_NO,
+    REBUILD_YES,
+    measure_output_drift,
+    rebuild_verdict,
+)
 from just_dna_registry.services.revalidate import revalidate_version
 from just_dna_registry.services.upgrade import (
     GAP_CONTRACT,
@@ -696,9 +703,16 @@ def test_the_sweep_names_the_patch_bucket_instead_of_reporting_a_silence(
     out whether a re-baseline is owed.
 
     It matters because a patch really can move published output: compiler 0.6.6 shipped RM121, which
-    changed `manifest.stats.genes` — the field this catalog's gene index is built from — and RM106,
-    which changed a published warning count. Filed upstream as **S62**, asking for a machine-readable
-    hint per interval; until there is one, the honest report is the bucket and the reason.
+    changed `manifest.stats.genes` — the field this catalog's gene index is built from. Filed upstream
+    as **S62** and accepted as RM126/RM127.
+
+    **This test's original docstring also named RM106 (a de-duplicated warning) as a second instance,
+    and upstream corrected us: it is not one.** Their release table sizes a warning or a count as
+    patch-level legibility work, so `compilation.warnings` was never promised stable across a patch and
+    a consumer pinning warning counts was relying on something nobody offered. The correction is kept
+    rather than edited away because it is the case *for* separating the axes: warning text is
+    patch-legal and a derived field is not, so a single "did the output change" bit would have been
+    useless here even if it existed.
 
     The stale stamp is *derived* from the installed compiler rather than written down, so this test
     keeps meaning the same thing after the next floor bump — a hardcoded `0.6.1` would quietly become
@@ -739,7 +753,208 @@ def test_the_sweep_names_the_patch_bucket_instead_of_reporting_a_silence(
     # ...and it is now visible that a decision was taken, on which version, and why we cannot say more.
     assert "just-dna-seq/coronary@1.0.1" in result.output
     assert "sit on a different compiler patch" in result.output
-    assert "not something this comparison can see" in result.output
+    # **The sentence narrowed in 0.21 and this assertion moved with it, deliberately.** The bucket no
+    # longer means "we cannot see anything here": the probed fields are recomputed per version, so what
+    # remains unanswerable is only what needs the compile we are avoiding. This fixture's module has no
+    # drift, so it lands in the bucket on the strength of a real measurement rather than an absence.
+    assert "Every probed field was recomputed and is current" in result.output
+    assert "compilation.warnings" in result.output
+
+
+# ── Output drift: would a recompile differ? (0.21) ────────────────────────────────
+
+
+def _manifest_with_stale_genes(manifest: ModuleManifest) -> ModuleManifest:
+    """The same manifest as a compiler that derived `stats.genes` from `variants.csv` alone left it.
+
+    Which is what every version compiled before 0.6.6 carries for a module whose genes live in a kind
+    table, and — for a module with variants — what RM121's predecessor produced whenever a gene reached
+    only a kind table. Emptying the list reproduces the published shape without needing a 0.6.1 install
+    in the test environment.
+    """
+    clone = manifest.model_copy(deep=True)
+    clone.stats.genes = []
+    clone.stats.gene_count = 0
+    return clone
+
+
+def _patch_sibling(current: str) -> str:
+    """A compiler version one patch away from the installed one — derived, never written down.
+
+    A literal `0.6.1` would silently become a *contract* gap the day the installed minor moves, and the
+    test would then be exercising the other branch while still passing.
+    """
+    major, minor, patch = (int(part) for part in current.split("."))
+    return f"{major}.{minor}.{patch + 1}"
+
+
+def test_measured_drift_acts_without_force_and_then_converges(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """The whole design in one test: a measured gap acts under plain `--apply`, and stops.
+
+    `upgrade` scores compiler versions, and a **patch** difference deliberately does not act — acting
+    on a version difference alone would mint a PATCH per module every time a dependency moved. But
+    upstream RM121 changed `manifest.stats.genes` in a patch, and this catalog's gene index is fed from
+    that field, so the rule was right and the module stayed stale with nothing saying so.
+
+    0.21 recomputes the probed fields from the version's own stored rows (`spec_tables` +
+    `module_stats`, both public since 0.6, and neither needs a compile). A difference is *evidence*
+    rather than a version comparison, so it acts without `--force` — `--dry-run` against `--apply` is
+    already this command's look-vs-act discriminator, and `--force` is for acting despite the detector.
+
+    **The second half is the part that makes it safe.** After the re-publish the successor was compiled
+    here, so its gap is `none` and its probes agree: it does not act again. A sweep that fixed
+    something and then stopped is the property that separates this from a trigger that can never
+    finish, and it is asserted rather than assumed.
+    """
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+
+    # Exhaust the 0.3 data drift: with a migration pending, `prepare` skips the probe on purpose (the
+    # migrated rows would legitimately disagree with a manifest compiled before them).
+    _, on_contract = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    )
+    assert on_contract.stats.genes, "the fixture must publish genes, or there is no drift to stage"
+
+    current = installed_compiler()
+    assert current is not None
+    stale = _manifest_with_stale_genes(
+        _manifest_compiled_under(on_contract, f"just-dna-compiler {_patch_sibling(current)}")
+    )
+    repo.set_version_manifest("just-dna-seq", "coronary", "1.0.1", stale)
+
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.1", stale)
+    assert prep is not None
+    assert prep.gap.scale == GAP_PATCH, "a patch gap is the case that used to be skipped in silence"
+    assert prep.verdict.state == REBUILD_YES
+    assert prep.verdict.anomaly is False
+    assert [f.field for f in prep.verdict.drift] == ["stats.genes"]
+    # The finding names the genes it found, not just a count: an operator has to be able to tell a
+    # real re-derivation from a spurious one *before* spending a version number, and "1 gene differs"
+    # does not support that judgement.
+    described = prep.verdict.describe()
+    assert on_contract.stats.genes[0] in described
+    assert "stats.genes is stale" in described
+    assert prep.would_act(recompile=False), "a measured gap must not need --force"
+
+    result = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.1", manifest=stale,
+    )
+    assert result is not None
+    new_version, new_manifest = result
+    assert new_version == "1.0.2"
+    # The republished manifest carries the genes the stale one had dropped — the defect is actually
+    # repaired, not merely reported.
+    assert set(new_manifest.stats.genes) == set(on_contract.stats.genes)
+
+    # ...and the sweep stops. This is the convergence assertion.
+    after = prepare_version_upgrade(storage, "just-dna-seq", "coronary", new_version, new_manifest)
+    assert after is not None
+    assert after.gap.scale == GAP_NONE
+    assert after.verdict.state == REBUILD_NO
+    assert after.would_act(recompile=False) is False
+    assert upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version=new_version, manifest=new_manifest,
+    ) is None
+
+
+def test_drift_under_the_identical_compiler_is_an_anomaly_and_never_acts(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """The loop this design would otherwise have, closed by refusing to act.
+
+    A version compiled by the *exact* compiler now installed, whose probed field still disagrees,
+    cannot be repaired by recompiling: the recompile derives the same value again. Acting would mint a
+    fresh PATCH on every sweep forever — the precise failure the patch rule exists to prevent, walking
+    back in through a different door.
+
+    It is reachable rather than theoretical. `validate_spec` computes `stats` over the full row set and
+    `compile_module` re-derives them over the survivors only when the symbolic-allele drop removed
+    something, so a module that lost the sole row naming a gene publishes a `genes` list this
+    recomputation cannot reproduce. The guard below catches the common shape of that; this branch is
+    what makes the residue harmless.
+    """
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+    _, on_contract = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    )
+    anomalous = _manifest_with_stale_genes(on_contract)  # same compiler, stale field
+    repo.set_version_manifest("just-dna-seq", "coronary", "1.0.1", anomalous)
+
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.1", anomalous)
+    assert prep is not None
+    assert prep.gap.scale == GAP_NONE
+    assert prep.verdict.anomaly is True
+    assert prep.verdict.state == REBUILD_YES, "the finding is real; what changes is that nothing acts"
+    assert prep.verdict.acts_by_default is False
+    assert prep.would_act(recompile=False) is False
+    assert upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.1", manifest=anomalous,
+    ) is None
+    # And it says so, rather than reporting a clean version.
+    assert "recompiling cannot fix it" in prep.verdict.describe()
+
+
+def test_a_moved_row_set_is_unmeasured_rather_than_drift(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """The false-drift guard: `variant_count` disagreeing means the comparison is not trustworthy.
+
+    The recomputation reads the authored rows; `manifest.stats` may have been re-derived after the
+    symbolic-allele drop. When the two row sets differ, a field derived from them cannot be compared —
+    and the honest answer is *not measurable*, never *stale* and never *clean*. Reporting drift here
+    would spend a version number on a module that is perfectly current.
+    """
+    manifest = _publish(client, api_key)
+    repo, storage = app.state.repo, app.state.storage
+    _, on_contract = upgrade_version(
+        repo=repo, storage=storage, settings=settings,
+        namespace="just-dna-seq", name="coronary", version="1.0.0", manifest=manifest,
+    )
+    dropped = _manifest_with_stale_genes(on_contract)
+    dropped.stats.variant_count = on_contract.stats.variant_count + 1  # as if a row had been dropped
+    repo.set_version_manifest("just-dna-seq", "coronary", "1.0.1", dropped)
+
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.1", dropped)
+    assert prep is not None
+    assert prep.verdict.drift == [], "a moved row set must not be reported as a stale field"
+    assert prep.verdict.state == REBUILD_CANNOT_SAY
+    assert any("row set moved" in u for u in prep.verdict.unmeasured)
+    assert prep.would_act(recompile=False) is False
+
+
+def test_unparseable_stored_rows_are_cannot_say_rather_than_clean(
+    client: TestClient, api_key: str, app, settings: Settings
+) -> None:
+    """A spec the current models reject is `revalidate`'s finding, and here it is simply unmeasurable.
+
+    The trap being avoided is the empty result: a probe that could not run returning no findings is
+    indistinguishable from one that ran and found nothing. It must never come back clean.
+    """
+    manifest = _publish(client, api_key)
+    files = {
+        "module_spec.yaml": b'schema_version: "1.0"\nmodule:\n  name: coronary\n  title: t\n'
+                            b"  description: d\n  report_title: R\ngenome_build: GRCh38\n",
+        "variants.csv": b"rsid,gene\nnot-an-rsid,\n",
+    }
+    drift, unmeasured = measure_output_drift(manifest, files)
+    assert drift == []
+    assert unmeasured and "could not be parsed" in unmeasured[0]
+
+    verdict = rebuild_verdict(
+        gap_scale=GAP_PATCH, gap_acts=False, drift=drift, unmeasured=unmeasured,
+        identical_compiler=False,
+    )
+    assert verdict.state == REBUILD_CANNOT_SAY
+    assert verdict.acts_by_default is False
 
 
 def test_the_plan_reports_which_columns_it_actually_rewrote() -> None:

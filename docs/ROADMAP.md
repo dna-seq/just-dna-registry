@@ -418,7 +418,7 @@ an explicit guard:
   source row stops being reported as unused — which had been advising authors to delete the exact row the
   compile licence gate reads.
 
-## needs_rebuild — a third axis, specified and half-built ⏳
+## needs_rebuild — a third axis, specified and built ✅
 
 Two questions are answered today and a third is not, which is why 0.20.0's gene-index fix needed an
 operator to know to pass `--force`:
@@ -429,12 +429,15 @@ operator to know to pass `--force`:
 | contract | was this compiled under a contract-incompatible compiler? | `upgrade`'s `ContractGap` | `patch` — correctly, the parquet shape did not move |
 | **output drift** | **would recompiling produce different output?** | **nothing** | — |
 
-The third is the one RM121 raises, and we can only answer it by enriching into a scratch dir and
-recompiling, which *is* the operation rather than a triage for it. Shipped in **0.20.1**: the `patch`
-bucket is counted and named instead of skipped in silence, so the unanswered axis is at least visible.
-Filed upstream as **S62** — a `rebuild_hints(compiled_under, current)` keyed on the interval, with an
-explicit `unknown_interval`, `content_signature` on its own axis, and the declaration guarded by a diff
-of the reference examples rather than hand-kept.
+The third is the one RM121 raises. **Built in 0.21.0** (`services/rebuild.py`): for a manifest field
+that is a pure function of authored rows, the current answer is recomputed from stored inputs with
+`compiler.spec_tables` + `compiler.module_stats` — no enrichment, no parquet, no network — so a measured
+difference acts under plain `--apply`. One field pair is probed today (`stats.genes`/`gene_count`); the
+surfaces that need a real compile (`artifact.digest`, `compilation.warnings`) are named as `cannot_say`.
+0.20.1's contribution stands underneath it: the `patch` bucket is counted rather than skipped in
+silence. Still open upstream as **S62** — a `rebuild_hints(compiled_under, current)` keyed on the
+interval, with an explicit `unknown_interval`, `content_signature` on its own axis, and the declaration
+guarded by a diff of the reference examples rather than hand-kept.
 
 **When it can be built, the contract is:** `needs_rebuild` is **tri-state** — `yes` / `no` /
 `cannot_say` — never a bool, because the two histories behind a `False` are "checked and current" and
@@ -695,6 +698,51 @@ number is worth spending, because that cost is ours and differs per consumer.
   whether a consumer already pinned to `httpx` 0.x can still install us if we move. Recorded here
   rather than acted on inside a contract cut, where an unrelated transport swap is exactly the change
   nobody would think to look at when something breaks.
+
+- **Read a bounded `short_description` on the card when format publishes one** (**minor**, open — the
+  card half of **S16**). `ModuleCard.description` is a bare required `str` (`models/api.py:260`), so one
+  author writing a paragraph reshapes the grid for everyone: `just-module-creator` measured the
+  production catalog at 8 to 79 words, six of seven rendering as two to five sentences, and four of the
+  five reference specs ending in the *same* sentence — on a results page a subtitle four modules share
+  is doing the opposite of its job. The fix is additive and small: prefer `short_description` when the
+  manifest carries one, fall back to `description` exactly as today when it does not, so nothing
+  published changes and no card goes blank.
+
+  **It gates only on the field existing**, which is a weaker condition than the binding ruling the other
+  half waits on — format can add a bounded `short_description` under either exit of their **S64**. **No
+  interim length bound here**, and the reason is the sidecar-map lesson: a warning from `/validate` would
+  invent the number the schema is being asked to own, and when `max_length` lands upstream its validator
+  surfaces the bound through `/validate` for free, which is also the only version that reaches the author
+  while they are still writing. Render-side truncation is rejected outright — the reporter rejected it
+  first, and it hides prose the author chose while leaving the spec exactly as wrong.
+
+- **`amend_display`, if and only if format splits the attestation binding** (**minor**, open and
+  **conditional** — the endpoint half of **S16**, gated on upstream **S64**). The `Display` block —
+  `title`, `description`, `report_title`, `icon`, `icon_set`, `color` — is out of `artifact.digest` and
+  out of `content_signature`, which is the definition `amend_readme`'s own docstring uses for the amend
+  family, and it is nonetheless unamendable: the block arrives inside `module_spec.yaml`, and
+  `module_spec.yaml` is a `manifest.inputs` member. So the one piece of prose that renders first in the
+  grid is the one that costs a version number and a `content_hash` `yank` will not release, and — per the
+  reporter's measurement, which is upstream's to adjudicate — the module's closure record with it.
+
+  **This is conditional and must not be read as a promise.** S64 offers format two exits and says a
+  justification is a complete answer. If they justify the binding, **this entry closes as will-not-build**
+  and a badly-shaped subtitle stays a new-version problem; only exit (b), splitting the binding along the
+  line `content_signature` already draws, ends in an endpoint here. Build the whole `Display` model when
+  it comes, not `description` alone: all six share the status, and six endpoints or one arbitrary subset
+  both age worse than one.
+
+  **A third route exists and is rejected on the record, so it is not rediscovered as a shortcut.** We
+  could carry a registry-owned display override on the manifest the way `manifest.readme` is carried,
+  touching no `module_spec.yaml` and needing nothing from format. It pre-empts S64 in *both* directions:
+  redundant machinery we would keep forever if the binding splits, and precisely the substitution the
+  justification would prohibit if it does not. It also costs what neither exit costs — a downloaded spec
+  stops reproducing the card it came from, and a re-publish from that download silently reverts the
+  amendment, which is S64's own *"two different answers to did my edit count"* moved one layer up.
+
+  **Neither exit repairs the seven modules already published.** A binding split is prospective and those
+  manifests are immutable; shortening one costs its author a version and their closure record, which is
+  each author's call.
 
 ## Superseded (post-0.10)
 

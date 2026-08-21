@@ -22,6 +22,7 @@ from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
 from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
+from just_dna_registry.services.rebuild import UNPROBED_SURFACES
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
 from just_dna_registry.services.upgrade import (
     GAP_PATCH,
@@ -623,6 +624,10 @@ def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
         bits.append(f"{dropped} column(s)/key(s) trimmed")
     if prep.gap.acts_by_default:
         bits.append(f"contract recompile — {prep.gap.describe()} (digest moves)")
+    if prep.verdict.acts_by_default:
+        # Named as a *measurement*, not as a version difference, because that is what makes it act
+        # without `--force`: the field was recomputed from this version's own rows and disagreed.
+        bits.append(prep.verdict.describe())
     if not bits:  # only a forced schema recompile is left
         bits.append(f"schema recompile, no content change ({prep.gap.describe()})")
     return ", ".join(bits)
@@ -687,6 +692,10 @@ def upgrade(
     #: for the reason `unidentifiable` is: the alternative is a silence, and a silence reads as an
     #: all-clear. See the note printed below.
     patch_gap: list[str] = []
+    #: Drift measured against the **identical** compiler. A recompile derives the same value again, so
+    #: acting would mint a PATCH per sweep forever — reported instead, in red, because it means
+    #: something other than a compiler upgrade put a stale value into a published manifest.
+    anomalies: list[str] = []
     # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
     # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
     for row in repo.list_all_versions(namespace):
@@ -711,7 +720,9 @@ def upgrade(
             blocked += 1
             continue
         if not prep.would_act(recompile=force):
-            if prep.gap.scale == GAP_UNKNOWN:
+            if prep.verdict.anomaly:
+                anomalies.append(f"{ns}/{name}@{ver}: {prep.verdict.describe()}")
+            elif prep.gap.scale == GAP_UNKNOWN:
                 unidentifiable.append(f"{ns}/{name}@{ver}")
             elif prep.gap.scale == GAP_PATCH:
                 patch_gap.append(f"{ns}/{name}@{ver}")
@@ -740,27 +751,36 @@ def upgrade(
         typer.echo(
             f"\n{planned} version(s) would upgrade{blocked_note}  (dry-run; pass --apply to publish)"
         )
-    # **A patch is not a gap, and a patch bucket is not nothing.** The rule above is unchanged: a
-    # compiler patch moves no schema, so acting on one would mint a PATCH per module every time a
-    # dependency moved. What was wrong was reporting it as *silence* — `0 version(s) would upgrade`
-    # with no mention that eleven versions sit on a different compiler — because this codebase's own
-    # rule is that a value two opposite histories produce needs something saying which happened, and
-    # "nothing to do" and "something we cannot see from here" rendered identically.
+    # **An anomaly is not a gap and is not actionable, so it prints on its own.** Drift measured
+    # against the identical compiler cannot be repaired by recompiling — the recompile derives the same
+    # value — so the sweep says so rather than looping. Red, because unlike everything else here it
+    # means a published manifest disagrees with the compiler that allegedly produced it.
+    for line in anomalies:
+        typer.secho(
+            f"✗ {line}. Recompiling reproduces it, so this sweep will not act; investigate the "
+            "stored inputs or the manifest.",
+            fg=typer.colors.RED,
+        )
+    # **A patch is not a gap, and a patch bucket is not nothing** (0.20.1). The rule is unchanged: a
+    # compiler patch moves no schema, so acting on one merely because the version differs would mint a
+    # PATCH per module every time a dependency moved. What was wrong was reporting the decision as
+    # *silence* — `0 version(s) would upgrade` with no mention that versions sat on a different
+    # compiler.
     #
-    # They are genuinely different: compiler 0.6.6 shipped RM121, a patch that changed
-    # `manifest.stats.genes` — a published field this catalog indexes — and RM106, which changed a
-    # published warning count. Whether a given patch moved compiled output is not knowable from a
-    # version comparison, and the only cheap answer would be a hint from upstream, filed as their S62.
-    # Until then the honest report is the bucket and the reason, and `--force` aimed by an operator
-    # who has read the upstream changelog.
+    # **Since 0.21 the message is narrower, and the narrowing is the release.** The probed fields are
+    # recomputed from each version's own rows, so a patch that moved one is found and acted on under
+    # plain `--apply`. What is left in this bucket is the genuinely unanswerable half: the surfaces
+    # that need the compile we are avoiding. `--force` is how an operator acts on those — a fallback
+    # for a case the detector cannot reach, rather than the everyday lever it had to be for
+    # `stats.genes` in 0.20.
     if patch_gap and not force:
         typer.secho(
             f"{len(patch_gap)} version(s) sit on a different compiler patch "
             f"({', '.join(patch_gap[:5])}"
             + (f" … ({len(patch_gap)} total)" if len(patch_gap) > 5 else "")
-            + "). Same contract, so no gap acts by default — but whether that patch moved any "
-            "published field is not something this comparison can see. Check the upstream changelog "
-            "for the interval, and re-run with --force -m <module> if it did.",
+            + "). Every probed field was recomputed and is current; what cannot be checked without "
+            f"recompiling is {', '.join(UNPROBED_SURFACES)}. Check the upstream changelog for the "
+            "interval, and re-run with --force -m <module> if it moved one of those.",
             fg=typer.colors.YELLOW,
         )
     if unidentifiable and not force:
