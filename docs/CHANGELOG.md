@@ -6,6 +6,54 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.21.1] — 2026-08-22
+
+**Client surface: unchanged.** No method signature moved. Two behaviours a client sees change **on a
+`mode=test` deployment only**: the default listing and `?q=` answer for the whole catalog, and
+`GET /modules/groups` describes `all` differently there. Production is untouched, so a `v1` client
+against production cannot tell this release happened.
+
+### The polygon could not show an author their own rehearsal
+
+`just-module-creator` published into `test-sheep` on the polygon, searched for it, and got `total: 0`
+from every read path an author has — the default listing, `group=all`, and free-text search — on an
+instance whose `/health` counted 17 modules (**S17**). Two independent unattended runs concluded the
+publish had failed, which is the correct inference from what they could see and is wrong.
+
+Nothing was broken. `groups.group_filters` hides test/sandbox namespaces from every tab except
+`test`, exactly as designed in 0.8.0 and documented since. The defect is that the rule was
+**instance-blind**: it is a single-catalog UI assumption ("a sandbox space is noise in the default
+tab") applied to a two-instance world, and on the box where the sandbox spaces are the *entire*
+catalog it hides everything. The service already reads `settings.is_test_instance` at the publish
+gate, in the CLI, at the delete router's mount and in the test-data check; the listing was the one
+place that never asked. So `group_filters` now asks, and on the polygon there is no exclusion.
+
+`group=test` is deliberately **not** special-cased alongside it. It still means "the test/sandbox
+spaces" on both instances — which on the polygon is usually everything — so a client that names the
+tab gets the same answer wherever it points. What differs is only the default.
+
+**`GET /modules/groups` moved with it.** The keys and their order are identical on both modes, but
+`all`'s description said "test/sandbox spaces excluded", which on the polygon would now be a label
+contradicting the list underneath it. A UI that renders the description it is served stays honest;
+one with the string baked in does not, which is why the fix is server-side.
+
+**`RegistryClient.catalog_stats()` is repaired without changing.** It aggregates by paging the
+default listing, so on the polygon every total it returned was zero. It had no way to notice it was
+being filtered — which is exactly the argument for fixing the server rather than the caller. Its
+docstring now says so, and names `group="test"` as the workaround against an older test instance.
+
+### The premise under `/health`'s catalog counts was false on one instance
+
+`Repository.catalog_counts` justifies publishing four counts on an unauthenticated endpoint on the
+grounds that they are *"only facts a reader could already enumerate through `GET /modules`"* — S4's
+reply said the same. On the polygon that was untrue: `/health` was the **only** route reporting the
+instance was non-empty. The counts stay (they were the one thing telling an author the publish had
+landed) and the listing is what changed, but the docstring now records that the enumerability claim
+is what licenses them, and to re-check it whenever a listing filter becomes instance-dependent again.
+
+Answered: **S17**, moved to
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md).
+
 ## [0.21.0] — 2026-08-21
 
 **Client surface: unchanged.** No route, no response field, no `RegistryClient` signature —

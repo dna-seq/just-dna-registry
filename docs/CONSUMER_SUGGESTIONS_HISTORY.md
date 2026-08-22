@@ -35,6 +35,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S14** version rows had neither identity nor the fact signature — shipped 0.19.0
 - **S15** upgrade changelog named untouched columns — shipped 0.19.0 (derived now)
 - **S16** card subtitle unbounded, Display unamendable — tracked, gated on S64
+- **S17** polygon listings hid its whole catalog — mode-aware, shipped 0.21.1
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -1588,3 +1589,194 @@ does nothing for the seven already published.
 
 **Measured against** registry **0.18.2** on production (`registry_search()`, 2026-08-21), compiler
 **0.6.6** for the hash table, spec `assets/fto_bmi` from `just-module-creator`.
+
+# Field notes from just-module-creator — the authoring surface, 2026-08-22
+
+*Filed after two unattended authoring runs rehearsed a publish on the polygon and then could not read
+it back. One item only. Four other candidates from the same runs were checked against your code and
+your docs before writing and did not survive; they are listed at the end so you do not have to
+re-derive why they are absent.*
+
+## S17 — every listing route on the polygon answers `total: 0` while `/health` on the same instance counts 17 modules
+
+**Status — accepted, and it went the way you put first; shipped in 0.21.1 as option 1, with the
+`/health` docstring corrected as its own half.** Reproduced before changing anything, in
+`tests/test_groups.py`: a `mode=test` app holding two modules in `test-sheep` answers
+`/health → catalog.modules: 2` and `total: 0` to the default listing, `group=all`, `?q=longevity`
+and `group=new`, while `group=test` and `namespace=test-sheep` both return 2. Your reading of the
+mechanism is exact and I have nothing to add to it — `group_filters` is where it was, and
+`is_test_instance` is the thing it was not consulting.
+
+**Why option 1 rather than option 2.** Your second suggestion would work, but it makes every caller
+say something the server already knows: an author on the polygon would have to pass
+`include_test=true` (or `group=everything`) to see a catalog that contains nothing else, and the
+authors who most need that are exactly the ones who have not read far enough to know the flag
+exists. The rule this repo already applies to the mode is that it is a *server* concept and never a
+client one, and `publish_refusal` is the precedent you found — the flag would have made the mode a
+client concern in a second place. Your first option is one condition in the function that already
+had everything but the settings object, which is what it now takes.
+
+**One thing I did not do, and the reason is worth your veto.** `group=test` is unchanged: it still
+means the test/sandbox spaces on both instances, which on the polygon is usually everything. It was
+tempting to make it mean "everything" there for symmetry, and that would have made a client asking
+for a named tab get different answers depending on where it pointed — the failure the server-owned
+membership rule exists to prevent. Only the *default* differs now. The consequence you should know
+about: your workaround stays correct rather than becoming wrong, so nothing on your side has to move
+in step with this release.
+
+**`GET /modules/groups` moved with the listing, which was not in the report and is the same defect
+one surface over.** The `all` tab's description reads *"Everything published (test/sandbox spaces
+excluded)"*, so a UI rendering it on the polygon would now caption a complete list with a sentence
+saying things are missing from it. Keys and their order are identical on both modes; only that one
+description differs, asserted structurally rather than by matching wording so the test does not pin
+my phrasing. If you render tab labels, render the ones you are served.
+
+**`catalog_stats()` is repaired without changing** — you were right that it is the caller that would
+not notice. It aggregates by paging the default listing, so the server-side fix reaches it with no
+signature change and nothing for you to update. Its docstring now records why it went wrong and
+names `group="test"` for talking to a test instance older than 0.21.1, since a client will meet those
+for a while.
+
+**The doc half you called sharper, which I agree it was.** `catalog_counts` now says the
+enumerability premise was false on the polygon and that the listing is what was repaired, not the
+endpoint — the counts stay exactly as they are, for the reason you gave: they were the only thing
+telling you the publish had worked. What I added beyond the sentence you asked for is the standing
+instruction, because the sentence would go stale on its own: **re-check the enumerability claim
+whenever a listing filter becomes instance-dependent**, since that claim is the whole licence for
+publishing four numbers without a bearer token. S4's reply is left as written; it was true when it
+was written and the record is more useful than a retrofit.
+
+**On the four you checked and did not file** — thank you for the negative results, and particularly
+for the `module_spec.yaml` one, which is the kind of claim that would have cost a day to refute from
+this side. All four match what I would have found. The deployment lag you noticed is real and is
+ours: both live instances answer `compiler: 0.6.1` while the tree adopted 0.6.6 in 0.20, and that is
+a deployment state rather than a defect, as you say. Worth flagging one consequence for your
+rehearsals, since it is not obvious: the polygon you measured is running 0.18.2, so this fix reaches
+you when it is deployed, not when it is released — check `/api/v1/version` rather than assuming.
+
+**And the reason this was worth filing rather than shrugging is the one you gave.** An author reading
+`total: 0` and concluding their publish failed is drawing the correct inference from the evidence
+available to them; a first-timer who cannot see their own rehearsal on the box that exists for
+rehearsals is the failure the polygon was built to prevent. That it took two unattended runs and a
+source read to establish the box was not empty is the measure of it.
+<!-- triaged: 0.21.1 · sha f7aea1872e13 -->
+
+
+**What we ran.** A rehearsal publish into `test-sheep` on the polygon, then a search to read it back.
+Measured 2026-08-22; both instances on registry 0.18.2.
+
+```
+$ curl -s https://module-polygon.just-dna.life/health
+{"status":"ok","version":"0.18.2","storage":"local","mode":"test","uptime_seconds":325904.6,
+ "enrichment":{"active":0,"queued":0,"limit":1},
+ "catalog":{"modules":17,"versions":21,"yanked":0,"namespaces":5}}
+
+$ curl -s '…/api/v1/modules?per_page=50'          → total 0
+$ curl -s '…/api/v1/modules?group=all&per_page=50' → total 0
+$ curl -s '…/api/v1/modules?q=longevity'          → total 0
+$ curl -s '…/api/v1/modules?group=test&per_page=50' → total 17
+$ curl -s '…/api/v1/modules?namespace=test-sheep'  → total 4
+```
+
+`q=longevity` is the sharpest of those: the polygon holds `test-sheep/longevity_2026` and
+`test-sheep/longevity_rare_variants`, and `group=test&q=longevity` returns both. The bare search
+returns nothing.
+
+Production agrees with itself — `/health` says 8 modules, the default listing returns 8 — because none
+of its namespaces matches `test_namespace_pattern`.
+
+**We read this as deliberate, and correct where it was designed.** `groups.group_filters` (`groups.py:47`)
+sends `group == "test"` to `only_namespaces` and *every other value, including `None` and `"all"`*, to
+`exclude_namespaces`; `catalog.list_modules` (`services/catalog.py:356-362`) lets that preset win over the
+caller's filters, with an explicit `namespace=` the one documented escape; `db/repository.py:983` renders it
+as `m.namespace NOT IN (…)` against both the row query and the `COUNT(*)`. It is documented at
+`API-REFERENCE.md:471-475` and has behaved this way since 0.8.0. Nothing here is a bug on production, and
+we are not reporting one.
+
+**What we think is worth a second look is that the rule is instance-blind.** It is a single-catalog UI
+assumption applied to a two-instance world. On production, hiding sandbox namespaces from the default tab
+is exactly right. On the polygon it hides the only data the instance exists to hold, and every read path
+an author has — default listing, `group=all`, free-text search — returns zero on a box that is not empty.
+
+**The service already knows the difference; the listing route is the one place that does not consult it.**
+`testdata.publish_refusal` (`testdata.py:71-72`) carries the argument in your own words:
+
+> Only production has anything to say here. On the polygon this is exactly the data the instance
+> exists to hold, and a guard there would make the test box unable to test.
+
+That is `settings.is_test_instance`, read at the publish gate (`testdata.py:74`), the CLI (`cli.py:168`),
+the router mount for the delete verb (`api/app.py:124`) and the test-data check in `publish.py:719`.
+`group_filters` takes `pattern` and never asks which instance it is running on.
+
+**What we would ask for, in preference order.**
+
+1. **Make `group_filters` mode-aware the way `publish_refusal` already is** — on a `test` instance, the
+   exclusion is a no-op. One condition, in the function that already receives everything it needs except
+   the settings object.
+2. **If you would rather keep the policy uniform across instances, a way to list an instance whole.**
+   Today no single group does: `all` excludes the test spaces and `test` excludes everything else, so
+   "what is in this catalog" has no answer through the listing API without knowing the namespaces in
+   advance. A `group=everything`, or an `include_test=true` alongside `include_blacklisted`, would close
+   it.
+
+**A second consumer of the same filter, which may decide the shape.** `RegistryClient.catalog_stats()`
+(`client.py:994-1005`) aggregates by paging `list_modules(page=…, group=group)` with `group` defaulting to
+`None`. On the polygon that is the excluded view, so every total it returns is zero, on an instance whose
+`/health` reports 17 modules. Whatever repair you pick, this is the caller that will not notice it is
+being filtered.
+
+**The doc half, which we think is the sharper defect.** `Repository.catalog_counts`
+(`db/repository.py:1051-1058`) justifies publishing the catalog numbers on an unauthenticated endpoint like
+this:
+
+> Deliberately only facts a reader could already enumerate through `GET /modules` and the namespace
+> routes — `/health` is unauthenticated, so it is not the place to start publishing numbers that were
+> previously private.
+
+S4's reply says the same thing as *"everything there is already reachable through the listing routes"*. On
+the polygon that premise is false: `/health` is the **only** route that reports the instance is non-empty,
+and it is unauthenticated. We are not asking you to remove the counts — they were the only thing that told
+us the publish had worked. We are pointing out that the argument for including them does not hold on one of
+the two instances, and that whichever way S17 goes, that docstring wants a sentence about the test
+instance.
+
+**What it cost, which is the reason we filed it rather than shrugging.** An author publishes a rehearsal to
+the polygon, searches for it, gets `total: 0`, and concludes the publish failed. It is the correct
+inference from what they can see, and it is wrong. Two independent unattended runs of ours reached exactly
+that conclusion. The polygon exists so a first-timer can make a
+mistake cheaply; a first-timer cannot see their own rehearsal on it.
+
+**What we did meanwhile, so this is not a request to unblock us.** Our `registry_search` now takes `group`
+and `namespace` and passes them through, and the tool's own guidance says a zero on a test target does not
+mean absent. That is a workaround for our callers and does nothing for anyone else's, which is why it is
+here.
+
+### Checked from the same runs and not filed
+
+Recorded because each was a candidate we had written down before reading your code, and because a wrong
+candidate is cheaper for you to see refuted than re-triaged:
+
+- **Published warnings are dropped by the server-side recompile.** They are not. All four
+  `antonkulaga/*` manifests carry 2–4 entries in `compilation.warnings`, including the
+  licence-conflict warning we had claimed was discarded.
+- **`module_spec.yaml` never matches its own published digest.** It always does. We fetched every
+  input of all 8 production modules **at their latest versions** through `/files/{path}` and hashed
+  it: **29 of 29 match `manifest.inputs` on both `sha256` and `size`**. `eric-mods/lactose_tolerance`
+  is where we thought we had seen a 374-vs-1198 disagreement; its `module_spec.yaml` is 374 bytes and
+  hashes correctly at `@1.0.1` and, checked separately, at `@1.0.0`.
+- **A local compile cannot reproduce the published digest, and nothing says so.** It says so twice —
+  `API-REFERENCE.md:401-404` and `:521-523`, *"a recompile of the same spec need not produce the same
+  digest"* — and `/api/v1/version` already reports the compiler the server builds with. That both live
+  instances still answer `compiler: 0.6.1` while 0.20 adopts 0.6.6 is a deployment state, and your S3/S4
+  replies draw that line clearly enough that we are not calling it a defect.
+- **`stats.genes` is truncated to three with no way to tell.** `gene_count` sits beside it in the same
+  payload (`aggression_anger_snps` returns `gene_count: 22` with three genes) and the truncation is
+  documented at `API-REFERENCE.md:480`. Our card projection was dropping the field; that one was ours.
+
+One thing worth saying as a positive rather than a report: `/files/{file_path}` served every authored byte
+faithfully in both directions across that 29-file sweep, and `download(include_inputs=True)` hash-checks
+them on the way in. Third-party curation of a published module is possible because of those two, and we
+had not appreciated that until we tried it.
+
+**Measured against** registry **0.18.2** on both instances (`/health`, `/api/v1/version`,
+`/api/v1/modules`, `/files/{path}`, 2026-08-22), source read at `just-dna-registry` **0.21.0** in tree.

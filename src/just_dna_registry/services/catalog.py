@@ -351,12 +351,14 @@ def list_modules(
     starred_by: int | None = None,
     group: str | None = None,
     test_pattern: str,
+    is_test_instance: bool = False,
     **filters: object,
 ) -> Page[ModuleCard]:
     # A named group (all/featured/popular/new/test) is a preset over sort/featured/namespace-scope;
     # it wins over those raw filters. An explicit `namespace` still reaches a test/sandbox space by
-    # exact name (so the exclusion the non-test groups apply is dropped in that case).
-    preset = groups.group_filters(group, repo, test_pattern)
+    # exact name (so the exclusion the non-test groups apply is dropped in that case), and on the
+    # polygon there is no exclusion to drop — `group_filters` omits it there (S17).
+    preset = groups.group_filters(group, repo, test_pattern, is_test_instance=is_test_instance)
     if filters.get("namespace"):
         preset.pop("exclude_namespaces", None)
     filters.update(preset)

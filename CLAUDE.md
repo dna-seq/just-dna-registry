@@ -431,6 +431,28 @@ running server, and one direction arms a delete endpoint on production data.
   anything; it made a catalog-wide re-baseline impossible to finish, with no flag to pass. Any future
   internal re-publish path inherits this question: ask whether the identifier is *arriving* or *already
   admitted*, because the guard is only about the first.
+- **A rule written for one instance has to ask which one it is running on.** The listing hid
+  test/sandbox namespaces from every tab but `test` on *both* deployments, so on the polygon — where
+  those spaces are the whole catalog — the default listing, `group=all` and `?q=` all answered
+  `total: 0` on a box `/health` counted as non-empty, and two unattended authoring runs concluded
+  their rehearsal publish had failed (S17, fixed in 0.21.1). Nothing was broken: it is a
+  single-catalog UI policy ("a sandbox space is noise in the default tab") applied to a two-instance
+  world, and `settings.is_test_instance` was already read at the publish gate, in the CLI, at the
+  delete router's mount and in the test-data check. The listing was the one place that never asked.
+  **Two things generalise.** A `group=test` that also meant "everything" on the polygon was the
+  tempting symmetry and would have been wrong — a *named* tab must mean the same thing on both
+  instances or server-owned membership stops being worth anything; only the **default** may differ.
+  And **a description is part of the behaviour**: `all`'s label said "test/sandbox spaces excluded",
+  so fixing the query alone would have left a UI captioning a complete list with a sentence denying
+  it. `groups_for()` serves the description the instance earns, which is also why the client is told
+  to render what it is served rather than bake the string in.
+- **And when an argument for publishing something rests on a premise, re-check the premise per
+  instance.** `catalog_counts` justifies four unauthenticated numbers on `/health` as *facts a
+  reader could already enumerate through `GET /modules`* — false on the polygon for as long as the
+  listing excluded everything it held, where `/health` was the **only** route saying the box was not
+  empty. The repair was to the listing, not the endpoint; the counts were right and were the one
+  thing telling an author their publish had landed. The docstring now carries the standing
+  instruction rather than just the correction, because it is the claim that licenses the endpoint.
 - **A read-only pre-flight must predict the operation it precedes.** `GET /namespaces/{ns}` reported
   `valid: true` for a name the claim then refused (S6). It now carries `requires_allow_test_data` and
   a warning instead — *not* `valid: false`, because the name is genuinely claimable with the flag, and

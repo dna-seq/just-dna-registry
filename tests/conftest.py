@@ -105,6 +105,21 @@ def client(app) -> TestClient:
     return TestClient(app)
 
 
+def seed_into(app, namespace: str, name: str, version: str, **kwargs: object) -> ModuleManifest:
+    """Seed a published version into *any* app, not only the `app` fixture's.
+
+    The `seed` fixture below is this bound to that app, which covers almost every test. A test that
+    builds its own app — one per `REGISTRY_MODE`, say, since the mode is fixed at construction —
+    needs the same seeding against an app pytest did not make, and reaching into `_make_manifest`
+    from a test module is the alternative worth avoiding.
+    """
+    created_at = str(kwargs.pop("created_at", "2026-01-01T00:00:00Z"))
+    manifest, files = _make_manifest(namespace, name, version, **kwargs)  # type: ignore[arg-type]
+    app.state.storage.store_module(version_key(namespace, name, version), files)
+    ingest_manifest(app.state.repo, manifest, created_at=created_at)
+    return manifest
+
+
 @pytest.fixture
 def seed(app) -> Callable[..., ModuleManifest]:
     """Seed a published version: store artifact bytes + index the manifest. Returns the manifest."""
@@ -119,12 +134,10 @@ def seed(app) -> Callable[..., ModuleManifest]:
         created_at: str,
         **kwargs: object,
     ) -> ModuleManifest:
-        manifest, files = _make_manifest(
-            namespace, name, version, genes=genes, categories=categories, **kwargs  # type: ignore[arg-type]
+        return seed_into(
+            app, namespace, name, version,
+            genes=genes, categories=categories, created_at=created_at, **kwargs,
         )
-        app.state.storage.store_module(version_key(namespace, name, version), files)
-        ingest_manifest(app.state.repo, manifest, created_at=created_at)
-        return manifest
 
     return _seed
 

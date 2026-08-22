@@ -1056,6 +1056,14 @@ class Repository:
         numbers that were previously private. Account and key counts are absent for that reason and
         should stay absent. `versions` counts every version including yanked ones, with `yanked`
         beside it rather than subtracted out, because "how many are hidden" is its own question.
+
+        **That premise was false on the polygon until 0.21.1**, and the counts stayed publishable on
+        the strength of an argument that did not hold there: the listing excluded every test/sandbox
+        namespace on both instances, so on a box holding nothing else this was the *only* route
+        saying the catalog was non-empty, unauthenticated (S17). The repair was to the listing rather
+        than to this endpoint — the numbers were right, and they were what told an author their
+        rehearsal had landed. Re-check the enumerability claim whenever a listing filter becomes
+        instance-dependent again; it is what licenses these four counts.
         """
         def one(sql: str) -> int:
             return int(self.conn.execute(sql).fetchone()["n"])

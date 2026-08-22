@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.20.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.21.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
@@ -18,7 +18,11 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   compiled from 0.6.6 on), and a duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` is
   now a compile **error**, so a spec that published before can come back `422`.
   **0.19 adds no route either** — it adds two fields to `VersionSummary`/`ResolutionInfo`, which a
-  `v1` client that ignores them keeps working against).
+  `v1` client that ignores them keeps working against. **0.21 adds no route either**: 0.21.0 is an
+  admin-CLI behaviour with no HTTP surface, and 0.21.1 changes *what the listing returns on a
+  `mode=test` deployment* without moving any shape — the test/sandbox exclusion is now production's
+  policy alone. A response that was `total: 0` there can now be non-empty; nothing that was returned
+  stops being returned, and production is unchanged).
   Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
@@ -474,6 +478,14 @@ owner-highlighted review — see reviews), `popular` (`sort=popular`), `new` (`s
 explicit `namespace=`. Membership is server-owned so all clients agree. Discover the tabs at
 `GET /api/v1/modules/groups`.
 
+**That hiding is production's policy only, since 0.21.1.** On a `mode=test` deployment (the polygon)
+the exclusion does not apply: the default listing, `group=all` and `?q=` answer for the whole catalog,
+because sandbox spaces are all that instance holds and excluding them made every read path report
+`total: 0` on a box `/health` counted as non-empty. `group=test` is unchanged and means the same thing
+on both — the sandbox spaces, which on the polygon is usually everything. Ask `/health` for `mode` if
+you need to know which rule an instance is applying; `GET /api/v1/modules/groups` also describes `all`
+differently there.
+
 `200 → Page<ModuleCard>`. **Featured** modules float to the top of every sort (card has
 `featured: bool`). **Blacklisted** namespaces are omitted by default — returned only with
 `include_blacklisted=true` or an explicit `namespace=` (moderation, not deletion). Card
@@ -516,6 +528,12 @@ The listing tabs (groups) the catalog defines, for a UI to render. Anonymous. `2
 
 Pass a `key` as `?group=` on the listing (endpoint 2). Membership is server-owned policy, not the
 UI's — see the `group` param above.
+
+The **keys and their order are the same on both deployment modes**; `all`'s *description* is not. On
+a `mode=test` instance it reads `"Everything published on this test instance (nothing is excluded
+here)."`, because the exclusion that sentence describes does not apply there (0.21.1). Render the
+description you are served rather than one baked into the client — the alternative is a tab labelled
+"test/sandbox spaces excluded" above a list that excludes nothing.
 
 ### 3. `GET /api/v1/modules/lookup?digest=sha256:…`
 Find published versions whose `artifact.digest` matches — the *compiled bytes*, not the data. For

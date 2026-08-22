@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.20.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.21.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -214,10 +214,16 @@ for a member, any for admin+).
 
 ### Discovery & stats
 
-- **`groups() -> list[dict]`** — the listing tabs `[{key, label, description}]`.
+- **`groups() -> list[dict]`** — the listing tabs `[{key, label, description}]`. Same keys on every
+  server; `all`'s **description** differs on a `mode=test` deployment, where nothing is excluded
+  (0.21.1). Render what you are served rather than a label baked into the client.
 - **`catalog_stats(namespace=None, *, group=None) -> dict`** — aggregate totals (modules,
   namespaces, downloads, stars, views, reviews, curated, variants, studies, genes) by paging the
   listing; there is no dedicated stats endpoint, so this rolls up the card fields.
+  - **It inherits the default listing's server-side scope.** Against a *pre-0.21.1* test instance
+    that meant every total came back `0`, since the listing excluded all its sandbox namespaces —
+    pass `group="test"` when talking to one. Against 0.21.1+ the default is already the whole
+    catalog on both modes and no argument is needed.
 
 ### Helper
 

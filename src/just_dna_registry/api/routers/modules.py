@@ -23,7 +23,7 @@ from just_dna_registry.api.deps import (
 )
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
-from just_dna_registry.groups import GROUPS, GroupInfo
+from just_dna_registry.groups import GroupInfo, groups_for
 from just_dna_registry.models.api import (
     LookupBatch,
     LookupBatchResponse,
@@ -118,6 +118,7 @@ def list_modules(
         starred_by=caller.id if caller else None,
         group=group,
         test_pattern=settings.test_namespace_pattern,
+        is_test_instance=settings.is_test_instance,
         q=q,
         category=category,
         gene=gene,
@@ -137,10 +138,12 @@ def list_modules(
 
 
 @router.get("/groups", response_model=list[GroupInfo])
-def list_groups() -> list[GroupInfo]:
+def list_groups(settings: SettingsDep) -> list[GroupInfo]:
     """The listing groups (tabs) the catalog defines, for a UI to render — membership is server-owned
-    policy (see `?group=` on the module listing). Static: `all|featured|popular|new|test`."""
-    return GROUPS
+    policy (see `?group=` on the module listing). Keys are the same on both instances
+    (`all|featured|curated|popular|new|test`); `all`'s *description* differs, because on the polygon
+    it excludes nothing (S17)."""
+    return groups_for(is_test_instance=settings.is_test_instance)
 
 
 @router.get("/lookup", response_model=LookupMatch, dependencies=[Depends(rate_limit("search"))])

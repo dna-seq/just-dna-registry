@@ -994,7 +994,14 @@ class RegistryClient:
     def catalog_stats(self, namespace: str | None = None, *, group: str | None = None) -> dict:
         """Aggregate catalog stats by paging the listing — there is no dedicated stats endpoint, so
         this rolls up the card fields (`get_module`/`list_modules`). Optionally scoped to a namespace
-        or a group. Returns totals across the matched modules."""
+        or a group. Returns totals across the matched modules.
+
+        **It inherits whatever the default listing shows, which is a server-side policy** — until
+        registry 0.21.1 that meant every total came back zero against the polygon, whose namespaces
+        are all test/sandbox ones the listing excluded (S17). Nothing here changed and nothing here
+        was wrong: this method has no way to notice it is being filtered, which is exactly why the
+        repair belonged on the server. Pass `group="test"` when talking to an older test instance.
+        """
         agg = {
             "modules": 0, "namespaces": 0, "downloads": 0, "stars": 0, "views": 0,
             "reviews": 0, "curated": 0, "variants": 0, "studies": 0, "genes": 0,
