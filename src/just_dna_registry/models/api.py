@@ -547,6 +547,26 @@ class ValidationReport(BaseModel):
         description="Accepted but noteworthy: keys the server dropped, a version it coerced",
     )
     stats: SpecStats = Field(default_factory=SpecStats)
+    format_version: str | None = Field(
+        default=None,
+        description=(
+            "The `just-dna-format` version these findings were graded against — the row schema this "
+            "instance holds, not the one the caller runs. Unconditional, because a refusal an author "
+            "cannot date is a refusal they cannot act on (S18), and a `curl` caller has no response "
+            "header in front of them. None only on a server too old to report it."
+        ),
+    )
+    format_advisory: str | None = Field(
+        default=None,
+        description=(
+            "Present when the caller advertised a *newer* `just-dna-format` than `format_version` "
+            "within the same minor — a patch-grain skew, which is legal on the handshake and can "
+            "still fail a spec, because a column added by a patch release is rejected by an older "
+            "instance in the same words as a typo. Context, never a diagnosis of the errors beside "
+            "it: it is derived from the two version strings alone and never from what failed. "
+            "Requires the caller to send `X-Format-Version` (every `RegistryClient` does)."
+        ),
+    )
     content_signature: str | None = Field(
         default=None,
         description="Content identity of the authored rows; None when a data CSV will not parse",

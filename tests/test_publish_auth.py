@@ -30,22 +30,23 @@ def _auth(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
-def _spec_files(name: str, *, with_studies: bool = True) -> list[tuple]:
+def _spec_files(name: str, *, with_studies: bool = True, studies: str = _STUDIES) -> list[tuple]:
     files = [
         ("files", ("module_spec.yaml", _MODULE_YAML.format(name=name).encode(), "text/yaml")),
         ("files", ("variants.csv", _VARIANTS.encode(), "text/csv")),
     ]
     if with_studies:
-        files.append(("files", ("studies.csv", _STUDIES.encode(), "text/csv")))
+        files.append(("files", ("studies.csv", studies.encode(), "text/csv")))
     return files
 
 
-def _publish(client, key, namespace, name, version, *, with_studies=True):
+def _publish(client, key, namespace, name, version, *, with_studies=True,
+             studies=_STUDIES, extra_headers=None):
     return client.post(
         f"/api/v1/modules/{namespace}/{name}/versions",
         data={"version": version, "changelog": "initial"},
-        files=_spec_files(name, with_studies=with_studies),
-        headers=_auth(key),
+        files=_spec_files(name, with_studies=with_studies, studies=studies),
+        headers={**_auth(key), **(extra_headers or {})},
     )
 
 
@@ -105,6 +106,57 @@ def test_publish_invalid_spec_returns_422(client: TestClient, api_key: str) -> N
     resp = _publish(client, api_key, "just-dna-seq", "coronary", "1.0.0", with_studies=False)
     assert resp.status_code == 422
     assert "detail" in resp.json()
+
+
+def _newer_format() -> str:
+    """One patch above what this process runs — computed, never written down (S18)."""
+    from just_dna_registry.version import VersionInfo
+
+    installed = VersionInfo.local().format
+    assert installed is not None
+    major, minor, patch = (int(part) for part in installed.split("."))
+    return f"{major}.{minor}.{patch + 1}"
+
+
+_UNKNOWN_COLUMN_STUDIES = (
+    "rsid,pmid,population,p_value,conclusion,study_design,not_a_column_here\n"
+    "rs4244285,1,T,0.05,E,U,x\n"
+)
+
+
+def test_a_publish_refused_over_the_schema_says_what_format_it_graded_against(
+    client: TestClient, api_key: str
+) -> None:
+    """S18's refusal at the door that costs the most: `/check` reports, but publish is the loss.
+
+    A column the instance does not know is rejected in pydantic's words for a typo, so a publisher
+    whose format is newer than the server's is sent looking for a misspelling that is not there.
+    The advisory is derived from the two version strings — never from the findings, which cannot
+    tell the two causes apart — so it rides on the refusal without reading it.
+    """
+    resp = _publish(
+        client, api_key, "just-dna-seq", "coronary", "1.0.0",
+        studies=_UNKNOWN_COLUMN_STUDIES,
+        extra_headers={"X-Format-Version": _newer_format()},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["error"] == "invalid_spec"
+    assert any("not_a_column_here" in line for line in detail["errors"]), detail["errors"]
+    assert "just-dna-format skew" in detail["format_advisory"]
+
+
+def test_a_publish_refusal_carries_no_advisory_without_a_gap(
+    client: TestClient, api_key: str
+) -> None:
+    """Same refusal, matched versions: the note is absent, so its presence stays informative."""
+    resp = _publish(
+        client, api_key, "just-dna-seq", "coronary", "1.0.0", studies=_UNKNOWN_COLUMN_STUDIES
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["error"] == "invalid_spec"
+    assert "format_advisory" not in detail
 
 
 def test_publish_rejects_duplicate_content_under_other_name(

@@ -6,6 +6,81 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.22.0] — 2026-08-31
+
+**Client surface: unchanged.** No method signature moved and no method was added. `ValidationReport`
+gains two fields, which a `v1` client that ignores them keeps working against; the client already
+sent the request header this release starts reading.
+
+### A refusal an author could not date (S18)
+
+`just-module-creator` took a single-variant module green through every local gate — `validate`,
+`enrich`, `compile`, all strict — and then `registry_check` against both live instances came back:
+
+```
+valid: false — studies.csv line 2 [curator]: Extra inputs are not permitted
+```
+
+`StudyRow.curator` is a real column, added upstream in format **0.6.5** (RM120). The instances they
+reached validate at **0.6.1**, every spec row model is `extra="forbid"`, and pydantic's sentence for
+an unknown column is the sentence for a **typo**. So the module was one column from publishable, the
+column was one our own authoring guidance tells authors to fill, and the only remedy visible from
+the error was to go looking for a misspelling that was not there.
+
+**Reproduced, and the sharp half is that the two causes are indistinguishable.** Against the real
+validator at 0.6.6, `curator` passes and `curatr` returns `studies.csv line 2 [curatr]: Extra inputs
+are not permitted` — the same line, differing only in the column name. A server *cannot* tell a
+future column from a slip by reading its own error, so this release does not try. It reports the one
+thing it knows for certain: which format it graded against, and whether the caller's is newer.
+
+- **`format_version`** — on every `ValidationReport`, unconditionally, valid runs included. A
+  `curl` caller has no response header in front of them, and a refusal nobody can date is a refusal
+  nobody can act on.
+- **`format_advisory`** — a sentence, present when the caller advertised a *newer* `just-dna-format`
+  than the instance holds **within the same minor**. Derived from the two version strings and
+  nothing else: it never reads the findings beside it, which is asserted as a signature test rather
+  than left as a comment, because matching on pydantic's wording is precisely the mistake this
+  codebase has a standing rule against.
+- **It rides on the `422 invalid_spec` body too**, from `publish` and `/versions/import`, keyed on
+  the error *code*. `/check` is where S18 was met; publish is where it costs a whole re-upload.
+- **`registry-client validate` and `check` print it** as a yellow `!` line above the verdict. A
+  report field that reaches only the JSON is how this service once rendered an outage as
+  `✓ would publish`, and the two renderers share `_echo_findings` for exactly this reason.
+
+**The server now reads `X-Format-Version` off the request.** The client has sent it on every request
+since 0.7.1 and the server has answered with its own on every response, but nothing ever read the
+request side — so the pair was knowable only from the client's end, which is the end that could not
+act on it.
+
+### The handshake was right, and its docstring was the defect
+
+`contract_compatible` passes a 0.6.6 client against a 0.6.1 server, and **that is correct**: within a
+`0.x` minor the parquet contract and `artifact.digest` really do hold, and narrowing it to patch
+grain would refuse every pair we actually run. What it never certified — and never said it did not —
+is the **authored row schema**, which tightens at patch grain under `extra="forbid"`. The consumer
+read the handshake as covering the whole exchange, wrote that reading into their own workspace docs,
+and found out at a publish. So the docstrings on `contract_compatible` and `compatibility_error` now
+state the scope, and `schema_gap_advisory` carries the residue as advice rather than as a refusal.
+
+Note the grain: the consumer's own wording says "newer than the server's format minor", and a
+**minor** gap is already fatal — `compatibility_error` refuses that pair outright. The gap that
+certifies and then fails is a **patch**.
+
+### What this does not fix, and the part that is not code
+
+Naming the introducing release — *`curator` is a 0.6.5 field* — needs a field-to-release map this
+service does not hold and must not hand-keep. Upstream shipped `just_dna_format.release_records` in
+format **0.7** (RM126), which records what a release changed about compiled **output**; reading its
+`parquet_schema` additions as a roster of when authored columns became legal would be the same
+category error as using `artifact.digest` to ask "same module?". Filed upstream as **S81**, and the
+input-side answer arrives here with the format 0.7 adoption, which is a lockstep cut of its own.
+
+**The consumer's incident is a deployment, not a defect.** Both live instances answer
+`{"registry": "0.18.2", "format": "0.6.1"}` — three minors of this service behind, and 0.20.0 already
+pins all three tiers at 0.6.6. Their module publishes unchanged on any deployment running 0.20+;
+their decision to keep the column and stop was right, and stripping it would have been the one
+action that moves the module's `content_signature`.
+
 ## [0.21.1] — 2026-08-22
 
 **Client surface: unchanged.** No method signature moved. Two behaviours a client sees change **on a

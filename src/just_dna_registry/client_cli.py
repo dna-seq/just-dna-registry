@@ -387,6 +387,12 @@ def _echo_findings(report) -> None:
         typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
     for line in report.info:
         typer.echo(f"  · {line}")
+    # Printed above the verdict and in yellow, because it is the context that decides whether an
+    # error above is a typo or a version skew — and a field that reaches only the JSON is how this
+    # project already rendered an outage as `✓ would publish` once. Shared by `validate` and
+    # `check`, which is the whole reason the two call one renderer.
+    if report.format_advisory:
+        typer.secho(f"  ! {report.format_advisory}", fg=typer.colors.YELLOW)
 
 
 @app.command()

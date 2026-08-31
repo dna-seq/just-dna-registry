@@ -225,6 +225,22 @@ stale wrapper.
   - **A validation finding is a `200`, not a `422`.** `/validate` and `/check` return `valid: false`
     with the reasons in the body; only a request no spec dir can be built from is a 4xx. Publish is
     the opposite. Getting this backwards makes the endpoints useless to the CI jobs they exist for.
+  - **The version handshake certifies compiled artifacts, not the authored row schema — and 0.22
+    ships the residue as advice rather than closing the gap.** `version.contract_compatible` passes
+    at `0.x` MINOR because that is the grain at which the parquet contract and `artifact.digest`
+    move. The **row** models tighten at PATCH: they are `extra="forbid"` and a format patch may add a
+    column (`StudyRow.curator`, 0.6.5), so a certified pair can still refuse a spec, and the refusal
+    is pydantic's sentence for a *typo* (S18). **Do not narrow the guard to patch grain** — it would
+    reject 0.6.6↔0.6.1, which is every pair we actually run. `schema_gap_advisory` reports the pair
+    instead, on the dry runs and on `422 invalid_spec`. Two properties to keep. It is derived from
+    the two version strings and **never** from the findings — verified: `curator` and `curatr`
+    produce the identical line but for the name, so reading the error to decide whether to advise is
+    the sentence-matching this file forbids one section along. And it is **not** conditioned on the
+    verdict, because a note that appears only beside a failure makes its own absence ambiguous. What
+    it still cannot say is which release introduced the column; that needs an input-side roster from
+    upstream (filed as their S81) and **must not** be answered from format 0.7's `release_records`,
+    whose `parquet_schema` axis describes compiled *output* and is silent on an authored column no
+    module in the interval emitted.
 - **SDK parity is part of the endpoint.** Every REST endpoint is wrapped by a `RegistryClient` method
   **in the same patch** that adds it, and covered in `tests/test_client_sdk.py`. SDK↔API drift is
   what blocked webui publishing in 0.8.1; a route with no client method is an unfinished route.

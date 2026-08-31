@@ -12,6 +12,7 @@ from just_dna_registry.version import (
     VersionInfo,
     compatibility_error,
     contract_compatible,
+    schema_gap_advisory,
 )
 
 # ── Pure compatibility logic ─────────────────────────────────────────────────────
@@ -113,3 +114,55 @@ def test_old_server_is_skipped_not_fatal(monkeypatch) -> None:
     with _mk() as c:
         monkeypatch.setattr(c, "server_version", lambda: None)
         c.assert_compatible()  # warns, no raise
+
+
+# ── The residue the handshake does not cover (S18) ───────────────────────────────
+
+
+def test_a_patch_gap_is_compatible_and_still_advised() -> None:
+    """The two halves of S18 in one assertion: the pair certifies, and the row schema still differs.
+
+    `contract_compatible` is right to pass — within a minor the parquet contract and the digest
+    really do hold — so the advisory is the only thing that can carry the residue. Asserting them
+    together is what stops a later reader "fixing" the first by narrowing it to patch grain, which
+    would refuse every pair this project actually runs (0.6.6 client, 0.6.1 server).
+    """
+    assert contract_compatible("0.6.1", "0.6.6")
+    assert compatibility_error(
+        VersionInfo(api="v1", registry="0.18.2", format="0.6.1"),
+        VersionInfo(api="v1", registry="0.21.1", format="0.6.6"),
+    ) is None
+    advisory = schema_gap_advisory("0.6.1", "0.6.6")
+    assert advisory is not None
+    assert "0.6.1" in advisory and "0.6.6" in advisory
+
+
+def test_the_advisory_fires_only_on_a_newer_client_within_one_minor() -> None:
+    """Every direction the gap can point, because each one means something different.
+
+    The older-client case is the one worth stating: a patch release *adds* columns, so a spec
+    written against 0.6.1 stays legal on a 0.6.6 instance and there is nothing to warn about. A
+    minor gap is deliberately silent here too — `compatibility_error` refuses that pair outright,
+    and two messages about one fact is how a caller learns to read neither.
+    """
+    assert schema_gap_advisory("0.6.1", "0.6.6") is not None    # client newer: the S18 case
+    assert schema_gap_advisory("0.6.6", "0.6.1") is None        # client older: still legal
+    assert schema_gap_advisory("0.6.6", "0.6.6") is None        # matched
+    assert schema_gap_advisory("0.6.1", "0.7.0") is None        # minor gap → already fatal
+    assert schema_gap_advisory("0.6.1", None) is None           # client sent no header
+    assert schema_gap_advisory(None, "0.6.6") is None           # server cannot say
+    assert schema_gap_advisory("0.6.1", "0.6.6.dev0") is None   # unparseable → no guess
+
+
+def test_the_advisory_never_reads_the_findings() -> None:
+    """It is a function of two version strings and nothing else — the property that keeps it honest.
+
+    An unknown column and a misspelled one are the *same* finding (`test_preflight_api.py` proves
+    it on the real validator), so any attempt to fire this only on the real cause would have to
+    match pydantic's wording. Stating it as a signature test rather than a comment, so the day
+    someone threads `errors` in here to "reduce noise", this fails.
+    """
+    import inspect
+
+    params = list(inspect.signature(schema_gap_advisory).parameters)
+    assert params == ["server_format", "client_format"]

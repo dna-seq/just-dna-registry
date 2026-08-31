@@ -52,6 +52,7 @@ from just_dna_registry.models.api import (
     VersionRef,
     VrsCoverage,
 )
+from just_dna_registry.version import VersionInfo, schema_gap_advisory
 
 logger = logging.getLogger("registry.enrich")
 
@@ -624,6 +625,7 @@ def validation_report(
     *,
     normalized: list[str] | None = None,
     extra_warnings: list[str] | None = None,
+    client_format: str | None = None,
 ) -> ValidationReport:
     """The offline half of a dry run: validate, sign the content, and pre-check dedup.
 
@@ -642,8 +644,14 @@ def validation_report(
     pre-flight computed the same lookup without the carve-out, so it answered `would_publish
     {_module_level}: false` for a publish that then succeeded: a false negative, on the commonest
     second-pass shape there is, in the one field the docs tell a CI job to branch on.
+
+    `client_format` is what the caller advertised in `X-Format-Version`, and it is used for **one**
+    thing: deciding whether to attach `format_advisory`. It never reaches `validate_spec` and never
+    changes a verdict — the findings are the ones this instance's own row models produce, which is
+    the only honest answer a server can give about a spec it would have to compile itself.
     """
     result = validate_spec(spec_dir, IDENTITY_AUTHORITY_KEYS, strict=strict)
+    server_format = VersionInfo.local().format
 
     # Cheap (no reference, no parquet) and the same value publish will gate `409 duplicate_content`
     # on, so a caller can see the rejection coming. `ValueError` when a data CSV will not parse —
@@ -675,6 +683,8 @@ def validation_report(
         stats=SpecStats.model_validate(
             {k: v for k, v in stats.items() if k in SpecStats.model_fields}
         ),
+        format_version=server_format,
+        format_advisory=schema_gap_advisory(server_format, client_format),
         content_signature=signature,
         name_matches_path=stats.get("module_name") in (None, name),
         published_as=published_as,
@@ -704,6 +714,7 @@ def dry_run(
     acmg: bool = False,
     pgx: bool = False,
     declared_use: str = "unstated",
+    client_format: str | None = None,
     gate: Optional["EnrichmentGate"] = None,
 ) -> CheckReport:
     """The `/check` worker: validate, then (unless the spec is broken) enrich and report.
@@ -734,7 +745,7 @@ def dry_run(
                 namespace=namespace, name=name, strict=strict,
                 offline=offline, frequencies=frequencies, literature=literature,
                 identifiers=identifiers, acmg=acmg, pgx=pgx, declared_use=declared_use,
-                started=started,
+                client_format=client_format, started=started,
             )
     finally:
         if gate is not None:
@@ -756,6 +767,7 @@ def _dry_run_inner(
     acmg: bool,
     pgx: bool,
     declared_use: str,
+    client_format: str | None,
     started: float,
 ) -> CheckReport:
     from just_dna_registry.services.publish import PublishError, normalize_spec
@@ -764,6 +776,7 @@ def _dry_run_inner(
     validation = validation_report(
         spec_dir, repo, namespace, name, strict,
         normalized=normalization.info, extra_warnings=normalization.warnings,
+        client_format=client_format,
     )
 
     # The strongest cost guard in the design: a spec that cannot compile is not worth an outbound

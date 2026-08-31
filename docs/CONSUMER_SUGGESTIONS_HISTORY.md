@@ -36,6 +36,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S15** upgrade changelog named untouched columns — shipped 0.19.0 (derived now)
 - **S16** card subtitle unbounded, Display unamendable — tracked, gated on S64
 - **S17** polygon listings hid its whole catalog — mode-aware, shipped 0.21.1
+- **S18** a patch-newer column refused as a typo — versions named, 0.22.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -1780,3 +1781,128 @@ had not appreciated that until we tried it.
 
 **Measured against** registry **0.18.2** on both instances (`/health`, `/api/v1/version`,
 `/api/v1/modules`, `/files/{path}`, 2026-08-22), source read at `just-dna-registry` **0.21.0** in tree.
+
+# Field notes from just-module-creator — the format the server validates against, 2026-08-31
+
+**Measured against** registry **0.18.2** / format **0.6.1** on both instances (`/api/v1/version`),
+with format/compiler/enricher **0.6.6** installed on the reporter's side.
+
+## S18 — the version handshake certifies a client/server pair that then rejects rows, because compatibility is checked at major.minor and validation is field-level
+
+**Status — accepted; ask 1 shipped in 0.22.0, ask 2 was a docstring defect and is fixed, ask 3 is a
+deployment you are right about and it is the whole of your incident.** Taking them in the order that
+unblocks you.
+
+**Your module publishes unchanged on any instance running 0.20+, and keeping the column was correct.**
+Both live boxes answer `0.18.2` / format `0.6.1`; this repo has pinned all three tiers at **0.6.6**
+since 0.20.0, and we reproduced `StudyRow.curator` validating clean through the real `/validate` at
+0.6.6. Nothing in your spec needs to change. Deploying is ours to schedule and we have flagged it;
+until then the pre-flight your tooling can run today is to compare your local format against
+`GET /api/v1/version` before authoring, which is the number that was in your hand all along.
+
+**Ask 1, shipped.** Every `ValidationReport` now carries **`format_version`** — unconditional, on
+passing runs too, because a refusal an author cannot date is one they cannot act on and a `curl`
+caller has no response header in front of them. When the caller advertised a *newer* format within
+the same minor it also carries **`format_advisory`**, a sentence naming both versions and saying that
+a column added in that range is refused in the same words a misspelling gets. It rides on the
+`422 invalid_spec` body from `publish` and `/versions/import` as well — `/check` is where you met
+this, publish is where it costs a re-upload — and `registry-client validate`/`check` print it above
+the verdict, because a field that reaches only the JSON is a failure this service has shipped once
+already. The server now *reads* `X-Format-Version`; your client has been sending it since 0.7.1 and
+nothing here ever looked.
+
+**What it cannot say, and why we did not fake it.** Not *"`curator` is a 0.6.5 field"* — that needs a
+column-to-release map we do not hold and will not hand-keep, having had a hand-kept map of upstream
+spellings point the wrong way for a release. The advisory is therefore derived from the two version
+strings and **never** from the findings, which is asserted as a signature test: we reproduced that
+`curator` and `curatr` return the identical line but for the column name, so a server that read its
+own error to decide whether to advise would be matching on pydantic's wording, and would be wrong the
+first time it changed. Filed upstream as their **S81**, with an argument against the tempting fix —
+format 0.7's `release_records` has a `parquet_schema` axis that would answer correctly *for `curator`*
+and silently wrong for any optional column no module in the interval set happened to author. That
+half arrives with our format 0.7 adoption, which is a lockstep cut of its own; tracked in
+[ROADMAP.md](ROADMAP.md) under *Next registry version*.
+
+**Ask 2: you are right that it reads as certifying more than it does, and the defect was the
+docstring, not the rule.** We are not narrowing `contract_compatible` to patch grain — within a `0.x`
+minor the parquet contract and `artifact.digest` genuinely hold, and refusing 0.6.6↔0.6.1 would
+reject every pair this project actually runs, yours included. What it never certified is the authored
+row schema, which tightens at patch under `extra="forbid"`. Both docstrings now say so, and a test
+asserts the two facts *together* so nobody later closes the gap by breaking the guard. One correction
+to your wording while you fix your own note: you describe a client "newer than the server's format
+**minor**", and a minor gap is already fatal — `compatibility_error` refuses that pair outright. The
+gap that certifies and then fails a row is a **patch**.
+
+**Your anti-pre-strip argument holds, and there is a stronger reason than the two you gave.** Beyond
+modelling our validation and deleting provenance: stripping the column changes your authored bytes,
+which moves the module's `content_signature` — the name-independent claim the `409 duplicate_content`
+gate keys on, and the one a `yank` does not release. The same module aimed at two instances would
+fork its content identity. Your run declining to strip it was right for a reason it did not have.
+
+**Ask 3 stands and is ours.** 0.6.1→0.6.6 is not a cadence we should be five patches behind, and the
+gap here is wider than you could see: the instances also predate 0.20's `stats.genes` fix and 0.21's
+rebuild detector. Not a roadmap item — a deployment.
+<!-- triaged: 0.22.0 · sha 8bdab0b601b0 -->
+
+**Reported by** just-module-creator, 2026-08-31. Installed here: format/compiler/enricher 0.6.6,
+`just-dna-registry` client 0.18.2. Both live instances answer `/api/v1/version` with
+`{"registry":"0.18.2","format":"0.6.1","compiler":"0.6.1"}` — prod and polygon alike, measured today.
+
+### What we ran
+
+A single-variant `SIRT6` module, authored by an agent from one paper, green through every local gate:
+`validate_module(strict)` valid, `enrich_module(strict)` resolved, `compile_module(strict)` built,
+artifact digests verified, closed with all eleven check records intact. Then `registry_check(target="test",
+strict=true)`.
+
+### What happened
+
+```
+valid: false — studies.csv line 2 [curator]: Extra inputs are not permitted
+```
+
+`StudyRow.curator` shipped in **format 0.6.5**. The instances validate at **0.6.1**, and `StudyRow` is
+`extra="forbid"`. Removing that single column and re-running returns `verdict: true`,
+`module_level_clear: true`, `blocking: []`. The module is one column from publishable and the column is
+one we are actively telling authors to fill.
+
+### Why this is worth an item rather than a shrug
+
+**`assert_compatible()` passes on this pair.** The contract check is scoped to major.minor below 1.0, so
+a 0.6.6 client and a 0.6.1 server certify each other, and we have a note in our own workspace docs
+saying in as many words that *every 0.6.x interoperates* — measured, on that handshake, and wrong. It is
+a check that cannot fail for the class of change that actually breaks a publish: a field added in a
+patch-level format release. We are correcting our note; the handshake is yours.
+
+**The refusal names the wrong cause.** *"Extra inputs are not permitted"* is what pydantic says about a
+typo. An author reading it goes looking for a misspelled column, and the truth is that the column is
+correct, current, and newer than the server. Nothing in the message mentions a version.
+
+**The field in question is not incidental.** `curator` is the per-row record of *who located a quote* —
+a human, or a named model. It exists because a machine-located `provenance_quote` should be attributable
+rather than either forbidden or silently passed off as human work, and our own server instructions push
+an author toward filling it. So the module that follows our guidance most carefully is the one the
+registry refuses, and the workaround — drop the column — deletes exactly the provenance the field was
+added to carry. Our run declined to drop it and surfaced it as a decision instead, which we think is
+right and which leaves the author stuck.
+
+### The ask, and we would rather have your view than guess the shape
+
+1. **Refuse with the version in the sentence.** *"`curator` is a format 0.6.5 field; this instance
+   validates against 0.6.1"* costs one lookup against the model the server already holds, and turns a
+   dead end into a decision. **This is the one we would take if only one lands.**
+2. **Have the handshake mean what it says** — either narrow `assert_compatible` so a client newer than
+   the server's format minor is reported as a *partial* compatibility with the field-level gap named,
+   or state in its contract that it certifies transport and not row schema. Right now it reads as the
+   latter and is used as the former.
+3. **Track the format release the instances validate against** more closely than four patch releases
+   behind. This is an operational ask rather than a code one and we raise it last deliberately: it is
+   your cadence to set, and 0.6.1→0.6.6 spans a fortnight in which three fields landed.
+
+**A candidate we argue against, having tried it:** having consumers pre-strip fields the target instance
+does not know. It requires us to model your validation, it silently deletes authored provenance, and it
+would make a module's contents depend on which registry it was aimed at — the same artifact, two
+different byte streams, one digest scheme.
+
+**What we did meanwhile:** kept the column, published nothing, and recorded the refusal as an author's
+decision in the module's README and in our own symptom index.

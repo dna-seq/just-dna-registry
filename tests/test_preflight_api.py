@@ -120,12 +120,15 @@ def _parts(yaml: str = _YAML, variants: str = _VARIANTS, studies: str = _STUDIES
     ]
 
 
-def _validate(client: TestClient, *, strict: bool = True, **kw) -> dict:
+def _validate(client: TestClient, *, strict: bool = True, client_format: str | None = None, **kw) -> dict:
+    headers = dict(_AUTH)
+    if client_format is not None:
+        headers["X-Format-Version"] = client_format
     resp = client.post(
         "/api/v1/modules/just-dna-seq/coronary/validate",
         params={"strict": strict},
         files=_parts(**kw),
-        headers=_AUTH,
+        headers=headers,
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -352,18 +355,20 @@ def test_validate_requires_publish_capability(tmp_path: Path) -> None:
 # ── /check ─────────────────────────────────────────────────────────────────────
 
 
-def _check(client: TestClient, *, spec: dict | None = None, **params) -> tuple[int, dict]:
+def _check(
+    client: TestClient, *, spec: dict | None = None, headers: dict | None = None, **params
+) -> tuple[int, dict]:
     """POST `/check` with `params` as the query string and `spec` overriding the uploaded parts.
 
     `spec` is a separate argument rather than another `**params` key on purpose: everything in `params`
     goes on the query string, so a spec override smuggled in there would be ignored by the server and
-    silently checked against the default module instead.
+    silently checked against the default module instead. `headers` is separate for the same reason.
     """
     resp = client.post(
         "/api/v1/modules/just-dna-seq/coronary/check",
         params=params,
         files=_parts(**(spec or {})),
-        headers=_AUTH,
+        headers={**_AUTH, **(headers or {})},
     )
     return resp.status_code, resp.json()
 
@@ -1314,3 +1319,123 @@ def test_an_ontology_outage_says_nothing_was_checked(
     assert check["unreachable"] == ["ols4/hgnc"]
     assert check["stale_traits"] == [] and check["stale_genes"] == []
     assert check["clean"] is None  # already tri-state here, and stays that way
+
+
+# ── The format the findings were graded against (S18) ──────────────────────────
+
+
+def _bump_patch(version: str, by: int) -> str:
+    """A version `by` patches above `version`, computed rather than written down.
+
+    Hardcoding `0.6.7` here would pin the test to today's floor and start failing on the next
+    upstream patch — the failure mode this whole item is about, re-created in the suite.
+    """
+    major, minor, patch = (int(part) for part in version.split("."))
+    return f"{major}.{minor}.{patch + by}"
+
+
+def test_an_unknown_column_and_a_typo_are_the_same_finding(tmp_path: Path) -> None:
+    """The defect S18 reports, shown on the real validator before anything is done about it.
+
+    `curator` (a real `StudyRow` column since format 0.6.5) and `curatr` (a typo) are told apart by
+    an instance that has the column — and on one that does not, both take the *identical* path a
+    typo takes here. That is why the server cannot diagnose the cause from its own error, why the
+    advisory is derived from versions alone, and why dropping the column is the wrong remedy: it is
+    the one action that changes the authored bytes.
+    """
+    good = "rsid,pmid,population,p_value,conclusion,study_design,curator\nrs4244285,1,T,0.05,E,U,a-model\n"
+    typo = "rsid,pmid,population,p_value,conclusion,study_design,curatr\nrs4244285,1,T,0.05,E,U,a-model\n"
+    client = _app(tmp_path)
+
+    assert _validate(client, studies=good)["valid"] is True
+
+    rejected = _validate(client, studies=typo)
+    assert rejected["valid"] is False
+    # The whole of the message is the column name and pydantic's sentence for an extra input. There
+    # is nothing in it an author — or a server — could use to tell a future column from a slip.
+    assert any("curatr" in line for line in rejected["errors"]), rejected["errors"]
+    assert not any("version" in line.lower() for line in rejected["errors"]), rejected["errors"]
+
+
+def test_every_report_names_the_format_it_was_graded_against(tmp_path: Path) -> None:
+    """Unconditional, and on a *passing* report too: a caller cannot date a refusal after the fact."""
+    from just_dna_registry.version import VersionInfo
+
+    installed = VersionInfo.local().format
+    body = _validate(_app(tmp_path))
+    assert body["valid"] is True
+    assert body["format_version"] == installed
+    assert body["format_advisory"] is None  # no header sent → nothing to compare
+
+
+def test_a_newer_client_is_told_what_this_instance_validates_against(tmp_path: Path) -> None:
+    """The S18 repair: the pair is reported whenever it differs, valid run or not.
+
+    Both cases are asserted because the advisory is deliberately *not* conditioned on the verdict —
+    a field that appears only beside a failure makes its own absence ambiguous, which is the
+    sibling-field rule this codebase applies to every other two-history value.
+    """
+    from just_dna_registry.version import VersionInfo
+
+    installed = VersionInfo.local().format
+    assert installed is not None
+    newer = _bump_patch(installed, 1)
+    client = _app(tmp_path)
+
+    passing = _validate(client, client_format=newer)
+    assert passing["valid"] is True
+    assert passing["format_advisory"] is not None
+    assert installed in passing["format_advisory"] and newer in passing["format_advisory"]
+
+    failing = _validate(client, client_format=newer, studies=_BAD_STUDIES)
+    assert failing["valid"] is False
+    assert failing["format_advisory"] == passing["format_advisory"]
+
+
+def test_no_advisory_for_a_matched_or_older_client(tmp_path: Path) -> None:
+    """A patch adds columns rather than removing them, so an older client has nothing to be told."""
+    from just_dna_registry.version import VersionInfo
+
+    installed = VersionInfo.local().format
+    assert installed is not None
+    client = _app(tmp_path)
+
+    assert _validate(client, client_format=installed)["format_advisory"] is None
+    assert _validate(client, client_format=_bump_patch(installed, -1))["format_advisory"] is None
+    # The client sends an empty header when it has no format tier installed; that is "unknown",
+    # not "0". It must not read as a version at all.
+    assert _validate(client, client_format="")["format_advisory"] is None
+
+
+def test_the_advisory_reaches_the_screen_and_not_only_the_json(capsys) -> None:
+    """The second half of every report field here, and the half this service has got wrong before.
+
+    `enrichment.notes` carried an outage that nothing printed, and `registry-client check` rendered
+    it as `✓ would publish` with the reason sitting unread in the body. `_UNREACHABLE_PASSES` in
+    `test_enrich_service.py` is the guard that came out of it; this is the same guard one field
+    along. Driven through the real renderer both ways, because a line that always prints is as
+    useless as one that never does.
+    """
+    from just_dna_registry.client_cli import _echo_findings
+    from just_dna_registry.models.api import ValidationReport
+
+    advisory = "just-dna-format skew: your client reports 0.6.6, this instance validates against 0.6.1."
+    _echo_findings(ValidationReport(valid=False, strict=True, format_advisory=advisory))
+    assert advisory in capsys.readouterr().out
+
+    _echo_findings(ValidationReport(valid=True, strict=True))
+    assert "skew" not in capsys.readouterr().out
+
+
+def test_check_carries_the_advisory_through_its_validation_half(tmp_path: Path) -> None:
+    """`/check` is where S18 was actually met, and it composes the same report rather than a copy."""
+    from just_dna_registry.version import VersionInfo
+
+    installed = VersionInfo.local().format
+    assert installed is not None
+    code, body = _check(
+        _app(tmp_path), offline=True, headers={"X-Format-Version": _bump_patch(installed, 1)}
+    )
+    assert code == 200, body
+    assert body["validation"]["format_version"] == installed
+    assert body["validation"]["format_advisory"] is not None

@@ -47,6 +47,7 @@ from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services import publish as publish_service
 from just_dna_registry.specfiles import REQUIRED_SPEC_FILES
 from just_dna_registry.storage.base import StorageBackend, version_key
+from just_dna_registry.version import VersionInfo, schema_gap_advisory
 
 router = APIRouter(prefix="/modules", tags=["publish"])
 
@@ -70,12 +71,39 @@ _PUBLISH_ERROR_STATUS: dict[str, int] = {
 }
 
 
-def _publish_http_error(exc: "publish_service.PublishError") -> HTTPException:
-    """Map a PublishError to its HTTP status and the registry's structured error body."""
+def _client_format(request: Request) -> str | None:
+    """The `just-dna-format` version the caller advertised, or None if it sent none.
+
+    Every `RegistryClient` sends this header on every request (`client.py`), and the server has
+    always answered with its own on every response — but nothing read the request side until S18,
+    so the pair was only ever knowable from the client's end. An empty header is the same as an
+    absent one: the client sends `""` when it has no format tier installed.
+    """
+    return request.headers.get("X-Format-Version") or None
+
+
+def _publish_http_error(
+    exc: "publish_service.PublishError", client_format: str | None = None
+) -> HTTPException:
+    """Map a PublishError to its HTTP status and the registry's structured error body.
+
+    `invalid_spec` — and only that code — carries `format_advisory` when the caller's format is
+    newer than ours at patch grain. Keyed on the **code**, never on the text of a finding: an
+    unknown column and a misspelled one produce the same sentence, so reading the errors to decide
+    whether to advise would be exactly the kind of prose-matching that breaks the next time
+    pydantic rewords itself. The dry-run reports carry the same note unconditionally; publish is
+    where the author actually loses, so the refusal has to say it too.
+    """
     code = _PUBLISH_ERROR_STATUS.get(exc.detail, status.HTTP_422_UNPROCESSABLE_CONTENT)
+    advisory = (
+        schema_gap_advisory(VersionInfo.local().format, client_format)
+        if exc.detail == "invalid_spec"
+        else None
+    )
     return HTTPException(
         code,
         detail={
+            **({"format_advisory": advisory} if advisory else {}),
             # Spread first, so the four fixed keys win any collision and no refusal can redefine
             # the shape every client branches on.
             **exc.extra,
@@ -209,7 +237,7 @@ async def publish(
             allow_test_data=allow_test_data,
         )
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc) from exc
+        raise _publish_http_error(exc, _client_format(request)) from exc
     return manifest.model_dump()
 
 
@@ -300,7 +328,7 @@ async def import_archive(
             allow_test_data=allow_test_data,
         )
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc) from exc
+        raise _publish_http_error(exc, _client_format(request)) from exc
     return manifest.model_dump()
 
 
@@ -361,6 +389,7 @@ def _preflight_spec_dir(uploads: dict[str, bytes], tmp: str) -> Path:
     dependencies=[Depends(rate_limit("validate"))],
 )
 async def validate_spec_endpoint(
+    request: Request,
     repo: RepoDep,
     settings: SettingsDep,
     account: AccountDep,
@@ -394,18 +423,19 @@ async def validate_spec_endpoint(
     arbitrary uploaded CSVs, which is the same server CPU a publish spends.
     """
     require_capability(repo, account, namespace, Capability.PUBLISH)
+    client_format = _client_format(request)
     try:
         uploads = await _preflight_uploads(files, archive, settings)
         return await run_in_threadpool(
-            _validate_worker, repo, settings, uploads, namespace, name, strict
+            _validate_worker, repo, settings, uploads, namespace, name, strict, client_format
         )
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc) from exc
+        raise _publish_http_error(exc, client_format) from exc
 
 
 def _validate_worker(
     repo: Repository, settings: Settings, uploads: dict[str, bytes],
-    namespace: str, name: str, strict: bool,
+    namespace: str, name: str, strict: bool, client_format: str | None = None,
 ) -> ValidationReport:
     """`namespace` reaches the dedup pre-check here so it can carve out the same module the way the
     publish gate does (S10) — it took the path's namespace not being threaded down for the two to
@@ -416,6 +446,7 @@ def _validate_worker(
         return enrich_service.validation_report(
             spec_dir, repo, namespace, name, strict,
             normalized=normalization.info, extra_warnings=normalization.warnings,
+            client_format=client_format,
         )
 
 
@@ -498,6 +529,7 @@ async def check_spec(
     """
     require_capability(repo, account, namespace, Capability.PUBLISH)
     gate = request.app.state.enrichment_gate
+    client_format = _client_format(request)
     try:
         # Checked here rather than left to the enricher. `declared_use` decides whether a source
         # that forbids sale is queried at all, so an unrecognized spelling must never fall through
@@ -531,7 +563,8 @@ async def check_spec(
                     namespace=namespace, name=name, strict=strict,
                     offline=offline, frequencies=frequencies, literature=literature,
                     identifiers=identifiers, acmg=acmg, pgx=pgx,
-                    declared_use=declared_use or settings.declared_use, gate=gate,
+                    declared_use=declared_use or settings.declared_use,
+                    client_format=client_format, gate=gate,
                 ),
                 timeout=settings.enrich_timeout_seconds,
             )
@@ -551,7 +584,7 @@ async def check_spec(
             },
         ) from exc
     except publish_service.PublishError as exc:
-        raise _publish_http_error(exc) from exc
+        raise _publish_http_error(exc, client_format) from exc
 
 
 @router.patch("/{namespace}/{name}/versions/{version}")

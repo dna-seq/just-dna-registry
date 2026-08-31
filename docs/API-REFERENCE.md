@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.21.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.22.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
@@ -22,7 +22,10 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   admin-CLI behaviour with no HTTP surface, and 0.21.1 changes *what the listing returns on a
   `mode=test` deployment* without moving any shape — the test/sandbox exclusion is now production's
   policy alone. A response that was `total: 0` there can now be non-empty; nothing that was returned
-  stops being returned, and production is unchanged).
+  stops being returned, and production is unchanged. **0.22 adds no route either** — it adds
+  `format_version` and `format_advisory` to the dry-run reports and `format_advisory` to the
+  `422 invalid_spec` body, and starts *reading* the `X-Format-Version` request header the client
+  has always sent).
   Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
@@ -171,6 +174,8 @@ never rehearsed.
   "errors": [], "warnings": [],
   "info": ["dropped registry-owned `module.namespace` (the registry stamps it on publish)"],
   "stats": {"variant_count": 42, "gene_count": 3, "genes": ["…"], "categories": ["…"]},
+  "format_version": "0.6.6",
+  "format_advisory": null,
   "content_signature": "sha256:…",
   "name_matches_path": true,
   "published_as": [],
@@ -178,6 +183,26 @@ never rehearsed.
   "would_publish_module_level": true
 }
 ```
+
+**`format_version` and `format_advisory` (0.22)** say which `just-dna-format` these findings were
+graded against, and whether your side is newer. `format_version` is unconditional, because a
+refusal an author cannot date is one they cannot act on. `format_advisory` is a sentence, present
+only when the caller advertised a *newer* format than the instance holds **within the same minor** —
+send `X-Format-Version` to get it; every `RegistryClient` already does.
+
+**Why a patch gap needs saying at all (S18).** Every spec row model is `extra="forbid"`, and a
+format patch may add a column: `StudyRow.curator` arrived in 0.6.5. An instance that predates it
+rejects the column as `Extra inputs are not permitted` — pydantic's sentence for a **typo**, and
+byte-identical to the one a misspelling gets. The version handshake passes the pair, correctly:
+`contract_compatible` certifies that compiled artifacts and their digests interoperate, which within
+a minor they do. It has never certified the authored row schema, which tightens at patch grain. So
+the advisory carries that residue, and it is derived from the two version strings alone — never from
+the findings beside it, which cannot tell the two causes apart. It rides on the `422 invalid_spec`
+body from publish and import as well, where the refusal actually costs something.
+
+Do not respond by stripping the column: that changes your authored bytes and moves the module's
+`content_signature`, so the same module aimed at two instances would fork its content identity and
+its `409 duplicate_content` claim. Align the client, or ask the operator to upgrade the instance.
 
 `info` is what the server rewrote and accepted. `published_as` lists **every** version already built
 from identical data, including earlier versions of this same module; `published_elsewhere` (0.16) is

@@ -564,6 +564,22 @@ number is worth spending, because that cost is ours and differs per consumer.
 
 ## Next registry version (post-0.11)
 
+- **Name the format release a rejected column arrived in** (**severity medium, open — blocked on the
+  format 0.7 adoption**; motivated by **S18**). 0.22.0 ships the half this service can compute on its
+  own: `format_version` on every dry-run report and `format_advisory` when the caller's format is
+  newer at patch grain. What it still cannot say is the sentence the consumer actually asked for —
+  *`curator` is a 0.6.5 field* — because that needs a map from a spec column to the release that
+  introduced it, and hand-keeping one here is how the `RENAMED_ON_UPLOAD` spellings got out of step
+  with upstream in the first place.
+
+  **Do not close this by reading `release_records`' `parquet_schema` axis.** Format 0.7 (RM126) ships
+  a per-release record whose `parquet_schema` targets are spelled `file:column`, and for `curator` it
+  would happen to give the right answer. It is a channel about compiled **output**: an optional
+  authored column that no module in the interval set, or a column the compiler does not emit,
+  never appears on it — so reading it as an input-schema roster is the same category error as using
+  `artifact.digest` to ask "same module?". Filed upstream as **S81** (their ledger) asking for the
+  input-side counterpart. When it exists, the advisory names the release and stops being a range.
+
 - **Adopt `manifest.readme` when format 0.6 lands** (**done in 0.17**). Shipped as filed: publish
   and `amend_readme` both set the entry, `/files/{path}` and the tarball admit the file without their
   rules changing (they serve what the manifest attests), and `verify_manifest(check_readme=True)`

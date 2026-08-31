@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.21.x** against a server speaking API `v1`. Every method signature and
+**Normative for:** client **0.14.x–0.22.x** against a server speaking API `v1`. Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
 keeps working — [CHANGELOG.md](CHANGELOG.md) carries a **client surface** line per release naming
@@ -405,6 +405,17 @@ on, so the two cannot drift. **It is not `would_publish`.** `true` means nothing
 a publish; a reference mismatch or a withdrawn rsID can still refuse one, and only `check` looks. Its
 value is that it has no ceiling and costs no egress, so it answers for panels far too large to check
 online, which is the case that motivated it.
+
+**Both dry runs say which format they graded against** (0.22). `format_version` is on every report,
+valid or not; `format_advisory` appears when your `just-dna-format` is *newer* than the instance's
+within the same minor, and the CLI prints it as a yellow `!` line above the verdict. It exists
+because a format patch may add a spec column — `StudyRow.curator` arrived in 0.6.5 — and an instance
+that predates it rejects that column with pydantic's message for a **typo**, so an author goes
+hunting for a misspelling that is not there (S18). The version handshake does not catch this and is
+not wrong to: it certifies that compiled artifacts interoperate, which within a minor they do, while
+the authored row schema tightens at patch grain. The same note rides on a `422 invalid_spec` from
+`publish` and `import_module`. **Do not strip the column to get past it** — that changes your
+authored bytes and moves the module's `content_signature`, forking its identity per instance.
 
 Its dedup half reads **`published_elsewhere`** (0.16) — the versions built from identical data under
 a *different* `(namespace, name)`, which is what publish refuses. `published_as` still lists every
