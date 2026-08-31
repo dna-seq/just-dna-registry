@@ -53,7 +53,7 @@ def _app(tmp_path: Path) -> TestClient:
         )
     )
     repo = client.app.state.repo
-    account_id = repo.create_account("antonkulaga")
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
     return client

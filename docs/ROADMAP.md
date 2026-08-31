@@ -124,7 +124,7 @@ parquet isn't byte-deterministic across arrow versions. Not needed today.)
 
 ### Current state (2026-07-07) — v0.4.0, live
 
-**Live** at <https://module-registry.just-dna.life>. Depends on the published PyPI packages
+**Live** at <https://registry.example.org>. Depends on the published PyPI packages
 `just-dna-format>=0.1.0` + `just-dna-compiler>=0.1.0`. **39 tests green**; full integration run
 passed against the live server. Packaged **client-first**: default install is the reference client
 (`from just_dna_registry import RegistryClient`); the server is the `[server]` extra.

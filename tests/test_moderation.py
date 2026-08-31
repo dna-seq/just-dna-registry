@@ -62,5 +62,5 @@ def test_revoke_key(client: TestClient, api_key: str, repo: Repository) -> None:
 
 
 def test_revoke_account_keys(repo: Repository, api_key: str) -> None:
-    assert repo.revoke_api_keys_for_account("antonkulaga") == 1
+    assert repo.revoke_api_keys_for_account("testauthor") == 1
     assert repo.revoke_api_keys_for_account("ghost") == 0

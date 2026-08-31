@@ -166,12 +166,12 @@ release read to reach was right, which is exactly the argument for making it che
   exactly, but an unstamped schema cannot tell you whether it describes the server answering you, so
   `pick("version", "latest_version")` and the tolerated `identity` key were the rational response to
   our omission. They are safe to delete against a 0.13 server — `latest_version`, no `identity`.
-- **Your second instance was our defect, and worse than you could see.** `module-marketplace.just-dna.life`
+- **Your second instance was our defect, and worse than you could see.** `marketplace-legacy.example.org`
   was never a third deployment: it is the pre-0.9 name of this project, which 0.12.0's own notes then
   used for production while `.env` and fourteen other doc references said `module-registry`. Purged —
   including from 0.12.0's entry — and the retired names are now *listed* in [CLAUDE.md](../CLAUDE.md)
   rather than merely deleted, since a purge with no record is how a dead name comes back. Confirmed
-  from here while writing this: `module-registry.just-dna.life/health` answers `200` with `0.12.0`,
+  from here while writing this: `registry.example.org/health` answers `200` with `0.12.0`,
   `module-polygon` answers `404`. Your reading was right on both counts.
 - **The `test-modules` claim you got away with on production is real and expected.** 0.12.0's guard is
   prospective only: it refuses new test-prefixed claims and publishes, and does not clean what already
@@ -223,9 +223,9 @@ it, because we would rather return an unmodelled dict than model a shape we coul
 not confirm applied to us.
 
 **A second instance of the same shape.** 0.12.0's notes name production as
-`module-marketplace.just-dna.life` and the polygon as `module-polygon.just-dna.life`,
+`marketplace-legacy.example.org` and the polygon as `polygon.example.org`,
 and state that a `test-`prefixed namespace gets `422 test_data_on_prod` on
-production. We publish against `module-registry.just-dna.life`, where we claimed
+production. We publish against `registry.example.org`, where we claimed
 `test-modules` successfully. That may be an alias, a third deployment, or docs
 running ahead of DNS — we genuinely do not know, and it is a consumer-facing fact
 (which host am I on, and what will it refuse?) that arrived inside a release note
@@ -261,7 +261,7 @@ hope — which is the same bet, just written down in our repo instead.
 **Status — accepted; options 1 and 2 shipped in 0.13.0, option 3's receipt half deferred with a
 reason.** You are right that the 405 answer is only adequate for delete, and the asymmetry you drew is
 the one that decided this: the failure that has no 405 to catch it is also the failure that cannot be
-undone. Reproduced against the live host while writing this — `module-registry.just-dna.life/health`
+undone. Reproduced against the live host while writing this — `registry.example.org/health`
 answered `{"status":"ok","version":"0.12.0","storage":"local"}`, no mode anywhere, exactly as you
 found; `module-polygon` answered `404`, also as you found.
 
@@ -292,7 +292,7 @@ instinct not to infer identity from the route table is the reason the field exis
 
 The polygon being DNS'd, fronted and not yet serving is an ops state, not a defect, and shipping the
 documented URL as your default is the right call — it will start working when the instance comes up.
-Separately, `module-marketplace.just-dna.life` from 0.12.0's notes was never a third deployment: it is
+Separately, `marketplace-legacy.example.org` from 0.12.0's notes was never a third deployment: it is
 this project's pre-0.9 name, and it is purged from the docs as part of **S2**.
 <!-- triaged: 0.13.0 · sha 8448b3a46db2 -->
 
@@ -311,9 +311,9 @@ and our client genuinely does not have to branch on it.
 you called `test` really is a test instance" before it publishes anything:
 
 ```
-$ curl -s https://module-registry.just-dna.life/health
+$ curl -s https://registry.example.org/health
 {"status":"ok","version":"0.12.0","storage":"local"}
-$ curl -s https://module-registry.just-dna.life/api/v1/version
+$ curl -s https://registry.example.org/api/v1/version
 {"api":"v1","registry":"0.12.0","format":"0.5.0","compiler":"0.5.3"}
 ```
 
@@ -343,8 +343,8 @@ the two cases we care about it is not:
   except the hostname we already knew.
 
 **A concrete instance of the same gap, found in the same hour.**
-`module-polygon.just-dna.life` resolves — same A record as
-`module-registry.just-dna.life`, `57.128.215.86` — and TLS terminates, but `/health`
+`polygon.example.org` resolves — same A record as
+`registry.example.org`, `57.128.215.86` — and TLS terminates, but `/health`
 answers a bare Caddy `404` while production on that same IP answers `200` with
 `0.12.0`. So the polygon is DNS'd and fronted and not yet serving the app. That is an
 ops state and not a defect, and we are shipping the documented URL as our default so
@@ -423,9 +423,9 @@ other stat metrics.
 than tidy: as of today they answer *the same bytes*.
 
 ```
-$ curl -s https://module-registry.just-dna.life/health
+$ curl -s https://registry.example.org/health
 {"status":"ok","version":"0.12.0","storage":"local"}
-$ curl -s https://module-polygon.just-dna.life/health
+$ curl -s https://polygon.example.org/health
 {"status":"ok","version":"0.12.0","storage":"local"}
 ```
 
@@ -1261,8 +1261,8 @@ answer the question, and for one field it answers it wrongly.
 **Measured 2026-08-20 against production**, `{"api":"v1","registry":"0.18.2","format":"0.6.1","compiler":"0.6.1","mode":"prod"}`:
 
 ```bash
-curl -s https://module-registry.just-dna.life/api/v1/modules/antonkulaga/big_five_personality_snps/versions
-curl -s https://module-registry.just-dna.life/api/v1/modules/antonkulaga/big_five_personality_snps/versions/1.0.0/manifest
+curl -s https://registry.example.org/api/v1/modules/testauthor/big_five_personality_snps/versions
+curl -s https://registry.example.org/api/v1/modules/testauthor/big_five_personality_snps/versions/1.0.0/manifest
 ```
 
 | version | version row `resolution.signature` | manifest `compilation.resolution_signature` | version row `resolution_subjects` | manifest `resolution_subjects` |
@@ -1272,7 +1272,7 @@ curl -s https://module-registry.just-dna.life/api/v1/modules/antonkulaga/big_fiv
 | 2.0.0 | `null` | `sha256:4d47d18f…` | `990` | `990` |
 | 2.1.0 | `null` | `sha256:4d47d18f…` | `990` | `990` |
 
-Same shape on `antonkulaga/cognitive_intelligence` (1.0.0 / 1.0.1 / 2.0.0, manifest
+Same shape on `testauthor/cognitive_intelligence` (1.0.0 / 1.0.1 / 2.0.0, manifest
 `sha256:5cc12648…` on all three, `null` in all three version rows), so it is the projection and not
 one module's data.
 
@@ -1345,7 +1345,7 @@ could in principle recompute the true sentence for every upgraded version from t
 rewriting the human record of what happened is an operator's decision about their own catalog, not a
 migration to run on everyone's behalf, and a changelog silently corrected years later is its own kind
 of unreliable. `big_five_personality_snps` 1.0.1 still carries the wrong sentence; amending it is
-available and is antonkulaga's call.
+available and is testauthor's call.
 
 **Your second-order finding is the more valuable half, and 0.19 makes it visible** — see our S14 reply.
 A `state` rewrite moves `content_signature` (measured: a state-only rewrite of two rows yields a
@@ -1363,7 +1363,7 @@ the thing we are looking for rather than the two instances.
 <!-- triaged: 0.19.0 · sha 90f7ddabeb0a -->
 
 
-Found while diffing the published version chain of `antonkulaga/big_five_personality_snps` (four
+Found while diffing the published version chain of `testauthor/big_five_personality_snps` (four
 versions, 2026-08-20) to calibrate a version comparator. `1.0.1`'s changelog reads:
 
 > Automated upgrade of 1.0.0: back-populated the 0.3 axes (direction/stat_significance/clin_sig) for
@@ -1494,16 +1494,16 @@ half below is yours alone and does not wait on anything.
 
 ### What we saw
 
-Our owner opened `antonkulaga/cognitive_intelligence@2.0.0`'s card and its description ran to fourteen
+Our owner opened `testauthor/cognitive_intelligence@2.0.0`'s card and its description ran to fourteen
 rows. We measured the whole production catalog with `registry_search()`, word count of `description`:
 
 ```
- 79 words  antonkulaga/aggression_anger_snps@2.0.0
- 60 words  antonkulaga/cognitive_intelligence@2.0.0     <- the fourteen-row card
- 45 words  antonkulaga/bodybuilding@1.0.0
- 38 words  antonkulaga/big_five_personality_snps@2.1.0
+ 79 words  testauthor/aggression_anger_snps@2.0.0
+ 60 words  testauthor/cognitive_intelligence@2.0.0     <- the fourteen-row card
+ 45 words  testauthor/bodybuilding@1.0.0
+ 38 words  testauthor/big_five_personality_snps@2.1.0
  36 words  ksuha-dna/placebo_response_claude@1.0.0
- 25 words  antonkulaga/risk_impulsivity_snps@2.0.0
+ 25 words  testauthor/risk_impulsivity_snps@2.0.0
   8 words  eric-mods/lactose_tolerance@1.0.1
 ```
 
@@ -1666,7 +1666,7 @@ source read to establish the box was not empty is the measure of it.
 Measured 2026-08-22; both instances on registry 0.18.2.
 
 ```
-$ curl -s https://module-polygon.just-dna.life/health
+$ curl -s https://polygon.example.org/health
 {"status":"ok","version":"0.18.2","storage":"local","mode":"test","uptime_seconds":325904.6,
  "enrichment":{"active":0,"queued":0,"limit":1},
  "catalog":{"modules":17,"versions":21,"yanked":0,"namespaces":5}}
@@ -1757,7 +1757,7 @@ Recorded because each was a candidate we had written down before reading your co
 candidate is cheaper for you to see refuted than re-triaged:
 
 - **Published warnings are dropped by the server-side recompile.** They are not. All four
-  `antonkulaga/*` manifests carry 2–4 entries in `compilation.warnings`, including the
+  `testauthor/*` manifests carry 2–4 entries in `compilation.warnings`, including the
   licence-conflict warning we had claimed was discarded.
 - **`module_spec.yaml` never matches its own published digest.** It always does. We fetched every
   input of all 8 production modules **at their latest versions** through `/files/{path}` and hashed

@@ -54,18 +54,18 @@ async def test_download_latest_resolves(sdk, seed) -> None:
 
 async def test_whoami_and_profile(sdk) -> None:
     who = await asyncio.to_thread(sdk.whoami)
-    assert who["account"] == "antonkulaga" and who["type"] == "user"
+    assert who["account"] == "testauthor" and who["type"] == "user"
     updated = await asyncio.to_thread(
-        lambda: sdk.update_profile(display_name="Anton", avatar_url="https://x/a.png")
+        lambda: sdk.update_profile(display_name="TestUser", avatar_url="https://x/a.png")
     )
-    assert updated["display_name"] == "Anton" and updated["avatar_url"] == "https://x/a.png"
-    assert (await asyncio.to_thread(sdk.whoami))["display_name"] == "Anton"
+    assert updated["display_name"] == "TestUser" and updated["avatar_url"] == "https://x/a.png"
+    assert (await asyncio.to_thread(sdk.whoami))["display_name"] == "TestUser"
 
 
 async def test_members_roundtrip(sdk, app) -> None:
     app.state.repo.create_account("bob")
     roster = await asyncio.to_thread(lambda: sdk.add_member(_NS, "bob", "member"))
-    assert {m["account"] for m in roster["members"]} >= {"antonkulaga", "bob"}
+    assert {m["account"] for m in roster["members"]} >= {"testauthor", "bob"}
     listed = await asyncio.to_thread(lambda: sdk.members(_NS))
     assert any(m["account"] == "bob" for m in listed)
     after = await asyncio.to_thread(lambda: sdk.remove_member(_NS, "bob"))
@@ -87,7 +87,7 @@ async def test_reviews_highlight_and_curated_stat(sdk, seed) -> None:
     )
     assert posted[0]["rating"] == 5 and posted[0]["highlighted"] is False
     highlighted = await asyncio.to_thread(
-        lambda: sdk.highlight_review(_NS, _NAME, _VER, "antonkulaga")
+        lambda: sdk.highlight_review(_NS, _NAME, _VER, "testauthor")
     )
     assert highlighted[0]["highlighted"] is True
     # The highlight is what the `curated` group/stat keys on.
@@ -735,7 +735,7 @@ def test_delete_round_trips_against_a_polygon(tmp_path) -> None:
         constraint_cache=tmp_path / "empty",
     ))
     repo = polygon.state.repo
-    account = repo.create_account("antonkulaga")
+    account = repo.create_account("testauthor")
     repo.add_namespace("test-sandbox", account)
     repo.add_api_key("mk_live_testkey", account)
 

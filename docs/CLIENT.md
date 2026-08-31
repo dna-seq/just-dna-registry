@@ -30,7 +30,7 @@ them from flags, then environment, then a local `.env`:
 | API key | `REGISTRY_TOKEN` | `--token` | — (required for publish/import/update) |
 
 ```bash
-export REGISTRY_URL=https://module-registry.just-dna.life
+export REGISTRY_URL=https://registry.example.org
 export REGISTRY_TOKEN=mk_live_…
 ```
 
@@ -71,7 +71,7 @@ export REGISTRY_TOKEN=mk_live_…
 ```python
 from just_dna_registry import RegistryClient, RegistryError
 
-with RegistryClient("https://module-registry.just-dna.life", token="mk_live_…") as mkt:
+with RegistryClient("https://registry.example.org", token="mk_live_…") as mkt:
     ...
 ```
 

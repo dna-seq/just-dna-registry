@@ -5,11 +5,11 @@ modules. Authors publish module specs; the server validates, recompiles, stores,
 consumers browse, search, download, and integrity-verify. There is no frontend here — the webui and
 Dagster pipelines are consumers of this API.
 
-**Live:** <https://module-registry.just-dna.life> · health `GET /health` · API under `/api/v1`
-· interactive docs at [`/docs`](https://module-registry.just-dna.life/docs).
+**Live:** <https://registry.example.org> · health `GET /health` · API under `/api/v1`
+· interactive docs at [`/docs`](https://registry.example.org/docs).
 
 **Two instances, one image** (0.12). Production is the catalog above. The **polygon**
-(<https://module-polygon.just-dna.life>, `REGISTRY_MODE=test`) is where you rehearse a publish: it
+(<https://polygon.example.org>, `REGISTRY_MODE=test`) is where you rehearse a publish: it
 accepts `test-`prefixed data and lets you *delete* it again, which production deliberately does not.
 
 See [docs/SPEC.md](docs/SPEC.md) for the full design and [docs/ROADMAP.md](docs/ROADMAP.md) for
@@ -30,7 +30,7 @@ calls + integrity verification:
 ```python
 from just_dna_registry import RegistryClient
 
-with RegistryClient("https://module-registry.just-dna.life", token="mk_live_…") as mkt:
+with RegistryClient("https://registry.example.org", token="mk_live_…") as mkt:
     print(mkt.list_modules())
     mkt.import_module("just-dna-seq", "coronary", "1.0.0", "coronary_v1.zip")   # publish a zip
     mkt.download("just-dna-seq", "coronary", "1.0.0", "./coronary")             # fetch + verify
@@ -40,7 +40,7 @@ with RegistryClient("https://module-registry.just-dna.life", token="mk_live_…"
 Or the `registry-client` CLI (ships with the client install):
 
 ```bash
-export REGISTRY_URL=https://module-registry.just-dna.life REGISTRY_TOKEN=mk_live_…
+export REGISTRY_URL=https://registry.example.org REGISTRY_TOKEN=mk_live_…
 registry-client list
 registry-client download just-dna-seq coronary 1.0.0 ./coronary
 ```

@@ -20,7 +20,7 @@ def _seed(seed) -> None:
 def test_export_auth_captures_the_graph(repo: Repository, seed, api_key: str) -> None:
     _seed(seed)
     dump = repo.export_auth()
-    assert any(a["name"] == "antonkulaga" for a in dump["accounts"])
+    assert any(a["name"] == "testauthor" for a in dump["accounts"])
     assert any(k["key"] == "mk_live_testkey" for k in dump["api_keys"])
     assert any(n["name"] == "just-dna-seq" for n in dump["namespaces"])
     assert any(m["role"] == "owner" for m in dump["members"])

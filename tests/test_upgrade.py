@@ -960,7 +960,7 @@ def test_unparseable_stored_rows_are_cannot_say_rather_than_clean(
 def test_the_plan_reports_which_columns_it_actually_rewrote() -> None:
     """S15: the changelog named three columns it did not touch and omitted the one it did.
 
-    The reporter measured `antonkulaga/big_five_personality_snps` 1.0.0 → 1.0.1: `direction` and
+    The reporter measured `testauthor/big_five_personality_snps` 1.0.0 → 1.0.1: `direction` and
     `stat_significance` were already authored and did not move, `clin_sig` arrived empty on all 990
     rows, and `state` was rewritten on 990 of 990 — while the changelog read *"back-populated the 0.3
     axes (direction/stat_significance/clin_sig)"*, a hardcoded list naming exactly the three that

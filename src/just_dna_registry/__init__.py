@@ -7,7 +7,7 @@ verification::
 
     from just_dna_registry import RegistryClient
 
-    with RegistryClient("https://module-registry.just-dna.life", token) as mkt:
+    with RegistryClient("https://registry.example.org", token) as mkt:
         mkt.list_modules()
         mkt.download("just-dna-seq", "coronary", "1.0.0", "./coronary")   # verifies integrity
 

@@ -27,9 +27,9 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
   have to write defensive code against shapes we already specified (S2).
-- **Base URL:** `https://module-registry.just-dna.life` (production; the polygon is
-  `module-polygon.just-dna.life`). Ask the host which it is — `GET /health` reports `mode`.
-  `module-marketplace.just-dna.life` is a **former** name from before the 0.9 rename, kept as a
+- **Base URL:** `https://registry.example.org` (production; the polygon is
+  `polygon.example.org`). Ask the host which it is — `GET /health` reports `mode`.
+  `marketplace-legacy.example.org` is a **former** name from before the 0.9 rename, kept as a
   legacy domain and used in no current documentation. If you meet it somewhere, it is old, not a
   third deployment.
 - **API prefix:** `/api/v1` (health lives at the root, `/health`)
@@ -845,7 +845,7 @@ every namespace the org owns. Roles are `owner|admin|member` (same capabilities 
 All org gate failures return `403 insufficient_capability`; unknown org → `404 org_not_found`.
 
 ### 13. `GET` / `PATCH /api/v1/auth/whoami`  *(bearer)*
-`GET 200 → {"account": "antonkulaga", "namespaces": [...], "type": "user", "display_name": null,
+`GET 200 → {"account": "testauthor", "namespaces": [...], "type": "user", "display_name": null,
 "avatar_url": null, "funding_url": null, "email": null}` — `namespaces` is every namespace the caller
 is a member of; `type` is the `user`|`org` discriminator; `avatar_url`/`funding_url` are public
 (userpic + donation link); `email` is **private** (only ever returned here). `401` on invalid token.
@@ -1050,7 +1050,7 @@ lowercase hex, `sha256:`-prefixed. A downloader verifies with `just_dna_format.v
 ## Deployment modes, and the two routes only a test instance serves (0.12)
 
 `REGISTRY_MODE` selects `prod` (default) or `test`. Production is
-`module-registry.just-dna.life`; the **polygon** is `module-polygon.just-dna.life` (default port
+`registry.example.org`; the **polygon** is `polygon.example.org` (default port
 8100 against production's 8000). An unrecognised mode refuses to boot.
 
 Three behaviours differ, and nothing else does:

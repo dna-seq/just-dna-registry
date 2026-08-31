@@ -50,7 +50,7 @@ def _client(tmp_path: Path, mode: str) -> TestClient:
         ensembl_cache=empty, clinvar_cache=empty, constraint_cache=empty,
     )))
     repo = client.app.state.repo
-    account = repo.create_account("antonkulaga")
+    account = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account)
     repo.add_namespace("test-sandbox", account)
     repo.add_api_key("mk_live_testkey", account)

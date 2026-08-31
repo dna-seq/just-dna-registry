@@ -52,7 +52,7 @@ def client(tmp_path: Path) -> TestClient:
 def api_key(client: TestClient) -> str:
     """Mirrors the shared fixture, but against this module's own app."""
     repo = client.app.state.repo
-    account_id = repo.create_account("antonkulaga")
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
     return "mk_live_testkey"
@@ -152,7 +152,7 @@ def test_strict_import_refuses_an_unresolvable_module(tmp_path: Path) -> None:
         )
     )
     repo = strict_client.app.state.repo
-    account_id = repo.create_account("antonkulaga")
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
 

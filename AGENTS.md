@@ -150,8 +150,8 @@ Immutable mode disables file uploads and serves only pre-configured public genom
 
 ### Known public genomes
 
-- **Anton Kulaga** (CC-Zero): `https://zenodo.org/records/18370498` — `antonkulaga.vcf` (482 MB)
-- **Livia Zaharia** (CC-BY-4.0): `https://zenodo.org/records/19487816` — `SIMHIFQTILQ.hard-filtered.vcf.gz` (349 MB)
+- **[Author A]** (CC-Zero): `[Zenodo record]` — `sample_a.vcf` (482 MB)
+- **[Author B]** (CC-BY-4.0): `[Zenodo record]` — `sample_b.vcf.gz` (349 MB)
 
 ---
 
@@ -1138,7 +1138,7 @@ Key principles:
 - `rx.icon()` (Lucide) icons often fail in this Reflex setup; use `fomantic_icon()` from `webui.components.layout` instead. Fomantic icon names are space-separated (e.g., `arrow up`), not hyphenated Lucide-style.
 - Backend API port is auto-resolved at startup; never hardcode port 8000. Custom API routes (via `api_transformer`) are only served by the Reflex **backend**; the frontend dev server does NOT proxy arbitrary `/api/...` paths. `webui/deployment_urls.py` builds the browser-reachable base URL: `PUBLIC_BACKEND_URL` overrides `API_URL` (needed when the image sets `API_URL=http://localhost:8000`). `rxconfig.py` persists the resolved URL in `os.environ["API_URL"]`, and `backend_api_url` reads it so the browser constructs direct URLs (e.g. `/api/report/...`). Never return `""` from `backend_api_url` — relative URLs 404 on the frontend.
 - Always load `.env` via `load_dotenv()` or equivalent before using `os.getenv` for config paths (`JUST_DNA_PIPELINES_CACHE_DIR`, `JUST_DNA_PIPELINES_OUTPUT_DIR`, etc.).
-- Public genomes for demos: Anton Kulaga (Zenodo 18370498, CC-Zero, 482 MB) and Livia Zaharia (Zenodo 19487816, CC-BY-4.0, 349 MB). Both are configured as `default_samples` in `modules.yaml` `immutable_mode:` section. The app can also import arbitrary Zenodo records with open-access + permissive license + VCF via the "Import from Zenodo" UI.
+- Public genomes for demos: [Author A] (Zenodo [record], CC-Zero, 482 MB) and [Author B] (Zenodo [record], CC-BY-4.0, 349 MB). Both are configured as `default_samples` in `modules.yaml` `immutable_mode:` section. The app can also import arbitrary Zenodo records with open-access + permissive license + VCF via the "Import from Zenodo" UI.
 - Only 5 expert-curated annotation modules exist on HuggingFace (`just-dna-seq/annotators`): `coronary`, `lipidmetabolism`, `longevitymap`, `superhuman`, `vo2max`. PharmGKB (drugs) has NOT been migrated from Generation I. HuggingFace `just-dna-seq` org hosts 6 datasets and 1 model (`GenNet`).
 - The first preprint was rejected by bioRxiv ("inference drawn between gene(s) and disease(s)") and medRxiv; published on arXiv instead. To avoid repeat rejection, frame the manuscript as a bioinformatics methods/software paper, not a genomic medicine paper.
 - `ghcr.io/dna-seq/just-dna-lite:latest` container image does not exist on GHCR yet; `compose.yaml` builds locally. The `Containerfile` needs `chmod -R 777 .venv` for Podman rootless compatibility and `UV_FROZEN=1` to prevent re-syncing. Workshop materials live in `docs/workshops/`. Pytest must stay in workspace root dev dependencies for `uv run pytest`, and `uv` does NOT have a `uv bundle` command as of April 2026.

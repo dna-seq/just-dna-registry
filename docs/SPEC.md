@@ -160,8 +160,8 @@ left null by the local compiler and filled by the service on publish.
   "method": "literature-review",
   "license": "CC-BY-4.0",
 
-  "owner": "antonkulaga",
-  "authors": ["antonkulaga"],
+  "owner": "testauthor",
+  "authors": ["testauthor"],
   "created_at": "2025-10-24T12:00:00Z",
   "published_at": "2025-10-24T12:05:00Z",
 
@@ -314,7 +314,7 @@ unsigned, and verification behaves exactly as before.
 
 ## 8. Interface contract (REST)
 
-Base URL: `https://module-registry.just-dna.life/api/v1`. All bodies JSON unless noted. List
+Base URL: `https://registry.example.org/api/v1`. All bodies JSON unless noted. List
 responses paginate with `?page`, `?per_page` (max 100) → `{items, total, page, per_page}`.
 
 ### 8.1 Endpoint table
@@ -353,7 +353,7 @@ Search params on #1: `?q=`, `?category=`, `?gene=`, `?genome_build=`, `?owner=`,
       "latest_version": "2.0.0",
       "genome_build": "GRCh38",
       "license": "CC-BY-4.0",
-      "owner": "antonkulaga",
+      "owner": "testauthor",
       "stats": {
         "variant_count": 16, "study_count": 5, "gene_count": 8,
         "genes": ["CGAS", "NUP210L", "SLC27A3"],
@@ -486,7 +486,7 @@ Response `201`: the full manifest (§4).
 { "grant": "api_key", "key": "mk_live_..." }
 // response
 { "token": "eyJ...", "token_type": "Bearer", "expires_in": 86400,
-  "identity": { "account": "antonkulaga", "namespaces": ["antonkulaga", "just-dna-seq"] } }
+  "identity": { "account": "testauthor", "namespaces": ["testauthor", "just-dna-seq"] } }
 ```
 
 Publish endpoints require `Authorization: Bearer <token>`; the token's `namespaces` must

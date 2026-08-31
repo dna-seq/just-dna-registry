@@ -1535,8 +1535,8 @@ since the 0.9.0 rename.
 - **Both reference docs are stamped** with the version range they are normative for. An unstamped
   schema is what made a consumer write defensive code (`pick("version", "latest_version")`, tolerating
   an `identity` key that does not exist) against a `ModuleCard` we had specified exactly.
-- **`module-marketplace.just-dna.life` is purged from the docs** in favour of
-  `module-registry.just-dna.life`, including from 0.12.0's own entry above, which named it as
+- **`marketplace-legacy.example.org` is purged from the docs** in favour of
+  `registry.example.org`, including from 0.12.0's own entry above, which named it as
   production and sent a consumer looking for a third deployment. The retired names are now listed in
   [CLAUDE.md](../CLAUDE.md) rather than merely deleted — a purge with no record is how a dead name
   comes back. `compiled_by="marketplace-server"` is untouched and stays: it is baked into every
@@ -1552,8 +1552,8 @@ since the 0.9.0 rename.
 
 ## [0.12.0] — 2026-08-11
 
-Two deployments of one image: **production** (`module-registry.just-dna.life`) and the **polygon**
-(`module-polygon.just-dna.life`, `REGISTRY_MODE=test`). Plus the ops safety net that makes cleaning up
+Two deployments of one image: **production** (`registry.example.org`) and the **polygon**
+(`polygon.example.org`, `REGISTRY_MODE=test`). Plus the ops safety net that makes cleaning up
 after a test survivable.
 
 ### Why a mode exists at all
@@ -2102,7 +2102,7 @@ npm/PyPI/Docker), and the app-store-style *one-click-install UI* is the **Store*
   env vars `REGISTRY_*`; client class `RegistryClient` (+ `RegistryError`); version headers
   `X-Registry-*` and the `/version` field `registry`; discovery scheme `registry://`.
 - **Consumers must update** (hard rename): the `registry://` source scheme + package/CLI/env names in
-  just-dna-lite / discovery, and the live domain (`module-registry.just-dna.life`).
+  just-dna-lite / discovery, and the live domain (`registry.example.org`).
 - **Retained deliberately:** the internal trust token `compiled_by="marketplace-server"` (a
   just-dna-format constant enforced by `verify_manifest`) is **unchanged** — it's not user-facing,
   and pivoting it would invalidate every published manifest until re-baked. Retire at the next
@@ -2397,7 +2397,7 @@ Community-first, self-service onboarding — publish from the just-dna-lite UI w
 
 ## [0.2.0] — 2026-07-07
 
-Client-first packaging + a live deployment at <https://module-registry.just-dna.life>.
+Client-first packaging + a live deployment at <https://registry.example.org>.
 
 ### Changed
 - **Client-first library layout.** The default install is now the reference **client** only

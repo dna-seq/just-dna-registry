@@ -6,7 +6,7 @@ watcher notices when a consumer has finished writing, an agent triages what is n
 the state — there is no queue, no database and no external ledger.
 
 The pattern is published as a generalized gist —
-<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254> — and the three scripts here are
+<https://[anonymized gist URL]> — and the three scripts here are
 that copy with two lines changed each: the `INBOX` default points at this repo's docs, and the watcher
 keeps this repo's name for it (`watch-suggestions.sh`, the gist calls it `watch-inbox.sh`). **The sync is
 one-way and by hand.** If you change the *pattern* (the algorithm, a script's contract, a gotcha found by
@@ -226,7 +226,7 @@ is wrong. This is the only step separating a real defect from a non-issue.
 Reproduce it the way the test suite does: a FastAPI `TestClient` case beside the closest existing file in
 `tests/` (`test_preflight_api.py` for `/validate` and `/check`, `test_publish_auth.py` for the publish gate,
 `test_modes.py` for anything mode-shaped). Do not reproduce against
-`module-registry.just-dna.life` — it holds real published versions, every publish burns a version number
+`registry.example.org` — it holds real published versions, every publish burns a version number
 and claims a `content_hash` globally, and only the polygon can undo that.
 
 **Probe the behaviour, not only the sentence: the probe is where the adjacent defect turns up.** One item

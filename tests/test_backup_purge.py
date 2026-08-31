@@ -143,7 +143,7 @@ def _seeded(tmp_path: Path) -> tuple[TestClient, Repository, Settings]:
     settings = _settings(tmp_path, mode="test")
     client = TestClient(create_app(settings))
     repo = client.app.state.repo
-    prod = repo.create_account("antonkulaga")
+    prod = repo.create_account("testauthor")
     tester = repo.create_account("test-runner")
     repo.add_namespace("just-dna-seq", prod)
     repo.add_namespace("test-sandbox", tester)
@@ -174,7 +174,7 @@ def test_a_test_namespace_goes_wholesale_and_production_is_untouched(tmp_path: P
     assert repo.get_module_row("test-sandbox", "burner") is None
     assert repo.get_module_row("just-dna-seq", "coronary") is not None
     assert repo.account_by_name("test-runner") is None
-    assert repo.account_by_name("antonkulaga") is not None
+    assert repo.account_by_name("testauthor") is not None
 
 
 def test_a_prefixed_module_in_a_production_namespace_is_skipped_until_asked(tmp_path: Path) -> None:
@@ -310,7 +310,7 @@ def test_purging_frees_the_content_signature_that_was_blocking_a_real_publish(tm
     settings = _settings(tmp_path, mode="test")
     polygon = TestClient(create_app(settings))
     repo = polygon.app.state.repo
-    prod_acct = repo.create_account("antonkulaga")
+    prod_acct = repo.create_account("testauthor")
     tester = repo.create_account("test-runner")
     repo.add_namespace("just-dna-seq", prod_acct)
     repo.add_namespace("test-sandbox", tester)

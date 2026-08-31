@@ -125,7 +125,7 @@ def test_contributor_gains_publish_then_loses_it(
     )
     assert r.status_code == 201
     roles = {m["account"]: m["role"] for m in r.json()["members"]}
-    assert roles == {"antonkulaga": "owner", "labmate": "member"}
+    assert roles == {"testauthor": "owner", "labmate": "member"}
 
     # Now the member can publish.
     assert _publish(client, labmate_key) == 201
@@ -142,7 +142,7 @@ def test_contributor_gains_publish_then_loses_it(
         "/api/v1/namespaces/just-dna-seq/members/labmate", headers=owner_hdr
     )
     assert revoke.status_code == 200
-    assert [m["account"] for m in revoke.json()["members"]] == ["antonkulaga"]
+    assert [m["account"] for m in revoke.json()["members"]] == ["testauthor"]
 
     # labmate is no longer a member, so a fresh publish attempt (a new version) is 403 again.
     assert client.post(
@@ -159,7 +159,7 @@ def test_contributor_gains_publish_then_loses_it(
 
 def test_cannot_remove_last_owner(client: TestClient, api_key: str) -> None:
     r = client.delete(
-        "/api/v1/namespaces/just-dna-seq/members/antonkulaga",
+        "/api/v1/namespaces/just-dna-seq/members/testauthor",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert r.status_code == 409
@@ -178,7 +178,7 @@ def test_list_members_requires_membership(
         "/api/v1/namespaces/just-dna-seq/members",
         headers={"Authorization": f"Bearer {api_key}"},
     ).json()
-    assert members["members"] == [{"account": "antonkulaga", "role": "owner"}]
+    assert members["members"] == [{"account": "testauthor", "role": "owner"}]
 
 
 # ── Popularity (views + search-hits) ──────────────────────────────────────────

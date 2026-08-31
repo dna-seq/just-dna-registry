@@ -25,7 +25,7 @@ Configuration (environment, all optional):
     PREFIX    item id prefix                      (default S, so `## S12 — …`)
 
 The defaults point at this repo; everything else is the generalized gist copy
-(<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254>), so a change to the *pattern*
+(<https://[anonymized gist URL]>), so a change to the *pattern*
 goes back there and a change to these paths does not. The trailing-rule normalization in `fingerprint`
 was found here and went back to the gist on 2026-08-16; the two copies agree apart from the paths.
 

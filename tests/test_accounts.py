@@ -14,19 +14,19 @@ def _auth(key: str) -> dict:
 
 def test_whoami_defaults(client: TestClient, api_key: str) -> None:
     body = client.get(_WHOAMI, headers=_auth(api_key)).json()
-    assert body["account"] == "antonkulaga"
+    assert body["account"] == "testauthor"
     assert body["type"] == "user"  # discriminator defaults to user
     assert body["email"] is None and body["display_name"] is None
 
 
 def test_patch_sets_email_and_display_name(client: TestClient, api_key: str) -> None:
     resp = client.patch(
-        _WHOAMI, json={"email": "anton@uni.io", "display_name": "Anton K"}, headers=_auth(api_key)
+        _WHOAMI, json={"email": "testauthor@example.com", "display_name": "Anton K"}, headers=_auth(api_key)
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["email"] == "anton@uni.io" and resp.json()["display_name"] == "Anton K"
+    assert resp.json()["email"] == "testauthor@example.com" and resp.json()["display_name"] == "Anton K"
     # Persisted across requests.
-    assert client.get(_WHOAMI, headers=_auth(api_key)).json()["email"] == "anton@uni.io"
+    assert client.get(_WHOAMI, headers=_auth(api_key)).json()["email"] == "testauthor@example.com"
 
 
 def test_invalid_email_rejected(client: TestClient, api_key: str) -> None:
@@ -45,9 +45,9 @@ def test_userpic_set_and_validated(client: TestClient, api_key: str) -> None:
 
 def test_partial_update_leaves_other_field(client: TestClient, api_key: str) -> None:
     client.patch(_WHOAMI, json={"email": "a@b.io", "display_name": "A"}, headers=_auth(api_key))
-    client.patch(_WHOAMI, json={"display_name": "Anton Kulaga"}, headers=_auth(api_key))
+    client.patch(_WHOAMI, json={"display_name": "[Author]"}, headers=_auth(api_key))
     body = client.get(_WHOAMI, headers=_auth(api_key)).json()
-    assert body["email"] == "a@b.io" and body["display_name"] == "Anton Kulaga"
+    assert body["email"] == "a@b.io" and body["display_name"] == "[Author]"
 
 
 def test_empty_string_clears_email(client: TestClient, api_key: str) -> None:

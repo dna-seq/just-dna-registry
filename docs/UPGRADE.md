@@ -301,7 +301,7 @@ block a publish and there is nothing for an operator to configure.
 strict side: production refuses `test-`prefixed data and serves no delete verb. An unrecognised value
 refuses to boot rather than guessing.
 
-**Standing up the polygon** (`module-polygon.just-dna.life`): same image, `REGISTRY_MODE=test`, its **own**
+**Standing up the polygon** (`polygon.example.org`): same image, `REGISTRY_MODE=test`, its **own**
 `REGISTRY_DB_PATH` and artifact storage — never production's. It listens on **8100** by default (prod
 8000), a hundred apart so a misdirected client is refused rather than answered by the wrong catalog.
 `registry serve` prints the mode and, on a polygon, the three behaviours that differ.

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-#: The two deployment modes. `test` is the polygon (`module-polygon.just-dna.life`); `prod` is the
+#: The two deployment modes. `test` is the polygon (`polygon.example.org`); `prod` is the
 #: catalog everyone else installs from.
 VALID_MODES_PROD = "prod"
 VALID_MODES_TEST = "test"

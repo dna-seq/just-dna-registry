@@ -121,7 +121,7 @@ def test_a_dry_run_reports_the_same_coverage_the_manifest_will_carry(tmp_path: P
         )
     )
     repo = client.app.state.repo
-    account_id = repo.create_account("antonkulaga")
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
     auth = {"Authorization": "Bearer mk_live_testkey"}

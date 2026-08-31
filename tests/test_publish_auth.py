@@ -60,7 +60,7 @@ def test_whoami_requires_token(client: TestClient) -> None:
 def test_whoami_ok(client: TestClient, api_key: str) -> None:
     body = client.get("/api/v1/auth/whoami", headers=_auth(api_key)).json()
     assert body == {
-        "account": "antonkulaga", "namespaces": ["just-dna-seq"],
+        "account": "testauthor", "namespaces": ["just-dna-seq"],
         "type": "user", "display_name": None, "avatar_url": None,
         "funding_url": None, "email": None,
     }
@@ -153,7 +153,7 @@ def test_publish_compiles_indexes_and_serves(client: TestClient, api_key: str, t
     assert resp.status_code == 201, resp.text
     manifest = resp.json()
     assert manifest["identity"]["canonical_id"] == "just-dna-seq/coronary@1.0.0"
-    assert manifest["owner"] == "antonkulaga"
+    assert manifest["owner"] == "testauthor"
     assert manifest["compilation"]["compile_success"] is True
     assert manifest["compilation"]["compiled_by"] == "marketplace-server"
     assert manifest["stats"]["genes"] == ["CYP2C19"]

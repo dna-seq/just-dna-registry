@@ -35,7 +35,7 @@ def _preflight_client(tmp_path: Path, **over):
         _app(tmp_path, ensembl_cache=empty, clinvar_cache=empty, constraint_cache=empty, **over)
     )
     repo = client.app.state.repo
-    account_id = repo.create_account("antonkulaga")
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
     parts = [

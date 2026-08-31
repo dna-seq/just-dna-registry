@@ -73,7 +73,7 @@ def test_higher_role() -> None:
 
 
 def test_member_amends_own_but_not_others(client: TestClient, api_key: str, repo: Repository) -> None:
-    # antonkulaga (owner of just-dna-seq) + a member labmate.
+    # testauthor (owner of just-dna-seq) + a member labmate.
     labmate = _key(repo, "labmate")
     repo.add_member("just-dna-seq", int(repo.account_by_name("labmate")["id"]), "member")
     assert _publish(client, labmate, "just-dna-seq", "coronary", "1.0.0") == 201  # authored by labmate

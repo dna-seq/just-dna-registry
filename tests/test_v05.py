@@ -89,7 +89,7 @@ def _signing_app(tmp_path: Path):
     )
     app = create_app(settings)
     repo: Repository = app.state.repo
-    account_id = repo.create_account("antonkulaga")
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
     return app, "mk_live_testkey", pem

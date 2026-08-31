@@ -35,7 +35,7 @@ def _make_manifest(
     genes: list[str],
     categories: list[str],
     genome_build: str = "GRCh38",
-    owner: str = "antonkulaga",
+    owner: str = "testauthor",
     license: str = "CC-BY-4.0",
 ) -> tuple[ModuleManifest, dict[str, bytes]]:
     files = {
@@ -144,8 +144,8 @@ def seed(app) -> Callable[..., ModuleManifest]:
 
 @pytest.fixture
 def api_key(repo: Repository) -> str:
-    """An account 'antonkulaga' owning the 'just-dna-seq' namespace, with a usable key."""
-    account_id = repo.create_account("antonkulaga")
+    """An account 'testauthor' owning the 'just-dna-seq' namespace, with a usable key."""
+    account_id = repo.create_account("testauthor")
     repo.add_namespace("just-dna-seq", account_id)
     repo.add_api_key("mk_live_testkey", account_id)
     return "mk_live_testkey"

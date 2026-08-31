@@ -81,7 +81,7 @@ def test_only_owner_can_highlight(client: TestClient, api_key: str, app) -> None
     client.put(f"{_V}/reviews", json={"rating": 5}, headers=_auth(bob))
     # A non-owner (bob) cannot highlight.
     assert client.put(f"{_V}/reviews/bob/highlight", headers=_auth(bob)).status_code == 403
-    # The namespace owner (antonkulaga, the api_key account) can.
+    # The namespace owner (testauthor, the api_key account) can.
     body = client.put(f"{_V}/reviews/bob/highlight", headers=_auth(api_key)).json()
     assert body[0]["highlighted"] is True
 

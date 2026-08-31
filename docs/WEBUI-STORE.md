@@ -67,7 +67,7 @@ class RegistryState(rx.State):
             self.cards, self.total = body["items"], body["total"]
 ```
 
-Config: the webui needs `REGISTRY_URL` (default `https://module-registry.just-dna.life`); the
+Config: the webui needs `REGISTRY_URL` (default `https://registry.example.org`); the
 token comes from onboarding, stored per user. Run network calls in `@rx.event(background=True)` so
 they don't hold the Reflex state lock (per just-dna-lite's Reflex guidance).
 

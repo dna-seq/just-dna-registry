@@ -55,7 +55,7 @@ def test_init_db_adds_0_6_counters(tmp_path: Path) -> None:
 _PRE_MEMBERSHIP = """
 CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 CREATE TABLE namespaces (name TEXT PRIMARY KEY, account_id INTEGER NOT NULL);
-INSERT INTO accounts(id, name) VALUES (1, 'antonkulaga');
+INSERT INTO accounts(id, name) VALUES (1, 'testauthor');
 INSERT INTO namespaces(name, account_id) VALUES ('just-dna-seq', 1);
 """
 

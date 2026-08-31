@@ -377,7 +377,7 @@ path or an old manifest, finds nothing explaining it, and reintroduces it as tho
 | former | current | status |
 |---|---|---|
 | package `just-dna-marketplace` | `just-dna-registry` | renamed in 0.9.0 |
-| host `module-marketplace.just-dna.life` | `module-registry.just-dna.life` | retired; the old name is a legacy domain only |
+| host `marketplace-legacy.example.org` | `registry.example.org` | retired; the old name is a legacy domain only |
 | on-disk `just-dna-marketplace/` | `just-dna-registry/` | renamed; a symlink keeps the old path resolving for siblings that hardcode it |
 | `compiled_by="marketplace-server"` | — | **deliberately kept.** It is baked into every published manifest and clients verify against that literal, so renaming it would invalidate the trust check on immutable data. Not a leftover |
 | default DB `data/marketplace.db` | `data/registry.db` | renamed in 0.9.0; `validate_db_path` still detects the orphan, so the old name must stay spelled out in `startup.py` |
@@ -388,7 +388,7 @@ marketplace".
 ## Deployment modes (0.12)
 
 `REGISTRY_MODE` is `prod` (default) or `test`. Two deployments of one image: production is
-`module-registry.just-dna.life`; the **polygon** is `module-polygon.just-dna.life`, default port
+`registry.example.org`; the **polygon** is `polygon.example.org`, default port
 +100 (8100). An unknown mode **refuses to boot** — a typo that resolved either way is invisible from a
 running server, and one direction arms a delete endpoint on production data.
 
@@ -723,7 +723,7 @@ directory. They were `.sh` until 2026-08-16.
   ledger — that file is the one writable path in a sibling repo, append-only, and never committed by us.
   Forwarding our wording verbatim gets it triaged as somebody else's problem.
 
-The pattern is published as a gist (`gist.github.com/winternewt/54b94bda01812be937b892146d1bb254`) and the
+The pattern is published as a gist (`[anonymized gist URL]`) and the
 scripts here are that copy with the `INBOX` default repointed. A change to the *pattern* belongs in the gist
 too; a change to this repo's release table or routing does not. Sync is one-way and by hand.
 
