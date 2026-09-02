@@ -397,8 +397,11 @@ def ui(
             f"--token with --host {host} lets anyone who reaches the port act as that key; "
             "pass --expose-token if that is what you mean"
         )
-    typer.echo(f"console on http://{host}:{port}/ → {upstream}{'  (bearer injected by the proxy)' if tok else ''}")
-    standalone.serve(upstream=upstream, host=host, port=port, token=tok, open_browser=open_browser)
+    suffix = "  (bearer injected by the proxy)" if tok else ""
+    standalone.serve(
+        upstream=upstream, host=host, port=port, token=tok, open_browser=open_browser,
+        announce=lambda origin: typer.echo(f"console on {origin} → {upstream}{suffix}"),
+    )
 
 
 if __name__ == "__main__":

@@ -167,6 +167,10 @@ function ago(iso) {
   for (const [n, u] of steps) { if (s < n) return `${Math.max(1, Math.floor(s / prev))}${u} ago`; prev = n; }
   return `${Math.floor(s / 31536000)}y ago`;
 }
+// Server-provided URLs go into `href`/`src` only when they are http(s) — the server validates the
+// profile fields the same way, and the page does not rely on that having happened everywhere.
+function httpUrl(u) { return typeof u === "string" && /^https?:\/\/\S+$/.test(u) ? u : null; }
+function servedUrl(u) { return typeof u === "string" && (u.startsWith("/") || /^https?:\/\//.test(u)) ? u : null; }
 function shortHash(s, n = 16) { return s ? `${String(s).slice(0, n)}…` : ""; }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function copyText(text) {
@@ -266,7 +270,7 @@ const COLOR_NAMES = {
 function iconTile(card, cls) {
   const color = COLOR_NAMES[(card.color || "").toLowerCase()] || (/^#|^rgb/.test(card.color || "") ? card.color : "#5c6672");
   const tile = h("div", { class: cls, style: `background:${color}`, title: card.icon ? `icon: ${card.icon}` : "" });
-  if (card.logo_url) tile.append(h("img", { src: card.logo_url, alt: "" }));
+  if (servedUrl(card.logo_url)) tile.append(h("img", { src: servedUrl(card.logo_url), alt: "" }));
   else tile.textContent = (card.title || card.name || "?").trim().charAt(0).toUpperCase();
   return tile;
 }
@@ -477,8 +481,8 @@ async function viewModule(root, ns, name, params) {
           m.license ? h("span", {}, "license ", h("b", {}, m.license)) : null,
           h("span", {}, "build ", h("b", {}, m.genome_build)),
           h("span", {}, "published ", fmtDate(m.created_at), " · updated ", ago(m.updated_at)),
-          m.author_funding_url ? h("a", { href: m.author_funding_url, target: "_blank", rel: "noopener nofollow" }, "♥ support the author") : null,
-          m.org_funding_url ? h("a", { href: m.org_funding_url, target: "_blank", rel: "noopener nofollow" }, "♥ support the org") : null)),
+          httpUrl(m.author_funding_url) ? h("a", { href: httpUrl(m.author_funding_url), target: "_blank", rel: "noopener nofollow" }, "♥ support the author") : null,
+          httpUrl(m.org_funding_url) ? h("a", { href: httpUrl(m.org_funding_url), target: "_blank", rel: "noopener nofollow" }, "♥ support the org") : null)),
       h("div", { class: "actions" }, starBtn, h("label", {}, "version"), verSel,
         h("a", { class: "btn small", href: route(ROUTES.download, { namespace: ns, name, version: selected || "" }) + "?format=tarball", title: "tar.gz of the whole version" }, "⬇ tarball"))),
     h("div", { class: "tiles", style: "margin-top:14px" },
@@ -1052,7 +1056,7 @@ async function viewAccount(root) {
   if (state.me) {
     const me = state.me;
     root.append(h("div", { class: "panel stack" }, h("h3", {}, "Signed in"),
-      h("div", { class: "row" }, me.avatar_url ? h("img", { src: me.avatar_url, alt: "", style: "width:40px;height:40px;border-radius:50%" }) : null,
+      h("div", { class: "row" }, httpUrl(me.avatar_url) ? h("img", { src: httpUrl(me.avatar_url), alt: "", style: "width:40px;height:40px;border-radius:50%" }) : null,
         h("div", {}, h("b", {}, me.display_name || me.account), " ", h("span", { class: "mono muted" }, me.account), " ", h("span", { class: "badge muted" }, me.type),
           h("div", { class: "small muted" }, me.email || ""))),
       h("div", {}, h("span", { class: "muted small" }, "namespaces: "), me.namespaces.length ? chipList(me.namespaces, ns => { location.hash = `#/${qs({ namespace: ns })}`; }) : h("span", { class: "faint" }, "none yet — claim one below")),

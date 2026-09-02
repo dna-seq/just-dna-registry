@@ -18,6 +18,7 @@ CLI refuses to combine a token with a non-loopback host unless told twice.
 
 import logging
 import webbrowser
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -89,8 +90,10 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path in ("/", "/index.html", "/ui", "/ui/"):
             self._send_bytes(self.server.index, "text/html; charset=utf-8", cache="no-cache")
-        elif path.startswith("/static/"):
-            self._send_asset(path.removeprefix("/static/"))
+        elif path.startswith(("/static/", "/ui/static/")):
+            # Both entry paths resolve their assets: the shell references `static/…` relatively,
+            # so `/ui/` asks for `/ui/static/…` and `/` for `/static/…`.
+            self._send_asset(path.rsplit("/static/", 1)[1])
         elif path.startswith(PROXIED_PREFIXES):
             self._proxy()
         else:
@@ -166,12 +169,15 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
 def serve(
     *, upstream: str, host: str = "127.0.0.1", port: int = 8765, token: str | None = None,
-    timeout: float = 600.0, open_browser: bool = False,
+    timeout: float = 600.0, open_browser: bool = False, announce: Callable[[str], None] | None = None,
 ) -> None:
-    """Run the console proxy until interrupted."""
+    """Run the console proxy until interrupted. `announce` is called with the bound origin — after
+    the bind, so `port=0` reports the port the kernel picked rather than the zero it was asked for."""
     server = ConsoleProxy((host, port), upstream=upstream, token=token, timeout=timeout)
     origin = f"http://{host}:{server.server_address[1]}/"
     log.info("console on %s -> %s", origin, upstream)
+    if announce is not None:
+        announce(origin)
     if open_browser:
         webbrowser.open(origin)
     try:

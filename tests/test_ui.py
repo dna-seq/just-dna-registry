@@ -156,6 +156,10 @@ def test_the_markdown_renderer_escapes_before_it_renders() -> None:
     # rendered as a live attribute.
     assert "javascript:" not in script
     assert re.search(r"\\\]\\\(\(https\?:", script), "link targets are constrained to http(s)"
+    # Funding and avatar URLs from the server pass through the same gate before reaching an attribute.
+    for field in ("author_funding_url", "org_funding_url", "avatar_url"):
+        assert re.search(rf"httpUrl\([\w.]+\.{field}\)", script), f"{field} reaches an href/src unguarded"
+    assert re.search(r"servedUrl\([\w.]+\.logo_url\)", script)
 
 
 def test_index_html_stamps_the_version_and_nothing_else() -> None:
@@ -209,6 +213,9 @@ def test_the_proxy_serves_the_page_and_relays_the_api(live_registry, seed_into_l
             page = c.get("/")
             assert page.status_code == 200 and "just-dna" in page.text
             assert c.get("/static/app.js").content == (STATIC_DIR / "app.js").read_bytes()
+            # Both entry paths work, and each finds its assets where the shell's relative URLs look.
+            assert c.get("/ui/").status_code == 200
+            assert c.get("/ui/static/app.css").content == (STATIC_DIR / "app.css").read_bytes()
             assert c.get("/static/../__init__.py").status_code == 404
             # JSON identical to the upstream's, version headers intact.
             direct = httpx.get(f"{upstream}/api/v1/modules").json()
