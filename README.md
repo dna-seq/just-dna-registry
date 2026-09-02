@@ -125,8 +125,9 @@ deliberately. A snapshot is the **index, not the artifacts**.
   **yank / un-yank**; ops-only **hard removal** (`registry remove-namespace/-module`).
 - **Modes + ops safety** (0.12) — production refuses test data, the polygon can delete it; rolling
   pre-flight DB snapshots and a dry-run-by-default `purge-test-data`.
-- **Console** (0.23) — a dependency-free browser UI at `/ui/` and `registry-client ui`, over the
-  same API, with the instance mode in the header and the dry-run reports rendered in full.
+- **Console** (0.23) — a browser UI at `/ui/` and `registry-client ui`, over the same API, with the
+  instance mode in the header and the dry-run reports rendered in full. TypeScript in `console/`,
+  bundled and committed, so the Python side needs no Node.
 
 ## Architecture
 
@@ -144,6 +145,7 @@ src/just_dna_registry/
   models/api.py        # card / detail / version / page response models
   services/            # catalog (reads), ingest (manifest -> projection), enrich, purge
   api/                 # FastAPI app, deps (auth/pagination), routers
-  ui/                  # the console: static page, /ui mount, standalone proxy
+  ui/                  # the console: built bundle + shell, /ui mount, standalone proxy
+console/               # the console's TypeScript sources and build (npm run verify)
   cli.py               # `registry` admin CLI
 ```

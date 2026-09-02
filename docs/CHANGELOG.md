@@ -17,8 +17,12 @@ The registry has been a REST service with `curl`, `/docs` and two CLIs as its wh
 design — the webui's Store is where people *install* modules. What that left uncovered is the
 publisher's and operator's questions: did my rehearsal land on the polygon, what did `/check`
 actually say, which version is yanked, does this licensing ledger allow commercial use. 0.23 adds
-the **console**: one HTML shell, one stylesheet, one script, no framework, no build step and no new
-dependency, over the same API. [docs/UI.md](UI.md) is the reference.
+the **console**: one HTML shell, one stylesheet and a TypeScript program bundled into one script,
+no framework and no runtime dependency, over the same API. The sources live in `console/` at the
+repo root and the bundle is committed, so Python, the wheel and a deployment need no Node; a test
+proves the bundle is built from the sources wherever Node is present, and another holds
+`console/src/types.ts` equal, field for field, to `models/api.py`. [docs/UI.md](UI.md) is the
+reference.
 
 - **`/ui/` on every server** (`/` and `/ui` redirect there), off with `REGISTRY_UI_ENABLED=false`.
   Nothing it serves enters `/openapi.json` — a page is not a route, `/docs` being the precedent —

@@ -564,11 +564,17 @@ predicts is worse than one that does not normalize at all.
 
 ## The console (0.23) — a consumer that lives in this tree
 
-`src/just_dna_registry/ui/` is one HTML shell, one stylesheet and one script, no framework and no
-build step, served two ways: `mount.mount_ui` at `/ui/` on the app, and `standalone.serve` behind
+`src/just_dna_registry/ui/` is one HTML shell, one stylesheet and one bundled script, no framework,
+served two ways: `mount.mount_ui` at `/ui/` on the app, and `standalone.serve` behind
 `registry-client ui`, a stdlib HTTP server that proxies `/api`, `/health` and `/docs` to a remote
-registry (the API sets no CORS policy, on purpose, so a local page needs something in between). The
-rules that keep it a consumer rather than a second API:
+registry (the API sets no CORS policy, on purpose, so a local page needs something in between).
+**The script is built, not written**: the sources are TypeScript under `console/` at the repo root
+(`npm ci && npm run verify`; `npm run watch` while editing), esbuild bundles them into
+`static/app.js`, and the bundle is committed so Python, the wheel and a deployment need no Node.
+Never edit `static/app.js` by hand. `tests/test_ui.py` proves the committed bundle is built from the
+sources **when Node is on the box and skips otherwise** — so a change under `console/src` with no
+`app.js` diff beside it is a stale bundle however green the suite was; look for the pair in review.
+The rules that keep it a consumer rather than a second API:
 
 - **Nothing the console serves enters the OpenAPI schema.** Every handler in `mount.py` is
   `include_in_schema=False`, because `tests/test_client_sdk.py` enumerates `app.openapi()` and fails
@@ -576,10 +582,20 @@ rules that keep it a consumer rather than a second API:
   precedent. If the console ever needs an endpoint the API lacks (a facet-values route is the obvious
   candidate), it is added *as an API route* with a client method and a parity row, not as a page-only
   helper.
-- **Every API path the script fetches lives in one `ROUTES` table at the top of `app.js`**, and
+- **Every API path the page fetches lives in one `ROUTES` table in `console/src/api.ts`**, and
   `tests/test_ui.py` checks each template against `app.openapi()` in both modes and refuses an
-  `/api/v1/…` literal anywhere else in the file. A path the page fetches that the server does not
+  `/api/v1/…` literal in any other source file. A path the page fetches that the server does not
   serve is a panel that renders "nothing here" forever — the failure that looks most like working.
+  The first `tsc` run over the port found the JS version had carried two `version` keys in that
+  table (the ops endpoint and the module-version path); the object literal kept the last, so the
+  header had been fetching a module template as the server's version. A duplicate key is a type
+  error now.
+- **`console/src/types.ts` mirrors `models/api.py` field for field, and a test holds the two equal.**
+  Every response shape the page reads is an interface there; a field the server adds fails the
+  suite until the page knows it, which is the SDK parity idea applied to the page's types. Names
+  only: the annotation mapping is a reading of the same source and a wrong type is `tsc`'s to find.
+  Add the interface when you add the model; the generator that drafted the file is a one-off
+  `uv run python` over `model_fields` and is cheaper to rewrite than to keep.
 - **Escape first.** Readmes, changelogs, descriptions, review notes and display names are publisher
   content. The markdown renderer's first act on a line is `esc()`, no raw HTML passes through, link
   targets are `http(s)` or fragments only, and server URLs go into `src` attributes and nowhere else.

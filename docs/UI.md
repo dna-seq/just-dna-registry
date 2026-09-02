@@ -11,8 +11,11 @@ what did `/check` say about it, which of these six versions is yanked, does this
 ledger permit commercial use. Those questions were answered with `curl` and the `registry-client`
 CLI. The console answers them in a browser, against production, the polygon, or a laptop server.
 
-It is deliberately small: one HTML shell, one stylesheet, one script, no framework and no build
-step. A UI a consumer can read in one sitting is a UI that stays in step with the API it renders.
+It is deliberately small: one HTML shell, one stylesheet, and a TypeScript program of a dozen
+modules bundled into one script, no framework. A UI a consumer can read in one sitting is a UI
+that stays in step with the API it renders, and the types are what make the reading short: every
+response shape the page touches is an interface in `console/src/types.ts` that a test holds equal,
+field for field, to the pydantic model behind it.
 
 ## Two ways to open it
 
@@ -88,17 +91,43 @@ Both are this repo's standing rules, restated for a page:
   A dedicated facet-values route would be an API change, with a client method and a parity row
   to match; it is the obvious next thing to ask for, and it should be asked for as an API.
 
-## Files
+## Files, and how the page is built
 
 ```
+console/                       # the TypeScript project (repo root, outside the wheel)
+  package.json               # devDependencies: typescript, esbuild — nothing at runtime
+  tsconfig.json              # strict, noEmit; `npm run check`
+  build.mjs                  # esbuild → ../src/just_dna_registry/ui/static/app.js
+  src/api.ts                 # ROUTES table, route(), qs(), api<T>(), ApiError
+  src/types.ts               # response shapes, mirrored from models/api.py (tested)
+  src/dom.ts                 # h(), put(), esc(), formatters, the URL gates
+  src/markdown.ts            # escape-first renderer
+  src/{catalog,module,manage,reports,rehearse,publish,lookup,account}.ts
+  src/main.ts                # router and entry point
 src/just_dna_registry/ui/
-  static/index.html      # the shell (version-stamped asset URLs at serve time)
-  static/app.css         # light + dark, one file
-  static/app.js          # ROUTES table at the top; every API path lives there
-  assets.py              # STATIC_DIR, the asset whitelist, index_html(version)
-  mount.py               # mount_ui(app, settings): /ui/, /ui/static/{name}, / → /ui/
-  standalone.py          # registry-client ui: stdlib HTTP server + httpx proxy
+  static/index.html          # the shell (version-stamped asset URLs at serve time)
+  static/app.css             # light + dark, one file
+  static/app.js              # the committed bundle — built, never edited by hand
+  assets.py                  # STATIC_DIR, the asset whitelist, index_html(version)
+  mount.py                   # mount_ui(app, settings): /ui/, /ui/static/{name}, / → /ui/
+  standalone.py              # registry-client ui: stdlib HTTP server + httpx proxy
 ```
 
-The `ROUTES` table is the contract: `tests/test_ui.py` parses it, checks each template against
-`app.openapi()` in both modes, and refuses any `/api/v1/…` literal written outside it.
+**The bundle is committed**, so the Python package, the wheel and a deployment need no Node: only
+someone editing the page does. The loop is
+
+```bash
+cd console
+npm ci                 # once; pins from package-lock.json
+npm run watch          # rebuild static/app.js on every save (the server reads it per request)
+npm run verify         # tsc --noEmit, then confirm the committed bundle matches the sources
+```
+
+`tests/test_ui.py` runs that same freshness check when a Node toolchain is on the box and
+**skips otherwise** — so a pull request that touches `console/src` without a matching `app.js`
+diff is a stale bundle whatever the suite said. The bundle is not minified, on purpose: a reader
+debugging a live registry gets source they can grep, and it is the file the wheel ships (uv-build
+packages `src/` only, so the sdist carries the bundle and not the TypeScript).
+
+The `ROUTES` table in `api.ts` is the contract: the tests parse it, check each template against
+`app.openapi()` in both modes, and refuse any `/api/v1/…` literal written in another source file.

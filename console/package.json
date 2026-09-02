@@ -1,0 +1,16 @@
+{
+  "name": "just-dna-registry-console",
+  "private": true,
+  "description": "TypeScript sources for the registry console; builds into src/just_dna_registry/ui/static/app.js",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "verify": "tsc --noEmit && node build.mjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}
