@@ -63,6 +63,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Amend changelog | `amend_changelog(ns, name, v, text, append=)` | `amend-changelog` | bearer |
 | Amend logo | `amend_logo(ns, name, v, logo_path)` | `amend-logo` | bearer |
 | Amend readme (card prose) | `amend_readme(ns, name, v, path_or_text)` | `amend-readme` | bearer |
+| Browser console over any registry | *(a page, not a method — see [UI.md](UI.md))* | `ui` | optional bearer |
 
 ---
 
@@ -332,6 +333,21 @@ Fetches the module's current latest, checks `VERSION` supersedes it (SemVer), an
 if the module doesn't exist yet (use `publish`) or `VERSION` isn't greater than latest.
 
 ---
+
+### `ui`  *(0.23)*
+
+```bash
+registry-client ui --url https://module-polygon.just-dna.life                 # opens a browser
+registry-client ui --url https://module-registry.just-dna.life --token mk_live_… --no-open
+registry-client ui --port 0 --host 127.0.0.1                                  # any free port
+```
+
+Serves the registry **console** ([UI.md](UI.md)) locally and proxies `/api`, `/health` and `/docs`
+to the registry at `--url` — the same page every server mounts at `/ui/`, pointed wherever you
+like. Reads need no token. With `--token` (or `$REGISTRY_TOKEN`) the proxy adds the bearer to any
+request that carries none, so the key never enters the browser; that makes the listening socket as
+powerful as the key, so it binds to loopback and refuses `--token` with another `--host` unless you
+pass `--expose-token`. Runs on the client-only install: the server is stdlib, the proxy is `httpx`.
 
 ## Server admin CLI (`registry`, needs `[server]`)
 

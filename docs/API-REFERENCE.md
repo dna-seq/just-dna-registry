@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.22.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.23.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
@@ -25,7 +25,9 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   stops being returned, and production is unchanged. **0.22 adds no route either** — it adds
   `format_version` and `format_advisory` to the dry-run reports and `format_advisory` to the
   `422 invalid_spec` body, and starts *reading* the `X-Format-Version` request header the client
-  has always sent).
+  has always sent. **0.23 adds no route either** — it adds a browser console *outside* the API:
+  `/ui/` and a redirect from `/`, neither in `/openapi.json`, both off with
+  `REGISTRY_UI_ENABLED=false`; see [UI.md](UI.md)).
   Written against the server at that version; a
   deployment reports its own with `GET /api/v1/version` (and its `mode` with `GET /health`). Every
   schema below is exact for a server in that range rather than indicative, so a consumer does not
@@ -37,6 +39,7 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   third deployment.
 - **API prefix:** `/api/v1` (health lives at the root, `/health`)
 - **Interactive docs:** `/docs` (Swagger UI), `/openapi.json`
+- **Console:** `/ui/` (0.23) — a browser page over this API, not part of it; `/` redirects there.
 - **Content types:** responses are JSON unless noted; publish/import use `multipart/form-data`;
   file downloads are `application/octet-stream` (or `302` redirect) and tarballs `application/gzip`.
 

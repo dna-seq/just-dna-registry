@@ -17,6 +17,7 @@ from just_dna_format.manifest import read_manifest, write_manifest
 
 from just_dna_registry.client import RegistryClient, RegistryError
 from just_dna_registry.installid import generate_install_id
+from just_dna_registry.ui import standalone
 from just_dna_registry.version import compatibility_error
 
 load_dotenv()  # pick up REGISTRY_URL / REGISTRY_TOKEN from a local .env
@@ -365,6 +366,39 @@ def update_module_version(
             raise typer.BadParameter(f"version {version} must be greater than current latest {latest}")
         manifest = c.publish(namespace, name, version, spec_dir, changelog)
     typer.echo(f"✓ updated {namespace}/{name}: {latest} → {manifest.identity.version}")
+
+
+@app.command()
+def ui(
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+    host: str = typer.Option("127.0.0.1", help="Interface to listen on"),
+    port: int = typer.Option(8765, help="Port to listen on (0 picks a free one)"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the console in a browser"),
+    expose_token: bool = typer.Option(
+        False, "--expose-token",
+        help="Allow --token together with a non-loopback --host (anyone reaching the port acts as you)",
+    ),
+) -> None:
+    """Open the registry console in a browser, against the registry at --url.
+
+    The page is the same one a server mounts at `/ui/`; this serves it locally and proxies `/api`,
+    `/health` and `/docs` to the upstream, because the API sets no CORS policy and a page on one
+    origin cannot call another. Reads work with no token. With `--token` (or `$REGISTRY_TOKEN`) the
+    proxy adds the bearer to every request that carries none, so the key never enters the browser.
+
+    That also means the listening socket is worth exactly what the key is worth: it binds to
+    loopback, and combining a token with any other host needs `--expose-token` said out loud.
+    """
+    upstream = url or os.getenv(_URL_ENV) or "http://127.0.0.1:8000"
+    tok = token or os.getenv(_TOKEN_ENV)
+    if tok and host not in ("127.0.0.1", "localhost", "::1") and not expose_token:
+        raise typer.BadParameter(
+            f"--token with --host {host} lets anyone who reaches the port act as that key; "
+            "pass --expose-token if that is what you mean"
+        )
+    typer.echo(f"console on http://{host}:{port}/ → {upstream}{'  (bearer injected by the proxy)' if tok else ''}")
+    standalone.serve(upstream=upstream, host=host, port=port, token=tok, open_browser=open_browser)
 
 
 if __name__ == "__main__":

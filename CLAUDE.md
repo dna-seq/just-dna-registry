@@ -2,9 +2,13 @@
 
 This repo is the **annotation module registry**: a standalone, **server-side REST API
 service** (FastAPI) that catalogs, versions, validates, and serves annotation modules for the
-`just-dna-lite` ecosystem. **There is no frontend here** — the webui and Dagster pipelines are
-*consumers* of this API. Any UI concern (Reflex, Fomantic, PRS widgets) belongs in `just-dna-lite`,
-not in this repo.
+`just-dna-lite` ecosystem. The webui and Dagster pipelines are *consumers* of this API. Any
+**install-side** UI concern (Reflex, Fomantic, PRS widgets, the Store) belongs in `just-dna-lite`,
+not in this repo. What this repo *does* carry since 0.23 is its own **console** (`src/just_dna_registry/ui/`,
+[docs/UI.md](docs/UI.md)): a browser page over the same API, for publishers and operators, served
+at `/ui/` and by `registry-client ui`. "There is no frontend here" was the rule for twenty-two
+releases and is recorded rather than deleted: the console is a *consumer* that happens to live in
+the same tree, and the rules under *The console* below are what keep it one.
 
 The founding design document is **[docs/SPEC.md](docs/SPEC.md)** — read it first. It is the source
 of truth for the manifest contract (§4), integrity mechanism (§5), versioning (§6), and the REST
@@ -555,6 +559,50 @@ predicts is worse than one that does not normalize at all.
   something lands in it — the folder is a consequence of the manifest's contents, never a promise made
   ahead of them. And the second half of S26 is still upstream's and still true: the compiler discovers
   authored tables at the spec root only, which is what keeps this whole layer transport-only.
+
+---
+
+## The console (0.23) — a consumer that lives in this tree
+
+`src/just_dna_registry/ui/` is one HTML shell, one stylesheet and one script, no framework and no
+build step, served two ways: `mount.mount_ui` at `/ui/` on the app, and `standalone.serve` behind
+`registry-client ui`, a stdlib HTTP server that proxies `/api`, `/health` and `/docs` to a remote
+registry (the API sets no CORS policy, on purpose, so a local page needs something in between). The
+rules that keep it a consumer rather than a second API:
+
+- **Nothing the console serves enters the OpenAPI schema.** Every handler in `mount.py` is
+  `include_in_schema=False`, because `tests/test_client_sdk.py` enumerates `app.openapi()` and fails
+  on any route without a `RegistryClient` method — and a page is not a route. `/docs` is the
+  precedent. If the console ever needs an endpoint the API lacks (a facet-values route is the obvious
+  candidate), it is added *as an API route* with a client method and a parity row, not as a page-only
+  helper.
+- **Every API path the script fetches lives in one `ROUTES` table at the top of `app.js`**, and
+  `tests/test_ui.py` checks each template against `app.openapi()` in both modes and refuses an
+  `/api/v1/…` literal anywhere else in the file. A path the page fetches that the server does not
+  serve is a panel that renders "nothing here" forever — the failure that looks most like working.
+- **Escape first.** Readmes, changelogs, descriptions, review notes and display names are publisher
+  content. The markdown renderer's first act on a line is `esc()`, no raw HTML passes through, link
+  targets are `http(s)` or fragments only, and server URLs go into `src` attributes and nowhere else.
+  A test pins the escape-first shape. Do not swap in a markdown library that passes HTML through by
+  default; that is the one property a library would cost.
+- **The check renderer reads every "unchecked" sibling**, and a test names them. This is *A pass that
+  could not run reports why* one tier up: the CLI renderer once printed `✓ would publish` over an
+  outage because a field reached only the JSON, and a page is a renderer too.
+- **Ask `/health` for the mode; never guess it from the host.** The delete controls render only when
+  the instance said `mode: test`, which is consistent with *never gate the client on the mode* —
+  the page asks the host first, which is what that rule requires of a client.
+- **Facet suggestions come from the loaded page.** There is no facet-values endpoint; inventing one in
+  the page (by paging the whole listing, say) would spend the anonymous search budget on every load.
+- **The proxy forwards a whitelist, not everything.** `Authorization`, `Content-Type` (the multipart
+  boundary lives there), `Accept`, `X-Format-Version` in; status, body, `Content-Type`,
+  `Content-Disposition`, `Location` and the three version headers out. Cookies, `Origin` and `Host`
+  stop at the proxy. `--token` injects a bearer only where the browser sent none, and binding that to a
+  non-loopback host needs `--expose-token` said out loud — the socket is then worth what the key is.
+- **`Element.replaceChildren` takes nodes, not arrays.** An array renders as its `toString()` and a
+  `null` as the word "null"; the first screenshot of the console was a row of comma-joined URLs. Use
+  the `put()` helper, which flattens and drops nulls.
+- **The static files ship in the wheel** — `uv build` includes non-`.py` files under `src/`. It was
+  checked (`unzip -l`), and a release that moves the static dir needs it checked again.
 
 ---
 

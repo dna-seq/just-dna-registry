@@ -31,6 +31,7 @@ from just_dna_registry.startup import (
 )
 from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
+from just_dna_registry.ui.mount import mount_ui
 from just_dna_registry.version import VersionInfo
 
 _request_log = logging.getLogger("registry.request")
@@ -126,6 +127,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(namespaces.router, prefix=API_PREFIX)
     app.include_router(orgs.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
+    # The console (0.23): pages, not routes — nothing here enters the OpenAPI schema.
+    mount_ui(app, settings)
 
     @app.get("/health", tags=["ops"])
     def health() -> dict:

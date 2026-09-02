@@ -2,11 +2,13 @@
 
 A catalog / publish / download **REST API** for [just-dna-lite](../just-dna-lite) annotation
 modules. Authors publish module specs; the server validates, recompiles, stores, and indexes them;
-consumers browse, search, download, and integrity-verify. There is no frontend here — the webui and
-Dagster pipelines are consumers of this API.
+consumers browse, search, download, and integrity-verify. The webui and Dagster pipelines are
+consumers of this API; since 0.23 the server also carries its own small **console** at `/ui/`, a
+browser page over the same API for publishers and operators (not a replacement for the webui's Store).
 
 **Live:** <https://module-registry.just-dna.life> · health `GET /health` · API under `/api/v1`
-· interactive docs at [`/docs`](https://module-registry.just-dna.life/docs).
+· interactive docs at [`/docs`](https://module-registry.just-dna.life/docs) · console at
+[`/ui/`](https://module-registry.just-dna.life/ui/).
 
 **Two instances, one image** (0.12). Production is the catalog above. The **polygon**
 (<https://module-polygon.just-dna.life>, `REGISTRY_MODE=test`) is where you rehearse a publish: it
@@ -44,6 +46,20 @@ export REGISTRY_URL=https://module-registry.just-dna.life REGISTRY_TOKEN=mk_live
 registry-client list
 registry-client download just-dna-seq coronary 1.0.0 ./coronary
 ```
+
+### The console
+
+Every registry serves a browser page at `/ui/`: catalog and search, a module's readme, versions,
+trust and licensing, files with digests, the manifest, reviews; signed in, the yank/changelog/readme
+amends, the `/validate` and `/check` dry runs with their full reports, publish, and namespace
+onboarding. The same page runs from the client install against any registry:
+
+```bash
+registry-client ui --url https://module-polygon.just-dna.life          # proxies the API locally
+registry-client ui --url https://module-registry.just-dna.life --token mk_live_…
+```
+
+`REGISTRY_UI_ENABLED=false` turns it off on a server. See [docs/UI.md](docs/UI.md).
 
 ## Run the server (needs `[server]`)
 
@@ -109,6 +125,8 @@ deliberately. A snapshot is the **index, not the artifacts**.
   **yank / un-yank**; ops-only **hard removal** (`registry remove-namespace/-module`).
 - **Modes + ops safety** (0.12) — production refuses test data, the polygon can delete it; rolling
   pre-flight DB snapshots and a dry-run-by-default `purge-test-data`.
+- **Console** (0.23) — a dependency-free browser UI at `/ui/` and `registry-client ui`, over the
+  same API, with the instance mode in the header and the dry-run reports rendered in full.
 
 ## Architecture
 
@@ -126,5 +144,6 @@ src/just_dna_registry/
   models/api.py        # card / detail / version / page response models
   services/            # catalog (reads), ingest (manifest -> projection), enrich, purge
   api/                 # FastAPI app, deps (auth/pagination), routers
+  ui/                  # the console: static page, /ui mount, standalone proxy
   cli.py               # `registry` admin CLI
 ```

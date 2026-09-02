@@ -313,6 +313,13 @@ class Settings(BaseSettings):
 
     # Observability. `debug` turns on verbose structured logging to stdout (request tracing +
     # Eliot publish/import step logs + third-party DEBUG). Off = `log_level` (default INFO).
+    # ── Console (0.23) ────────────────────────────────────────────────────────────────────────────
+    #: Serve the browser console at `/ui/` (and redirect `/` there). It is a static page over the
+    #: same API this process serves — no extra dependency, no extra route in the OpenAPI schema —
+    #: so it is on by default. Off for a deployment that fronts the API with its own site, or that
+    #: wants `/` to stay a 404.
+    ui_enabled: bool = True
+
     debug: bool = False
     log_level: str = "INFO"
 

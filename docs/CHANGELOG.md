@@ -6,6 +6,61 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.23.0] — 2026-09-02
+
+**Client surface: unchanged.** No `RegistryClient` method moved or was added; the API gained no
+route. One command was added to `registry-client` (`ui`), which breaks nobody.
+
+### A page of its own, twenty-two releases in
+
+The registry has been a REST service with `curl`, `/docs` and two CLIs as its whole surface, by
+design — the webui's Store is where people *install* modules. What that left uncovered is the
+publisher's and operator's questions: did my rehearsal land on the polygon, what did `/check`
+actually say, which version is yanked, does this licensing ledger allow commercial use. 0.23 adds
+the **console**: one HTML shell, one stylesheet, one script, no framework, no build step and no new
+dependency, over the same API. [docs/UI.md](UI.md) is the reference.
+
+- **`/ui/` on every server** (`/` and `/ui` redirect there), off with `REGISTRY_UI_ENABLED=false`.
+  Nothing it serves enters `/openapi.json` — a page is not a route, `/docs` being the precedent —
+  so the SDK parity guard is unaffected and `API-REFERENCE.md` gains no section.
+- **`registry-client ui --url …`** serves the same page from the client-only install and proxies
+  `/api`, `/health` and `/docs` to any registry: the server sets no CORS policy, on purpose, so a
+  local page needs something in between. The proxy forwards a whitelist of headers rather than
+  everything, streams bodies (a tarball never sits in memory), and with `--token` adds the bearer
+  only to requests that carry none, so the key never enters the browser. That makes the socket as
+  powerful as the key: it binds to loopback, and pairing a token with another host needs
+  `--expose-token` said explicitly.
+- **What it renders**: the catalog with server-defined group tabs (descriptions included, so `all`
+  reads differently on the polygon — S17), search and facet filters; a module's readme, versions,
+  trust and licensing, files with their digests, the manifest as a tree, reviews; signed in, the
+  yank/changelog/readme/logo amends, starring, reviewing, namespace onboarding with the
+  `requires_allow_test_data` pre-flight, proof-of-work registration in a Web Worker; the
+  `/validate` and `/check` dry runs with **both wire forms** (a picked directory as loose parts,
+  or one archive) and their reports in full; publish and import, confirmed before a production
+  publish. The instance badge — **PRODUCTION** or **POLYGON · test**, from `/health` — is the first
+  thing in the header, for the reason S3 gave: a rehearsal that cannot see which instance answered
+  cannot prove it is not about to spend a version number on production.
+- **Two of this repo's rules restated for a page, each pinned by a test.** Server text is escaped
+  before it is rendered (readmes, changelogs, review notes and display names are publisher content;
+  the markdown renderer passes no HTML through and links only to `http(s)`). And every count in the
+  check report is rendered beside the sibling that says whether it was measured — `unreachable`,
+  `unreachable_rsids`, `clin_sig_not_checked`, `gene_loci_not_checked`, `quotes_unchecked`,
+  `titles_as_quotes`, `skipped_offline`, `skipped_reason`, `format_version`, `format_advisory` —
+  because the terminal renderer once printed `✓ would publish` over an outage, and a page is a
+  renderer too.
+- **The page ↔ API contract is a test**, the SDK parity idea one consumer over: every path the
+  script fetches lives in one `ROUTES` table, each template is checked against `app.openapi()` in
+  both modes, and an `/api/v1/…` literal anywhere else in the file fails the suite. A path the page
+  fetches that the server does not serve is a panel that says "nothing here" forever, which is the
+  failure that looks most like working.
+- **Delete controls render only when the host said `mode: test`.** Consistent with *never gate the
+  client on the mode*: the page asks `/health` first, which is what that rule asks of a client.
+
+What it is not: not the Store (installing stays the webui's), not an admin panel (keys, moderation,
+backups and purges stay `registry` CLI commands with a shell and a mode flag), and not a facet
+service — filters are free text with suggestions drawn from the loaded page, and a facet-values
+route, the obvious next request, should arrive as an API route with a client method.
+
 ## [0.22.0] — 2026-08-31
 
 **Client surface: unchanged.** No method signature moved and no method was added. `ValidationReport`
