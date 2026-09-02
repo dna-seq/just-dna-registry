@@ -123,6 +123,11 @@ npm run watch          # rebuild static/app.js on every save (the server reads i
 npm run verify         # tsc --noEmit, then confirm the committed bundle matches the sources
 ```
 
+npm 11 prints an `allow-scripts` warning on install because esbuild's postinstall is blocked by
+default; esbuild still works, since the platform binary arrives as an ordinary optional dependency
+and the script only validates it. The pinned toolchain is Node 24, esbuild 0.25 and TypeScript 5.9
+(`package-lock.json`); there is no separate linter yet, `tsc --strict` is the whole gate.
+
 `tests/test_ui.py` runs that same freshness check when a Node toolchain is on the box and
 **skips otherwise** — so a pull request that touches `console/src` without a matching `app.js`
 diff is a stale bundle whatever the suite said. The bundle is not minified, on purpose: a reader
