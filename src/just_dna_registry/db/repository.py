@@ -627,6 +627,28 @@ class Repository:
         self.conn.commit()
         return cur.rowcount > 0
 
+    def set_module_short_description(
+        self, namespace: str, name: str, short_description: str | None
+    ) -> bool:
+        """Set or clear a module's registry-held card subtitle. False when the module does not exist.
+
+        `None` **clears** the override, which is why the parameter is nullable where
+        `set_module_readme`'s is not: this column has three states a reader must tell apart — no
+        override (show the authored `description`), an override, and an override that is deliberately
+        blank. A `set_module_readme`-shaped signature could express only two of them.
+
+        Module-level, matching the column and the card it feeds. The whole point of the field is that
+        amending it touches nothing the module's identity is computed from (format 0.7, RM133): the
+        authored subtitle stays in `module_spec.yaml`, so `manifest.inputs` and `content_signature`
+        do not move and no version is spent on a rewording.
+        """
+        cur = self.conn.execute(
+            "UPDATE modules SET short_description=? WHERE namespace=? AND name=?",
+            (short_description, namespace, name),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def insert_version(
         self,
         module_id: int,

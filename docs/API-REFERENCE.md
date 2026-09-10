@@ -17,7 +17,9 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   rather than `variants.csv` alone (so `?gene=` can find a PGx or copy-number module, for versions
   compiled from 0.6.6 on), and a duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` is
   now a compile **error**, so a spec that published before can come back `422`.
-  **0.24 adds no route either** — it adopts `just-dna-format` 0.7 and adds four response fields:
+  **0.24 adds one route**, `PATCH /modules/{ns}/{name}/short-description` — the first module-level
+  amend, where the readme and the logo are per version. It adopts `just-dna-format` 0.7 and adds five
+  response fields: `short_description` on `ModuleCard`,
   `carried` and `warnings_summary` on `ValidationReport` (`/validate`, `/check`), and
   `clin_sig_concordance` and `authority_precedence` on the module detail. Two behaviours move
   underneath it. `/check?strict=true` now grades the spec **after** enrichment rather than before, so

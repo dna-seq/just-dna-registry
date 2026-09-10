@@ -26,7 +26,7 @@ from fastapi import (
 )
 from just_dna_format.identity import is_valid_version
 from just_dna_format.vocab import VALID_DECLARED_USE
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from just_dna_registry.api.deps import (
@@ -651,6 +651,64 @@ async def amend_logo(
         "namespace": namespace, "name": name, "version": version,
         "logo": manifest.logo.model_dump() if manifest.logo else None,
     }
+
+
+class ShortDescriptionRequest(BaseModel):
+    """Body for `PATCH /modules/{ns}/{name}/short-description`."""
+
+    short_description: str | None = Field(
+        default=None,
+        description=(
+            "The card subtitle to show instead of the authored `module.description`, at most "
+            "120 characters and one line. `null` **clears** the override and the card falls back to "
+            "the authored subtitle; `\"\"` sets a deliberately blank one. Two different requests, "
+            "and they stay two"
+        ),
+    )
+
+
+@router.patch("/{namespace}/{name}/short-description")
+async def set_short_description(
+    repo: RepoDep,
+    account: AccountDep,
+    namespace: str,
+    name: str,
+    body: ShortDescriptionRequest,
+) -> dict:
+    """Set or clear the registry-held subtitle a listing shows for this module (format 0.7, RM133).
+
+    **Module-level, and out of the module's identity entirely.** `module.description` remains the
+    authored subtitle and a module with no override shows it unchanged; this is held beside the
+    module, so amending it leaves `module_spec.yaml`'s bytes and therefore `manifest.inputs`,
+    `content_signature` and the global `409 duplicate_content` claim untouched. That is the whole
+    reason it is a registry field rather than a spec key: rewording a subtitle must never spend a
+    version number, and under this catalog's rules a spent one is spent permanently.
+
+    Not per version, and not `POST .../versions/{v}/...` like the readme and the logo: those describe
+    an artifact, and this describes the module a search finds. A subtitle that differed by version
+    would be a card whose text changed when a patch was published.
+
+    Requires **publish** rights on the namespace — the same people who put the module here own how it
+    is described. A `PATCH` rather than a `POST` because it edits one field of an existing resource
+    and is idempotent, and a JSON body rather than a file part because it is one short line.
+    """
+    require_capability(repo, account, namespace, Capability.PUBLISH)
+    try:
+        text = await run_in_threadpool(
+            publish_service.set_short_description,
+            repo=repo,
+            namespace=namespace,
+            name=name,
+            text=body.short_description,
+        )
+    except publish_service.PublishError as exc:
+        code = (
+            status.HTTP_404_NOT_FOUND
+            if exc.detail == "module_not_found"
+            else status.HTTP_422_UNPROCESSABLE_CONTENT
+        )
+        raise HTTPException(code, detail={"error": exc.detail, "errors": exc.errors}) from exc
+    return {"namespace": namespace, "name": name, "short_description": text}
 
 
 @router.post("/{namespace}/{name}/versions/{version}/readme")

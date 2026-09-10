@@ -48,6 +48,9 @@
     download: "/api/v1/modules/{namespace}/{name}/versions/{version}/download",
     yank: "/api/v1/modules/{namespace}/{name}/versions/{version}/yank",
     readme: "/api/v1/modules/{namespace}/{name}/versions/{version}/readme",
+    // Module-level, so no `{version}` — the readme and logo above describe an artifact, this describes
+    // the module a search finds.
+    shortDescription: "/api/v1/modules/{namespace}/{name}/short-description",
     logo: "/api/v1/modules/{namespace}/{name}/versions/{version}/logo",
     star: "/api/v1/modules/{namespace}/{name}/star",
     reviews: "/api/v1/modules/{namespace}/{name}/reviews",
@@ -701,7 +704,9 @@
           h("div", { class: "id" }, `${m.namespace}/${m.name}`, m.latest_version ? ` @${m.latest_version}` : "")
         )
       ),
-      h("div", { class: "desc" }, m.description),
+      // `?? `, never `|| ` — an override set to the empty string is a subtitle a publisher deliberately
+      // blanked, and `||` would fall back to the authored one they were overriding away from.
+      h("div", { class: "desc" }, m.short_description ?? m.description),
       h("div", { class: "chips" }, m.stats.categories.slice(0, 4).map((cat) => h("span", { class: "chip static" }, cat))),
       h(
         "div",
@@ -1058,6 +1063,54 @@
         } }, "Save changelog")
       )
     ));
+    const subtitle = h("input", {
+      type: "text",
+      maxlength: "120",
+      placeholder: "Overrides the authored module.description on cards. Leave empty to show it instead."
+    });
+    subtitle.value = m.short_description ?? "";
+    out.append(h(
+      "div",
+      {},
+      h("h3", {}, "Card subtitle"),
+      h(
+        "p",
+        { class: "small muted" },
+        `Registry-held and module-wide: it overrides what a listing shows without touching module_spec.yaml, so no version is spent and no digest moves. The authored subtitle is "${m.description}".`
+      ),
+      subtitle,
+      h(
+        "div",
+        { class: "row" },
+        h("button", { class: "primary", onclick: async () => {
+          try {
+            await api(
+              "PATCH",
+              route(ROUTES.shortDescription, { namespace: ns, name }),
+              { body: { short_description: subtitle.value } }
+            );
+            toast("card subtitle saved", "good");
+          } catch (err) {
+            toast(errorText(err), "bad");
+          }
+        } }, "Save subtitle"),
+        // A separate button rather than "save an empty box", because clearing the override and setting
+        // a deliberately blank subtitle are two different requests and the server keeps them two.
+        h("button", { onclick: async () => {
+          try {
+            await api(
+              "PATCH",
+              route(ROUTES.shortDescription, { namespace: ns, name }),
+              { body: { short_description: null } }
+            );
+            subtitle.value = "";
+            toast("override cleared — the card shows module.description", "good");
+          } catch (err) {
+            toast(errorText(err), "bad");
+          }
+        } }, "Clear override")
+      )
+    ));
     const readme = h("textarea", { placeholder: "README.md — the prose on the card. Say what the module is, and what it is not.", style: "min-height:180px" });
     readme.value = m.readme;
     out.append(h(
@@ -1300,7 +1353,7 @@
             " ",
             h("button", { class: "small", style: "margin-left:6px", onclick: () => copyText(`${ns}/${name}`) }, "copy id")
           ),
-          h("p", { class: "muted", style: "margin:6px 0 0" }, m.description),
+          h("p", { class: "muted", style: "margin:6px 0 0" }, m.short_description ?? m.description),
           h(
             "div",
             { class: "row small muted", style: "margin-top:8px" },

@@ -108,6 +108,9 @@ export interface ModuleCard {
   name: string;
   title: string;
   description: string;
+  // The registry-held override; render `short_description ?? description`. `null` is *no override*
+  // and `""` is a deliberately blank one — two states, and a `||` here would collapse them.
+  short_description: string | null;
   icon: string;
   icon_set: string;
   color: string;

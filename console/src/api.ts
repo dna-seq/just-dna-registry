@@ -26,6 +26,9 @@ export const ROUTES = {
   download: "/api/v1/modules/{namespace}/{name}/versions/{version}/download",
   yank: "/api/v1/modules/{namespace}/{name}/versions/{version}/yank",
   readme: "/api/v1/modules/{namespace}/{name}/versions/{version}/readme",
+  // Module-level, so no `{version}` — the readme and logo above describe an artifact, this describes
+  // the module a search finds.
+  shortDescription: "/api/v1/modules/{namespace}/{name}/short-description",
   logo: "/api/v1/modules/{namespace}/{name}/versions/{version}/logo",
   star: "/api/v1/modules/{namespace}/{name}/star",
   reviews: "/api/v1/modules/{namespace}/{name}/reviews",

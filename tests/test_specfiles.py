@@ -164,6 +164,103 @@ def _signature(client, api_key, *extra: tuple[str, bytes]) -> str | None:
     return resp.json()["content_signature"]
 
 
+def test_the_card_subtitle_is_held_beside_the_module_and_not_inside_it(
+    client, api_key, app
+) -> None:
+    """`short_description` (format 0.7, RM133) at the property that is the reason it exists.
+
+    **Amending it must move nothing the module's identity is computed from.** The authored subtitle
+    stays `module.description` in `module_spec.yaml`; this overrides only what a card renders. So the
+    assertion that matters is the one about what did *not* change: `content_signature` and
+    `artifact.digest` are read before and after and must be identical, because on this registry a
+    published version is immutable and its data holds a global `409 duplicate_content` claim that
+    only a purge frees. Rewording a subtitle cannot be allowed to cost a version number.
+
+    **Cleared and blank are two states, and both are asserted.** `null` removes the override and the
+    card falls back to the authored subtitle; `""` is a subtitle deliberately blanked. They render
+    differently and a nullable column is what keeps them apart — an `or None` anywhere on this path
+    would collapse the second into the first.
+
+    **And an authored `short_description:` is dropped with a note rather than adopted.** Upstream's
+    `module:` block forbids extras, so it would otherwise be a `422`; adopting it as the initial
+    override would put the subtitle inside `content_signature`, which is exactly the coupling the
+    field exists to avoid.
+    """
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"},
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, resp.text
+    before = ModuleManifest.model_validate(resp.json())
+
+    card = client.get("/api/v1/modules/just-dna-seq/coronary").json()
+    assert card["short_description"] is None, "no override until one is set"
+
+    auth = {"Authorization": f"Bearer {api_key}"}
+    set_resp = client.patch(
+        "/api/v1/modules/just-dna-seq/coronary/short-description",
+        json={"short_description": "CYP2C19 clopidogrel response"},
+        headers=auth,
+    )
+    assert set_resp.status_code == 200, set_resp.text
+    card = client.get("/api/v1/modules/just-dna-seq/coronary").json()
+    assert card["short_description"] == "CYP2C19 clopidogrel response"
+    assert card["description"] == "d", "the authored subtitle is untouched"
+
+    # The identity property: nothing about the published version moved.
+    after = ModuleManifest.model_validate(
+        client.get("/api/v1/modules/just-dna-seq/coronary/versions/1.0.0/manifest").json()
+    )
+    assert after.content_signature == before.content_signature
+    assert after.artifact.digest == before.artifact.digest
+    assert after.inputs == before.inputs
+
+    # Blank is not cleared.
+    client.patch(
+        "/api/v1/modules/just-dna-seq/coronary/short-description",
+        json={"short_description": ""}, headers=auth,
+    )
+    assert client.get("/api/v1/modules/just-dna-seq/coronary").json()["short_description"] == ""
+    client.patch(
+        "/api/v1/modules/just-dna-seq/coronary/short-description",
+        json={"short_description": None}, headers=auth,
+    )
+    assert client.get("/api/v1/modules/just-dna-seq/coronary").json()["short_description"] is None
+
+    over = client.patch(
+        "/api/v1/modules/just-dna-seq/coronary/short-description",
+        json={"short_description": "x" * 121}, headers=auth,
+    )
+    assert over.status_code == 422
+    assert over.json()["detail"]["error"] == "short_description_too_long"
+
+    # Authored: dropped with a note, never adopted and never a 422.
+    authored = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/validate",
+        files=[
+            ("files", (
+                SPEC_YAML,
+                _MINIMAL_YAML.replace(
+                    "  report_title: R\n", "  report_title: R\n  short_description: from the spec\n"
+                ).encode(),
+                "text/yaml",
+            )),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+        ],
+        headers=auth,
+    ).json()
+    assert authored["valid"] is True
+    assert any("short_description" in note for note in authored["info"]), authored["info"]
+    assert client.get("/api/v1/modules/just-dna-seq/coronary").json()["short_description"] is None
+
+
 def test_an_uploaded_staging_directory_never_seeds_the_servers_own_enrichment(
     client, api_key, app
 ) -> None:

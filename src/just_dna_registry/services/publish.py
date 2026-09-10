@@ -46,7 +46,11 @@ from just_dna_format.manifest import (
     ModuleManifest,
     write_manifest,
 )
-from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
+from just_dna_format.normalize import (
+    IDENTITY_AUTHORITY_KEYS,
+    PRESENTATION_AUTHORITY_KEYS,
+    SHORT_DESCRIPTION_MAX_CHARS,
+)
 from just_dna_format.signing import sign_digest
 from pydantic import BaseModel, Field
 
@@ -83,7 +87,18 @@ _REVERSE_MARKER: str = "weights.parquet"  # a legacy compiled module has this bu
 # Format 0.5 turned it back into a real, freeform, advisory field (coerced to SemVer at load, with
 # the original kept as `version_coerced_from`), so stripping it now discards author intent for no
 # gain: the registry stamps `Identity.version` from the request regardless, and that always wins.
-_REGISTRY_OWNED_MODULE_KEYS: tuple[str, ...] = tuple(sorted(IDENTITY_AUTHORITY_KEYS))
+#
+# **`PRESENTATION_AUTHORITY_KEYS` joins it at 0.24, and it is the same rule at a field the registry
+# holds rather than stamps.** `short_description` (format 0.7, RM133) is a registry-held *override*
+# of the card subtitle: upstream's `module:` block is `extra="forbid"`, so an authored one is refused
+# outright, and this project's standing answer to a registry-owned key in a legacy spec is to drop it
+# with a note rather than to charge the author a `422` for it. It is **not adopted** as the initial
+# override, deliberately — a value read out of `module_spec.yaml` is a value inside
+# `content_signature`, which is exactly the coupling the field exists to avoid. The note names the
+# route instead.
+_REGISTRY_OWNED_MODULE_KEYS: tuple[str, ...] = tuple(
+    sorted(IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS)
+)
 
 
 def normalize_module_block(spec_dir: Path) -> list[str]:
@@ -295,6 +310,45 @@ def normalize_spec(spec_dir: Path) -> SpecNormalization:
         warnings=layout.warnings,
         layout=layout,
     )
+
+
+def set_short_description(*, repo: Any, namespace: str, name: str, text: str | None) -> str | None:
+    """Set or clear a module's registry-held card subtitle. Returns what is now stored.
+
+    **The one field this service holds *instead of* the spec, and that is the whole design** (format
+    0.7, RM133). `module.description` stays the authored subtitle and a module with no override shows
+    it, unchanged. The override lives beside the module, so amending it leaves `module_spec.yaml`'s
+    bytes — and therefore `manifest.inputs`, `content_signature`, and the `409 duplicate_content`
+    claim that only a purge frees — untouched. Rewording a subtitle must never cost a version number.
+
+    Bounded by `normalize.SHORT_DESCRIPTION_MAX_CHARS`, imported rather than restated: upstream owns
+    what "short" means, and a second copy of that number here is how two halves of one agreement
+    drift. Refused rather than truncated — silently cutting a publisher's sentence mid-word is a
+    worse answer than telling them the limit.
+
+    `None` clears the override; `""` sets a deliberately blank one. Two different requests, and the
+    column is nullable so that they stay two.
+    """
+    if text is not None:
+        text = text.strip()
+        if len(text) > SHORT_DESCRIPTION_MAX_CHARS:
+            raise PublishError(
+                "short_description_too_long",
+                errors=[
+                    f"short_description is {len(text)} characters; the limit is "
+                    f"{SHORT_DESCRIPTION_MAX_CHARS}. It is a card subtitle, not a summary — the "
+                    f"module's full prose is its readme, and the authored subtitle is "
+                    f"`module.description`, which this only overrides."
+                ],
+            )
+        if "\n" in text:
+            raise PublishError(
+                "short_description_not_one_line",
+                errors=["short_description is a single line; it is rendered in a card, not a page"],
+            )
+    if not repo.set_module_short_description(namespace, name, text):
+        raise PublishError("module_not_found", errors=[f"{namespace}/{name} is not published here"])
+    return text
 
 
 def _drop_staged_answers(spec_dir: Path) -> list[str]:

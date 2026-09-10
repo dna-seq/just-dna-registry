@@ -142,7 +142,9 @@ function cardView(m: ModuleCard): HTMLAnchorElement {
     h("div", { class: "head" }, iconTile(m, "icon"),
       h("div", {}, h("div", { class: "title" }, m.title || m.name),
         h("div", { class: "id" }, `${m.namespace}/${m.name}`, m.latest_version ? ` @${m.latest_version}` : ""))),
-    h("div", { class: "desc" }, m.description),
+    // `?? `, never `|| ` — an override set to the empty string is a subtitle a publisher deliberately
+    // blanked, and `||` would fall back to the authored one they were overriding away from.
+    h("div", { class: "desc" }, m.short_description ?? m.description),
     h("div", { class: "chips" }, m.stats.categories.slice(0, 4).map((cat) => h("span", { class: "chip static" }, cat))),
     h("div", { class: "meta" },
       h("span", {}, h("b", {}, fmtInt(m.stats.variant_count)), " variants"),

@@ -63,6 +63,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Amend changelog | `amend_changelog(ns, name, v, text, append=)` | `amend-changelog` | bearer |
 | Amend logo | `amend_logo(ns, name, v, logo_path)` | `amend-logo` | bearer |
 | Amend readme (card prose) | `amend_readme(ns, name, v, path_or_text)` | `amend-readme` | bearer |
+| Set card subtitle (module-wide) | `set_short_description(ns, name, text_or_None)` | `set-short-description` | bearer |
 | Browser console over any registry | *(a page, not a method — see [UI.md](UI.md))* | `ui` | optional bearer |
 
 ---
@@ -177,6 +178,13 @@ for a member, any for admin+).
   Takes a `Path` **or** the markdown text: a tool usually has the file, a human fixing one sentence
   has the string. `""` blanks the card. This is the amend that matters most — the readme is where a
   module says what it is *not*, and `description` is one sentence that cannot carry a caveat.
+- **`set_short_description(namespace, name, short_description) -> dict`** — set or clear the
+  registry-held subtitle a listing shows (format 0.7, RM133). **Module-level**, unlike the two above:
+  those describe an artifact, this describes the module a search finds. It overrides only what a card
+  renders — the authored subtitle stays `module.description` in `module_spec.yaml`, so amending this
+  moves no `content_signature`, no `artifact.digest` and no `manifest.inputs`, and spends no version
+  number. `None` clears the override and falls back to the authored subtitle; `""` sets a deliberately
+  blank one. At most 120 characters and one line, refused rather than truncated.
 
 ### Identity & profile (token)
 

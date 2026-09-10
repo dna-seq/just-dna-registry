@@ -301,6 +301,16 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> 
         name=row["name"],
         title=row["title"],
         description=row["description"],
+        # `row.keys()`, never `in row` — `sqlite3.Row.__contains__` scans **values**, so the SIM118
+        # rewrite would turn this projection off for every module whose subtitle happens not to be a
+        # column value. The same trap the four sites next door carry a `noqa` for.
+        #
+        # `or None` is deliberately absent: the override has three states and the empty string is one
+        # of them, a subtitle a publisher deliberately blanked. Collapsing it to `None` would make the
+        # card fall back to the authored `description` they were overriding *away* from.
+        short_description=(
+            row["short_description"] if "short_description" in row.keys() else None  # noqa: SIM118
+        ),
         icon=manifest.display.icon if manifest else row["icon"],
         icon_set=manifest.display.icon_set if manifest else "fomantic",
         color=row["color"],

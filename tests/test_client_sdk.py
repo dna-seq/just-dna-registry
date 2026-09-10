@@ -476,6 +476,10 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ),
     ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/logo"): ("amend_logo",),
     ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/readme"): ("amend_readme",),
+    # Module-level, unlike the readme and logo beside it: those describe an artifact, this describes
+    # the module a search finds, and a subtitle that differed by version would be a card whose text
+    # changed when a patch was published.
+    ("PATCH", "/api/v1/modules/{namespace}/{name}/short-description"): ("set_short_description",),
     ("POST", "/api/v1/modules/{namespace}/{name}/versions/{version}/yank"): ("yank", "unyank"),
     ("GET", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): ("reviews",),
     ("PUT", "/api/v1/modules/{namespace}/{name}/versions/{version}/reviews"): ("review",),

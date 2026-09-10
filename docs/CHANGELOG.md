@@ -8,9 +8,11 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [0.24.0] — unreleased, and not installable
 
-**Client surface: unchanged.** No `RegistryClient` method moved or was added and the API gained no
-route. Two response models grew fields — `ValidationReport` (`carried`, `warnings_summary`) and
-`ModuleDetail` (`clin_sig_concordance`, `authority_precedence`) — which breaks nobody.
+**Client surface: unchanged.** No `RegistryClient` method *moved*. One was added —
+`set_short_description` — and one route with it, `PATCH /modules/{ns}/{name}/short-description`; a
+new method breaks nobody, which is what that word means here. Three response models grew fields:
+`ValidationReport` (`carried`, `warnings_summary`), `ModuleDetail` (`clin_sig_concordance`,
+`authority_precedence`) and `ModuleCard` (`short_description`).
 
 **Read this line before planning against the release.** `just-dna-format` 0.7.0 is **bumped upstream
 and not cut**: all three of their `pyproject.toml` files read `0.7.0` and their tags stop at `v0.6.6`,
@@ -117,6 +119,30 @@ belonging to the tier `enrichment` reports on.
   CLI greys a carried finding, the console renders it as info. By set membership, never by matching
   prose. They describe the compiler's own channel and not the notes this server adds about an upload,
   because a digest that looks complete and is short is one a reader trusts and is wrong about.
+
+### The subtitle a card shows, held beside the module instead of inside it
+
+`short_description` (RM133) is the last of the release's registry items and the only one that adds a
+write path: `PATCH /modules/{ns}/{name}/short-description`, publish rights on the namespace,
+`registry-client set-short-description`.
+
+**Module-level, where the readme and the logo are per version**, because those describe an artifact
+and this describes the module a search finds — a subtitle that differed by version would be a card
+whose text changed when a patch was published.
+
+**And out of the module's identity entirely, which is the whole reason it is a registry field rather
+than a spec key.** `module.description` remains the authored subtitle and a module with no override
+shows it unchanged; the override lives beside the module, so amending it leaves `module_spec.yaml`'s
+bytes and therefore `manifest.inputs`, `content_signature` and the global `409 duplicate_content`
+claim untouched. On a registry where a published version is immutable and a spent version number is
+spent permanently, rewording a subtitle must not cost one. A test reads the digest and the signature
+either side of an amend and asserts they did not move.
+
+`null` clears the override and `""` sets a deliberately blank one — two states, kept apart by a
+nullable column, a `??` in the renderer and a `--clear` flag rather than a spelling of the empty
+string. An authored `short_description:` in `module_spec.yaml` is dropped with a note, the way every
+other registry-owned key is: adopting it would put the subtitle inside `content_signature`, which is
+exactly the coupling the field exists to avoid.
 
 ### What moved that nothing here had to change
 

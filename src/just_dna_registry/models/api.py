@@ -309,7 +309,20 @@ class ModuleCard(BaseModel):
     namespace: str
     name: str
     title: str
-    description: str
+    description: str = Field(
+        description="The **authored** subtitle, `module.description`, exactly as the spec carries it"
+    )
+    short_description: str | None = Field(
+        default=None,
+        description=(
+            "The registry-held **override** of the subtitle a listing shows (format 0.7, RM133), at "
+            "most 120 characters. `None` means the module has no override and a renderer shows "
+            "`description` unchanged — which is not the same as an override set to the empty string, "
+            "a deliberate blank. Held beside the module rather than in the spec so that amending it "
+            "leaves `module_spec.yaml`'s bytes, and therefore `manifest.inputs`, `content_signature` "
+            "and every closure over them, untouched. Render it as `short_description ?? description`"
+        ),
+    )
     icon: str
     icon_set: str = "fomantic"
     color: str

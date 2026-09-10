@@ -794,6 +794,29 @@ class RegistryClient:
         )
         return self._json(resp)
 
+    def set_short_description(
+        self, namespace: str, name: str, short_description: str | None
+    ) -> dict:
+        """Set or clear the registry-held subtitle a listing shows for this module (format 0.7).
+
+        Publish rights on the namespace. **Module-level, not per version**, and out of the module's
+        identity entirely: `module.description` stays the authored subtitle, this overrides what a
+        card renders, and amending it leaves `module_spec.yaml`'s bytes — and therefore
+        `manifest.inputs`, `content_signature` and the global duplicate-content claim — untouched. So
+        rewording a subtitle costs no version number, which on an otherwise immutable registry is the
+        only reason the field exists.
+
+        Pass `None` to **clear** the override and fall back to the authored subtitle; pass `""` for a
+        deliberately blank one. They are two different requests and the server keeps them two. At
+        most 120 characters and one line, refused rather than truncated: silently cutting a
+        publisher's sentence mid-word is a worse answer than naming the limit.
+        """
+        resp = self._http.patch(
+            f"/modules/{namespace}/{name}/short-description",
+            json={"short_description": short_description},
+        )
+        return self._json(resp)
+
     def get_tarball(self, namespace: str, name: str, version: str, dest: Path) -> Path:
         """Download a version as a single streamable `tar.gz` to `dest`. `version` may be `"latest"`.
         Returns the path."""

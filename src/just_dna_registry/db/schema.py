@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS modules (
     name           TEXT NOT NULL,
     title          TEXT NOT NULL,
     description    TEXT NOT NULL DEFAULT '',
+    -- The registry-held card subtitle (0.24, format 0.7 RM133). NULL means the module has no
+    -- override and the card shows the authored `description`; '' is a deliberate blank one.
+    short_description TEXT,
     icon           TEXT NOT NULL DEFAULT 'database',
     color          TEXT NOT NULL DEFAULT '#6435c9',
     genome_build   TEXT NOT NULL DEFAULT 'GRCh38',
@@ -198,6 +201,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "created_at" not in mod_cols:
         # First-publish stamp, distinct from `updated_at` (which advances on every republish).
         conn.execute("ALTER TABLE modules ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+
+    if "short_description" not in mod_cols:
+        # 0.24: the registry-held override of the card subtitle (format 0.7, RM133). Nullable rather
+        # than `NOT NULL DEFAULT ''`, because *no override* and *an override that is blank* are two
+        # states a reader has to tell apart — the first shows `description`, the second shows nothing.
+        conn.execute("ALTER TABLE modules ADD COLUMN short_description TEXT")
 
     ver_cols = {row["name"] for row in conn.execute("PRAGMA table_info(versions)").fetchall()}
     if "needs_upgrade" not in ver_cols:

@@ -294,6 +294,43 @@ def amend_logo(
     typer.echo(f"✓ {namespace}/{name}@{version} logo updated → {logo_entry.get('name')}")
 
 
+@app.command("set-short-description")
+def set_short_description(
+    namespace: str,
+    name: str,
+    text: str | None = typer.Argument(None, help="The subtitle, at most 120 characters, one line"),
+    clear: bool = typer.Option(
+        False, "--clear", help="Remove the override so the card falls back to `module.description`"
+    ),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Set the registry-held subtitle a listing shows for this module (format 0.7).
+
+    Module-level, not per version, and out of the module's identity: the authored subtitle stays in
+    `module_spec.yaml` and this overrides only what a card renders, so rewording it spends no version
+    number and moves no `content_signature`.
+
+    `--clear` and an empty string are **two different requests**, which is why `--clear` is a flag
+    rather than a spelling of `""`: clearing falls back to the authored `module.description`, while
+    `""` is a subtitle deliberately blanked. A card cannot show both, and neither can a CLI that
+    collapsed them.
+    """
+    if clear and text is not None:
+        typer.secho("pass either TEXT or --clear, not both", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    if not clear and text is None:
+        typer.secho("pass TEXT, or --clear to remove the override", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    with _client(url, token, need_token=True) as c:
+        result = c.set_short_description(namespace, name, None if clear else text)
+    now = result.get("short_description")
+    if now is None:
+        typer.echo(f"✓ {namespace}/{name} override cleared — the card shows module.description")
+    else:
+        typer.echo(f"✓ {namespace}/{name} card subtitle → {now!r}")
+
+
 @app.command("amend-readme")
 def amend_readme(
     namespace: str,

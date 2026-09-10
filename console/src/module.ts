@@ -50,7 +50,7 @@ export async function viewModule(root: HTMLElement, ns: string, name: string, pa
           m.curated ? badge("good", "curated") : null, " ", trustBadge(m.resolution)),
         h("div", { class: "mono muted" }, `${ns}/${name}`, m.latest_version ? ` @${m.latest_version}` : "", " ",
           h("button", { class: "small", style: "margin-left:6px", onclick: () => copyText(`${ns}/${name}`) }, "copy id")),
-        h("p", { class: "muted", style: "margin:6px 0 0" }, m.description),
+        h("p", { class: "muted", style: "margin:6px 0 0" }, m.short_description ?? m.description),
         h("div", { class: "row small muted", style: "margin-top:8px" },
           m.owner ? h("span", {}, "owner ", h("a", { href: `#/${qs({ owner: m.owner })}` }, m.owner)) : null,
           m.license ? h("span", {}, "license ", h("b", {}, m.license)) : null,

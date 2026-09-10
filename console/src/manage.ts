@@ -36,6 +36,37 @@ export function managePanel(m: ModuleDetail, ns: string, name: string, version: 
         } catch (err) { toast(errorText(err), "bad"); }
       } }, "Save changelog"))));
 
+  // The registry-held card subtitle (format 0.7). Module-level, so it is not scoped by the version
+  // picker above, and the note says so — a control that ignores the picker beside three that obey it
+  // is a control whose scope has to be written down.
+  const subtitle = h("input", {
+    type: "text", maxlength: "120",
+    placeholder: "Overrides the authored module.description on cards. Leave empty to show it instead.",
+  });
+  subtitle.value = m.short_description ?? "";
+  out.append(h("div", {}, h("h3", {}, "Card subtitle"),
+    h("p", { class: "small muted" },
+      `Registry-held and module-wide: it overrides what a listing shows without touching module_spec.yaml, so no version is spent and no digest moves. The authored subtitle is "${m.description}".`),
+    subtitle,
+    h("div", { class: "row" },
+      h("button", { class: "primary", onclick: async () => {
+        try {
+          await api<unknown>("PATCH", route(ROUTES.shortDescription, { namespace: ns, name }),
+            { body: { short_description: subtitle.value } });
+          toast("card subtitle saved", "good");
+        } catch (err) { toast(errorText(err), "bad"); }
+      } }, "Save subtitle"),
+      // A separate button rather than "save an empty box", because clearing the override and setting
+      // a deliberately blank subtitle are two different requests and the server keeps them two.
+      h("button", { onclick: async () => {
+        try {
+          await api<unknown>("PATCH", route(ROUTES.shortDescription, { namespace: ns, name }),
+            { body: { short_description: null } });
+          subtitle.value = "";
+          toast("override cleared — the card shows module.description", "good");
+        } catch (err) { toast(errorText(err), "bad"); }
+      } }, "Clear override"))));
+
   const readme = h("textarea", { placeholder: "README.md — the prose on the card. Say what the module is, and what it is not.", style: "min-height:180px" });
   readme.value = m.readme;
   out.append(h("div", {}, h("h3", {}, "Readme"), readme,
