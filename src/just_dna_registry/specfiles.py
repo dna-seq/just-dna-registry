@@ -94,6 +94,14 @@ TABLE_KIND_CSVS: tuple[str, ...] = (
 # effect sizes, RM90). Adding them here is not cosmetic — this tuple is what `revalidate` and
 # `upgrade` rebuild a spec directory from, so a fact table missing from it is a fact table silently
 # dropped the first time a module is re-published. That is precisely how `licensing.csv` was lost.
+#
+# The last two are 0.7's, and they are one record in two tables (RM130): `clin_sig_concordance.csv`
+# holds the contested subjects and `clin_sig_authority_calls.csv` what each authority said about
+# each one. They are derived and therefore recoverable by re-running `enrich` — but a re-publish
+# that drops them silently *shrinks* the module, and the shrinkage is invisible from the outside
+# because a concordance record's absence and a module with nothing contested render identically.
+# That is this file's own recurring failure (`licensing.csv`, the readme, `verification.json`) at
+# the one table whose whole purpose is to say the authorities disagreed.
 FACT_CSVS: tuple[str, ...] = (
     "frequencies.csv",
     "gene_metrics.csv",
@@ -102,12 +110,32 @@ FACT_CSVS: tuple[str, ...] = (
     "gene_validity.csv",
     "clinical_assertions.csv",
     "gwas_effects.csv",
+    "clin_sig_concordance.csv",
+    "clin_sig_authority_calls.csv",
 )
 
 # The rsid↔coordinate table. Produced by the enricher (the only tier permitted to fetch) and
 # consumed by the compiler, which never fetches. Not an input-hash member and not an output parquet
 # — its identity is `manifest.compilation.resolution_signature`.
 RESOLUTION_CSV: str = "resolution.csv"
+
+#: The author's overlay (format 0.7, RM124): one row per correction they are making to a *derived*
+#: value, with `reason` required — which is what makes it a record rather than a knob.
+#:
+#: **Authored, and inside `SIGNATURE_INPUTS`** — the first file to join that tuple since it was
+#: written. Upstream's `content_signature` reads it (it is in `compiler._INPUT_FILES`) over its
+#: value cells only (S87/RM180: `table`/`subject`/`member`/`field`/`operation`/`value`, never
+#: `reason`/`decided_by`/`decided_at`), so rewording a justification does not mint a new
+#: `409 duplicate_content` claim while changing what the overlay *does* correctly does. We do not
+#: compute that hash ourselves and must not start: `integrity.content_signature` owns which columns
+#: are identity, and a second reader of that rule here is the drift `RENAMED_ON_UPLOAD` was written
+#: to end.
+#:
+#: Upstream's `INTEGRATION_0_7.md` § 3 called recognizing this file the one item in the 0.7 release
+#: with a deadline, and the reason is worse than for an ordinary table. An overlay row is an
+#: author's recorded judgement that a derived value is wrong; dropping it on the next re-publish
+#: silently restores the value they rejected, and the module goes on compiling green.
+OVERRIDES_CSV: str = "overrides.csv"
 
 # Optional structured provenance authored beside the spec. Shipped and hashed like a log, kept out
 # of `artifact.digest`.
@@ -199,7 +227,9 @@ DERIVED_DIR: str = DERIVED_SUBDIR
 #: the manifest attests. A top-level `*.log` is equally discovered and equally left alone.
 LOGS_DIR: str = "logs"
 
-SPEC_DATA_FILES: tuple[str, ...] = CORE_CSVS + TABLE_KIND_CSVS + FACT_CSVS + (RESOLUTION_CSV,)
+SPEC_DATA_FILES: tuple[str, ...] = (
+    CORE_CSVS + TABLE_KIND_CSVS + FACT_CSVS + (RESOLUTION_CSV, OVERRIDES_CSV)
+)
 
 #: Every accepted *spelling* of every spec data file. For most names that is the name itself;
 #: `sidecar_spellings` is what makes the ledger's two names one entry rather than a special case.
@@ -277,7 +307,12 @@ _HOISTABLE: frozenset[str] = frozenset(RECOGNIZED_SPEC_FILES) | set(RENAMED_ON_U
 #: Exactly what `just_dna_compiler.compiler.content_signature` reads. Mirrors `_INPUT_FILES`: the
 #: fact sidecars and `resolution.csv` are excluded because they are derived, not authored, so two
 #: modules with identical authored data share a signature regardless of which sidecars were run.
-SIGNATURE_INPUTS: tuple[str, ...] = (SPEC_YAML,) + CORE_CSVS + TABLE_KIND_CSVS
+#: `overrides.csv` joins it at format 0.7 and is the reason this tuple is not simply "the authored
+#: tables": the overlay is authored, is hashed, and is not a table kind. It stays root-level like
+#: every other member, which is what keeps `DERIVED_DIR` unable to move a `content_signature`.
+SIGNATURE_INPUTS: tuple[str, ...] = (
+    (SPEC_YAML,) + CORE_CSVS + TABLE_KIND_CSVS + (OVERRIDES_CSV,)
+)
 
 
 def is_spec_file(name: str) -> bool:

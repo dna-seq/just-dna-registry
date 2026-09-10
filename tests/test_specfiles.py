@@ -30,6 +30,7 @@ from just_dna_registry.specfiles import (
     FACT_CSVS,
     LEGACY_README_FILE,
     LICENSING_CSV,
+    OVERRIDES_CSV,
     PROVENANCE_FILE,
     README_FILE,
     RECOGNIZED_SPEC_FILES,
@@ -52,7 +53,8 @@ def test_table_kinds_match_the_compiler() -> None:
     """A table kind the compiler accepts but the registry doesn't know is a module we reject for no
     reason the author can act on."""
     assert set(_TABLE_KIND_CSVS) == set(SPEC_DATA_FILES) - set(CORE_CSVS) - set(FACT_CSVS) - {
-        RESOLUTION_CSV
+        RESOLUTION_CSV,
+        OVERRIDES_CSV,
     }
 
 
@@ -133,6 +135,78 @@ def test_the_verification_attestation_is_recognized_but_not_signed_over() -> Non
     assert VERIFICATION_FILE in RECOGNIZED_SPEC_FILES
     assert VERIFICATION_FILE not in SIGNATURE_INPUTS
     assert is_spec_file(VERIFICATION_FILE)
+
+
+_OVERLAY = (
+    "table,subject,member,field,operation,value,reason,decided_by,decided_at\n"
+    "frequencies.csv,rs4244285,afr,faf95,update,0.12,"
+    "the gnomAD v4.1 AFR cell is a duplicate of the AMR one,curator,2026-09-01\n"
+)
+#: Same overlay, same operation, a reworded justification. `content_identity_exclusions(OverrideRow)`
+#: is `{reason, decided_by, decided_at}`, so this must sign identically to `_OVERLAY`.
+_OVERLAY_REWORDED = _OVERLAY.replace(
+    "the gnomAD v4.1 AFR cell is a duplicate of the AMR one", "duplicate of the AMR cell"
+)
+
+
+def _signature(client, api_key, *extra: tuple[str, bytes]) -> str | None:
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/plain/validate",
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+            *[("files", (name, blob, "text/csv")) for name, blob in extra],
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["content_signature"]
+
+
+def test_an_overlay_survives_the_rebuild_and_moves_the_signature(client, api_key, app) -> None:
+    """`overrides.csv` (format 0.7, RM124) at both of the properties that make recognizing it safe.
+
+    **Carried forward**, which is the deadline item: an overlay row is the author's recorded
+    judgement that a derived value is wrong, so a re-publish that drops it silently restores the
+    value they rejected — worse than the `licensing.csv` loss of 0.16.2, because the module goes on
+    compiling green and the correction is simply gone.
+
+    **In `content_signature`, by its value cells only** (upstream S87/RM180). Both halves are
+    asserted here rather than trusted, because they pull in opposite directions and this file is
+    where the registry would notice if upstream's exclusion set ever moved: adding an overlay is a
+    change of content and must sign differently, while rewording the `reason` is prose and must not
+    — a signature is this service's one permanent global claim, and a reworded justification that
+    minted a fresh `409 duplicate_content` slot would be unrecoverable without a purge.
+    """
+    from just_dna_registry.services.upgrade import prepare_version_upgrade
+
+    plain = _signature(client, api_key)
+    overlaid = _signature(client, api_key, (OVERRIDES_CSV, _OVERLAY.encode()))
+    reworded = _signature(client, api_key, (OVERRIDES_CSV, _OVERLAY_REWORDED.encode()))
+    assert plain and overlaid and reworded
+    assert overlaid != plain, "an overlay is authored content and has to move the signature"
+    assert reworded == overlaid, "reason/decided_by/decided_at are prose and must not move it"
+
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"},
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+            ("files", (OVERRIDES_CSV, _OVERLAY.encode(), "text/csv")),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, resp.text
+    manifest = ModuleManifest.model_validate(resp.json())
+    assert manifest.content_signature == overlaid
+
+    storage = app.state.storage
+    prep = prepare_version_upgrade(storage, "just-dna-seq", "coronary", "1.0.0", manifest)
+    assert prep is not None
+    assert prep.files[OVERRIDES_CSV] == _OVERLAY.encode()
 
 
 def test_an_attestation_survives_the_rebuild_that_used_to_drop_it(client, api_key, app) -> None:
