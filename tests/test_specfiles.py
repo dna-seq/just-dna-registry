@@ -164,6 +164,56 @@ def _signature(client, api_key, *extra: tuple[str, bytes]) -> str | None:
     return resp.json()["content_signature"]
 
 
+def test_an_uploaded_staging_directory_never_seeds_the_servers_own_enrichment(
+    client, api_key, app
+) -> None:
+    """A publisher's `*.staging/` is dropped, and the drop is reported rather than silent.
+
+    From enricher 0.7 a run stages each live link's **raw answer** into `<name>.staging/answers.csv`
+    and the next run *resumes* from it — that is the transaction, and a crashed run leaving one is
+    the feature. An upload is extracted unfiltered and unrecognized paths are deliberately left alone
+    (the compiler tolerates unknown files as a contract), so without this the fabricated answers would
+    be assembled into a `resolution.csv` that this server compiles from and stamps
+    `compiled_by="marketplace-server"` — its own trust token over rows it never fetched.
+
+    The influence is not new and the test does not pretend it is: a publisher may ship a
+    `resolution.csv` and the enricher merges it as authoritative, deliberately. What is new is that a
+    staging directory is attested nowhere and is deleted on a successful commit, so the same influence
+    would leave no trace. Dropped rather than refused — nothing about the module is wrong — and the
+    note is asserted, because a server that silently edits an upload is the thing `info` exists to
+    prevent.
+    """
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/validate",
+        files=[
+            ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
+            ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
+            # Both spellings. The enricher writes the dotted one; `Path.glob` matches a leading dot
+            # where a shell glob would not, and this is where that would be found out.
+            ("files", (
+                ".coronary.staging/answers.csv",
+                b"rsid,chrom,start\nrs4244285,10,1\n",
+                "text/csv",
+            )),
+            ("files", (
+                "coronary.staging/answers.csv",
+                b"rsid,chrom,start\nrs4244285,10,2\n",
+                "text/csv",
+            )),
+        ],
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    dropped = [note for note in body["info"] if ".staging/" in note]
+    assert len(dropped) == 2, body["info"]
+    assert any(note.startswith("dropped `.coronary.staging/`") for note in dropped), dropped
+    # And the module is untouched by it: the spec is still valid and still signs as itself.
+    assert body["valid"] is True
+    assert body["content_signature"] == _signature(client, api_key)
+
+
 def test_an_overlay_survives_the_rebuild_and_moves_the_signature(client, api_key, app) -> None:
     """`overrides.csv` (format 0.7, RM124) at both of the properties that make recognizing it safe.
 

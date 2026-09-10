@@ -52,7 +52,7 @@ from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
-from just_dna_registry.services.enrich import enrich_spec, unresolved_hint
+from just_dna_registry.services.enrich import enrich_spec, enricher_available, unresolved_hint
 from just_dna_registry.services.ingest import ingest_manifest, now_iso
 from just_dna_registry.specfiles import (
     README_FILE,
@@ -291,10 +291,51 @@ def normalize_spec(spec_dir: Path) -> SpecNormalization:
     """
     layout = normalize_spec_layout(spec_dir)
     return SpecNormalization(
-        info=layout.notes + normalize_module_block(spec_dir),
+        info=layout.notes + _drop_staged_answers(spec_dir) + normalize_module_block(spec_dir),
         warnings=layout.warnings,
         layout=layout,
     )
+
+
+def _drop_staged_answers(spec_dir: Path) -> list[str]:
+    """Remove any `*.staging/` an upload carried, and say so. Returns notes.
+
+    **The server's enrichment is the server's, and this is what keeps it that way.** From enricher
+    0.7 an `enrich()` run stages each live link's *raw answer* into `<name>.staging/answers.csv`
+    beside `resolution.csv`, and **the next run resumes from it** — a crashed run leaving one is the
+    feature. An upload is extracted unfiltered and unrecognized paths are deliberately left where
+    they are (the compiler tolerates unknown files as a contract, S16), so a publisher who shipped a
+    hand-written staging directory would be handing this server a transaction journal to resume: the
+    fabricated answers would be assembled into a `resolution.csv` that the trusted party then compiles
+    from and stamps `compiled_by="marketplace-server"`.
+
+    **The influence is not new; the silence would be.** A publisher may already ship a
+    `resolution.csv`, which the enricher treats as authoritative and merges — deliberately, and it is
+    why `upgrade` carries one forward. The difference is that `resolution.csv` is a recognized file,
+    attested in `manifest.derived`, and a downloader receives it and can hash it. A staging directory
+    is attested nowhere and is **deleted on a successful commit**, so the same influence would leave
+    no trace at all. So it is dropped rather than refused: nothing about the module is wrong, and a
+    `422` would charge an author for a directory their tooling left behind.
+
+    Named as a `notes` entry (`ValidationResult.info` grade) because the server changed the upload,
+    which is exactly what that channel is for. The suffix comes from `transaction.STAGING_SUFFIX`
+    rather than being spelled here — it is upstream's name for their own journal.
+    """
+    if not enricher_available():
+        return []
+    from just_dna_enricher.transaction import STAGING_SUFFIX
+
+    notes: list[str] = []
+    for candidate in sorted(spec_dir.glob(f"*{STAGING_SUFFIX}")):
+        if not candidate.is_dir():
+            continue
+        shutil.rmtree(candidate, ignore_errors=True)
+        notes.append(
+            f"dropped `{candidate.name}/` from the upload: that is the enricher's own staging "
+            f"directory and a run here would resume from it, so this server's enrichment would be "
+            f"answering with rows it did not fetch"
+        )
+    return notes
 
 
 def normalize_spec_layout(spec_dir: Path) -> LayoutPlan:
