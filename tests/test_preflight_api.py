@@ -49,6 +49,14 @@ module:
   report_title: Coronary
 genome_build: GRCh38
 """
+#: Authored coordinates *and* an `effect_allele` naming a base that is not at the locus (ref G,
+#: alt A, effect allele T). RM91 grades that finding as a warning modeless and an **error** under
+#: strict, which makes it the shape `would_publish` needs to be tested against: a strict-only
+#: refusal that is not an unresolved position, on a spec with nothing left to resolve.
+_VARIANTS_STRICT_ONLY = (
+    "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category,effect_allele\n"
+    "rs4244285,10,94781859,G,A,A/G,-0.8,risk,het,CYP2C19,cyp2c19,T\n"
+)
 # Authored coordinates, so nothing needs resolving and the offline path is meaningful.
 _VARIANTS = (
     "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,gene,category\n"
@@ -1448,6 +1456,54 @@ def test_the_warning_channel_is_classified_and_the_digest_accounts_for_all_of_it
     ).json()
     assert sum(nested["warnings_summary"].values()) <= len(nested["warnings"])
     assert set(nested["carried"]) <= set(nested["warnings"])
+
+
+def test_a_strict_only_refusal_that_is_not_a_position_still_blocks_the_verdict(
+    tmp_path: Path,
+) -> None:
+    """`would_publish` composes the strict verdict, not only the module-level half and `unresolved`.
+
+    **The regression this exists for was introduced by the fix next door.** Grading after enrichment
+    meant carrying `would_publish_module_level` from the modeless gate — correct, because strictness
+    changes severity only and a strict-only finding is a per-row judgement that must not flip a field
+    answering about the module. What it severed is the link `_would_publish` used to get for free:
+    with `validation.valid` no longer implied by the module-level field, a strict-only error that is
+    **not** an unresolved position sails through. RM91's is exactly that shape — an `effect_allele`
+    naming a base absent from the locus, which inverts a conclusion rather than breaking it — and
+    `compile_module` re-runs the mode ladder at strict severity, so the publish this predicts refuses.
+    `registry-client check` would have printed `✓ would publish` over it.
+
+    Three assertions rather than one, because the point is that they disagree and each is right:
+    the spec is invalid under strict, nothing *module-level* is wrong with it, and it would not
+    publish. Collapsing any two of those is how the bug got in.
+    """
+    client = _app(tmp_path)
+    body = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": True, "strict": True},
+        files=_parts(variants=_VARIANTS_STRICT_ONLY),
+        headers=_AUTH,
+    ).json()
+
+    assert body["validation"]["valid"] is False
+    assert any("effect_allele" in e for e in body["validation"]["errors"])
+    assert body["validation"]["would_publish_module_level"] is True
+    assert body["would_publish"] is False
+    # The enrichment ran and had nothing to say about positions — which is what makes this a test of
+    # the composition rather than of the `unresolved` gate that was already there.
+    assert body["enrichment"] is not None
+    assert not body["enrichment"]["unresolved"]
+
+    # And the same spec is publishable as far as the *modeless* pre-flight is concerned, which is the
+    # asymmetry `/validate` and `/check` are supposed to render differently rather than identically.
+    lenient = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": True, "strict": False},
+        files=_parts(variants=_VARIANTS_STRICT_ONLY),
+        headers=_AUTH,
+    ).json()
+    assert lenient["validation"]["valid"] is True
+    assert lenient["would_publish"] is True
 
 
 def test_a_newer_client_is_told_what_this_instance_validates_against(tmp_path: Path) -> None:

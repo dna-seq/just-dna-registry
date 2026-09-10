@@ -623,7 +623,7 @@ def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
     if prep.dropped:
         dropped = sum(len(c) for c in prep.dropped.values())
         bits.append(f"{dropped} column(s)/key(s) trimmed")
-    if prep.gap.acts_by_default:
+    if prep.contract_acts:
         bits.append(f"contract recompile — {prep.gap.describe()} (digest moves)")
     if prep.verdict.acts_by_default:
         # Named as a *measurement*, not as a version difference, because that is what makes it act

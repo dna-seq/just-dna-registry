@@ -1014,9 +1014,22 @@ def _would_publish(validation: ValidationReport, enrichment: EnrichmentReport) -
 
     The module-level half is `validation.would_publish_module_level` rather than a second copy of
     those three gates, so the field `/validate` publishes cannot disagree with the verdict here.
+
+    **`validation.valid` is the first conjunct and it is not redundant — 0.24 made it load-bearing.**
+    The module-level field is now carried from the *modeless* gate, deliberately: strictness changes
+    severity only, so a strict-only finding is a per-row judgement and must not flip a field that
+    answers about the module. That severed the link this composition used to get for free. A
+    strict-only error which is *not* an unresolved position — `effect_allele` naming a base that is
+    not at the locus (RM91), and the table-level checks of RM93 — would otherwise pass a modeless
+    gate, run enrichment, fail the strict re-grade, and still be composed into `would_publish: true`,
+    while the publish it predicts refuses: `compile_module` re-runs the mode ladder at strict
+    severity. `registry-client check` would print `✓ would publish` over it, which is this codebase's
+    named worst case at the endpoint that exists to prevent it. For a non-strict run the conjunct is
+    a no-op — `validation` is the gate, and an invalid gate never reaches here.
     """
     return (
-        validation.would_publish_module_level
+        validation.valid
+        and validation.would_publish_module_level
         and not enrichment.ref_mismatches
         and not any(s.fatal for s in enrichment.stale_rsids)
         and not (validation.strict and enrichment.unresolved)
