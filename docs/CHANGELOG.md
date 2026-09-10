@@ -6,6 +6,66 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.25.0] — unreleased
+
+**Client surface: unchanged.** No `RegistryClient` method moved. One was added, `cache_status()`,
+with one route behind it (`GET /api/v1/caches`); a new method breaks nobody, which is what that word
+means here. No existing response model changed.
+
+The release turns this service into a **caching proxy for the clients that cannot hold the
+snapshots**. The enricher's lanes are fourteen multi-gigabyte artifacts, and every consumer that is
+not a provisioned server — a module author, an agent, a `just-module-creator` session, a
+`just-dna-lite` install — has none of them, so the whole authoring half of the ecosystem was
+available only to whoever had already downloaded them. This box has them. The standing position from
+here: **a thin client's cache miss is answered by the registry, and the registry's own miss is
+answered by the remote source.** Install-time annotation is untouched and stays self-contained; this
+is an authoring and publish-time surface, and saying so is what stops it becoming a runtime
+dependency for every install.
+
+### The meter has to come before the proxy, because the budget cannot be bought
+
+`pacing.PaceLedger` lands ahead of the routes that will use it. A proxy puts every caller's egress on
+this deployment's single IP, and the upstreams throttle by IP: gnomAD publishes ten requests per
+sixty seconds and sells no API key at any price, so there is no quota to top up and no per-caller
+scoping — and it is the same allowance `/check?frequencies=true` needs to gate a publish. A proxy
+sized wrongly eats the publishing capability.
+
+- **The units are not exchangeable.** One fungible egress counter would let a caller spend the
+  ten-per-minute gnomAD allowance at the price of a three-per-second eutils call, so each upstream
+  carries its own budget and its own spacing. gnomAD's allowance is two orders of magnitude below the
+  others and the reason sits in `UPSTREAMS` beside the number.
+- **The boundary is strict.** "The first N queries at the usual pace" has to include the Nth, so tier
+  1 begins at N+1. Computed by doubling rather than through `log2`, which lands on the wrong side of
+  an exact power of two often enough to matter.
+- **The cooldown is on the allowance, not the tier.** Carrying the tier down one step per clean day
+  was the first attempt and has a hole a caller can sit in forever — spending exactly twice the
+  allowance every day ends each day at tier 1, carries 0, and returns the whole free tier every
+  morning. Halving the allowance per consecutive over-day ratchets; one clean day restores it.
+- The remedy sentence is **per upstream**, because "obtain a personal key" is wrong for all three and
+  a caller can check: gnomAD sells none, NCBI's paces whoever holds it (so ours would not help them
+  and theirs must not be sent here), Ensembl issues none. The one remedy true everywhere is the point
+  of the release — provision the snapshot, or run the enricher yourself.
+
+Process-wide for the reason `shared_lookup_clients()` is, and deliberately not in the catalog DB:
+that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
+from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
+
+### `GET /api/v1/caches` — the question a thin client has to be able to ask
+
+Anonymous, read-only, and it reports every lane rather than the seven a pass here opens.
+
+- **Three states, not two.** `partial` — a directory holding something that is not a readable
+  snapshot — is the one state provisioning *refuses* to act on rather than overwriting, since it
+  never deletes. Reporting it as `absent` tells an operator to run a pull that is going to decline.
+- **Every absent lane carries the reason as a field**, in the sentence upstream recorded beside the
+  lane, plus `licence_skip` for the case that makes a pull futile no matter how often it is run.
+- **No filesystem path is on the wire, and none may be added.** Lane presence is the same class of
+  operational fact `/health` already publishes unauthenticated; the directory layout is not. The
+  argument that does *not* license the endpoint, and is written down so it is not reached for: a
+  caller cannot enumerate this through `/check`, which requires the `PUBLISH` capability.
+- It composes `lane_presence()` (0.24.1) rather than resolving a second time. Two projections of one
+  registry is the drift upstream's `CACHE_LANES` and our own `6ddd430` each exist to end.
+
 ## [0.24.0] — unreleased, and not installable
 
 **Client surface: unchanged.** No `RegistryClient` method *moved*. One was added —

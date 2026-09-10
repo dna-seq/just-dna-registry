@@ -51,6 +51,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Validate a spec | `validate(ns, name, spec_dir)` | `validate` | bearer |
 | Full publish dry run | `check(ns, name, spec_dir)` | `check` | bearer |
 | Server liveness | `health()` | *(programmatic)* | — |
+| Which snapshots it holds | `cache_status()` | `caches` | — |
 | Exchange key for a JWT | `issue_jwt_token(api_key)` | *(programmatic)* | api key |
 | Self-register | `register(install_id, account)` | `register` | install-id |
 | Namespace availability | `namespace_available(ns)` | `namespace-available` | — |
@@ -82,6 +83,18 @@ with RegistryClient("https://module-registry.just-dna.life", token="mk_live_…"
 Non-2xx responses raise **`RegistryError(status_code, detail)`**.
 
 ### Reads (no token)
+
+- **`cache_status() -> CacheStatusReport`** — which snapshot lanes that deployment can read, and for
+  an absent one the route it would arrive by and the reason it has not. The question to ask *before*
+  deciding whether to provision fourteen multi-gigabyte snapshots locally or lean on a registry that
+  already has them, and the one to ask *after* a `check` reports a source skipped — the reason is
+  usually here rather than in the spec.
+
+  Three states, not two: `present`, `absent`, and **`partial`** for a directory holding something
+  that is not a readable snapshot. The last is the case provisioning declines to act on rather than
+  overwriting, so it needs a different move (shift the directory aside) than `absent` does. Read
+  `licence_skip` beside a gated lane: a lane the deployment's declared use declines will never arrive
+  from a pull however many times one is run. No filesystem paths come back, by design.
 
 - **`list_modules(*, q=None, category=None, gene=None, genome_build=None, owner=None, license=None,
   namespace=None, featured=None, include_blacklisted=False, has_gene_validity=None,

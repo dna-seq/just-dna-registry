@@ -1093,3 +1093,127 @@ class LookupMatch(BaseModel):
 
 class LookupBatchResponse(BaseModel):
     results: list[LookupMatch] = Field(default_factory=list)
+
+
+class CacheLaneStatus(BaseModel):
+    """One snapshot lane as `GET /caches` reports it — `services/enrich.lane_status()` builds these.
+
+    Every field is derived from upstream's own `CacheLane` registry (`caches.CACHE_LANES`, RM176) or
+    from a predicate `prepare_lane` already uses. Nothing here is a list kept by hand: that is what
+    the registry replaced, and ours had drifted by eight lanes when it was one.
+
+    **No filesystem path appears on this model, and none may be added.** Lane *presence* is already
+    inferable from `/check`'s skip reasons one pass at a time, so the state is not new information;
+    the server's directory layout is, and it is the half an anonymous reader has no business with.
+    `configured` carries the operator-actionable part of what a path would have said — whether this
+    deployment pinned the location or is letting the lane's own ladder find it.
+    """
+
+    name: str = Field(description="The lane's name in the enricher's registry, e.g. `clinvar`")
+    serves: str = Field(description="What this snapshot is for, in the lane's own words")
+    #: `present` / `partial` / `absent`. **`partial` is not a nicety** — it is a directory holding
+    #: something that is not a readable snapshot (a build that died after its downloads, a payload
+    #: deleted beside its `release.json`, a stray `.part`), and it is the one state where
+    #: provisioning refuses to act rather than overwriting. Folding it into `absent` would send an
+    #: operator to run a pull that will not fix it.
+    state: str = Field(description="present | partial | absent")
+    release: str | None = Field(
+        default=None,
+        description=(
+            "Which release the snapshot on disk holds, as its own `release.json` states it. `null` "
+            "means the snapshot does not say — never a placeholder, because a caller has to be able "
+            "to tell a release from a snapshot that cannot name one."
+        ),
+    )
+    release_unreadable: bool = Field(
+        default=False,
+        description=(
+            "A `release.json` is present and could not be parsed. The snapshot is still usable, so "
+            "this is reported beside `state: present` rather than downgrading it — a provenance "
+            "failure is not a data failure."
+        ),
+    )
+    route: str = Field(
+        description=(
+            "How this lane would arrive: `pullable` (published, download it), `buildable` (nothing "
+            "publishes it, build it here) or `none`. Read from the lane's `ensure` and `rebuild` "
+            "stages independently — never inferred from one, since a lane can have an `ensure` and "
+            "no `rebuild` for an acquisition reason rather than a division of labour."
+        )
+    )
+    route_reason: str | None = Field(
+        default=None,
+        description=(
+            "Why a stage is missing, in the sentence upstream recorded beside the lane "
+            "(`unpublished` / `unbuilt`) — a personal key, terms nobody publishes, a permission "
+            "never established, or a snapshot another tier cuts. Never a sentence written here."
+        ),
+    )
+    build_command: str | None = Field(
+        default=None,
+        description=(
+            "The command that builds this lane, as an operator types it. Carried on the lane rather "
+            "than composed from its name: two lanes are not `<name> build`, and composing printed "
+            "commands that do not exist."
+        ),
+    )
+    licence_gated: bool = Field(
+        default=False,
+        description="Acquiring this lane applies `declared_use`, because its source restricts use",
+    )
+    licence_skip: str | None = Field(
+        default=None,
+        description=(
+            "Why this deployment's `declared_use` would decline to acquire the lane, if it would. "
+            "A lane sitting absent behind this will never arrive from a pull no matter how often "
+            "one is run, which is a different instruction to an operator from `not provisioned`."
+        ),
+    )
+    read_here: bool = Field(
+        default=False,
+        description=(
+            "Whether a pass in *this service* opens the lane. Deliberately narrower than the set of "
+            "lanes an operator can provision: the same box often runs authoring commands, and a "
+            "lane nothing here reads is still worth reporting rather than hiding."
+        ),
+    )
+    group: str | None = Field(
+        default=None,
+        description="Which group of passes reads it here (`resolution`, `pgx`, …); null if none do",
+    )
+    configured: bool = Field(
+        default=False,
+        description=(
+            "Whether this deployment pins the lane's location, as opposed to letting the enricher's "
+            "own ladder find it. Not the path itself — see the class docstring."
+        ),
+    )
+    parents: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Lanes this one is derived from. Empty for every lane that acquires its own bytes, "
+            "which is all but one — and the field an operator asking why an increment is empty needs."
+        ),
+    )
+
+
+class CacheStatusReport(BaseModel):
+    """`GET /caches` — which snapshots this deployment holds, and for the rest, why not.
+
+    Anonymous, and the licence for that is the same one `/health` already runs on: it publishes the
+    enrichment gate's occupancy unauthenticated, and lane state is the same class of operational fact
+    about the box. Note that *"a caller could already enumerate this through `/check`"* is **not** the
+    argument — `/check` requires the `PUBLISH` capability and an anonymous caller has none. If
+    `/health` ever stops reporting operational state, this endpoint's licence goes with it.
+    """
+
+    enricher_available: bool = Field(
+        description=(
+            "Whether the network tier is installed at all. `false` makes every lane `absent` with no "
+            "route, which is a deployment fact rather than fourteen separate failures."
+        )
+    )
+    declared_use: str = Field(
+        description="The deployment's declared use, which is what `licence_skip` is computed against"
+    )
+    lanes: list[CacheLaneStatus] = Field(default_factory=list)

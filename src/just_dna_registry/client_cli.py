@@ -77,6 +77,73 @@ def show_versions(url: str | None = UrlOpt) -> None:
     typer.secho("compatible ✓", fg=typer.colors.GREEN)
 
 
+@app.command("caches")
+def cache_status(
+    url: str | None = UrlOpt,
+    absent_only: bool = typer.Option(
+        False, "--absent-only", help="Show only the lanes this deployment cannot read"
+    ),
+) -> None:
+    """Which snapshot lanes the registry holds, and for an absent one the route and the reason.
+
+    Anonymous. Ask it before deciding whether to lean on a registry for authoring work instead of
+    provisioning fourteen multi-gigabyte snapshots locally, and after a `check` reports that a source
+    was skipped — the reason is usually here rather than in the spec.
+
+    **The three states are not two.** `partial` is a directory holding something that is not a
+    readable snapshot, and it is the one state provisioning declines to act on rather than
+    overwriting — so it needs a different move from the operator than `absent` does. Printing it as a
+    plain cross is how a renderer comes to say "run a pull" about a pull that is going to refuse.
+    """
+    with _client(url, None) as c:
+        report = c.cache_status()
+
+    if not report.enricher_available:
+        typer.secho(
+            "the network tier is not installed on that deployment, so it holds no lanes at all "
+            "(the `server` extra is what carries just-dna-enricher)",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"declared use: {report.declared_use}")
+    shown = 0
+    for lane in report.lanes:
+        if absent_only and lane.state == "present":
+            continue
+        shown += 1
+        tag = f"[{lane.group}]" if lane.group else "[not read there]"
+        if lane.state == "present":
+            # The release is printed beside the state rather than instead of it, and an unreadable
+            # `release.json` says so: present-and-unprovenanced is a real state, and it is not absent.
+            label = lane.release or ("(unreadable release.json)" if lane.release_unreadable else "")
+            typer.secho(f"  ✓ {lane.name:14} present  {tag} {label}", fg=typer.colors.GREEN)
+            continue
+        if lane.state == "partial":
+            typer.secho(
+                f"  ! {lane.name:14} partial  {tag} — holds no readable snapshot; provisioning "
+                f"refuses rather than deleting, so move it aside first",
+                fg=typer.colors.RED,
+            )
+            continue
+        how = {
+            "pullable": "pull it",
+            "buildable": f"build it: {lane.build_command or '(no command recorded)'}",
+        }.get(lane.route, "no route in that tier")
+        typer.secho(f"  ✗ {lane.name:14} absent   {tag} — {how}", fg=typer.colors.YELLOW)
+        if lane.route_reason:
+            typer.echo(f"      {lane.route_reason}")
+        # The half that makes "absent" actionable: a lane the deployment's declared use declines will
+        # never arrive from a pull, however many times one is run.
+        if lane.licence_skip:
+            typer.secho(f"      licence: {lane.licence_skip}", fg=typer.colors.YELLOW)
+        if lane.parents:
+            typer.echo(f"      derived from: {', '.join(lane.parents)}")
+
+    if absent_only and not shown:
+        typer.secho("every lane is provisioned there", fg=typer.colors.GREEN)
+
+
 @app.command("list")
 def list_modules(
     q: str | None = typer.Option(None, help="Full-text query"),

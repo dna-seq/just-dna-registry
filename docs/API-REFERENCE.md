@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.24.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.25.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
@@ -17,6 +17,8 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   rather than `variants.csv` alone (so `?gene=` can find a PGx or copy-number module, for versions
   compiled from 0.6.6 on), and a duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` is
   now a compile **error**, so a spec that published before can come back `422`.
+  **0.25 adds one route**, `GET /api/v1/caches` — anonymous, read-only, and the first endpoint that
+  answers *what can this deployment do for a client that holds no snapshots*; see § 1a.
   **0.24 adds one route**, `PATCH /modules/{ns}/{name}/short-description` — the first module-level
   amend, where the readme and the logo are per version. It adopts `just-dna-format` 0.7 and adds five
   response fields: `short_description` on `ModuleCard`,
@@ -126,6 +128,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | # | Method | Path | Auth | Purpose |
 |---|---|---|---|---|
 | 1 | GET | `/health` | — | Liveness + `mode`, uptime, gate occupancy, catalog counts |
+| 1a | GET | `/api/v1/caches` | — | Snapshot lanes this deployment holds, and why not for the rest |
 | 2 | GET | `/api/v1/modules` | — | List / search (card grid) |
 | 3 | GET | `/api/v1/modules/lookup?digest=` | — | Find versions by artifact digest |
 | 4 | GET | `/api/v1/modules/{ns}/{name}` | — | Module detail |
@@ -488,6 +491,64 @@ No prefix, no auth. Liveness, and since 0.13 enough to run a deployment from wit
   `null` and `degraded_reason` names the failure. A liveness probe that fails on a sick database
   tells a balancer to pull a process that is still serving, and withholds the diagnosis exactly
   when it is wanted. Probe on the **HTTP status**; read `status` to decide whether to page someone.
+
+### 1a. `GET /api/v1/caches`
+No auth. Which snapshot lanes this deployment can read, and for an absent one the route it would
+arrive by and the reason it has not.
+
+```json
+{
+  "enricher_available": true,
+  "declared_use": "unstated",
+  "lanes": [
+    {"name": "clinvar", "serves": "clinical significance and review status", "state": "present",
+     "release": "clinvar_2026-06-27", "release_unreadable": false,
+     "route": "pullable", "route_reason": null, "build_command": "clinvar build",
+     "licence_gated": false, "licence_skip": null,
+     "read_here": true, "group": "resolution", "configured": true, "parents": []},
+    {"name": "pharmvar", "serves": "star-allele nomenclature", "state": "absent",
+     "release": null, "route": "buildable",
+     "route_reason": "bulk data comes down under a personal, non-transferable key",
+     "build_command": "pharmvar build", "licence_gated": true,
+     "licence_skip": "pharmvar forbids sale and no use was declared",
+     "read_here": true, "group": "pgx", "configured": false, "parents": []}
+  ]
+}
+```
+
+This is the registry answering *"what can I lean on you for?"* — the question a client without the
+multi-gigabyte snapshots has to ask before deciding whether to provision fourteen of its own, and the
+question a publisher has after a `/check` reported a source skipped.
+
+- **Three states, not two.** `present` · `absent` · **`partial`**, where the directory holds
+  something that is not a readable snapshot. That last one is the case provisioning **refuses** to
+  act on rather than overwriting (it never deletes), so reporting it as `absent` would send an
+  operator to run a pull that is going to decline. Move the directory aside first.
+- **`release` is `null` when the snapshot does not say** — never a placeholder, because a caller has
+  to be able to tell a named release from one that cannot name itself. `release_unreadable` sits
+  beside `state: present` rather than downgrading it: an unparseable `release.json` is a provenance
+  failure, not a data failure, and the snapshot is still usable.
+- **`route_reason` is upstream's own sentence**, carried on the lane (`unpublished` / `unbuilt`) — a
+  personal key, terms nobody publishes, a permission never established, a snapshot another tier
+  cuts. Never a sentence written here, because a red cross an operator cannot act on is worse than
+  no field.
+- **`licence_skip` is the other half of "not provisioned".** A licence-gated lane under a
+  `declared_use` that declines it will never arrive from a pull however many times one is run. That
+  is a different instruction from *nobody has pulled it yet*, and it is computed with the enricher's
+  own gate so the report agrees with the refusal it predicts.
+- **`read_here` and `group`** say whether a pass *in this service* opens the lane. Deliberately
+  narrower than the set an operator can provision: the same box often runs authoring commands, and a
+  lane nothing here reads is still worth reporting rather than hiding.
+- **`configured`** is whether this deployment pins the location or lets the lane's own ladder find
+  it. **No filesystem path appears in this response and none may be added.** Lane presence is an
+  operational fact of the same class `/health` already publishes unauthenticated; the server's
+  directory layout is not. Note the argument that does *not* license this endpoint: a caller cannot
+  enumerate lane state through `/check`, which needs the `PUBLISH` capability.
+- **Reports only.** Nothing here downloads or builds anything — that is `registry warm-caches`, an
+  operator command on the box that holds the caches, deliberately not a request-path concern.
+- `enricher_available: false` is one deployment fact rather than fourteen separate failures: the
+  `server` extra is what carries `just-dna-enricher`, and a client that cannot tell the two apart
+  tells an operator to provision snapshots on a box with nothing to read them with.
 
 ### 2. `GET /api/v1/modules`
 List/search the catalog (one **card** per module, its latest non-yanked version).

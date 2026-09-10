@@ -37,6 +37,8 @@ from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_registry.config import Settings
 from just_dna_registry.models.api import (
     AcmgCheck,
+    CacheLaneStatus,
+    CacheStatusReport,
     CheckReport,
     ClinSigConflictEntry,
     EnrichmentReport,
@@ -404,6 +406,126 @@ def lane_presence(settings: Settings) -> dict[str, Path | None]:
         return dict.fromkeys(provisionable_lanes())
     configured = lane_destinations(settings)
     return {name: lane.resolve(configured.get(name)) for name, lane in lanes.items()}
+
+
+#: Which group of passes here reads each lane, for the one field `REFERENCE_NAMES` cannot carry: a
+#: bare `read_here: true` says something opens it and not *what*, and an operator deciding whether a
+#: missing snapshot matters needs the second half. Derived from the same four tuples the boot check
+#: and `warm-caches` are grouped by, so a lane cannot appear here and be absent from them.
+LANE_GROUPS: dict[str, str] = (
+    dict.fromkeys(RESOLUTION_REFERENCES, "resolution")
+    | dict.fromkeys(METRICS_REFERENCES, "metrics")
+    | dict.fromkeys(PGX_REFERENCES, "pgx")
+    | dict.fromkeys(CHECK_REFERENCES, "checks")
+)
+
+
+def _lane_directory(lane: Any, configured: Path | None) -> Path | None:
+    """Where this lane's snapshot would sit — the configured path, else the lane's own default.
+
+    **Not `lane.default_dir()` alone**, which is what `prepare_lane` uses. That function is entitled
+    to: `export_lane_locations` has already published the configured path into the lane's own
+    variable by the time it runs, so the bare default *is* the configured one. A request path has
+    done no such thing, so asking the lane where it would look would answer for a deployment that
+    configured nothing.
+    """
+    if configured is not None:
+        return Path(configured)
+    try:
+        return lane.default_dir()
+    except Exception:  # noqa: BLE001 — a resolver that cannot name a default is not a report failure
+        return None
+
+
+def lane_status(settings: Settings) -> CacheStatusReport:
+    """Every snapshot lane, its state, and for an absent one the reason and the route it would take.
+
+    The read-only projection behind `GET /caches` and `registry-client caches`. It reads only — no
+    download, no build, nothing written — so it is safe on a box with no network and it is the first
+    thing to run when a `/check` reports that a source was skipped.
+
+    **It composes `lane_presence()` rather than re-resolving.** Presence is that function's answer and
+    it is keyed by every provisionable lane; deriving it a second time here would be the two-projections
+    drift that upstream's registry (RM176) and our own `6ddd430` each exist to end. What this adds is
+    the half a dashboard needs and a resolver does not: the release on disk, the route, the recorded
+    reason, and the discrimination below.
+
+    **Three states, because `absent` and `partial` send an operator to different places.** A lane whose
+    directory holds something that is not a readable snapshot — a build that died after its downloads,
+    a payload deleted beside its `release.json`, a stray `.part` — is exactly the case `prepare_lane`
+    **refuses** rather than overwrites, since provisioning never deletes. Reporting it as `absent`
+    would tell an operator to run a pull that is going to decline.
+
+    **`licence_skip` is the other half of "not provisioned".** A licence-gated lane under a
+    `declared_use` that declines it will never arrive from a pull however many times one is run, and
+    that is a different instruction from "nobody has pulled it yet". Computed with the enricher's own
+    `check_declared_use`, so the report agrees with the gate that will later refuse — the same reason
+    `available_references` resolves through the lane's own resolver.
+    """
+    declared_use = settings.declared_use
+    lanes = cache_lanes()
+    if not lanes:
+        return CacheStatusReport(enricher_available=False, declared_use=declared_use, lanes=[])
+
+    from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
+    from just_dna_enricher.locations import RELEASE_FILENAME, read_release
+
+    present = lane_presence(settings)
+    configured = lane_destinations(settings)
+    statuses: list[CacheLaneStatus] = []
+    for name, lane in lanes.items():
+        where = present.get(name)
+        release: str | None = None
+        unreadable = False
+        if where is not None:
+            state = "present"
+            release = lane.release_label(where)
+            # Present-and-unparseable is not absent, and it is not a data failure either: the
+            # snapshot is usable and only its provenance is not. The enricher's own `cache status`
+            # draws the same line.
+            if not release and (where / RELEASE_FILENAME).exists() and read_release(where) is None:
+                unreadable = True
+        else:
+            directory = _lane_directory(lane, configured.get(name))
+            occupied = directory is not None and directory.is_dir() and any(directory.iterdir())
+            state = "partial" if occupied else "absent"
+
+        skip: str | None = None
+        if lane.terms is not None:
+            try:
+                skip = check_declared_use(lane.terms, declared_use)
+            except LicenseRefusal as exc:
+                # A refusal and a skip are different outcomes upstream and stay different here: this
+                # one is the operator having asked for something the terms forbid, not nobody having
+                # asked.
+                skip = f"refused: {exc}"
+
+        if lane.ensure is not None:
+            route, reason = "pullable", None
+        elif lane.rebuild is not None:
+            route, reason = "buildable", lane.unpublished
+        else:
+            route, reason = "none", lane.unbuilt
+
+        statuses.append(CacheLaneStatus(
+            name=name,
+            serves=lane.serves,
+            state=state,
+            release=release or None,
+            release_unreadable=unreadable,
+            route=route,
+            route_reason=reason,
+            build_command=lane.build_command,
+            licence_gated=lane.terms is not None,
+            licence_skip=skip,
+            read_here=name in REFERENCE_NAMES,
+            group=LANE_GROUPS.get(name),
+            configured=configured.get(name) is not None,
+            parents=list(lane.parents),
+        ))
+    return CacheStatusReport(
+        enricher_available=True, declared_use=declared_use, lanes=statuses
+    )
 
 
 def export_lane_locations(settings: Settings) -> dict[str, str]:

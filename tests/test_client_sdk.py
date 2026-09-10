@@ -446,6 +446,7 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/health"): ("health",),
     ("GET", "/api/v1/version"): ("server_version",),
     ("GET", "/api/v1/pubkey"): ("pubkey",),
+    ("GET", "/api/v1/caches"): ("cache_status",),
     ("POST", "/api/v1/auth/register"): ("register",),
     ("POST", "/api/v1/auth/tokens"): ("issue_jwt_token",),
     ("GET", "/api/v1/auth/whoami"): ("whoami",),

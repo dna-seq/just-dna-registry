@@ -13,7 +13,12 @@ import httpx
 from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import ModuleManifest, write_manifest
 
-from just_dna_registry.models.api import CheckReport, ValidationReport, VersionRef
+from just_dna_registry.models.api import (
+    CacheStatusReport,
+    CheckReport,
+    ValidationReport,
+    VersionRef,
+)
 from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES
 from just_dna_registry.version import VersionInfo, compatibility_error
 
@@ -1053,6 +1058,19 @@ class RegistryClient:
         return agg
 
     # ── Ops ────────────────────────────────────────────────────────────────────
+
+    def cache_status(self) -> CacheStatusReport:
+        """Which snapshot lanes this deployment holds, and for an absent one the route and the reason.
+
+        Anonymous — no bearer needed. The question a thin client asks before deciding whether to lean
+        on this registry for authoring work rather than downloading fourteen multi-gigabyte snapshots
+        of its own, and the question a publisher asks after a `/check` reported a source skipped.
+
+        Reports only: nothing here provisions anything. That is `registry warm-caches`, an operator
+        command on the box that holds the caches. No filesystem paths come back — see
+        `CacheLaneStatus`.
+        """
+        return CacheStatusReport.model_validate(self._json(self._http.get("/caches")))
 
     def health(self) -> dict:
         """Server liveness: `{status, version, storage}`.
