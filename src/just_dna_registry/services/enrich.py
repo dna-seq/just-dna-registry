@@ -773,21 +773,39 @@ def _dry_run_inner(
     from just_dna_registry.services.publish import PublishError, normalize_spec
 
     normalization = normalize_spec(spec_dir)
-    validation = validation_report(
-        spec_dir, repo, namespace, name, strict,
+    # **The gate is modeless, and the grading happens after enrichment — the same two steps, in the
+    # same order, as `publish_version`.** A dry run that grades where the publish does not is not a
+    # rehearsal, which is S6's rule about this pair of endpoints.
+    #
+    # Format 0.7 (RM141) is what made the difference visible. `validate --strict` now refuses what
+    # `compile --strict` refuses on a partial resolution table — a genuine improvement, and applied to
+    # the *pre-enrichment* spec it inverts this endpoint: an rsID-authored module has no positions
+    # until the enricher supplies them, so `/check?strict=true` answered `invalid_spec` with no
+    # enrichment report at all, for the commonest module shape there is and at the one endpoint whose
+    # whole contract is to report. Publish never had the bug — its own pre-pass is deliberately
+    # modeless with the reason written beside it — and this is that reasoning arriving here.
+    gate = validation_report(
+        spec_dir, repo, namespace, name, False,
         normalized=normalization.info, extra_warnings=normalization.warnings,
         client_format=client_format,
     )
 
     # The strongest cost guard in the design: a spec that cannot compile is not worth an outbound
-    # request, and its findings are already the answer the caller needs.
-    if not validation.valid:
+    # request, and its findings are already the answer the caller needs. Re-graded under the caller's
+    # own mode for the body, because a report that says `strict: true` has to be the strict findings —
+    # a modeless list under a strict header is the two histories one value can have, again.
+    if not gate.valid:
         return CheckReport(
-            validation=validation,
+            validation=gate if not strict else validation_report(
+                spec_dir, repo, namespace, name, True,
+                normalized=normalization.info, extra_warnings=normalization.warnings,
+                client_format=client_format,
+            ),
             skipped_reason="invalid_spec",
             would_publish=False,
             elapsed_seconds=round(time.monotonic() - started, 3),
         )
+    validation = gate
 
     if not enricher_available():
         raise EnrichmentUnavailable(
@@ -832,6 +850,30 @@ def _dry_run_inner(
         frequencies=frequencies, literature=literature, identifiers=identifiers, acmg=acmg,
         pgx=pgx, declared_use=declared_use,
     )
+    # Re-graded over the **enriched** tree, which is the state `compile_module` will meet. The
+    # findings that only exist at this point are exactly the ones worth predicting: a resolution table
+    # that came back short refuses a strict compile, and now the report says so beside the enrichment
+    # findings that explain *why* it is short — which of the publisher and the operator has work to do.
+    # `resolve_with_ensembl` stays at its default here and in the compile: a pre-flight that silenced
+    # the fill would be more optimistic than the compile it precedes, which is the one disagreement
+    # direction the parity rule forbids.
+    if strict:
+        graded = validation_report(
+            spec_dir, repo, namespace, name, True,
+            normalized=normalization.info, extra_warnings=normalization.warnings,
+            client_format=client_format,
+        )
+        # **The module-level verdict is carried from the modeless gate, and that is the field's own
+        # definition rather than a repair.** `would_publish_module_level` answers *do the gates that
+        # do not scale with the variant count pass* — the name matches the path, the data is not
+        # already published elsewhere, the spec is well-formed. Strictness changes severity only; it
+        # never adds or removes a finding, so every strict-only error is a per-row judgement that
+        # belongs to the tier `enrichment` reports on. Letting one flip this field would collapse the
+        # two halves the field exists to keep apart, and a caller reading the weaker field as the
+        # stronger one is the exact confusion it was introduced to end.
+        validation = graded.model_copy(
+            update={"would_publish_module_level": gate.would_publish_module_level}
+        )
     return CheckReport(
         validation=validation,
         enrichment=enrichment,

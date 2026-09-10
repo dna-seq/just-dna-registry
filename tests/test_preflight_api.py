@@ -77,6 +77,38 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, "connect", guarded)
 
 
+@pytest.fixture(autouse=True)
+def pinned_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty every cache variable and credential the enricher reads, so no `.env` reaches a verdict.
+
+    **`_app` pins the cache *paths* and this pins the rest of the same leak.** The enricher's own
+    resolvers call `load_dotenv(override=False)` — deliberately, because it is what makes a
+    deployment's `.env` reach all six of them — and `override=False` fills any variable that is
+    *absent* from `os.environ`. This checkout's `.env` carries a real `PHARMVAR_API_KEY`, so merely
+    resolving a cache path injected it into the test process, and `pgx_check` read it: three
+    assertions about a leg that must be **off** without a key or a snapshot passed a key they never
+    configured. Nothing in the report said so, because from inside the process the credential is
+    indistinguishable from one an operator exported.
+
+    Empty rather than deleted, and that is the whole mechanism: `override=False` skips a variable
+    that is *present*, so `""` is the only value a `.env` cannot overwrite — while `del` is an open
+    door. Format 0.7 names the same distinction as `locations.missing_credential_reason` (S89), where
+    an exported-empty credential and an absent one want different remedies.
+
+    The cache set is **derived from `CACHE_LANES`**, not written down. Upstream's registry is the list
+    of lanes that exist, ours was a hand-kept six, and a hand-kept list of what to isolate from is a
+    list that goes stale exactly when a new lane arrives — which is how this fixture's own docstring
+    describes the failure it was written for.
+    """
+    from just_dna_enricher import locations
+    from just_dna_enricher.caches import CACHE_LANES
+
+    for var in {lane.env_var for lane in CACHE_LANES} | {locations.CACHE_BASE_VAR}:
+        monkeypatch.setenv(var, "")
+    for credential in ("PHARMVAR_API_KEY", "NCBI_API_KEY"):
+        monkeypatch.setenv(credential, "")
+
+
 def _app(tmp_path: Path, **over) -> TestClient:
     """An app whose cache paths point at an empty directory.
 
