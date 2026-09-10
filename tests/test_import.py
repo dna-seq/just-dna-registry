@@ -264,11 +264,25 @@ def test_a_legacy_grch37_archive_needs_its_build_declared(
 def test_a_bare_archive_that_is_grch38_needs_no_declaration(
     client: TestClient, api_key: str, tmp_path: Path
 ) -> None:
-    """The fallback is a sensible default, not a trap — an explicit `GRCh38` changes nothing."""
-    archive, original_digest = _bare_parquet_zip(tmp_path, "GRCh38")
+    """The fallback is a sensible default, not a trap — an explicit `GRCh38` changes nothing.
+
+    **The comparand is the other import, not the archive's own digest, and format 0.7 is what moved
+    that line.** The claim under test is about `genome_build`: declaring the value the fallback would
+    have guessed must produce the same bytes as leaving it out. `original_digest` came from a bare
+    `compile_module` in the fixture, and a *server* import enriches before it compiles — under 0.7
+    that writes the clinical-significance concordance record, so the imported version carries
+    `clin_sig_concordance.parquet` and `clin_sig_authority_calls.parquet` that the offline compile
+    never produced. Measured: the two imports are byte-identical to each other and differ from the
+    fixture's digest by exactly those two files. Asserting against the fixture would pin "a server
+    import reproduces an offline compile", which is a different claim, is not true, and has nothing
+    to do with the build. The GRCh37 case next door still compares against the archive's own bytes,
+    because that module draws no concordance record and the file set therefore matches.
+    """
+    archive, _fixture_digest = _bare_parquet_zip(tmp_path, "GRCh38")
     implicit = _import_bare(client, api_key, archive, "1.0.0")
     explicit = _import_bare(client, api_key, archive, "1.0.1", genome_build="GRCh38")
-    assert implicit["artifact"]["digest"] == explicit["artifact"]["digest"] == original_digest
+    assert implicit["genome_build"] == explicit["genome_build"] == "GRCh38"
+    assert implicit["artifact"]["digest"] == explicit["artifact"]["digest"]
 
 
 def test_import_then_tarball_download(client: TestClient, api_key: str) -> None:

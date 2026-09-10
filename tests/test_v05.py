@@ -556,9 +556,20 @@ def test_a_logs_subtree_is_never_flattened(client: TestClient, api_key: str) -> 
 def test_a_run_log_stays_out_of_the_content_identity(client: TestClient, api_key: str) -> None:
     """What a `just-module-creator` zip ships beside the spec: a 240 KB agent transcript.
 
-    It is hashed and served — provenance a reader can check — but it moves neither `artifact.digest`
-    nor `content_signature`, so re-publishing the same data with a different run log is still the
-    same module and is still caught by the duplicate-content claim.
+    It is hashed and served — provenance a reader can check — but it stays out of `content_signature`,
+    so re-publishing the same data with a different run log is still the same module and is still
+    caught by the duplicate-content claim.
+
+    **The digest is deliberately not asserted, and format 0.7 is the second time this test had to
+    learn it.** `artifact.digest` names *bytes*; `content_signature` names *data*, and only the
+    second answers "same module?". 0.16.1 removed a digest-equality assertion from a sibling test
+    after it turned out to be a coin flip on how long a compile took — a module that authors no
+    `sources.csv` gets a fresh one per compile with `fetched_at` at second resolution. 0.7 adds two
+    more tables of exactly that kind: `clin_sig_concordance.parquet` and
+    `clin_sig_authority_calls.parquet` are re-derived on every publish and were **measured** moving
+    across two publishes of this very spec, with `content_signature` holding and every other parquet
+    byte-identical. That is the digest doing its job. Asserting it here would pin a property the
+    format does not offer and would fail again at the next derived table.
     """
     without = _publish(client, api_key)
     resp = client.post(
@@ -569,6 +580,5 @@ def test_a_run_log_stays_out_of_the_content_identity(client: TestClient, api_key
     )
     assert resp.status_code == 201, resp.text
     with_log = resp.json()
-    assert with_log["artifact"]["digest"] == without["artifact"]["digest"]
     assert with_log["content_signature"] == without["content_signature"]
     assert [e["name"] for e in with_log["logs"]] == ["v2.log"]
