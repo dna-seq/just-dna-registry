@@ -418,10 +418,24 @@ _PACK_HELP: str = (
 
 
 def _echo_findings(report) -> None:
+    # A finding the author cannot clear is marked, not hidden. `carried` (format 0.7) is the subset
+    # no edit to the spec directory removes — a limit of the tier, or a fact of a source — and a
+    # publisher shown twelve yellow lines with no way to tell which four are theirs goes looking for
+    # a mistake that is not there. Membership, never a substring test: a code survives a rewording.
+    carried = set(getattr(report, "carried", ()) or ())
     for line in report.errors:
         typer.secho(f"  ✗ {line}", fg=typer.colors.RED)
     for line in report.warnings:
-        typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
+        if line in carried:
+            typer.secho(f"  · {line}", fg=typer.colors.BRIGHT_BLACK)
+        else:
+            typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
+    if carried:
+        typer.secho(
+            f"  ({len(carried)} of {len(report.warnings)} warning(s) marked · are carried: no edit "
+            f"to the spec clears them)",
+            fg=typer.colors.BRIGHT_BLACK,
+        )
     for line in report.info:
         typer.echo(f"  · {line}")
     # Printed above the verdict and in yellow, because it is the context that decides whether an

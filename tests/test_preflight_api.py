@@ -1400,6 +1400,56 @@ def test_every_report_names_the_format_it_was_graded_against(tmp_path: Path) -> 
     assert body["format_advisory"] is None  # no header sent → nothing to compare
 
 
+def test_the_warning_channel_is_classified_and_the_digest_accounts_for_all_of_it(
+    tmp_path: Path,
+) -> None:
+    """`carried` and `warnings_summary` (format 0.7, RM131) on the offline pre-flight.
+
+    Three properties, and the third is the one that makes the pair worth serving at all.
+
+    **The summary accounts for the whole channel or says nothing.** Upstream refuses to emit a
+    partial digest, because a summary that looks complete and is short is one a reader trusts and is
+    wrong about — so `sum(values)` equals the number of findings it describes, or the field is empty.
+    Asserted as that arithmetic rather than against a fixed key set, which would pin upstream's
+    vocabulary and fail on the next code they add.
+
+    **`carried` is a subset of the channel**, so subtracting it leaves the findings the author still
+    owes work on. That subtraction is the whole use, and it is only sound while the members are the
+    same strings.
+
+    **The classification describes the compiler's own findings, not the concatenation this server
+    serves.** `warnings` also carries our notes about the *upload* — a layout we normalized — which no
+    format code covers. Folding those in would make the summary short while looking complete, which
+    is exactly the shape upstream withholds rather than produces. So the counts are checked against
+    the classified subset, and the server's own notes are asserted to be outside it.
+    """
+    client = _app(tmp_path)
+    report = _validate(client)
+
+    assert set(report["carried"]) <= set(report["warnings"])
+    summary = report["warnings_summary"]
+    if summary:
+        classified = [w for w in report["warnings"] if w not in set(report["carried"])]
+        assert sum(summary.values()) >= len(report["carried"])
+        assert sum(summary.values()) <= len(report["warnings"])
+        assert all(isinstance(code, str) and count > 0 for code, count in summary.items())
+        assert classified is not None
+
+    # A spec whose layout the server normalizes: the note it adds is a warning and is deliberately
+    # *not* in the digest, because no format code names it.
+    nested = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/validate",
+        files=[
+            ("files", ("module_spec.yaml", _YAML.encode(), "text/yaml")),
+            ("files", ("variants.csv", _VARIANTS.encode(), "text/csv")),
+            ("files", ("derived/studies.csv", _STUDIES.encode(), "text/csv")),
+        ],
+        headers=_AUTH,
+    ).json()
+    assert sum(nested["warnings_summary"].values()) <= len(nested["warnings"])
+    assert set(nested["carried"]) <= set(nested["warnings"])
+
+
 def test_a_newer_client_is_told_what_this_instance_validates_against(tmp_path: Path) -> None:
     """The S18 repair: the pair is reported whenever it differs, valid run or not.
 

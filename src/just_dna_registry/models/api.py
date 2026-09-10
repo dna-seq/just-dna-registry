@@ -607,6 +607,26 @@ class ValidationReport(BaseModel):
     strict: bool = Field(description="The mode the findings were graded under")
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    carried: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The subset of `warnings` **no edit to the spec directory can clear** (format 0.7, "
+            "RM131): a limit of the tier or a fact of a source. Subtract it from `warnings` to get "
+            "what the author still owes. Empty is a real answer here — it means every finding is "
+            "actionable, not that nothing was classified; `warnings_summary` beside it is what "
+            "distinguishes the two, since an unclassified channel withholds both"
+        ),
+    )
+    warnings_summary: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "`warnings` counted by kind, keyed on the format's closed `VALID_WARNING_CODES`. Either "
+            "empty — this run did not classify the channel — or its values sum to `len(warnings)` "
+            "and account for the whole of it. Never complete-looking and short. Count and branch on "
+            "this rather than substring-matching a message: a code names the finding and survives a "
+            "rewording, which the prose does not"
+        ),
+    )
     info: list[str] = Field(
         default_factory=list,
         description="Accepted but noteworthy: keys the server dropped, a version it coerced",

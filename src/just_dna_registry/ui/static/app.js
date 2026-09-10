@@ -751,8 +751,9 @@
   // src/reports.ts
   function findings(report) {
     const out = h("div");
+    const carried = new Set(report.carried ?? []);
     for (const e of report.errors ?? []) out.append(h("div", { class: "finding err" }, h("span", { class: "mark" }, "✗"), h("span", {}, e)));
-    for (const w of report.warnings ?? []) out.append(h("div", { class: "finding warn" }, h("span", { class: "mark" }, "!"), h("span", {}, w)));
+    for (const w of report.warnings ?? []) out.append(carried.has(w) ? h("div", { class: "finding info", title: "carried: no edit to the spec clears this" }, h("span", { class: "mark" }, "·"), h("span", {}, w)) : h("div", { class: "finding warn" }, h("span", { class: "mark" }, "!"), h("span", {}, w)));
     for (const i of report.info ?? []) out.append(h("div", { class: "finding info" }, h("span", { class: "mark" }, "·"), h("span", {}, i)));
     if (!out.childElementCount) out.append(h("div", { class: "faint small" }, "no findings"));
     return out;

@@ -229,6 +229,8 @@ export interface ValidationReport {
   strict: boolean;
   errors: string[];
   warnings: string[];
+  carried: string[];
+  warnings_summary: Record<string, number>;
   info: string[];
   stats: SpecStats;
   format_version: string | null;

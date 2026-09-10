@@ -6,10 +6,20 @@
 import { badge, chipList, copyText, fmtInt, h, kv, shortHash, tile, yesNo, type Child } from "./dom";
 import type { CheckReport, EnrichmentReport, ErrorDetail, ValidationReport, VersionRef } from "./types";
 
-export function findings(report: Pick<ErrorDetail, "errors" | "warnings" | "info">): HTMLDivElement {
+// `carried` (format 0.7) is the subset of `warnings` no edit to the spec directory can clear — a
+// limit of the tier, or a fact of a source. Marked rather than hidden, and by set membership rather
+// than by matching prose, which is upstream's to reword. A publisher shown a wall of yellow with no
+// way to tell which lines are theirs goes looking for a mistake that is not there; this is the check
+// renderer's own "unchecked is not clean" rule pointed at the other half of a finding.
+export function findings(
+  report: Pick<ErrorDetail, "errors" | "warnings" | "info"> & { carried?: string[] },
+): HTMLDivElement {
   const out = h("div");
+  const carried = new Set(report.carried ?? []);
   for (const e of report.errors ?? []) out.append(h("div", { class: "finding err" }, h("span", { class: "mark" }, "✗"), h("span", {}, e)));
-  for (const w of report.warnings ?? []) out.append(h("div", { class: "finding warn" }, h("span", { class: "mark" }, "!"), h("span", {}, w)));
+  for (const w of report.warnings ?? []) out.append(carried.has(w)
+    ? h("div", { class: "finding info", title: "carried: no edit to the spec clears this" }, h("span", { class: "mark" }, "·"), h("span", {}, w))
+    : h("div", { class: "finding warn" }, h("span", { class: "mark" }, "!"), h("span", {}, w)));
   for (const i of report.info ?? []) out.append(h("div", { class: "finding info" }, h("span", { class: "mark" }, "·"), h("span", {}, i)));
   if (!out.childElementCount) out.append(h("div", { class: "faint small" }, "no findings"));
   return out;
