@@ -61,6 +61,7 @@ from just_dna_registry.services.publish import (
 )
 from just_dna_registry.services.rebuild import (
     RebuildVerdict,
+    declared_movement,
     measure_output_drift,
     rebuild_verdict,
 )
@@ -583,12 +584,18 @@ def prepare_version_upgrade(
     # recomputation would legitimately disagree with a manifest compiled before them.
     already_acting = gap.acts_by_default or plan.needed or bool(dropped)
     drift, unmeasured = ([], []) if already_acting else measure_output_drift(manifest, files)
+    # The interval half of the same question, from format 0.7's release record. Computed even when
+    # something else already acts, because it names *what* the re-baseline repairs and that sentence
+    # goes into the successor's immutable changelog entry. `gap.compiled_under` is already the parsed
+    # bare version — passing the raw stamp would raise on the one manifest a foreign compiler touched.
+    declared = declared_movement(gap.compiled_under, gap.current)
     verdict = rebuild_verdict(
         gap_scale=gap.scale,
         gap_acts=already_acting,
         drift=drift,
         unmeasured=unmeasured,
         identical_compiler=gap.scale == GAP_NONE,
+        declared=declared,
     )
     return VersionUpgradePlan(
         variants_plan=plan,
@@ -653,6 +660,25 @@ def _upgrade_changelog(prep: VersionUpgradePlan, version: str) -> str:
             f"recompiled to the current contract ({prep.gap.describe()}): the authored data is "
             f"unchanged, but the parquet shape and therefore `artifact.digest` differ from the "
             f"predecessor's. The predecessor stays published and verifiable"
+        )
+    if prep.verdict.drift:
+        # Measured on this artifact: a published field the current compiler derives differently from
+        # the same authored rows. Named per field rather than summarised, because this entry is
+        # immutable and "recompiled" tells a later reader nothing about what it repaired.
+        parts.append(
+            "re-derived published fields this compiler produces differently "
+            f"({'; '.join(f.detail for f in prep.verdict.drift)})"
+        )
+    if prep.verdict.declared:
+        # Declared by upstream over the compile interval, not measured here — so it is worded as what
+        # the release did, and the release is named. These are `correction`s only: an *addition* is a
+        # field that was absent rather than wrong, and re-publishing to gain one would mint a PATCH
+        # for something nobody published incorrectly.
+        detail = "; ".join(
+            f"{c.item or 'a release'} corrected {c.target}" for c in prep.verdict.declared
+        )
+        parts.append(
+            f"picks up corrections upstream declared since this version was compiled ({detail})"
         )
     if not parts:
         parts.append("recompiled to the current just-dna-format contract (no content change)")

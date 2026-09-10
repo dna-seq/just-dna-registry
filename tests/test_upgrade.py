@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from just_dna_format.identity import parse_version
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.spec import StudyRow, VariantRow
 
@@ -605,8 +606,15 @@ def test_the_gap_is_measured_against_the_installed_compiler(
     assert older_contract.compiled_under == "0.5.4" and older_contract.current == current
     assert "0.5.4" in older_contract.describe()
 
+    # **Derived from the installed compiler, never written down**, which is the same rule the code
+    # under test follows. This line read `0.6.0` until the 0.7 adoption, where it became a *contract*
+    # gap and failed — a test dating a stamp by a landmark, one file away from the class whose whole
+    # docstring is about not doing that. Any patch of the current minor other than the current one is
+    # a patch gap, so the fixture is computed from `current` and stays true across every future cut.
+    installed = parse_version(current)
+    patch_stamp = f"{installed.major}.{installed.minor}.{installed.patch + 1}"
     patch_only = contract_gap(
-        _manifest_compiled_under(manifest, "just-dna-compiler 0.6.0")
+        _manifest_compiled_under(manifest, f"just-dna-compiler {patch_stamp}")
     )
     assert patch_only.scale == GAP_PATCH
     assert patch_only.acts_by_default is False, "a patch moves no schema; --force is for that"
