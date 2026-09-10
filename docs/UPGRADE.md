@@ -1,5 +1,65 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.24 format 0.7 adoption (operator note — a coordinated cut, and not yet installable)
+
+**Do not start this procedure until `just-dna-format` 0.7.0 is published.** Upstream has bumped all
+three packages to 0.7.0 and tagged none of them, so the floor in `pyproject.toml` resolves to nothing
+on an index and `uv sync` fails. That failure is deliberate and loud: `uv.lock` is not regenerated on
+this branch, because a lock resolving 0.7.0 out of a sibling checkout's `dist/` would be
+machine-specific and would pin a pre-cut snapshot for everyone who ran it. When the release is cut,
+`uv lock && uv sync` and continue below.
+
+**It is a contract cut.** The format minor moves 0.6 → 0.7, so `version.contract_compatible` refuses
+every client still on 0.6 — align them in the same window — and `registry upgrade` scores every
+published version as a contract gap. Read the whole of this section before running step 3: one of the
+steps below is new, and one of the reasons it exists is that a *patch* interval can now act too.
+
+**1. `uv sync`, then `registry --mode <prod|test> upgrade --dry-run`.** The mode flag is on the root
+callback and it is not optional on the polygon: `REGISTRY_MODE` in a unit file reaches the server
+process and not your shell, which is how 0.17's own step 2 died on `test_data_on_prod`.
+
+**2. Read what the dry run says it will repair.** New in 0.24: the sweep consults upstream's release
+record (`release_records.needs_recompile`) as well as the version gap and the output probes, and names
+the **corrections** a re-baseline picks up. `gene_validity.classifications` (RM108),
+`gene_metrics.parquet` and `gene_metrics.signature` (RM110) are the three declared over 0.6.6 → 0.7.0.
+They are narrow in reality — RM110 reaches only modules compiled from the gnomAD v4.1 constraint
+snapshot — but a declared change says what a release *did*, not which artifacts it did it to, so the
+sweep acts on every module. That over-reach is bounded at one PATCH per module ever and is filed
+upstream as **S90**; it is not a reason to skip the sweep.
+
+**3. `registry upgrade --apply`, then run it again.** The second pass must report nothing to do. That
+property is what separates the detector from a trigger that can never finish, and it is worth checking
+on your own catalog: a version compiled under the release you now hold has an empty interval, so
+nothing is declared and nothing acts.
+
+**4. `registry warm-caches --all` before you decide you are provisioned.** The command reported six
+lanes through 0.23 and the enricher has fourteen, so a box that looked fully warmed may not be. The
+one that matters here is **`acmg`**: this service reads it for the `?acmg=` check, the setting existed,
+and the provisioning command never mentioned it — so a deployment with no ACMG snapshot has been
+falling back to a live page serving SF **v3.2** while the current list is v3.3. Nothing publishes that
+lane (the SF list is ACMG/Elsevier supplementary material), so provisioning it means
+`registry warm-caches --checks --apply --source acmg=<workbook.xlsx>` with a workbook you hold. A lane
+that cannot run unattended is reported as such and is **not** a failure.
+
+**5. Re-pin anything holding an `artifact.digest`.** Every module's digest moves at a contract cut, and
+from 0.7 a digest no longer reproduces across two compiles of one spec wherever a clinical-significance
+concordance record is produced — those two parquets are re-derived per publish. `content_signature` did
+not move on any measured module and is what `409 duplicate_content` keys on, so nothing about
+identity or dedup changes. If you compare digests in CI, that comparison needs re-baselining and, for
+modules with a concordance record, retiring.
+
+**What you do not have to run.** No `rederive-signatures`: `content_signature` moved on 0 of 15
+measured reference modules. No trust migration: adopting 0.7 re-judges nothing already stored, and
+verdicts move only as versions are recompiled by step 3. Nothing here re-drafts a module — that is
+authoring-side and `registry upgrade` has no answer for it.
+
+**One behaviour change that can refuse a publish that used to work.** RM141 makes `validate --strict`
+refuse a spec whose variants have no position after resolution, which `compile --strict` was already
+going to refuse. On this service that only moves the failure earlier, and `/check` was corrected to
+grade after enrichment rather than before it — but a CI job calling `/validate?strict=true` directly on
+a spec that ships no `resolution.csv` will now see the error, because that endpoint does not enrich.
+`/check` is the endpoint that answers "would this publish".
+
 ## 0.21 output drift (operator note — the sweep measures instead of asking you to)
 
 **`registry upgrade` now recompiles a published version when it can *measure* that the current

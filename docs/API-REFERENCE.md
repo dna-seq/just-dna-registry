@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.23.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.24.x**, API `v1` (0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
@@ -17,6 +17,16 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   rather than `variants.csv` alone (so `?gene=` can find a PGx or copy-number module, for versions
   compiled from 0.6.6 on), and a duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` is
   now a compile **error**, so a spec that published before can come back `422`.
+  **0.24 adds no route either** — it adopts `just-dna-format` 0.7 and adds four response fields:
+  `carried` and `warnings_summary` on `ValidationReport` (`/validate`, `/check`), and
+  `clin_sig_concordance` and `authority_precedence` on the module detail. Two behaviours move
+  underneath it. `/check?strict=true` now grades the spec **after** enrichment rather than before, so
+  an rsID-authored module gets an enrichment report where it used to get `invalid_spec` with nothing
+  in it; and `/validate?strict=true` on a spec shipping no `resolution.csv` can newly report an
+  unresolved-position error, because that endpoint does not enrich and upstream's RM141 made the
+  strict pre-flight predict the strict compile. `artifact.digest` no longer reproduces across two
+  compiles of one spec wherever a concordance record is produced — `content_signature` is unmoved and
+  is what dedup keys on.
   **0.19 adds no route either** — it adds two fields to `VersionSummary`/`ResolutionInfo`, which a
   `v1` client that ignores them keeps working against. **0.21 adds no route either**: 0.21.0 is an
   admin-CLI behaviour with no HTTP surface, and 0.21.1 changes *what the listing returns on a

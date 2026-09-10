@@ -572,6 +572,20 @@ number is worth spending, because that cost is ours and differs per consumer.
   introduced it, and hand-keeping one here is how the `RENAMED_ON_UPLOAD` spellings got out of step
   with upstream in the first place.
 
+  **0.24 update: the blocker is half gone, and the half that remains is a different ask.** Format 0.7
+  ships RM146 — `base.since` declares the release a field first appeared in, and
+  `base.field_first_seen(model)` reads it back as `{field: release}`. That is the input-side roster
+  this item was waiting for, and upstream's own integration guide names this exact use: it is what
+  tells an "Extra inputs are not permitted" finding apart from a typo. What is still missing is the
+  **filename → row model** map needed to use it: `field_first_seen` takes a model, and the mapping
+  from `studies.csv` to `StudyRow` is `just_dna_compiler.compiler._TABLE_KINDS`, which is private and
+  in the compiler tier — while `reference.authoring_reference()` is public, light-tier and keyed by
+  class name, carrying no filename and no `first_seen`. So the advisory can name the release from the
+  **client** side of a `422` (where the newer models live) once one of those two gains the other's
+  half. Ask upstream for `first_seen` on `authoring_reference()`'s field entries, which costs them a
+  key and needs no new surface. Hand-keeping the map here is what `RENAMED_ON_UPLOAD` exists to warn
+  against.
+
   **Do not close this by reading `release_records`' `parquet_schema` axis.** Format 0.7 (RM126) ships
   a per-release record whose `parquet_schema` targets are spelled `file:column`, and for `curator` it
   would happen to give the right answer. It is a channel about compiled **output**: an optional

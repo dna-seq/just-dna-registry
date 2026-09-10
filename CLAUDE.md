@@ -82,6 +82,17 @@ had always passed to them was inert, and the release that makes the flag work is
 and check the flags you already pass as well as the symbols you already import: upgrading all three in
 step here would have been wrong, and so would treating an enricher patch as beneath reading.
 
+**0.7 is a coordinated cut, and the two things to carry from it are a closed vocabulary and a lane
+registry.** All three tiers go to 0.7.0 together. On the base install the floor is hard because
+`VerificationRecord` is `extra="forbid"` and RM129 adds `producer` to it — serialised as `null` even
+where nothing set it, which trips `extra_forbidden` exactly as a value would — and because RM193 adds
+`variant_impact_agreement` to `VALID_VERIFICATION_CHECKS`, which that model *validates* against rather
+than merely annotating. The general form outlives both: **a vocabulary is additive for the writer and
+closed for the reader**, so validating a document against your own copy of one makes every future
+member a break. Keep no copy of any of them here. On the enricher the floor is a registry we now read
+rather than a symbol we import: `caches.CACHE_LANES` is upstream's list of every snapshot lane and
+`prepare_caches` is how they are provisioned — see *Cache lanes* below.
+
 **And having read one, be willing to say it is not load-bearing. `0.6.4` is the first enricher floor
 here that is *not* hard** — one fix in upstream's ClinVar drafter, no public symbol moved, nothing this
 service runs behaving differently, and a deployment left on 0.6.3 is not broken. It is the floor
@@ -101,6 +112,21 @@ detector could not yet see this axis*, which is a fallback doing its job and a p
 detector. **The delegation rule underneath both**: `--dry-run` vs `--apply` is already the look-vs-act
 discriminator, so asking for `--force` on a gap the software has just *measured* makes an operator
 confirm what the software already knows.
+
+**And a third witness landed in 0.24, from upstream, answering the interval instead of the field.**
+`release_records.needs_recompile` (their RM126/RM127, our S62) states per-axis what a *release* changed
+about compiled output, and `services/rebuild.declared_movement` is the seam. Four rules, each of which
+cost a design argument. **Only a declared `correction` acts** — upstream separates it from `addition`
+because a differ cannot, and acting on the `parquet_bytes` axis alone would re-baseline the catalog on
+every dependency bump (10 of 16 reference modules move `artifact.digest` across a pure *patch*
+interval). **The record can also withhold**: a contract-scale version gap over an interval it covers
+with every driving axis measured `False` moved nothing, which retires the version comparison as a
+*parallel derivation* and leaves it as the fallback for every artifact compiled before the first
+release that has a record. **Three witnesses stay three** — a gap is about versions, a verdict is a
+measurement of one artifact, a record is what a release did — because folding any two loses a
+distinction only that one can draw. And **a declared change says what a release did, never which
+artifacts it did it to**, so a sweep over-reaches; that is bounded at one PATCH per module ever by the
+convergence rule and is filed upstream as S90, not worked around by parsing a target's spelling.
 
 **And when you do extend it, the new trigger has to converge.** `rebuild.RebuildVerdict` refuses to act
 on drift measured against the **identical** compiler, because a recompile derives the same value again
@@ -226,6 +252,16 @@ stale wrapper.
     earlier 503-on-empty-references refused the one configuration that works.
   - `503 enrichment_busy` / `504 enrichment_timeout` — the concurrency gate is full / the run
     exceeded `enrich_timeout_seconds`.
+  - **The dry run grades where the publish grades, which is *after* enrichment.** `publish_version`
+    validates modelessly first — that pass exists to reject a broken spec before spending enrichment
+    on it — and lets `compile_module` apply strict at its real severity. `/check` must do the same,
+    and until 0.24 it did not: format 0.7's RM141 made `validate --strict` refuse a partial resolution
+    table, so grading the *pre-enrichment* tree returned `invalid_spec` with `enrichment: null` for
+    every rsID-authored module, at the endpoint whose whole contract is to report. `resolve_with_ensembl`
+    stays at its default on both sides — a pre-flight that silenced the fill would be *more optimistic*
+    than the compile it precedes, the one disagreement direction the parity rule forbids. And
+    `would_publish_module_level` is carried from the modeless gate by definition: strictness changes
+    severity only, so every strict-only error is a per-row judgement belonging to the enrichment tier.
   - **A validation finding is a `200`, not a `422`.** `/validate` and `/check` return `valid: false`
     with the reasons in the body; only a request no spec dir can be built from is a 4xx. Publish is
     the opposite. Getting this backwards makes the endpoints useless to the CI jobs they exist for.
@@ -372,6 +408,21 @@ Four rules that each cost a bug to learn:
   fix**: `registry-client check` prints per-pass *findings*, so three passes that print no summary
   rendered an outage as `✓ would publish` with the reason sitting unread in the JSON. Anything that
   distinguishes "unchecked" from "clean" has to reach the renderer too.
+- **Cache lanes: read the registry, never a list (0.24 / RM176).** `caches.CACHE_LANES` carries every
+  snapshot lane with its three stages (`resolve`, `rebuild`, `ensure`), its `env_var`, its licence
+  terms and — for each stage it lacks — the **reason** as a field. `pullable_lanes`, `gated_lanes` and
+  every resolver in `services/enrich.py` derive from it, and `warm-caches` provisions through
+  `prepare_caches`. A hand-kept list is what this replaced: ours had drifted by eight lanes, and the
+  one that mattered was `acmg` — a setting we had, a pass that read it, and a provisioning command that
+  never mentioned it, so a box reporting everything green had the ACMG check falling back to a page
+  serving SF v3.2. **`REFERENCE_NAMES` stays ours and stays narrow**: naming a lane there is a claim
+  that something on this box opens it, and a lane named there that nothing reads is how `constraint`
+  came to trigger boot warnings about a file no pass would open. Three rules that follow. **The route
+  is a property of the lane, never a flag** — a published lane is pulled, an unpublished one is built,
+  and both refusals carry upstream's own sentence. **`ready` is tri-state**: a lane needing a workbook
+  only the operator holds has not failed. And **`export_lane_locations` before provisioning**, because
+  `prepare_lane` resolves with no argument and follows the lane's own variable — without it a pull
+  lands where the running server never looks.
 - **Nice values are one-way.** Raising a thread's nice is unprivileged, lowering it back is not, and
   anyio reuses its workers — so anything niced runs on a thread we create and discard
   (`lowpriority.py`). A `finally: restore()` here does not work and cannot be made to.
@@ -495,6 +546,16 @@ predicts is worse than one that does not normalize at all.
   machine-written tables (`resolution.csv` + the fact sidecars) on the wire, in both directions. It
   exists because a spec mixes two provenances and marks neither — and `sources.csv` is genuinely
   both, the author's rows with the enricher's merged in.
+- **`overrides.csv` is authored, hashed, and the first file to join `SIGNATURE_INPUTS` since it was
+  written (0.24 / RM124).** It is one row per correction the curator is making to a *derived* value,
+  with `reason` required, which is what makes it a record rather than a knob. Recognizing it was
+  upstream's one deadline item, and the reason is worse than for an ordinary table: dropping an overlay
+  row on a re-publish silently restores the value the author rejected, and the module goes on compiling
+  green. `content_signature` covers its **value cells only** (S87/RM180 excludes
+  `reason`/`decided_by`/`decided_at`), so rewording a justification does not mint a fresh
+  `409 duplicate_content` claim while changing what the overlay does correctly moves the identity. **Do
+  not compute that hash here** — `integrity.content_signature` owns which columns are identity, and a
+  second reader of that rule is the drift `RENAMED_ON_UPLOAD` exists to end.
 - **It is safe only because `SIGNATURE_INPUTS` is entirely root-level.** Nothing that may live in
   `derived/` is in `content_signature`, so splitting a module cannot move its identity or its
   `409 duplicate_content` claim. A test asserts the disjointness. **Check it again before putting

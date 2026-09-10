@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.23.0"
+version = "0.24.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -47,7 +47,24 @@ dependencies = [
     # (RM117 adds `outranks`) is a plain `BaseModel`, so a 0.6.1 install silently discards the field
     # instead of refusing the document. Quiet data loss rather than a refusal — a reason to move, not
     # a reason the floor is hard. Read the model's `extra` before assuming a new field is either.
-    "just-dna-format>=0.6.6",
+    #
+    # **0.7.0, and on the base install the reason is a model that forbids extras — again, at a
+    # different field.** `VerificationRecord` is `extra="forbid"` and RM129 adds `producer` to it;
+    # `write_manifest` serialises with `exclude_none=False`, so the key is present as `null` even on
+    # a record that never set one, and a null extra key trips `extra_forbidden` exactly as a
+    # populated one does. Upstream measured it: a `v0.6.6` `ModuleManifest` parses 15 of 16 freshly
+    # compiled 0.7 manifests and refuses the sixteenth on that field alone. The client reads
+    # `manifest.verification` unguarded, so on 0.6.6 this is a `ValidationError` in the middle of a
+    # download rather than a missing field.
+    #
+    # RM193 is the same break needing a vocabulary member instead of a schema change:
+    # `VerificationRecord.check` is *validated* against `VALID_VERIFICATION_CHECKS` by a field
+    # validator, so a manifest carrying `variant_impact_agreement` is refused outright by 0.6.6. No
+    # reference module runs that check, which is why it does not move the 15/16 — a consumer's module
+    # does. The general form is the one to build against: **a vocabulary is additive for the writer
+    # and closed for the reader**, so validating a manifest against your own copy of one makes every
+    # future member a break. Nothing here keeps a copy of any of them, deliberately.
+    "just-dna-format>=0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -75,8 +92,16 @@ dependencies = [
 # `TableKey.fallback`, `compiler.spec_tables`, `Literature.quotes_unchecked`) and upstream's own
 # inter-package floors are `>=0.6.6`. The 0.6.2–0.6.4 partial cuts were real and correctly taken; this
 # one is not partial, and treating it as though it were would resolve a trio that cannot run itself.
+# **0.7.0, and it is a contract cut rather than an attribute chase.** The format minor moves, so every
+# `artifact.digest` moves with it and a 0.6 compiler computing a signature beside a 0.7 server is
+# computing it under a different parquet schema — the same reason 0.6.0 was a floor here.
+#
+# Two concrete new reads on the client path: `compiler._INPUT_FILES` gains `overrides.csv`, which
+# `specfiles.SIGNATURE_INPUTS` mirrors and a test asserts equal, and `ARTIFACT_PARQUETS` goes 19 → 22.
+# Both are derived from the constant rather than restated, which is what makes them a floor and not a
+# rewrite.
 compiler = [
-    "just-dna-compiler>=0.6.6",
+    "just-dna-compiler>=0.7.0",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -206,8 +231,28 @@ server = [
     # uses) and **RM125** (two `lookup_variant` message strings; that surface has no caller here). None
     # of them would have moved this floor on its own, and the fact that the one *hard* enricher reason
     # is a field we chose to start reading is worth noticing: the floor followed the adoption.
-    "just-dna-compiler>=0.6.6",
-    "just-dna-enricher>=0.6.6",
+    #
+    # **0.7.0 moves all three together, and on the enricher the floor is hard for a reason this file
+    # has not carried before: a registry we now read.** `caches.CACHE_LANES` (RM176) is upstream's
+    # own list of every snapshot lane, with each lane's resolver, its `env_var` (S89/RM184), its
+    # licence terms and — for each stage it lacks — the reason as a field. `services/enrich.py`
+    # derives `pullable_lanes`, `gated_lanes` and every resolver from it, and `registry warm-caches`
+    # provisions through `caches.prepare_caches`. None of those symbols exists below 0.7.0, so this
+    # is an `ImportError` at the top of an ops command rather than a degradation.
+    #
+    # On the compiler two of the reasons are the same cut: `compilation.dropped_rows` (our S65
+    # answered) is read by `services/rebuild.py`'s false-drift guard, and `_INPUT_FILES` gains
+    # `overrides.csv`. On the format tier `release_records` is the whole of `declared_movement`.
+    #
+    # And one **tightening** to know before deploying rather than to discover from a support mail:
+    # RM141 makes `validate --strict` refuse a spec whose variants have no position after resolution.
+    # It refuses nothing `compile --strict` was not already going to refuse, so on the publish path it
+    # only moves the failure earlier — but a caller hitting `/validate?strict=true` on a spec that
+    # ships no `resolution.csv` sees an error where 0.6.6 gave none, because that endpoint does not
+    # enrich. `/check` grades after enrichment (0.24) and is the endpoint that answers "would this
+    # publish".
+    "just-dna-compiler>=0.7.0",
+    "just-dna-enricher>=0.7.0",
 ]
 
 [build-system]

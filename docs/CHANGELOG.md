@@ -6,6 +6,133 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.24.0] — unreleased, and not installable
+
+**Client surface: unchanged.** No `RegistryClient` method moved or was added and the API gained no
+route. Two response models grew fields — `ValidationReport` (`carried`, `warnings_summary`) and
+`ModuleDetail` (`clin_sig_concordance`, `authority_precedence`) — which breaks nobody.
+
+**Read this line before planning against the release.** `just-dna-format` 0.7.0 is **bumped upstream
+and not cut**: all three of their `pyproject.toml` files read `0.7.0` and their tags stop at `v0.6.6`,
+so nothing here is installable from an index yet. This branch was developed against the wheels in
+their `dist/`, which were built one commit before their AlphaGenome work landed — so the snapshot we
+adopted against carries no `variant_impact_agreement` in `VALID_VERIFICATION_CHECKS` (RM193), which is
+harmless here for exactly one reason: nothing in this repo validates a check name against a copy of
+that vocabulary. **`uv.lock` is deliberately not regenerated**, because a lock resolving 0.7.0 out of a
+sibling checkout's `dist/` is machine-specific and would pin a pre-cut snapshot for everyone. So
+`uv sync` on this branch fails on the floor until 0.7.0 is published, which is the honest state and the
+loud one; relock at the cut. *Answered, in the tree, cut and installable are four different states* —
+upstream's rule, and it applies to this entry.
+
+### The overlay, and the one item with a deadline
+
+Format 0.7 adds **`overrides.csv`** (RM124): one authored row per correction a curator is making to a
+*derived* value, with `reason` required, which is what makes it a record rather than a knob. It is
+recognized here, and upstream called that the one item in the release with a deadline. The reason is
+worse than for an ordinary table — an overlay row is the author's recorded judgement that a derived
+value is wrong, so a re-publish that dropped it would silently restore the value they rejected while
+the module went on compiling green. That is the `licensing.csv` loss of 0.16.2 with the evidence
+removed instead of the data.
+
+It is also the first file to join `SIGNATURE_INPUTS` since that tuple was written: the compiler hashes
+it by its **value cells only** (S87/RM180 excludes `reason`/`decided_by`/`decided_at`), so changing what
+the overlay *does* moves the module's content identity while rewording the justification does not. Both
+halves are asserted by a test that drives a real publish, because a signature is this service's one
+permanent global claim on a `409 duplicate_content` slot and only a purge frees one.
+
+`clin_sig_concordance.csv` and `clin_sig_authority_calls.csv` join the recognized set beside it. They
+are derived, so a drop is recoverable by re-running `enrich` — but the shrinkage is invisible from
+outside, because a record that was never carried and a module with nothing contested render identically.
+
+### `warm-caches` knew about six lanes and the enricher had fourteen
+
+`caches.CACHE_LANES` (RM176) is upstream's registry of every snapshot lane, carrying its three stages,
+its `env_var`, its licence terms and — for each stage it lacks — the **reason** as a field. Ours had
+drifted by eight lanes, and the drift was silent in the worst way: `acmg` had a setting here and a pass
+here read it, and the one command an operator runs to provision this box never mentioned it. A
+deployment could run `warm-caches --apply`, see everything green, and still have the ACMG check falling
+back to a live page — which served SF **v3.2** while the current list is v3.3.
+
+- Every lane is reported, tagged with the group that reads it here or `[not read here]`, and
+  provisioned through `prepare_caches`: **the route is a property of the lane, never a flag.** A
+  published lane is pulled, an unpublished one is built, and the ones that are neither say why in
+  their own recorded words. `cache pull` stopped at the first kind, which is how a deployment came to
+  run with buildable caches permanently absent and the checks reading them skipping themselves.
+- `--checks` provisions the ACMG list; `--lane`, `--all`, `--source` and `--pin` reach the lanes no
+  pass here reads, because the same box often runs authoring commands.
+- `ready` is tri-state, and the middle arm is the point: a lane needing a workbook only the operator
+  holds has **not** failed, and counting it as a failure would make the exit code useless.
+- `export_lane_locations` publishes the configured paths into the lane variables the enricher
+  provisions by, or a pull lands where the running server never looks — a green pull followed by a
+  boot warning about the same lane.
+
+### The version comparison was standing in for a measurement
+
+`release_records.needs_recompile` (RM126/RM127 — our own S62) is adopted as the third witness in
+`registry upgrade`, beside the version gap and 0.21's output probes. It answers per **interval** what
+the probes answer per **field**, and it reaches the parquet bytes no local probe can.
+
+- **Only a declared `correction` acts.** Upstream separates `correction` (what we published was wrong)
+  from `addition` (it was absent) because a differ cannot, and a registry must route them differently:
+  re-publishing to repair is what a re-baseline is for, re-publishing to gain an optional field mints an
+  immutable PATCH for nothing. Acting on the `parquet_bytes` axis alone would re-baseline the catalog on
+  every dependency bump — 10 of 16 reference modules move `artifact.digest` across a pure *patch*
+  interval. This reaches the case 0.20 had to answer with `--force`: RM121's correction to `stats.genes`,
+  the field this catalog's gene index is built from, shipped in a patch.
+- **The record can also withhold.** A contract-scale version gap over an interval the record covers with
+  every driving axis measured `False` moved nothing, so re-publishing would reproduce the stored bytes.
+  That is the retirement: the version comparison stops being a parallel derivation and becomes the
+  fallback for every artifact compiled before the first release that has a record.
+- **`compilation.dropped_rows`** closes the S65 residue in the false-drift guard, and reaches a case the
+  `variant_count` comparison never could — a drop inside a *kind* table moves no published counter at
+  all. Only a non-empty value is evidence: the field has a default, so a pre-0.7 manifest parses as `{}`
+  exactly like a 0.7 compile that dropped nothing.
+- The upgrade's immutable changelog entry now names what it repaired.
+
+Filed back as **S90**: a `DeclaredChange` says what a release did and not which artifacts it did it to,
+so a sweep spends a permanent PATCH on every module to repair a value most of them never carried. We
+ship it that way on purpose — the false positives are bounded at one per module ever, because the
+successor's interval is the self-interval — rather than guessing applicability from a target's spelling.
+
+### The dry run graded strictly before it enriched
+
+RM141 makes `validate --strict` refuse what `compile --strict` refuses on a partial resolution table.
+Applied to the *pre-enrichment* tree it inverted `/check`: an rsID-authored module has no positions
+until the enricher supplies them, so `/check?strict=true` returned `invalid_spec` with
+`enrichment: null` — for the commonest module shape there is, at the endpoint whose whole contract is
+to report. `publish_version` never had the bug; its own pre-pass is modeless with the reason written
+beside it. The gate is modeless now and the grading happens over the enriched tree, which is the state
+`compile_module` meets. `would_publish_module_level` is carried from the modeless gate, which is the
+field's own definition: strictness changes severity only, so a strict-only error is a per-row judgement
+belonging to the tier `enrichment` reports on.
+
+### Rendered
+
+- **`clin_sig_concordance`** (RM130) on the module page, with `opposed_count` and `unchecked_count`
+  beside `row_count` and never `row_count` alone: a bare count reads as confidence, while the two
+  splits say whether the disagreement matters and whether the check ran. Absent and empty stay apart.
+- **`authority_precedence`** (RM134) verbatim, computed with nowhere. The first entry is not a winner;
+  resolving a split needs a weighting model the format does not have.
+- **`carried` and `warnings_summary`** (RM131) on `/validate` and `/check`, and in both renderers — the
+  CLI greys a carried finding, the console renders it as info. By set membership, never by matching
+  prose. They describe the compiler's own channel and not the notes this server adds about an upload,
+  because a digest that looks complete and is short is one a reader trusts and is wrong about.
+
+### What moved that nothing here had to change
+
+- **`artifact.digest` no longer reproduces across two compiles of one spec** wherever a concordance
+  record is produced. Measured, and the cause is named rather than guessed at: the record carries a
+  `checked_at` stamped to the second, so two enrichments that straddle a second write different
+  bytes — the same shape as `sources.csv`'s `fetched_at`, and the digest doing its job rather than an
+  upstream defect. `content_signature` held and every other parquet was byte-identical. That is the digest naming bytes
+  and the signature naming data, and two tests that had been asking the digest a question only the
+  signature answers were corrected. Anything holding stored digests should re-pin at this boundary.
+- **`reverse_module` now writes a `version:` key** into `module_spec.yaml` (RM103). Nothing here calls
+  it, so this is recorded rather than adopted.
+- **`gene_validity.classifications` narrowed** to the current rows (RM108) and
+  `gene_metrics.constraint_flags` was corrected (RM110). This catalog renders neither, so both arrive
+  as facts about recompiled manifests rather than as work.
+
 ## [0.23.0] — 2026-09-02
 
 **Client surface: unchanged.** No `RegistryClient` method moved or was added; the API gained no
