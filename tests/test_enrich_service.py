@@ -590,6 +590,43 @@ def test_every_lane_a_pass_here_reads_is_configurable_and_resolvable() -> None:
     assert set(available_references(settings)) == set(REFERENCE_NAMES)
 
 
+def test_a_lane_no_pass_here_reads_can_still_be_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A report has a different job from a gate, and reading presence out of the gate's map broke it.
+
+    `available_references` is keyed by `REFERENCE_NAMES` — the lanes something on this box opens —
+    and is right to be: that map feeds the boot gate and the `/check` notes, and a lane named there
+    that nothing reads is how `constraint` came to trigger boot warnings about a file no pass would
+    open. But `warm-caches` lists all fourteen, and reading presence out of that map answered `None`
+    for the seven it does not cover: a provisioned `civic` could never render as present, and under
+    `--all` it rendered as **missing** and was queued for a download of bytes already on disk. Same
+    class of defect as the hand-kept list that command was rewritten to end, arriving through the map
+    instead of the list.
+
+    Asserted with a real snapshot shape on disk (`data/*.parquet` is what the resolvers glob for) and
+    on both maps at once, because the point is the asymmetry: the narrow one must stay narrow.
+    """
+    from just_dna_registry.services.enrich import (
+        REFERENCE_NAMES,
+        available_references,
+        lane_presence,
+        provisionable_lanes,
+    )
+
+    base = tmp_path / "cache"
+    (base / "civic" / "data").mkdir(parents=True)
+    (base / "civic" / "data" / "civic.parquet").write_bytes(b"")
+    monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", str(base))
+
+    settings = Settings(enrich_enabled=True)
+    wide = lane_presence(settings)
+    assert set(wide) == set(provisionable_lanes())
+    assert "civic" not in REFERENCE_NAMES, "the premise: no pass here opens this lane"
+    assert wide["civic"] == base / "civic"
+    assert "civic" not in available_references(settings)
+
+
 def test_the_configured_path_reaches_the_lane_variable_the_enricher_provisions_by() -> None:
     """`export_lane_locations` is what makes a pull land where the running server looks.
 

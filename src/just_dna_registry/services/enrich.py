@@ -385,6 +385,27 @@ def available_references(settings: Settings) -> dict[str, Path | None]:
     }
 
 
+def lane_presence(settings: Settings) -> dict[str, Path | None]:
+    """Which of **every** provisionable lane is readable on this box, resolved through its own ladder.
+
+    The wide twin of `available_references`, which stays narrow on purpose: that one answers for the
+    lanes a pass *here* opens, and is what the boot check and the `/check` notes are keyed by — a lane
+    named there that nothing reads is how `constraint` came to trigger boot warnings about a file no
+    pass would open.
+
+    This one exists because a **report** has a different job from a gate. `warm-caches` lists all
+    fourteen, and reading presence out of the narrow map gave `None` for the seven it does not cover —
+    so a lane genuinely provisioned on disk could never render as present, and under `--all` it
+    rendered as *missing* and was queued for a download of bytes already there. Same class of defect
+    as the one that command was rewritten to fix, arriving through the map rather than the list.
+    """
+    lanes = cache_lanes()
+    if not lanes:
+        return dict.fromkeys(provisionable_lanes())
+    configured = lane_destinations(settings)
+    return {name: lane.resolve(configured.get(name)) for name, lane in lanes.items()}
+
+
 def export_lane_locations(settings: Settings) -> dict[str, str]:
     """Publish this deployment's configured cache paths into the lane variables the enricher reads.
 

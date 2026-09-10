@@ -905,11 +905,11 @@ def warm_caches(
         METRICS_REFERENCES,
         PGX_REFERENCES,
         RESOLUTION_REFERENCES,
-        available_references,
         cache_lanes,
         enricher_available,
         export_lane_locations,
         gated_lanes,
+        lane_presence,
         provisionable_lanes,
         pullable_lanes,
     )
@@ -973,7 +973,12 @@ def warm_caches(
         selected.discard("clinvar")
 
     grouped = {name: label for label, names, _ in groups for name in names}
-    present = available_references(settings)
+    # **Every lane, not the seven a pass here opens.** `available_references` is keyed by
+    # `REFERENCE_NAMES` and is right to be — it feeds the boot gate and the `/check` notes — but a
+    # report has a different job from a gate, and reading presence out of it gave `None` for the
+    # lanes it does not cover: a provisioned `civic` or `mitomap` could never render as present, and
+    # under `--all` it rendered as missing and was queued for a download of bytes already on disk.
+    present = lane_presence(settings)
     pullable, gated = pullable_lanes(), gated_lanes()
 
     typer.secho("lanes:", bold=True)
