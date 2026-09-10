@@ -81,21 +81,82 @@ METRICS_REFERENCES: tuple[str, ...] = ("constraint",)
 #: multiplies its callers onto one allowance rather than each getting their own.
 PGX_REFERENCES: tuple[str, ...] = ("cpic", "pharmvar", "clinpgx")
 
-#: Every snapshot this deployment can hold. Keys are the names `registry warm-caches` reports and
-#: `configured_caches` / `available_references` are keyed by.
+#: The ACMG SF secondary-findings list, read by the opt-in `?acmg=` pass and by nothing else.
+#:
+#: **It is a lane like the others and was invisible to `warm-caches` until 0.24**, which is the whole
+#: argument for deriving the provisioning set instead of writing it down: the setting existed
+#: (`acmg_snapshot_dir`), the pass read it, and the one command an operator runs to provision this box
+#: never mentioned it. So a deployment that ran `warm-caches --apply` and saw everything green still
+#: had the ACMG pass falling back to a live page — which through 0.6 served SF **v3.2** while the
+#: current list is v3.3, a check silently answering about last year's genes.
+#:
+#: Nothing publishes it: the SF workbook is ACMG/Elsevier supplementary material and no one grants
+#: redistribution, so the lane's only route is a local build from a workbook the operator holds. That
+#: is a reason, not a failure, and `warm-caches` reports it as the lane's own recorded sentence.
+CHECK_REFERENCES: tuple[str, ...] = ("acmg",)
+
+#: The snapshots a pass **in this service** reads. Keys are what `configured_caches` /
+#: `available_references` are keyed by, and what the boot check and the `/check` notes name.
+#:
+#: Narrower than the lanes that exist: `provisionable_lanes()` is every lane the enricher knows about
+#: (fourteen at format 0.7), most of which belong to authoring commands this server does not run.
+#: Naming a lane here is a claim that something on this box opens it, and a lane named here that
+#: nothing reads is how `constraint` came to trigger boot warnings and appear in a `/check` note
+#: about a resolution failure it could not have caused.
 REFERENCE_NAMES: tuple[str, ...] = (
-    RESOLUTION_REFERENCES + METRICS_REFERENCES + PGX_REFERENCES
+    RESOLUTION_REFERENCES + METRICS_REFERENCES + PGX_REFERENCES + CHECK_REFERENCES
 )
 
-#: The two the registry can *download*. PharmVar is absent by upstream design rather than oversight:
-#: its bulk data is taken under a key its terms make personal and non-transferable, so nothing is
-#: published to pull and there is no `ensure_pharmvar_snapshot` to call. An operator builds it.
-PULLABLE_REFERENCES: tuple[str, ...] = ("ensembl", "clinvar", "constraint", "cpic", "clinpgx")
 
-#: Pulling one of these is *taking* licence-gated data, so `warm-caches` applies `declared_use` to it
-#: — the same gate the enricher's own `cache pull` applies, for the same reason: under a data-usage
-#: policy the terms are accepted at acquisition.
-GATED_REFERENCES: tuple[str, ...] = ("cpic", "clinpgx")
+def cache_lanes() -> dict[str, Any]:
+    """`{name: CacheLane}` — upstream's registry of every snapshot lane, or `{}` with no enricher.
+
+    **Read this rather than hard-coding which snapshots exist** (format 0.7, RM176). Each lane
+    carries its three stages (`resolve`, `rebuild`, `ensure`), where it lives, its licence terms, its
+    publish repo, and — for each stage it lacks — the *reason* as a field rather than as an absence.
+    A hand-kept list is what this replaced, and upstream's had drifted by three lanes; ours had
+    drifted by eight.
+
+    Lazy, like every other enricher import in this module: the compile path must never reach the
+    network tier, and a client install has no enricher at all.
+    """
+    if not enricher_available():
+        return {}
+    from just_dna_enricher.caches import CACHE_LANES
+
+    return {lane.name: lane for lane in CACHE_LANES}
+
+
+def provisionable_lanes() -> tuple[str, ...]:
+    """Every lane an operator could provision on this box, in the registry's own order.
+
+    Wider than `REFERENCE_NAMES` on purpose. A lane this service never opens is still a lane an
+    operator may want here — the same box often runs `just-dna-enricher` authoring commands — and
+    `warm-caches` reports the full set so that decision is visible rather than made for them by a
+    list nobody updated.
+    """
+    return tuple(cache_lanes())
+
+
+def pullable_lanes() -> frozenset[str]:
+    """Lanes with a published snapshot to download, derived from the lane's own `ensure` stage.
+
+    **Not a list of names.** A lane without one is unpublished *for a recorded reason* — PharmVar's
+    personal, non-transferable key; PubMind's absent terms; NCBI's policy on MANE; ACMG's
+    supplementary material — and `lane.unpublished` carries that sentence, so a report can say why
+    instead of showing a red cross an operator cannot act on.
+    """
+    return frozenset(name for name, lane in cache_lanes().items() if lane.ensure is not None)
+
+
+def gated_lanes() -> frozenset[str]:
+    """Lanes whose data is licence-gated, so acquiring one applies `declared_use`.
+
+    Derived from `lane.terms`, which is the same object the enricher's own `cache pull` gates on.
+    Under a data-usage policy the terms are accepted when the data is *taken*, and a download is
+    taking it — so this is checked before the fetch, never after.
+    """
+    return frozenset(name for name, lane in cache_lanes().items() if lane.terms is not None)
 
 
 class EnrichmentUnavailable(RuntimeError):
@@ -248,7 +309,26 @@ def configured_caches(settings: Settings) -> dict[str, Path | None]:
         "cpic": settings.cpic_cache,
         "pharmvar": settings.pharmvar_cache,
         "clinpgx": settings.clinpgx_cache,
+        # The ACMG list, under the name it has had since the pass was written. It is in this map from
+        # 0.24 so the one function that says *where this deployment's snapshots are* covers every lane
+        # a pass here opens — it was outside, and so was invisible to `warm-caches` and to the boot
+        # report while `_acmg_check` was reading it.
+        "acmg": settings.acmg_snapshot_dir,
     }
+
+
+def lane_destinations(settings: Settings) -> dict[str, Path | None]:
+    """Where each **provisionable** lane would be written, as configured — `None` meaning its default.
+
+    Wider than `configured_caches`, which answers only for the lanes a pass here opens. This one
+    covers every lane in the enricher's registry, because `warm-caches` provisions them and an
+    operator running authoring commands on the same box wants them in the same place. A lane with no
+    setting of its own resolves under `$JUST_DNA_PIPELINES_CACHE_DIR` (or the platformdirs default),
+    which is the shared base every lane already agrees on — so pointing the base at one directory is
+    all a deployment normally has to do.
+    """
+    configured = configured_caches(settings)
+    return {name: configured.get(name) for name in provisionable_lanes()}
 
 
 def available_references(settings: Settings) -> dict[str, Path | None]:
@@ -291,25 +371,48 @@ def available_references(settings: Settings) -> dict[str, Path | None]:
     if not enricher_available():
         return dict.fromkeys(REFERENCE_NAMES)
 
-    from just_dna_enricher.locations import (
-        resolve_clinpgx_reference,
-        resolve_clinvar_reference,
-        resolve_constraint_reference,
-        resolve_cpic_reference,
-        resolve_ensembl_reference,
-        resolve_pharmvar_reference,
-    )
-
+    # **The resolver comes off the lane, not from a map written here.** Six were listed by hand, and
+    # a seventh (`acmg`) was resolved nowhere at all while its pass read the setting — the drift a
+    # hand-kept list produces, arriving in the function whose whole job is to report what a run would
+    # find. `lane.resolve` is the same callable `enrich()` reaches for, which is what makes this
+    # report predict its own run rather than describe a parallel one.
+    lanes = cache_lanes()
     configured = configured_caches(settings)
-    resolvers = {
-        "ensembl": resolve_ensembl_reference,
-        "clinvar": resolve_clinvar_reference,
-        "constraint": resolve_constraint_reference,
-        "cpic": resolve_cpic_reference,
-        "pharmvar": resolve_pharmvar_reference,
-        "clinpgx": resolve_clinpgx_reference,
+    return {
+        name: lanes[name].resolve(configured[name])
+        for name in REFERENCE_NAMES
+        if name in lanes
     }
-    return {name: resolve(configured[name]) for name, resolve in resolvers.items()}
+
+
+def export_lane_locations(settings: Settings) -> dict[str, str]:
+    """Publish this deployment's configured cache paths into the lane variables the enricher reads.
+
+    **The one thing that makes `prepare_caches` provision where this deployment keeps its snapshots.**
+    `prepare_lane` calls `lane.resolve()` and `lane.default_dir()` with no argument, on purpose — the
+    route is a property of the lane, not of the caller — so it follows the lane's own ladder:
+    `$JUST_DNA_<LANE>_CACHE`, then the shared base. A registry that configures
+    `REGISTRY_CLINVAR_CACHE` and nothing else would therefore have its snapshot downloaded somewhere
+    the running server never looks, and `warm-caches` would report a green pull followed by a boot
+    warning about the same lane.
+
+    `lane.env_var` (format 0.7, S89/RM184) is the variable each lane's own resolver reads, published
+    beside the lane rather than restated here — which is what makes this loop right by construction
+    rather than by a table somebody has to keep in step.
+
+    **Never overwrites**, matching `export_enricher_credentials`: an operator who exported a lane
+    variable directly outranks one who wrote a path into the registry's settings. Returns what it
+    actually set, so a caller can report it rather than claim it.
+    """
+    exported: dict[str, str] = {}
+    lanes = cache_lanes()
+    for name, path in lane_destinations(settings).items():
+        lane = lanes.get(name)
+        if lane is None or path is None or os.environ.get(lane.env_var):
+            continue
+        os.environ[lane.env_var] = str(path)
+        exported[lane.env_var] = str(path)
+    return exported
 
 
 def vrs_coverage(mint: Any) -> VrsCoverage:
@@ -679,6 +782,15 @@ def validation_report(
         strict=strict,
         errors=list(result.errors),
         warnings=list(result.warnings) + list(extra_warnings or []),
+        # **The compiler's own channel, never the concatenation above.** `carried` and
+        # `warnings_summary` are computed by `validate_spec` over the findings it emitted, each of
+        # which names a code. `extra_warnings` is this server's prose about the *upload* (a layout it
+        # normalized), which no format code covers — folding it in would make the summary short while
+        # looking complete, which is the one shape upstream refuses to produce. So the two fields
+        # describe `result.warnings`, and a caller subtracting `carried` from `warnings` gets the
+        # actionable set plus our own notes, which is the right answer either way.
+        carried=list(result.carried),
+        warnings_summary=dict(result.warnings_summary),
         info=list(normalized or []) + list(result.info),
         stats=SpecStats.model_validate(
             {k: v for k, v in stats.items() if k in SpecStats.model_fields}

@@ -25,7 +25,6 @@ from just_dna_registry.config import Settings
 from just_dna_registry.models.api import SpecStats
 from just_dna_registry.services.enrich import (
     ENRICHMENT_SUBJECT_TABLES,
-    PULLABLE_REFERENCES,
     REFERENCE_NAMES,
     RESOLUTION_REFERENCES,
     EnrichmentGate,
@@ -36,6 +35,7 @@ from just_dna_registry.services.enrich import (
     configured_caches,
     enricher_available,
     enrichment_subject_count,
+    pullable_lanes,
     unresolved_hint,
     vrs_coverage,
 )
@@ -533,7 +533,95 @@ def test_the_boot_gate_covers_only_what_a_publish_reads(
 
     assert "constraint" not in RESOLUTION_REFERENCES
     assert "constraint" in REFERENCE_NAMES  # still reportable, still pullable
-    assert "constraint" in PULLABLE_REFERENCES
+    assert "constraint" in pullable_lanes()
+
+
+def test_every_lane_the_enricher_knows_is_reported_by_warm_caches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The provisioning report names every lane, not the ones somebody remembered to list.
+
+    **The failure this pins is silence, which is why it is asserted against upstream's registry
+    rather than against a list here.** `warm-caches` hand-kept six lanes. Format 0.7 ships fourteen
+    (RM176), and the eight it had never heard of included `acmg` — whose setting this service
+    already had and whose pass already read it, so an operator saw a green provisioning run and
+    still had the ACMG check falling back to a live page serving last year's list. A test naming the
+    fourteen would go stale the same way; this one fails the day upstream adds a fifteenth.
+
+    The tag beside each lane is asserted too. `[not read here]` is a real answer — most lanes belong
+    to authoring commands this server does not run — and it is what keeps a complete list from
+    reading as a list of things this deployment owes.
+    """
+    from typer.testing import CliRunner
+
+    from just_dna_registry import cli
+    from just_dna_registry.services.enrich import cache_lanes, provisionable_lanes
+
+    monkeypatch.setenv("REGISTRY_DB_PATH", str(tmp_path / "m.db"))
+    monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", str(tmp_path / "empty"))
+    cli.get_settings.cache_clear()
+    result = CliRunner().invoke(cli.app, ["warm-caches"])
+    cli.get_settings.cache_clear()
+
+    for name in provisionable_lanes():
+        assert name in result.output, f"{name} is a lane and warm-caches never mentions it"
+    assert set(provisionable_lanes()) == set(cache_lanes())
+    assert "[not read here]" in result.output
+
+
+def test_every_lane_a_pass_here_reads_is_configurable_and_resolvable() -> None:
+    """`REFERENCE_NAMES` is a claim that something on this box opens the lane. Both halves are checked.
+
+    A name here that upstream does not carry is a lane we would resolve with a `KeyError` at boot;
+    a name here with no entry in `configured_caches` is a lane an operator cannot point anywhere —
+    which is what `acmg` was, resolved by nothing and reported by nothing while `_acmg_check` read
+    its setting directly.
+    """
+    from just_dna_registry.services.enrich import (
+        REFERENCE_NAMES,
+        available_references,
+        cache_lanes,
+        configured_caches,
+    )
+
+    settings = Settings(enrich_enabled=True)
+    assert set(REFERENCE_NAMES) <= set(cache_lanes())
+    assert set(REFERENCE_NAMES) <= set(configured_caches(settings))
+    assert set(available_references(settings)) == set(REFERENCE_NAMES)
+
+
+def test_the_configured_path_reaches_the_lane_variable_the_enricher_provisions_by() -> None:
+    """`export_lane_locations` is what makes a pull land where the running server looks.
+
+    `prepare_lane` resolves with no argument on purpose — the route is a property of the lane — so it
+    follows `$JUST_DNA_<LANE>_CACHE` and then the shared base, and a deployment that configured only
+    `REGISTRY_CLINVAR_CACHE` would have its snapshot downloaded somewhere the server never opens:
+    a green pull followed by a boot warning about the same lane. The variable comes off `lane.env_var`
+    (S89/RM184) rather than being spelled here, which is the whole reason it cannot drift.
+
+    Never overwriting is asserted beside it: an operator who exported a lane variable by hand
+    outranks one who wrote a path into the registry's settings, exactly as for the credentials.
+    """
+    import os
+
+    from just_dna_registry.services.enrich import cache_lanes, export_lane_locations
+
+    clinvar = cache_lanes()["clinvar"]
+    before = os.environ.get(clinvar.env_var)
+    try:
+        os.environ.pop(clinvar.env_var, None)
+        exported = export_lane_locations(Settings(clinvar_cache=Path("/srv/snapshots/clinvar")))
+        assert exported[clinvar.env_var] == "/srv/snapshots/clinvar"
+        assert os.environ[clinvar.env_var] == "/srv/snapshots/clinvar"
+
+        os.environ[clinvar.env_var] = "/operator/wins"
+        again = export_lane_locations(Settings(clinvar_cache=Path("/srv/snapshots/clinvar")))
+        assert clinvar.env_var not in again
+        assert os.environ[clinvar.env_var] == "/operator/wins"
+    finally:
+        os.environ.pop(clinvar.env_var, None)
+        if before is not None:
+            os.environ[clinvar.env_var] = before
 
 
 # ── An upstream that could not be reached ──────────────────────────────────────

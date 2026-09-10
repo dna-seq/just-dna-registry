@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 from pathlib import Path
+from typing import Any
 
 import httpx
 import typer
@@ -830,6 +831,29 @@ def warm_caches(
         False, "--pgx/--no-pgx",
         help="The licence-gated PGx snapshots (cpic, clinpgx) — only the `?pgx=` check reads them",
     ),
+    checks: bool = typer.Option(
+        False, "--checks/--no-checks",
+        help="The ACMG SF list read by the `?acmg=` pass. Buildable only, from your own workbook",
+    ),
+    lane: list[str] = typer.Option(
+        [], "--lane",
+        help="Provision a lane by name, repeatable. Accepts lanes no pass here reads (`registry "
+             "warm-caches` with no --apply lists every one).",
+    ),
+    every: bool = typer.Option(
+        False, "--all", help="Every lane the enricher knows about, not only the ones read here"
+    ),
+    source: list[str] = typer.Option(
+        [], "--source",
+        help="`<lane>=<path>` for a lane that builds from a file you hold (ACMG's workbook, a "
+             "ClinVar VCF). Repeatable.",
+    ),
+    pin: list[str] = typer.Option(
+        [], "--pin",
+        help="`<lane>=<release>` for a lane that builds a dated release (MANE, CIViC, STRchive). "
+             "A lane that needs one and does not get it reports could-not-run rather than building "
+             "whatever is upstream today. Repeatable.",
+    ),
     use: str | None = typer.Option(
         None, "--use",
         help=(
@@ -840,45 +864,54 @@ def warm_caches(
     ),
     apply: bool = typer.Option(False, "--apply/--dry-run"),
 ) -> None:
-    """Provision the reference snapshots enrichment needs, from HuggingFace Hub.
+    """Provision the reference snapshots enrichment needs.
 
-    **Run this before pointing a deployment at 0.11.** Publishing now enriches before it compiles,
-    and with strict compiles on, a server holding no snapshot cannot publish an rsID-authored module
-    at all — it refuses rather than emitting a partial artifact.
+    **Run this before pointing a deployment at a new format minor.** Publishing enriches before it
+    compiles, and with strict compiles on, a server holding no snapshot cannot publish an
+    rsID-authored module at all — it refuses rather than emitting a partial artifact.
 
     The dry run (the default) reports what the *running server* would find, using the same explicit
-    cache paths and the same resolver, so it doubles as a health check. `--apply` downloads what is
-    missing: hundreds of megabytes, minutes.
+    cache paths and the same resolvers, so it doubles as a health check. It lists **every lane the
+    enricher knows about**, not only the ones selected, because a lane nobody told you existed is a
+    lane you cannot decide about. `--apply` provisions the selected ones.
 
-    Three groups, because they gate different things. **Resolution** (ensembl, clinvar) decides
-    whether a publish works. **PGx** (cpic, clinpgx — `--pgx`) is what makes a *hosted* `?pgx=`
-    check legitimate rather than merely possible: without a cache the only alternatives are fetching
-    a source that forbids sale live, per request, on the operator's own acceptance, or skipping the
-    check. Their rate figures are per IP, so a server multiplies its callers onto one allowance.
-    Tiny by comparison — CPIC is ~256 KB. **Metrics** (constraint — `--constraint`) gates nothing
-    here yet: the gene-metrics pass writes an authored sidecar and the registry never runs it, so
-    this is provisioning for a `just-dna-enricher gene-metrics` run on the same box, and its absence
-    is never reported as a finding about a module.
+    **Each lane is provisioned by its own route, and the route is not a flag** (format 0.7, RM176).
+    A lane with a published snapshot is pulled; one without is unpublished for a recorded reason —
+    PharmVar's personal, non-transferable key, ACMG's Elsevier supplementary material, NCBI's policy
+    on MANE — and building locally is the only route there will ever be. `cache pull` stopped at the
+    first kind, which is how a deployment came to run with buildable caches permanently absent and
+    the checks that read them skipping themselves. A present cache is left alone, so re-running is
+    cheap and safe.
 
-    **`--use` applies to the PGx pair and to nothing else.** Under a data-usage policy the terms are
-    accepted when the data is *taken*, and a download is taking it, so `unstated` skips them and
-    `commercial` refuses. The resolution snapshots never ask: none of Ensembl, ClinVar or gnomAD
-    forbids sale.
+    Groups, because they gate different things. **Resolution** (ensembl, clinvar) decides whether a
+    publish works. **PGx** (cpic, clinpgx, pharmvar — `--pgx`) is what makes a *hosted* `?pgx=` check
+    legitimate rather than merely possible: without a snapshot the alternatives are fetching a source
+    that forbids sale live, per request, on the operator's own acceptance, or skipping the check;
+    both published rate figures are per IP, so a server multiplies its callers onto one allowance.
+    **Checks** (acmg — `--checks`) is the SF secondary-findings list; without it the pass falls back
+    to a live page, which served SF v3.2 while the current list is v3.3 — a check quietly answering
+    about last year's genes. **Metrics** (constraint — `--constraint`) gates nothing here yet: the
+    gene-metrics pass writes an authored sidecar and this service never runs it, so its absence is
+    never reported as a finding about a module.
 
-    **PharmVar is absent on purpose.** Its bulk data comes down under a key its terms §2 make
-    personal and non-transferable, so upstream publishes nothing to pull and offers no
-    `ensure_pharmvar_snapshot`. Build it once yourself — `just-dna-enricher pharmvar build --out
-    <dir>` — and set `REGISTRY_PHARMVAR_CACHE`.
+    **`--use` applies to the licence-gated lanes and to nothing else.** Under a data-usage policy the
+    terms are accepted when the data is *taken*, so `unstated` skips them and `commercial` refuses.
+    Checked before the fetch, never after: refusing means nothing was taken, which is the whole point
+    of gating at acquisition. Ensembl, ClinVar and gnomAD never ask.
     """
     settings = get_settings()
     from just_dna_registry.services.enrich import (
-        GATED_REFERENCES,
+        CHECK_REFERENCES,
         METRICS_REFERENCES,
         PGX_REFERENCES,
         RESOLUTION_REFERENCES,
         available_references,
-        configured_caches,
+        cache_lanes,
         enricher_available,
+        export_lane_locations,
+        gated_lanes,
+        provisionable_lanes,
+        pullable_lanes,
     )
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
@@ -894,20 +927,6 @@ def warm_caches(
         )
         raise typer.Exit(code=1)
 
-    from just_dna_enricher.download import (
-        ensure_clinpgx_snapshot,
-        ensure_clinvar_snapshot,
-        ensure_constraint_snapshot,
-        ensure_cpic_snapshot,
-        ensure_snapshot,
-    )
-    from just_dna_enricher.licensing import (
-        CLINPGX_TERMS,
-        CPIC_TERMS,
-        LicenseRefusal,
-        check_declared_use,
-    )
-
     # Hyphens accepted, and normalized here rather than in the API. A CLI flag is a human interface
     # and `--use non-commercial` is the spelling every enricher command documents — including inside
     # the licence messages printed below, which are upstream's words. An HTTP query parameter is a
@@ -922,105 +941,152 @@ def warm_caches(
         )
         raise typer.Exit(code=2)
 
-    wanted = {
-        "ensembl": ensembl, "clinvar": clinvar, "constraint": constraint,
-        "cpic": pgx, "pharmvar": pgx, "clinpgx": pgx,
-    }
-    # `ensure_*` takes only the cache path; the fetcher is `None` where nothing is published.
-    fetchers = {
-        "ensembl": ensure_snapshot,
-        "clinvar": ensure_clinvar_snapshot,
-        "constraint": ensure_constraint_snapshot,
-        "cpic": ensure_cpic_snapshot,
-        "clinpgx": ensure_clinpgx_snapshot,
-        "pharmvar": None,
-    }
-    terms = {"cpic": CPIC_TERMS, "clinpgx": CLINPGX_TERMS}
+    lanes = cache_lanes()
+    known = provisionable_lanes()
+    unknown = [name for name in lane if name not in lanes]
+    if unknown:
+        typer.secho(
+            f"unknown lane(s): {', '.join(sorted(unknown))}. This enricher knows "
+            f"{', '.join(known)}.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
 
-    configured = configured_caches(settings)
+    pins, sources = _lane_pairs(pin, "--pin", lanes), _lane_pairs(source, "--source", lanes)
+
+    groups: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+        ("resolution", RESOLUTION_REFERENCES, True),
+        ("metrics", METRICS_REFERENCES, constraint),
+        ("pgx", PGX_REFERENCES, pgx),
+        ("checks", CHECK_REFERENCES, checks),
+    )
+    selected: set[str] = set(lane)
+    if every:
+        selected |= set(known)
+    for _label, names, wanted in groups:
+        if wanted:
+            selected |= set(names)
+    # The two resolution lanes are individually switchable because they are the two a publish needs.
+    if not ensembl:
+        selected.discard("ensembl")
+    if not clinvar:
+        selected.discard("clinvar")
+
+    grouped = {name: label for label, names, _ in groups for name in names}
     present = available_references(settings)
+    pullable, gated = pullable_lanes(), gated_lanes()
+
+    typer.secho("lanes:", bold=True)
     missing: list[str] = []
-    for group, names in (
-        ("resolution", RESOLUTION_REFERENCES),
-        ("metrics", METRICS_REFERENCES),
-        ("pgx", PGX_REFERENCES),
-    ):
-        typer.secho(f"\n{group}:", bold=True)
-        for name in names:
-            if not wanted[name]:
-                typer.echo(f"  – {name}: skipped")
-            elif present[name] is not None:
-                typer.echo(f"  ✓ {name}: {present[name]}")
-            elif fetchers[name] is None:
-                # Not a failure to report as one: there is nothing to download, ever.
-                typer.secho(
-                    f"  ✗ {name}: absent, and never published — build it with "
-                    f"`just-dna-enricher {name} build --out <dir>`, then set "
-                    f"REGISTRY_{name.upper()}_CACHE",
-                    fg=typer.colors.YELLOW,
-                )
-            else:
-                typer.secho(f"  ✗ {name}: not provisioned", fg=typer.colors.YELLOW)
-                missing.append(name)
+    for name in known:
+        lane_obj = lanes[name]
+        where = present.get(name)
+        read_here = grouped.get(name)
+        tag = f"[{read_here}]" if read_here else "[not read here]"
+        if where is not None:
+            typer.echo(f"  ✓ {name} {tag}: {where}")
+        elif name not in selected:
+            typer.echo(f"  – {name} {tag}: not selected")
+        elif name in pullable:
+            typer.secho(
+                f"  ✗ {name} {tag}: not provisioned — pull"
+                + (" (licence-gated)" if name in gated else ""),
+                fg=typer.colors.YELLOW,
+            )
+            missing.append(name)
+        elif lane_obj.rebuild is not None:
+            # Not a failure to report as one. Nothing publishes it, and the lane says why in its own
+            # words — which is the sentence an operator can act on, unlike a red cross.
+            typer.secho(
+                f"  ✗ {name} {tag}: not provisioned — build ({lane_obj.unpublished or 'unpublished'})",
+                fg=typer.colors.YELLOW,
+            )
+            missing.append(name)
+        else:
+            typer.secho(
+                f"  ✗ {name} {tag}: no route in this tier ({lane_obj.unbuilt or 'unbuildable'})",
+                fg=typer.colors.YELLOW,
+            )
 
     if not missing:
-        typer.secho("\nEvery requested snapshot that can be pulled is present.", fg=typer.colors.GREEN)
+        typer.secho("\nEvery selected lane is present.", fg=typer.colors.GREEN)
         return
     if not apply:
         typer.echo(
-            f"\n{len(missing)} snapshot(s) missing: {', '.join(missing)}. "
-            f"Re-run with --apply to download (this takes a while and a lot of disk)."
+            f"\n{len(missing)} lane(s) to provision: {', '.join(missing)}. "
+            f"Re-run with --apply (this takes a while and a lot of disk)."
         )
         raise typer.Exit(code=1)
 
+    # **After the report, before the provisioning.** The report answers "what would the running
+    # server find", which is this deployment's own resolvers; the provisioning happens inside the
+    # enricher, whose lane ladder reads its own variables — so the configured paths are published
+    # into them first, or a pull lands somewhere the server never looks.
+    for var, value in sorted(export_lane_locations(settings).items()):
+        typer.echo(f"  · {var}={value}")
+
+    from just_dna_enricher.caches import prepare_caches
+
+    outcomes = prepare_caches(
+        [lanes[name] for name in missing],
+        declared_use=declared,
+        pins=pins or None,
+        sources=sources or None,
+    )
     failures = 0
-    for name in missing:
-        if name in GATED_REFERENCES:
-            # Checked before the download, not after: refusing here means nothing was taken, which
-            # is the whole point of gating at acquisition.
-            try:
-                reason = check_declared_use(terms[name], declared)
-            except LicenseRefusal as exc:
-                typer.secho(f"✗ {name}: {exc}", fg=typer.colors.RED, err=True)
-                failures += 1
-                continue
-            if reason is not None:
-                # Upstream's own wording, unedited — it names the source, its licence and the policy
-                # URL, and it is the text a reader will find again in the enricher's output.
-                typer.secho(f"– {name}: skipped — {reason}", fg=typer.colors.YELLOW)
-                continue
-        typer.echo(f"downloading {name} …")
-        try:
-            path = fetchers[name](configured[name])
-        except Exception as exc:  # noqa: BLE001 — one snapshot failing must not sink the rest
-            # Broad on purpose, and mirroring the enricher's own `cache pull`. The reachable causes
-            # are a dataset that is not published yet, an HF outage, a 429, a full disk and an
-            # expired token — several of which surface from deep inside `fsspec` as types this
-            # module has no business knowing. What an operator needs is which snapshot failed and
-            # why, then for the other five to carry on; a traceback here would bury both.
-            typer.secho(f"✗ {name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
-            looks_like_auth = "401" in str(exc) or "not found" in str(exc).lower()
-            if name in GATED_REFERENCES and looks_like_auth:
-                # These two mirrors are private, precisely because they mirror sources that forbid
-                # sale — so anonymous access is refused rather than throttled, and a 401 reads as
-                # "no such dataset". Say which it is, because the fix is a token and not a rebuild.
+    for outcome in outcomes:
+        if outcome.ready is True:
+            typer.secho(f"✓ {outcome.lane}: {outcome.route} — {outcome.detail}", fg=typer.colors.GREEN)
+        elif outcome.ready is None:
+            # Tri-state, and this arm is the reason it is not a bool: a lane that cannot run
+            # unattended (a workbook only the operator holds, a release to pin, a licence declaration
+            # that skips it) has not failed. Reported in the lane's own words and not counted.
+            typer.secho(f"– {outcome.lane}: {outcome.detail}", fg=typer.colors.YELLOW)
+        else:
+            typer.secho(f"✗ {outcome.lane}: FAILED — {outcome.detail}", fg=typer.colors.RED, err=True)
+            if outcome.lane in gated and _looks_like_auth(outcome.detail):
+                # The licence-gated mirrors are private, precisely because they mirror sources that
+                # forbid sale — so anonymous access is refused rather than throttled, and a 401 reads
+                # as "no such dataset". Say which it is: the fix is a token, not a rebuild.
                 typer.secho(
                     "   the licence-gated mirrors are private: set REGISTRY_HF_TOKEN (or HF_TOKEN) "
                     "to an account with access, or build this snapshot locally with "
-                    f"`just-dna-enricher {name} build --out <dir>`.",
+                    f"`just-dna-enricher {outcome.lane} build --out <dir>`.",
                     fg=typer.colors.YELLOW, err=True,
                 )
             failures += 1
-            continue
-        typer.secho(f"✓ {name}: {path}", fg=typer.colors.GREEN)
 
     if failures:
         typer.secho(
-            f"\n{failures} snapshot(s) could not be provisioned. The rest are usable — a missing "
-            f"resolution snapshot degrades publishing, a missing PGx one only skips `?pgx=` legs.",
+            f"\n{failures} lane(s) could not be provisioned. The rest are usable — a missing "
+            f"resolution snapshot degrades publishing, a missing PGx or ACMG one skips a check leg.",
             fg=typer.colors.YELLOW,
         )
         raise typer.Exit(code=1)
+
+
+def _lane_pairs(pairs: list[str], flag: str, lanes: dict[str, Any]) -> dict[str, Any]:
+    """`<lane>=<value>` options, parsed and checked against the lane registry.
+
+    Checked rather than passed through: a typo'd lane name in a `--source` would otherwise be
+    silently ignored and the lane would build from nothing (or refuse for a reason that names the
+    wrong cause), which is the shape of every "the flag did nothing" report there has ever been.
+    """
+    out: dict[str, Any] = {}
+    for raw in pairs:
+        name, _, value = raw.partition("=")
+        if not value or name not in lanes:
+            typer.secho(
+                f"{flag} takes `<lane>=<value>` for a known lane, got {raw!r}", fg=typer.colors.RED
+            )
+            raise typer.Exit(code=2)
+        out[name] = Path(value) if flag == "--source" else value
+    return out
+
+
+def _looks_like_auth(detail: str) -> bool:
+    """Whether a provisioning failure reads like a missing HuggingFace token rather than an outage."""
+    return "401" in detail or "not found" in detail.lower()
 
 
 @app.command("rederive-signatures")
