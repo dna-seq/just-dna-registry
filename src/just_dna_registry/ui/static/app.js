@@ -1441,6 +1441,7 @@
     const notRecorded = (text = "not recorded") => h("span", { class: "faint" }, text);
     const g = m.gwas_effects;
     const v = m.verification;
+    const c = m.clin_sig_concordance;
     return h(
       "div",
       { class: "two-col" },
@@ -1478,6 +1479,37 @@
           ])
         ),
         m.weighting ? h("div", {}, h("h3", {}, "Weighting"), kv([["scale", m.weighting.scale], ["method", m.weighting.method], ["note", m.weighting.note]])) : null,
+        // `opposed_count` and `unchecked_count` are rendered beside `rows`, never `rows` alone: a row
+        // count on its own reads as confidence, while the two splits are what say whether the
+        // disagreement matters and whether the check actually ran. Nothing resolves the split — the
+        // authorities are who was asked, in no order, and `authority_precedence` below is not a winner.
+        c ? h(
+          "div",
+          {},
+          h("h3", {}, "Clinical-significance concordance"),
+          c.unchecked_count > 0 ? h(
+            "div",
+            { class: "warn-box small" },
+            `${fmtInt(c.unchecked_count)} of ${fmtInt(c.row_count)} contested subject(s) could not be fully checked: an authority was unreachable, so the comparison is incomplete rather than clean.`
+          ) : null,
+          kv([
+            ["contested subjects", fmtInt(c.row_count)],
+            ["authority calls", fmtInt(c.call_count)],
+            ["opposed (pathogenic vs benign)", fmtInt(c.opposed_count)],
+            ["unchecked", fmtInt(c.unchecked_count)],
+            ["authorities", chipList(c.authorities)],
+            ["datasets", chipList(c.datasets)],
+            ["concordance states", chipList(c.concordance_states)],
+            ["authored positions", chipList(c.authored_positions)]
+          ])
+        ) : null,
+        m.authority_precedence.length ? h(
+          "div",
+          {},
+          h("h3", {}, "Authority precedence"),
+          h("p", { class: "small muted" }, "The curator's own weighting, most-trusted first. Nothing computes with it: the first entry is not a winner, and a contested call stays contested."),
+          chipList(m.authority_precedence)
+        ) : null,
         g ? h(
           "div",
           {},
@@ -1524,14 +1556,14 @@
               "table",
               { class: "grid small" },
               h("thead", {}, h("tr", {}, ["check", "subjects", "findings", "skipped", "source"].map((x) => h("th", {}, x)))),
-              h("tbody", {}, v.checks.map((c) => h(
+              h("tbody", {}, v.checks.map((c2) => h(
                 "tr",
                 {},
-                h("td", { class: "mono" }, c.check),
-                h("td", {}, fmtInt(c.subjects)),
-                h("td", {}, fmtInt(c.findings)),
-                h("td", {}, c.skipped ? badge("warn", c.skipped, c.detail ?? "") : h("span", { class: "faint" }, "—")),
-                h("td", { class: "small" }, [c.source, c.release].filter(Boolean).join(" "))
+                h("td", { class: "mono" }, c2.check),
+                h("td", {}, fmtInt(c2.subjects)),
+                h("td", {}, fmtInt(c2.findings)),
+                h("td", {}, c2.skipped ? badge("warn", c2.skipped, c2.detail ?? "") : h("span", { class: "faint" }, "—")),
+                h("td", { class: "small" }, [c2.source, c2.release].filter(Boolean).join(" "))
               )))
             ) : h("p", { class: "faint small" }, "no checks recorded")
           ) : h("p", { class: "faint small" }, "This version carries no verification block.")

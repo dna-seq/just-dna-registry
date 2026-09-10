@@ -235,6 +235,58 @@ class VerificationInfo(BaseModel):
     checks: list[VerificationCheck] = Field(default_factory=list)
 
 
+class ClinSigConcordanceInfo(BaseModel):
+    """The clinical-significance concordance record's facets (format 0.7, RM130).
+
+    **Three counters, and rendering only the first is the failure this block is shaped against.**
+    `row_count` alone reads as confidence — *this module checked N subjects* — while what a reader
+    needs is which way the check went. `opposed_count` is the disagreement that crosses the
+    pathogenic/benign line, which is the finding worth acting on; `unchecked_count` is the subject an
+    authority could not be consulted about, so the comparison is *incomplete* rather than clean. A
+    shrinking record with a rising `unchecked_count` is a missing snapshot on the deployment that
+    enriched it, not an improving module, and only the pair says which.
+
+    That is this repo's sibling-field rule arriving in somebody else's block: a value two opposite
+    histories can produce needs the field that says which happened. Both counters are carried for
+    exactly that reason and neither is optional to render.
+
+    **No consensus field, deliberately, and none is computed here.** Upstream omits one because
+    resolving a split needs a weighting model the format does not have; inventing one at the catalog
+    layer would publish a judgement as a fact. `authorities` says who was asked and the paired
+    `clin_sig_authority_calls` table says what each of them answered — which authority spoke is data,
+    never a rank.
+    """
+
+    row_count: int = Field(description="Contested subjects recorded, one per (variant_key, genotype)")
+    call_count: int = Field(
+        description=(
+            "Rows in the paired per-authority detail table. Equal to `row_count` at one authority and "
+            "higher above it, which is what makes the record's growth with N visible without counting"
+        )
+    )
+    opposed_count: int = Field(
+        description="Subjects where two calls sit in opposite camps rather than merely differing"
+    )
+    unchecked_count: int = Field(
+        description=(
+            "Subjects where an authority could not be consulted — incomplete, never clean. Read it "
+            "beside `row_count`: a small record with a large value here checked almost nothing"
+        )
+    )
+    authorities: list[str] = Field(
+        default_factory=list, description="Who was consulted, sorted. Not a ranking"
+    )
+    datasets: list[str] = Field(
+        default_factory=list, description="The authority releases the calls were read from"
+    )
+    concordance_states: list[str] = Field(
+        default_factory=list, description="`authority_concordance` values present in the record"
+    )
+    authored_positions: list[str] = Field(
+        default_factory=list, description="`authored_position` values present in the record"
+    )
+
+
 class FactTablesInfo(BaseModel):
     """Which derived fact tables a version carries, for the card and the search filters (0.6).
 
@@ -334,6 +386,19 @@ class ModuleDetail(ModuleCard):
     latest_manifest: ModuleManifest | None
     verification: VerificationInfo | None = None
     weighting: WeightingInfo | None = None
+    clin_sig_concordance: ClinSigConcordanceInfo | None = None
+    authority_precedence: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The authorities this module's curator weighted, most-trusted first (format 0.7, RM134) "
+            "— served **verbatim and computed with nowhere**. Nothing in the format derives a verdict "
+            "from it and neither does this service: the first entry is not a winner, and reading it "
+            "as one beside `clin_sig_concordance` would resolve a split the format deliberately "
+            "leaves open. Empty means the module has not said, which is not the same as saying the "
+            "authorities weigh equally. Shown where `weighting` and `authorship` are shown, because "
+            "it is the same kind of statement: what the curator brought to the module, in their words"
+        ),
+    )
     gwas_effects: GwasEffectsInfo | None = None
 
 

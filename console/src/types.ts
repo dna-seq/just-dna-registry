@@ -84,6 +84,17 @@ export interface VerificationInfo {
   checks: VerificationCheck[];
 }
 
+export interface ClinSigConcordanceInfo {
+  row_count: number;
+  call_count: number;
+  opposed_count: number;
+  unchecked_count: number;
+  authorities: string[];
+  datasets: string[];
+  concordance_states: string[];
+  authored_positions: string[];
+}
+
 export interface FactTablesInfo {
   gene_validity: boolean;
   clinical_assertions: boolean;
@@ -145,6 +156,8 @@ export interface ModuleDetail extends ModuleCard {
   verification: VerificationInfo | null;
   weighting: WeightingInfo | null;
   gwas_effects: GwasEffectsInfo | null;
+  clin_sig_concordance: ClinSigConcordanceInfo | null;
+  authority_precedence: string[];
 }
 
 export interface WhoAmI {

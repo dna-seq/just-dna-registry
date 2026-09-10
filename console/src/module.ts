@@ -141,6 +141,7 @@ function trustPanel(m: ModuleDetail): HTMLDivElement {
   const notRecorded = (text = "not recorded"): HTMLSpanElement => h("span", { class: "faint" }, text);
   const g = m.gwas_effects;
   const v = m.verification;
+  const c = m.clin_sig_concordance;
   return h("div", { class: "two-col" },
     h("div", { class: "stack" },
       h("div", {}, h("h3", {}, "Resolution (variants.csv only)"),
@@ -161,6 +162,20 @@ function trustPanel(m: ModuleDetail): HTMLDivElement {
         kv([["gene validity", yesNo(f.gene_validity)], ["clinical assertions", yesNo(f.clinical_assertions)], ["GWAS effects", yesNo(f.gwas_effects)],
           ["frequencies", yesNo(f.frequencies)], ["weighting declared", yesNo(f.weighting_declared)]])),
       m.weighting ? h("div", {}, h("h3", {}, "Weighting"), kv([["scale", m.weighting.scale], ["method", m.weighting.method], ["note", m.weighting.note]])) : null,
+      // `opposed_count` and `unchecked_count` are rendered beside `rows`, never `rows` alone: a row
+      // count on its own reads as confidence, while the two splits are what say whether the
+      // disagreement matters and whether the check actually ran. Nothing resolves the split — the
+      // authorities are who was asked, in no order, and `authority_precedence` below is not a winner.
+      c ? h("div", {}, h("h3", {}, "Clinical-significance concordance"),
+        c.unchecked_count > 0 ? h("div", { class: "warn-box small" },
+          `${fmtInt(c.unchecked_count)} of ${fmtInt(c.row_count)} contested subject(s) could not be fully checked: an authority was unreachable, so the comparison is incomplete rather than clean.`) : null,
+        kv([["contested subjects", fmtInt(c.row_count)], ["authority calls", fmtInt(c.call_count)],
+          ["opposed (pathogenic vs benign)", fmtInt(c.opposed_count)], ["unchecked", fmtInt(c.unchecked_count)],
+          ["authorities", chipList(c.authorities)], ["datasets", chipList(c.datasets)],
+          ["concordance states", chipList(c.concordance_states)], ["authored positions", chipList(c.authored_positions)]])) : null,
+      m.authority_precedence.length ? h("div", {}, h("h3", {}, "Authority precedence"),
+        h("p", { class: "small muted" }, "The curator's own weighting, most-trusted first. Nothing computes with it: the first entry is not a winner, and a contested call stays contested."),
+        chipList(m.authority_precedence)) : null,
       g ? h("div", {}, h("h3", {}, "GWAS effects"),
         g.units.length > 1 ? h("div", { class: "warn-box small" }, "More than one unit: the betas are on different scales and must not be pooled.") : null,
         kv([["rows", fmtInt(g.row_count)], ["with effect allele", `${fmtInt(g.with_effect_allele)} (without: ${fmtInt(g.without_effect_allele)})`],

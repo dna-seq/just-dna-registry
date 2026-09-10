@@ -13,6 +13,7 @@ from just_dna_registry.db.facets import is_trusted, version_facets
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.models.api import (
     CardStats,
+    ClinSigConcordanceInfo,
     FactTablesInfo,
     GwasEffectsInfo,
     LicensingInfo,
@@ -256,6 +257,29 @@ def _gwas_effects(manifest: ModuleManifest | None) -> GwasEffectsInfo | None:
     )
 
 
+def _clin_sig_concordance(manifest: ModuleManifest | None) -> ClinSigConcordanceInfo | None:
+    """The concordance record's facets, or `None` when the module carries no record.
+
+    `None` and a record with `row_count: 0` are **not** collapsed, for the same reason `_verification`
+    keeps its two absences apart: no record means nothing compared the authorities, while an empty one
+    means they were compared and nothing came out contested. Both render as "no disagreement here" to
+    a careless reader, and only one of them is a check that ran.
+    """
+    if manifest is None or manifest.clin_sig_concordance is None:
+        return None
+    block = manifest.clin_sig_concordance
+    return ClinSigConcordanceInfo(
+        row_count=block.row_count,
+        call_count=block.call_count,
+        opposed_count=block.opposed_count,
+        unchecked_count=block.unchecked_count,
+        authorities=list(block.authorities),
+        datasets=list(block.datasets),
+        concordance_states=list(block.concordance_states),
+        authored_positions=list(block.authored_positions),
+    )
+
+
 def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> ModuleCard:
     manifest = _latest_manifest(repo, row)
     stats = manifest.stats if manifest else None
@@ -393,6 +417,10 @@ def module_detail(
         verification=_verification(manifest),
         weighting=_weighting(manifest),
         gwas_effects=_gwas_effects(manifest),
+        clin_sig_concordance=_clin_sig_concordance(manifest),
+        # Verbatim, and `list()` rather than a copy of the reasoning: nothing here orders, ranks or
+        # derives from it. See `ModuleDetail.authority_precedence`.
+        authority_precedence=list(manifest.authority_precedence) if manifest else [],
     )
 
 
