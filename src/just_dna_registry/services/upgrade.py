@@ -60,6 +60,7 @@ from just_dna_registry.services.publish import (
     publish_version,
 )
 from just_dna_registry.services.rebuild import (
+    DeclaredMovement,
     RebuildVerdict,
     declared_movement,
     measure_output_drift,
@@ -358,11 +359,17 @@ class ContractGap(BaseModel):
 
         So the honest gap is not in the scale, it is that *nothing* looks for the stale field. The
         durable answer is a **defect predicate, not a version exception**: for a stored version, do its
-        authored gene-bearing tables carry a gene its `manifest.stats.genes` does not? That evidence is
-        carriable — `revalidate` already rebuilds a spec dir from stored inputs — which is what
-        separates this from the 0.6.3 re-draft case, where the superseded rows were invisible from
-        inside a published module and a detector would have reported clean on every affected one. Not
-        built here; recorded so the next person builds the predicate rather than a version table.
+        authored gene-bearing tables carry a gene its `manifest.stats.genes` does not? Built in 0.21 as
+        `services/rebuild.py`, and answered from the other side in 0.24 by format 0.7's release record,
+        which declares that same RM121 change as a *correction* rather than leaving a consumer to
+        notice. Neither is a version exception, which is what this paragraph was protecting.
+
+        **What this property does NOT decide any more is the whole question.** `VersionUpgradePlan`
+        composes it with the record, which can withhold a contract-scale gap that measurably moved
+        nothing (`DeclaredMovement.refutes_a_contract_gap`) — the version comparison here was standing
+        in for a measurement that had never been published, and where the measurement exists and is
+        complete it wins. This stays as the fallback, and the fallback is not vestigial: it is the only
+        answer for every artifact compiled before the first release that has a record at all.
         """
         return self.scale == GAP_CONTRACT
 
@@ -473,25 +480,46 @@ class VersionUpgradePlan(BaseModel):
     #: (0.21). A compiler *patch* moves no schema, so `gap` scores it `patch` and declines to act;
     #: upstream RM121 nevertheless changed `stats.genes` in one. `services/rebuild.py` recomputes the
     #: probed fields from these very `files` and reports the difference, so a measured gap acts under
-    #: plain `--apply` and `--force` goes back to meaning *act despite the detector*.
+    #: plain `--apply` and `--force` goes back to meaning *act despite the detector*. It also carries
+    #: the corrections `declared` names, so what a re-baseline repairs reaches the changelog entry.
     verdict: RebuildVerdict = Field(default_factory=RebuildVerdict)
+
+    #: What upstream's release record says the compile interval moved (0.24, format 0.7). The third
+    #: term, and the only one that can **subtract**: a contract-scale version gap over an interval the
+    #: record covers with every driving axis measured `False` moved nothing, so re-publishing would
+    #: reproduce the stored bytes. See `DeclaredMovement.refutes_a_contract_gap`.
+    declared: DeclaredMovement = Field(default_factory=DeclaredMovement)
+
+    @property
+    def contract_acts(self) -> bool:
+        """The contract gap's own verdict, after the record has had its say.
+
+        The version comparison was standing in for a measurement nobody published. Where the
+        measurement exists and is complete, it is the answer; everywhere else — an uncovered span, an
+        unstamped compiler, a single unknown axis — the comparison stands exactly as before, which is
+        every artifact compiled before the first release that has a record.
+        """
+        return self.gap.acts_by_default and not self.declared.refutes_a_contract_gap
 
     def would_act(self, *, recompile: bool) -> bool:
         """Whether re-publishing this version is worthwhile: it has 0.3 drift, trimmed something, was
-        compiled under an older contract, carries a **measured** output drift, or a `recompile` was
-        explicitly requested. Never acts while blocked.
+        compiled under an older contract the record has not refuted, carries a **measured** output
+        drift or a declared correction, or a `recompile` was explicitly requested. Never acts while
+        blocked.
 
-        `verdict.acts_by_default` is the 0.21 term, and it is deliberately *not* folded into
-        `gap.acts_by_default`: a gap is a statement about versions, a verdict is a measurement of an
-        artifact. Keeping them apart is what lets the verdict refuse to act on drift it measured under
-        the identical compiler — a distinction no version comparison could ever draw.
+        Three terms that are deliberately not folded into one another, because they answer at three
+        different grains. `gap` is a statement about **versions**; `verdict` is a measurement of this
+        **artifact**; `declared` is upstream's record of what a **release** did. Keeping them apart is
+        what lets the verdict refuse to act on drift it measured under the identical compiler, and
+        what lets the record withhold a re-baseline the version comparison would have ordered — two
+        distinctions neither of the others could draw.
         """
         if self.blocked:
             return False
         return (
             self.variants_plan.needed
             or bool(self.dropped)
-            or self.gap.acts_by_default
+            or self.contract_acts
             or self.verdict.acts_by_default
             or recompile
         )
@@ -582,13 +610,17 @@ def prepare_version_upgrade(
     # drift or a `--trim` drop each act on their own, and probing under a pending migration would
     # measure the migration rather than the compiler: `files` carries the *migrated* rows, so the
     # recomputation would legitimately disagree with a manifest compiled before them.
-    already_acting = gap.acts_by_default or plan.needed or bool(dropped)
-    drift, unmeasured = ([], []) if already_acting else measure_output_drift(manifest, files)
-    # The interval half of the same question, from format 0.7's release record. Computed even when
-    # something else already acts, because it names *what* the re-baseline repairs and that sentence
-    # goes into the successor's immutable changelog entry. `gap.compiled_under` is already the parsed
-    # bare version — passing the raw stamp would raise on the one manifest a foreign compiler touched.
+    # The interval half of the same question, from format 0.7's release record. Computed first,
+    # because it can *withhold* the contract gap's action as well as add its own: a minor that
+    # measurably moved nothing is a minor whose recompile reproduces the stored bytes, and the
+    # version comparison was only ever standing in for that measurement. It withholds on nothing
+    # less than a complete chain with every driving axis `False` — see `refutes_a_contract_gap`.
+    # `gap.compiled_under` is already the parsed bare version; passing the raw stamp would raise on
+    # the one manifest a foreign compiler touched.
     declared = declared_movement(gap.compiled_under, gap.current)
+    contract_acts = gap.acts_by_default and not declared.refutes_a_contract_gap
+    already_acting = contract_acts or plan.needed or bool(dropped)
+    drift, unmeasured = ([], []) if already_acting else measure_output_drift(manifest, files)
     verdict = rebuild_verdict(
         gap_scale=gap.scale,
         gap_acts=already_acting,
@@ -603,6 +635,7 @@ def prepare_version_upgrade(
         files=files,
         gap=gap,
         verdict=verdict,
+        declared=declared,
     )
 
 
@@ -645,7 +678,7 @@ def _upgrade_changelog(prep: VersionUpgradePlan, version: str) -> str:
     if prep.dropped:
         detail = "; ".join(f"{f}: {', '.join(items)}" for f, items in prep.dropped.items())
         parts.append(f"trimmed columns/keys the current contract rejects ({detail})")
-    if prep.gap.acts_by_default:
+    if prep.contract_acts:
         # Not "no content change". The authored data is untouched, but a contract cut re-shapes the
         # parquet, so `artifact.digest` moves — and the module can gain tables it did not have (0.5
         # re-baselined `variant_key` onto the VRS allele id; 0.6 places positional rows from

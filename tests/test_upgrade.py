@@ -21,6 +21,7 @@ from just_dna_registry.services.rebuild import (
     REBUILD_CANNOT_SAY,
     REBUILD_NO,
     REBUILD_YES,
+    declared_movement,
     measure_output_drift,
     rebuild_verdict,
 )
@@ -1019,3 +1020,81 @@ def test_the_upgrade_changelog_names_the_columns_it_moved() -> None:
         assert untouched not in sentence, f"{untouched} did not move and must not be claimed"
     assert "clin_sig" in sentence, "it did arrive, and the header change is worth recording"
     assert "added column(s)" in sentence
+
+
+# ── The release record (format 0.7) ───────────────────────────────────────────
+
+
+def test_the_record_converges_on_its_own_successor() -> None:
+    """The property S65 made a hard requirement, asserted at the seam that consumes it.
+
+    A version compiled under the release this server holds has an **empty** interval, so nothing is
+    declared and nothing acts. Without it the corrections arm would fire on the module it had just
+    re-published, mint the next PATCH, and start again — the same runaway the patch rule exists to
+    prevent, arriving through the door the record opened. It holds structurally upstream rather than
+    by a special case here, which is exactly why it is worth pinning from this side: a change to
+    their self-interval would show up as an infinite sweep in ours.
+    """
+    current = installed_compiler()
+    assert current is not None
+    same = declared_movement(current, current)
+    assert same.corrections == []
+    assert same.acts_by_default is False
+    assert same.output_differs is False
+    assert same.complete is True
+    assert same.refutes_a_contract_gap is True
+
+    verdict = rebuild_verdict(
+        gap_scale=GAP_NONE, gap_acts=False, drift=[], unmeasured=[],
+        identical_compiler=True, declared=same,
+    )
+    assert verdict.state == REBUILD_NO
+
+
+def test_an_unknown_provenance_neither_acts_nor_refutes() -> None:
+    """`None` is *cannot say*, and it has to stay cannot-say in both directions.
+
+    An unstamped manifest is the purest unknown the record can be asked about (upstream S88/RM183),
+    and a registry walking manifests it did not produce will meet one. It must not act — nothing was
+    measured — and it must not *withhold* the version rule either, which is the direction that would
+    quietly leave a pre-0.6 artifact in a 0.7 catalog with nothing anywhere saying so. Asserted on
+    both properties because a single boolean would have collapsed them.
+    """
+    current = installed_compiler()
+    assert current is not None
+    unknown = declared_movement(None, current)
+    assert unknown.acts_by_default is False
+    assert unknown.refutes_a_contract_gap is False
+    assert unknown.complete is False
+    assert unknown.output_differs is None
+    # Every surface stays unmeasured, plus the sentence naming the uncovered interval.
+    assert len(unknown.residual_surfaces()) > len(declared_movement(current, current).residual_surfaces())
+
+
+def test_a_patch_interval_acts_only_on_a_declared_correction() -> None:
+    """The 0.20 `--force` case, measured instead of ordered.
+
+    RM121 changed `manifest.stats.genes` in a compiler **patch** — the field this catalog's gene index
+    is built from — so `ContractGap` scored it `patch`, correctly declined to act, and every published
+    table-only module stayed unfindable by `?gene=` with nothing saying so. The record declares that
+    change a `correction`, which is what separates it from the dozen `addition`s in the same interval:
+    acting on those would mint an immutable PATCH per module to gain a column nobody published wrongly,
+    and upstream measured 10 of 16 reference modules moving `artifact.digest` across exactly this
+    interval, so an axis-only rule would re-baseline the catalog on every dependency bump.
+    """
+    interval = declared_movement("0.6.1", "0.6.6")
+    if not interval.complete:  # pragma: no cover — the record covers this pair by construction
+        pytest.skip("this format release carries no record for 0.6.1 -> 0.6.6")
+    assert interval.acts_by_default is True
+    assert {c.target for c in interval.corrections} >= {"stats.genes"}
+    assert all(c.kind == "correction" for c in interval.corrections)
+    assert interval.additions, "the same interval added fields, and none of them may act"
+    assert interval.refutes_a_contract_gap is False
+
+    verdict = rebuild_verdict(
+        gap_scale=GAP_PATCH, gap_acts=False, drift=[], unmeasured=[],
+        identical_compiler=False, declared=interval,
+    )
+    assert verdict.state == REBUILD_YES
+    assert {c.target for c in verdict.declared} == {c.target for c in interval.corrections}
+    assert verdict.drift == [], "nothing was measured on an artifact here; the record is the witness"

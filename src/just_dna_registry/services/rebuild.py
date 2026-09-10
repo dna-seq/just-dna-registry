@@ -23,11 +23,19 @@ compare it against what was published — no enrichment, no parquet, no network.
 mechanism, and it is why this file exists rather than a wish for upstream to tell us.
 
 Filed upstream as **S62** and **accepted** the same day, as RM126 (the surface) and RM127 (the release
-class that sizes it, which blocks the first). Nothing ships there yet, and their reply widened the case
-rather than narrowing it: sixteen of sixteen reference examples changed at least one published manifest
-field across the 0.6.1 → 0.6.6 *patch* interval, and ten moved `artifact.digest`. So the surfaces no
-local probe can reach still need their answer — see `UNPROBED_SURFACES` for what those are and
-`_DRIFT_PROBES` for where an upstream source attaches and what retires when it lands.
+class that sizes it). **Both shipped in format 0.7**, and `DeclaredMovement` below is that half: a
+release's own record of what it changed about compiled output, per axis and per interval, with each
+change declared `correction` or `addition` — the distinction no differ can make and the one a registry
+has to route on. Their reply had widened the case rather than narrowing it (sixteen of sixteen
+reference examples changed at least one published manifest field across the 0.6.1 → 0.6.6 *patch*
+interval, and ten moved `artifact.digest`), and the record is what makes that measurable here instead
+of merely known.
+
+So there are three answers, at three grains, and they are kept apart on purpose: `revalidate` asks
+whether the stored **spec** is still legal, `_DRIFT_PROBES` recomputes a published field from that
+spec's own rows, and the record states what a **release** did. The middle one checks the artifact in
+front of us and the last one cannot; the last one reaches the parquet bytes and the middle one cannot.
+`UNPROBED_SURFACES` is now only what neither can see.
 """
 
 import logging
@@ -59,6 +67,12 @@ REBUILD_CANNOT_SAY: str = "cannot_say"
 #: Manifest surfaces no local probe can reach, because deciding them needs the compile we are trying
 #: to avoid. Named rather than left implicit: a `cannot_say` that does not say *what* it could not see
 #: is the empty list wearing a different hat.
+#:
+#: **Since 0.24 this is the *starting* list, not the answer.** `DeclaredMovement.residual_surfaces`
+#: drops the entries upstream's release record measured for the interval in question, so a version
+#: whose whole span is covered comes back with the third entry alone rather than with all three —
+#: which is the difference between `cannot_say` and a real `no`. The mapping from an entry to the axis
+#: that retires it is `_SURFACE_AXES`, and the third entry deliberately has none.
 #:
 #: **Upstream measured this list rather than leaving us to guess, answering S62.** Compiling all
 #: sixteen `reference_examples/` under `v0.6.1` and again under `0.6.6` — a pure patch interval, spec
@@ -146,11 +160,40 @@ class DeclaredMovement(BaseModel):
         default=False,
         description="Whether the record chain covers the whole interval; False leaves every axis unknown",
     )
+    output_differs: bool | None = Field(
+        default=None,
+        description=(
+            "Kleene OR over the recompile-driving axes — `None` is **cannot say**, never *no*. "
+            "`warnings` is outside it by construction, so a reworded message never reads as movement"
+        ),
+    )
 
     @property
     def acts_by_default(self) -> bool:
         """Whether the record alone is reason enough to re-publish without `--force`."""
         return bool(self.corrections)
+
+    @property
+    def refutes_a_contract_gap(self) -> bool:
+        """Whether the record positively says a contract-scale version gap moved **nothing**.
+
+        **This is what retires the parallel derivation.** `ContractGap` scores a differing `0.x`
+        MINOR as a contract cut and acts on it, which was the only answer available while nothing
+        could measure a release: the minor is where the parquet schema *usually* moves, so the
+        version comparison stood in for the measurement. Upstream now publishes the measurement, and
+        where the two disagree the measurement wins — a minor that moved no driving axis is a minor
+        whose recompile would reproduce the stored bytes, and re-publishing every module in the
+        catalog to record that we upgraded a dependency is the failure the patch rule exists to
+        prevent, arriving one grain up.
+
+        Deliberately one-directional and deliberately hard to satisfy. It can only ever *withhold*
+        action, never add it, and it demands a chain that covers the whole interval with every
+        driving axis measured `False` — so an uncovered span, an unstamped compiler or a single
+        `None` axis leaves the version rule exactly as it was. That asymmetry is the point: the
+        version comparison is the fallback that reaches where the table does not, which for this
+        catalog is every artifact compiled before the first release that has a record at all.
+        """
+        return self.complete and self.output_differs is False
 
     def residual_surfaces(self) -> list[str]:
         """The `UNPROBED_SURFACES` entries this record does **not** answer.
@@ -209,6 +252,7 @@ def declared_movement(compiled_under: str | None, current: str | None) -> Declar
         corrections=[c for c in declared if c.kind == "correction"],
         additions=[c for c in declared if c.kind == "addition"],
         complete=answer.complete,
+        output_differs=answer.output_differs,
     )
 
 
@@ -320,13 +364,19 @@ def _probe_stats_genes(manifest: ModuleManifest, recomputed: dict[str, Any]) -> 
 
 #: The probes, in report order.
 #:
-#: **This tuple is the seam for upstream S62.** Each entry recomputes one published field from stored
-#: authored rows; together they answer the *recomputable* half of "would a recompile differ". The other
-#: half — `UNPROBED_SURFACES` — needs a fact only the compiler holds, which is what S62 asks for. When
-#: that lands, an upstream-hint source attaches beside this tuple rather than inside it (it answers per
-#: *interval*, not per field-value), and any probe whose field the hint covers retires by deletion from
-#: here. Keeping a probe after its hint exists is a legitimate hedge, not an oversight: a recomputation
-#: checks the artifact in front of us, while a hint states what a release did in general.
+#: **This tuple was the seam for upstream S62, and the other side of it now exists.** Each entry
+#: recomputes one published field from stored authored rows; together they answer the *recomputable*
+#: half of "would a recompile differ". The other half needed a fact only the compiler holds, and
+#: format 0.7 ships it — as `declared_movement`, attached **beside** this tuple exactly as this note
+#: predicted, because it answers per *interval* rather than per field-value.
+#:
+#: **The probes stay, and that was the plan rather than an oversight.** A recomputation checks the
+#: artifact in front of us; a record states what a release did in general. The record cannot say
+#: whether *this* module's `stats.genes` is stale — only that a release corrected the derivation — and
+#: the probe cannot see a parquet cell. Upstream's `release_records.AUTHORED_ROW_DERIVED_FIELDS` is
+#: their roster of which fields a consumer can recompute this way, and it is the right thing to check
+#: before adding one; it is not a licence to probe all nine, because a probe added because a field
+#: *exists* is how a detector starts crying wolf.
 _DRIFT_PROBES: tuple[Callable[[ModuleManifest, dict[str, Any]], DriftFinding | None], ...] = (
     _probe_stats_genes,
 )
