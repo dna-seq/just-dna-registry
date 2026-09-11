@@ -161,6 +161,22 @@ module, which is worse than having none.
 ## Running the service
 
 - `uv run registry serve` starts the API (Typer CLI → uvicorn). `uv run pytest -q` runs tests.
+
+  **Both of those are the post-cut form and neither runs on `format-0.7-adoption` as written.**
+  `just-dna-format` 0.7.0 is bumped upstream and tagged nowhere, so a plain `uv run` resolves the
+  floor against PyPI and exits *"requirements are unsatisfiable"*. On that branch, either of these,
+  both run verbatim before being written here:
+
+      .venv/bin/python -m pytest -q
+      UV_FIND_LINKS=/data/sources/just-dna-format/dist uv run pytest -q
+
+  The second re-locks `uv.lock` every time and the branch's lock is deliberately stale, so
+  `git checkout uv.lock` before committing — the first form avoids that entirely and is what to reach
+  for. **Never `uv sync` there**: it resolves the stale lock and downgrades the format tier out from
+  under a branch that needs 0.7.0 from the sibling's `dist/`.
+
+  Delete this note when a plain `uv run pytest -q` succeeds on the branch you are standing on, which
+  is a thing to check rather than a date: run it and read the exit.
 - The Typer CLI (`src/just_dna_registry/cli.py`) owns admin/ops tasks — `serve`, `init-db`,
   `issue-key`, and future backfill/reindex. Add new ops commands there, not as ad-hoc scripts.
 - Deployable as one container + a bucket/HF repo + a DB. No heavyweight orchestration.
