@@ -8,6 +8,14 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [0.25.0] — unreleased
 
+**`pyproject.toml` reads 0.25.0 and the environment still reports 0.24.0, deliberately.** This branch
+inherits 0.24's state: `just-dna-format` 0.7.0 is bumped upstream and tagged nowhere, so `uv.lock` is
+deliberately stale (main's content, PyPI 0.6.6) and **`uv sync` must not be run here** — it would
+resolve that lock and downgrade the format tier out from under a branch that needs 0.7.0 from the
+sibling checkout's `dist/`. The editable install's `dist-info` therefore lags the version until the
+cut, which is where the relock belongs. Run the suite with the venv directly, or
+`UV_FIND_LINKS=/data/sources/just-dna-format/dist uv run`, and restore `uv.lock` before committing.
+
 **Client surface: unchanged.** No `RegistryClient` method moved. Two were added — `cache_status()`
 and `derived()` — with one route each (`GET /api/v1/caches`, `POST /modules/{ns}/{name}/derived`); a
 new method breaks nobody, which is what that word means here. No existing response model changed.
