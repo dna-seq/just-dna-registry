@@ -532,12 +532,28 @@ what it is for.
   is honest that the catalog side is answerable and the "what clients still hold" side is a
   judgement, because a condition that reads crisp and is not is the same trap one layer in.
 
-  **And write the query next to it.** This is the part that decides whether the rule does anything: a
-  condition somebody has to *invent a check for* gets skipped, and the prose gets read as permission.
-  A queryable condition with no query beside it costs the same as an unqueryable one, by a different
-  route. Both live conditions here now carry the command — a one-line probe for the enricher split,
-  the version-scan SQL for `compiled_by` — and where only half is answerable, the note says which
-  half the command settles and which is left as a decision. "Delete this when the
+  **And write the query next to it, in a form that runs as given.** There is a ladder here and every
+  rung costs the same thing — the check not happening:
+
+  1. naming a **date** ("at the next major cleanup");
+  2. naming a condition nobody can **query** ("no install we support lacks it");
+  3. naming a queryable condition and **not writing the query**;
+  4. writing a command that **does not run as given** — a placeholder to substitute, a continuation
+     to unwrap, `python` where the box has none.
+
+  We have hit rungs 1, 3 and 4 in this repo alone, the last of them in the commit that added the rule
+  about rung 3. Both live conditions now carry a command run verbatim from the repo root before being
+  written down, with an explicit interpreter and on one line.
+
+  **Mark a command you have *not* run as unrun.** A command you executed and a command you believe
+  works are different artifacts and the prose cannot tell them apart — the same argument that makes a
+  quoted passage carry its provenance, applied to a shell line. And note what a probe answers about:
+  `uv run --isolated --no-project --with '<pkg>==<floor>'` answers about a **declaration**, so it is
+  the tool for *may I delete this guard* and the wrong one for *why is this failing here*, which needs
+  the project's own interpreter.
+
+  Where only half a condition is answerable, say which half the command settles and which is left as
+  a decision. "Delete this when the
   floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
   test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
   there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,

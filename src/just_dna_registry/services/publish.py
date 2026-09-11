@@ -650,16 +650,28 @@ def _finalize(
                 # deliberately — do not read this note as a green light because the first half came
                 # back empty.
                 #
-                # **The answerable half, written out so it gets run.** `compiled_by` is not a column;
-                # it lives in each stored `manifest.json` under `compilation`, so the query is a scan
-                # over the catalog's versions, joining each to its manifest in storage:
+                # **The answerable half, as a command that runs rather than a recipe.** `compiled_by`
+                # is not a column — it lives in each stored `manifest.json` under `compilation` — so
+                # the check is a scan. Run from the repo root against a local catalog; point the two
+                # paths at the deployment's `db_path` and `local_storage_dir` for a real one. The key
+                # layout is `storage.version_key`: `{namespace}/{name}/{version}`.
                 #
-                #     SELECT m.namespace, m.name, v.version FROM versions v
-                #       JOIN modules m ON m.id = v.module_id
+                #     .venv/bin/python -c "
+                #     import json, sqlite3, pathlib
+                #     from just_dna_registry.services.publish import MARKETPLACE_COMPILED_BY
+                #     db = sqlite3.connect('data/registry.db')
+                #     rows = db.execute('SELECT m.namespace, m.name, v.version FROM versions v '
+                #                       'JOIN modules m ON m.id = v.module_id').fetchall()
+                #     root = pathlib.Path('data/artifacts')
+                #     stale = [r for r in rows
+                #              if (p := root / r[0] / r[1] / r[2] / 'manifest.json').is_file()
+                #              and json.loads(p.read_text()).get('compilation', {})
+                #                      .get('compiled_by') == MARKETPLACE_COMPILED_BY]
+                #     print(f'{len(stale)} of {len(rows)} still carry it')"
                 #
-                # then read `compilation.compiled_by` from each version's manifest and count the ones
-                # still carrying MARKETPLACE_COMPILED_BY. Empty answers the catalog half and nothing
-                # else.
+                # Verified to run; it answered `0 of 0` here, which is an empty local catalog rather
+                # than a cleared one. Zero on a populated catalog settles the catalog half and
+                # nothing else — the clients-still-holding-a-download half stays a judgement.
                 compiled_by=MARKETPLACE_COMPILED_BY,
                 ensembl_reference=settings.ensembl_reference,
                 # `log_files` / `provenance_file` / `logo_file` are left to the compiler's own

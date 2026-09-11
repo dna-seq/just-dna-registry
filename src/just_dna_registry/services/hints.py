@@ -148,17 +148,24 @@ class HintScrubber:
         because the split has no version of its own. A capability check comes out when its fact goes
         **unconditional**, never because a floor now appears to guarantee it.
 
-        **The query, so deciding does not require inventing one** (verified against this venv):
+        **The query, run verbatim from the repo root before being written here:**
 
-            python -c "import dataclasses as d; from just_dna_enricher.lookup import VariantHint; \
-                       print('snapshots' in {f.name for f in d.fields(VariantHint)})"
+            .venv/bin/python -c "import dataclasses as d; from just_dna_enricher.lookup import VariantHint; print('snapshots' in {f.name for f in d.fields(VariantHint)})"
 
-        `False` means this install predates the split and `checked` can hand over paths. The field is
-        the split rather than a correlate of it — it was added *by* the change that made `checked`
-        label-only — which is what makes a symbol probe legitimate here where it usually is not. To
-        ask about a version other than the installed one, `just-module-creator` uses
-        `uv run --isolated --no-project --with 'just-dna-enricher==<floor>'` around the same body;
-        that form is theirs and I have not run it.
+        `False` means this install predates the split and `checked` can hand over paths. One line and
+        an explicit interpreter on purpose: the first draft said `python` and a continuation
+        backslash, and `python` is not on this box's PATH at all — a command that needs fixing before
+        it runs is a command that gets skipped, which is the same cost as not writing one.
+
+        The field is the split rather than a correlate of it — added *by* the change that made
+        `checked` label-only — which is what makes a symbol probe legitimate here where the rule one
+        section along says it usually is not.
+
+        That answers for **this install**. To ask the same of a *floor*, `just-module-creator` uses
+        `uv run --isolated --no-project --with 'just-dna-enricher==0.6.6'` around the same body — I
+        have not run it, and note it answers about a declaration rather than about the box in front
+        of you, so it is the tool for *may I delete this guard* and the wrong one for *why is this
+        failing here*.
 
         It also covers a case that is not a version question in any direction: a lane a deployment
         configured under a path we hold no label for at all.
