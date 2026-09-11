@@ -1055,6 +1055,21 @@ def test_every_table_the_compiler_reads_is_recognized_here() -> None:
 
     recognized = set(specfiles.RECOGNIZED_SPEC_FILES)
 
+    # **Denominator floors, because a subset check over an empty set passes and says nothing.**
+    # Both of these enumerate a *foreign* symbol, so the way they go quietly wrong is not a rename we
+    # would see but an import that comes back empty — a moved module, a restructured package — and
+    # "everything upstream reads is recognized here" is exactly what that renders as. Floors well
+    # under today's counts (12 and 14), high enough that a collapse is red rather than green.
+    # `just-module-creator` carries the same guard on their own enumeration and it is what turns an
+    # instrument failure into a red test instead of a triage list.
+    assert len(hints.DERIVED_TABLE_MODELS) >= 8, (
+        f"the compiler reports only {len(hints.DERIVED_TABLE_MODELS)} derived tables — the "
+        f"enumeration found almost nothing, so read this as the import moving rather than as a pass"
+    )
+    assert len(draft.DRAFTABLE) >= 10, (
+        f"the compiler reports only {len(draft.DRAFTABLE)} authored kinds — same reading"
+    )
+
     unrecognized_derived = sorted(set(hints.DERIVED_TABLE_MODELS) - recognized)
     assert not unrecognized_derived, (
         f"the compiler reads these derived tables and we do not carry them: {unrecognized_derived}. "

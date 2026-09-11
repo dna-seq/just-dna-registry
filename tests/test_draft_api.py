@@ -171,6 +171,12 @@ def test_the_panel_sources_are_spelled_the_way_the_enricher_spells_them() -> Non
     """
     from just_dna_enricher.cli import PANEL_SOURCES
 
+    # A subset check over an empty set passes and proves nothing, and an emptied `PANEL_SOURCES` is
+    # what an upstream restructure looks like from here — so the denominator is asserted first.
+    assert len(PANEL_SOURCES) >= 4, (
+        f"the enricher reports only {len(PANEL_SOURCES)} panel sources — the enumeration found "
+        f"almost nothing, which is a moved symbol rather than a passing check"
+    )
     assert set(PANEL_SOURCES) <= set(DRAFT_SOURCES), (
         f"upstream renamed a panel source: {sorted(set(PANEL_SOURCES) - set(DRAFT_SOURCES))}"
     )

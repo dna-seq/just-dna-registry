@@ -580,7 +580,20 @@ what it is for.
   mentions that are not ours — ruff's `--fix`, uv's `--isolated/--no-project/--with`, the enricher's
   `--no-verify-clinsig`, and the triage scripts' `--pending/--next`, all correct in context. A sweep
   whose count is implausible is reporting on itself; sanity-check the denominator before reading the
-  numerator. "Delete this when the
+  numerator.
+
+  **And put the sanity check *in the test*, as a denominator floor.** A subset check over an empty set
+  passes and proves nothing, which is what an enumeration of a **foreign** symbol renders as when the
+  import moves rather than when a name is renamed. Three guards here compared our rosters against
+  `hints.DERIVED_TABLE_MODELS`, `draft.DRAFTABLE` and `cli.PANEL_SOURCES` with no floor, so an emptied
+  import read as *"everything upstream reads is recognized"*. They assert the count first now, well
+  under today's numbers. `tests/test_ui.py` already did this in two places (`assert routes` and
+  `assert checked >= 30`), which is why the console's guards never had the problem — the pattern was
+  in the tree and only the newer tests missed it.
+
+  The failure this prevents is the worst on the ladder because it is the only one that produces
+  *work*: rungs one to four end in silence, which gets ignored, while an instrument reporting on
+  itself produces a plausible list that somebody sets about fixing. "Delete this when the
   floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
   test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
   there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,
