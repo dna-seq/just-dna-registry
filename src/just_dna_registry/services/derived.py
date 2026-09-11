@@ -61,9 +61,14 @@ named `licensing.csv` here — `sources.csv` is the deprecated spelling of the s
 emitted — so **if your spec directory still carries a `sources.csv`, delete it and keep this file**.
 Leaving both is two spellings of one fact table, and the next upload is a `422 ambiguous_spec_layout`
 rather than a publish: `just_dna_format.layout.resolve_sidecar` raises on two copies rather than
-preferring one. Resolve the name through `layout.sidecar_key` rather than by string-matching, or a
-tool that looks for the spelling your spec happens to use will report no change while a file lands
-under the other one.
+preferring one.
+
+**Resolve the name rather than string-matching it**, or a tool that looks for whichever spelling your
+spec happens to use will report no change while a file lands under the other one. Portable today:
+`layout.SIDECAR_SPELLINGS` maps each table *key* to every spelling of it, and `layout.DEPRECATED_SPELLINGS`
+says which are on the way out — both have been there since 0.6. `layout.sidecar_key()` does that lookup
+in one call and is the thing to use once your floor is **format 0.7.0**; it does not exist before that,
+so a consumer on 0.6.x wants the two constants.
 
 **A table missing from this archive is not the same as a table with nothing in it.**
 `{DERIVED_REPORT_FILE}`'s `files_absent` lists every derived name this run did not produce, and

@@ -144,7 +144,21 @@ def test_the_note_tells_a_merger_which_sidecar_spelling_to_drop(tmp_path) -> Non
 
     assert "sources.csv" in note and "licensing.csv" in note
     assert "delete it" in note
-    assert "sidecar_key" in note, "the note should name the resolution helper, not just the symptom"
+
+    # **A symbol the reader does not have yet is advice that cannot be followed.** The first version
+    # of this note named `layout.sidecar_key` flatly; it arrives with format 0.7.0 and is absent from
+    # the wheels this branch pins, so every consumer reading the note today would have gone looking
+    # for a function that is not there. Whatever the note names must either exist on the format we
+    # run, or be marked with the release it arrives in.
+    from just_dna_format import layout
+
+    for symbol in ("SIDECAR_SPELLINGS", "DEPRECATED_SPELLINGS", "sidecar_key"):
+        if symbol not in note:
+            continue
+        if not hasattr(layout, symbol):
+            assert "0.7.0" in note, f"the note names {symbol}, which this format lacks, and does not say so"
+
+    assert "SIDECAR_SPELLINGS" in note, "the note should name a helper the pinned format actually has"
 
 
 def test_a_spec_too_broken_to_enrich_fails_like_a_publish(tmp_path) -> None:

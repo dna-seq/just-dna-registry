@@ -491,8 +491,11 @@ WHERE-THIS-CAME-FROM.md             # the one caveat that bites; see below
   produced here"*, never as *"this module has none"*; `GET /caches` answers the snapshot half of why.
 - **The licence ledger always arrives as `licensing.csv`, never `sources.csv`.** The deprecated
   spelling is never emitted, so a consumer resolving the member name against a spec that still
-  carries the old one finds nothing, reports no change, and writes under the other name. Resolve
-  through `layout.sidecar_key` rather than by string match. The archive's note says so too.
+  carries the old one finds nothing, reports no change, and writes under the other name. Resolve the
+  name rather than string-matching it: `layout.SIDECAR_SPELLINGS` and `layout.DEPRECATED_SPELLINGS`
+  have been there since 0.6 and do it portably, and `layout.sidecar_key()` does it in one call **from
+  format 0.7.0** — it does not exist before that, so a consumer on 0.6.x wants the two constants. The
+  archive's note says the same.
 - **`check.json`'s digests let a caller verify what arrived; they are not an attestation.** There is
   no manifest before a compile. Attestation is the publish's — to hold this service to *"these are
   the bytes it would have compiled"*, publish and compare `artifact.digest`.

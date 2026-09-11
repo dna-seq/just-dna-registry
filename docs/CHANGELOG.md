@@ -83,7 +83,16 @@ entry means *not produced here*, never *this module has none*, and the question 
 server rather than the module. That is this tier's standing rule about empty collections applied to
 an empty *file set*, which is where it had not been applied.
 
-The same note now names the sidecar spelling to drop. `DERIVED_FILES` emits `licensing.csv` and never
+**And the note's own advice had the defect it was written to prevent.** It named
+`layout.sidecar_key`, which arrives with format **0.7.0** and is absent from the wheels this branch
+pins — so every consumer reading it today would have gone looking for a function that is not there,
+which is advice that cannot be followed handed out under our name. It now names
+`SIDECAR_SPELLINGS`/`DEPRECATED_SPELLINGS`, which have been there since 0.6 and work portably, and
+marks `sidecar_key` with the release it arrives in. A test asserts that any `layout` symbol the note
+names either exists on the format we run or carries that release number, and it was demonstrated
+failing on the unmarked version.
+
+The same note names the sidecar spelling to drop. `DERIVED_FILES` emits `licensing.csv` and never
 `sources.csv`, so a consumer resolving the member name against a spec still carrying the deprecated
 one finds nothing, reports no change, and writes under the other name — the bug they hit and filed as
 format-tree S96, answered upstream by `layout.sidecar_key` (RM224). Our side cannot fix their
