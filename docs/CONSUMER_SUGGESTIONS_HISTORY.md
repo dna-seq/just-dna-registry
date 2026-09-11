@@ -37,6 +37,9 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S16** card subtitle unbounded, Display unamendable — tracked, gated on S64
 - **S17** polygon listings hid its whole catalog — mode-aware, shipped 0.21.1
 - **S18** a patch-newer column refused as a typo — versions named, 0.22.0
+- **S19** 0.7's three spec files unrecognised — shipped, reaches PyPI in 0.25.0
+- **S20** a 0.7 client cannot write to a 0.6.1 box — deploy before publish
+- **S21** `field_first_seen` unblocks S18 — roadmap corrected, after S20
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -1906,3 +1909,362 @@ different byte streams, one digest scheme.
 
 **What we did meanwhile:** kept the column, published nothing, and recorded the refusal as an author's
 decision in the module's README and in our own symptom index.
+
+# Field notes from just-module-creator
+
+*Filed 2026-09-03, against `just-dna-registry` 0.23.0 in the tree at `db7b680` and 0.18.2 as installed
+from PyPI. The finding is the same on both.*
+
+## S19 — the three spec files 0.7 adds are not recognised, so a re-publish drops an author's overlay silently
+**Status — accepted; all three names landed in `ce318cc` and reach you in 0.25.0, and both of the
+sub-questions you declined to guess at resolved the way you guessed.** One precision on the version,
+since you are tracking what a `uv sync` gives you: the commit sits under 0.24.0 in our changelog, and
+**0.24.0 was never cut** — upstream's 0.7.0 is bumped and tagged nowhere, so that release was never
+installable from an index. 0.25.0 is therefore the first release that carries any of this, which is
+why every date in this reply and in S20 is about that one. Your snippet reproduces green
+against this branch's `HEAD`:
+
+```
+sorted(set(hints.DERIVED_TABLE_MODELS) - set(specfiles.RECOGNIZED_SPEC_FILES))     -> []
+specfiles.is_spec_file("overrides.csv")                                            -> True
+"overrides.csv" in specfiles.SIGNATURE_INPUTS                                      -> True
+{"clin_sig_concordance.csv", "clin_sig_authority_calls.csv"} <= set(DERIVED_FILES) -> True
+```
+
+**Sub-question 1 — `SIGNATURE_INPUTS`, yes, and the point is that we do not choose.**
+`tests/test_specfiles.py::test_signature_inputs_match_the_compilers_input_set` asserts
+`set(compiler._INPUT_FILES) == set(SIGNATURE_INPUTS)`, so the name is in our tuple because it is in
+the compiler's, and a table joining or leaving that set later fails our suite rather than drifting
+quietly. The disagreement you named — our signature and the compiler's parting company on any module
+carrying an overlay — is the exact failure that test exists to make impossible, and it predates this
+item because `licensing.csv` taught us. The *columns* half you filed as format-tree S87 is theirs and
+stays theirs: RM180 excludes `reason` / `decided_by` / `decided_at`, so rewording a justification does
+not mint a fresh `409 duplicate_content` claim, while changing what the overlay actually does moves
+the identity correctly. We compute none of that here — `integrity.content_signature` owns which
+columns are identity, and a second reader of that rule is the drift `RENAMED_ON_UPLOAD` exists to end.
+
+**Sub-question 2 — `DERIVED_FILES`, yes, both, and `frequencies.csv` was the right analogy.** They
+are machine-written, so they travel in `derived/` in both directions and `download(include_inputs=True)`
+fetches and hash-checks them. That is what lets a downloaded module recompile where it lands, which
+for a concordance table matters more than for most: the compiler never fetches, so a table the
+enricher produced has to travel with the module or the re-compile is quietly a different one.
+
+**What is still owed is a release, and your 2026-09-11 corroboration puts it better than we would
+have.** PyPI is 0.18.2, that is what a `uv sync` gives you, and nothing in this reply changes it until
+a release carrying `ce318cc` ships — gated on the same deployment cut as **S20**, which is where we
+have answered it rather than answering it twice. Your standing test asserting the file is *still*
+unrecognised by the installed client is the right instrument, better than a date from us, and holding
+the overlay skill back until it fails is the correct call. (Your corroboration is the last block of
+**S21**'s section in this file rather than of this one — it was appended after S21 and we move
+reporters' prose exactly where it sits, never where it would read best.)
+<!-- triaged: 0.25.0 · sha 68d1c403938d -->
+
+
+We are running a preview build of `just-module-creator` against the **uncut** `just-dna-format` 0.7
+branch (`f4a9b14`), to find integration problems while they are still cheap to move. This one is
+yours, and it has a deadline: it stops being cheap the day 0.7 is on PyPI.
+
+**What we ran.** One of our own tests compares two independent producers — the compiler's roster of
+spec tables against the registry's list of files it recognises — because a hand-kept list on either
+side drifts. Under 0.7 it went red:
+
+```python
+from just_dna_compiler import hints
+from just_dna_registry import specfiles
+sorted(set(hints.DERIVED_TABLE_MODELS) - set(specfiles.RECOGNIZED_SPEC_FILES))
+# ['clin_sig_authority_calls.csv', 'clin_sig_concordance.csv']
+specfiles.is_spec_file("overrides.csv")   # False
+```
+
+Three names the 0.7 compiler reads from a spec directory are absent from
+`RECOGNIZED_SPEC_FILES` / `SPEC_DATA_FILES` / `FACT_CSVS`:
+
+| file | kind | what a drop costs |
+| --- | --- | --- |
+| `overrides.csv` | **authored** (RM124) | an author's recorded judgement that a derived value is wrong |
+| `clin_sig_concordance.csv` | derived (RM130) | recoverable by re-running `enrich` |
+| `clin_sig_authority_calls.csv` | derived (RM130) | ditto |
+
+`is_spec_file` answers `False` for all three, and `carries_spec_content` with it.
+
+**Why we are reporting the first one separately from the other two.** Your own comment above
+`FACT_CSVS` makes the argument better than we can: *"this tuple is what `revalidate` and `upgrade`
+rebuild a spec directory from, so a fact table missing from it is a fact table silently dropped the
+first time a module is re-published. That is precisely how `licensing.csv` was lost."* For the two
+concordance tables the cost is the `licensing.csv` cost — a shrunken module, re-derivable. For
+`overrides.csv` it is worse, and the difference is what makes this urgent rather than tidy.
+
+An overlay row is an author saying *this derived cell is wrong, and here is why* — `reason` is a
+required column precisely so the row is a record rather than a knob. The compiler applies the overlay
+at compile time, so **dropping the file does not fail anything**: the module re-compiles green, the
+parquet silently goes back to carrying the value the author rejected, and nothing anywhere reports a
+difference. A correction that disappears while the build stays green is the one failure mode an
+author cannot catch by looking.
+
+**What we expected.** That a spec directory round-tripping through storage comes back with the files
+it went in with. That is the property `RECOGNIZED_SPEC_FILES` exists to hold, and it is the one we
+build on: our own `refresh_sidecar` refuses to keep bookkeeping beside `module_spec.yaml` *because* of
+this list, on the reasoning in your 0.16.2 note.
+
+**Candidate fix.** `overrides.csv` into `SPEC_DATA_FILES` and the two concordance tables into
+`FACT_CSVS`, which folds all three into `RECOGNIZED_SPEC_FILES`. Two things we are less sure about and
+would rather you decide than guess at:
+
+1. **`SIGNATURE_INPUTS`.** `overrides.csv` is authored and the 0.7 compiler *does* fold it into
+   `content_signature` (`spec_tables` carries `(OVERRIDES_CSV, OverrideRow)` with a comment saying the
+   overlay is content). Your `SIGNATURE_INPUTS` names the authored tables one by one, so leaving it
+   out would make your signature and the compiler's disagree on any module carrying an overlay. We
+   have filed format-tree S87 about *which columns* of that row belong in the content hash — if that
+   is answered by narrowing the row rather than by removing the table, `SIGNATURE_INPUTS` still wants
+   the name.
+2. **`DERIVED_FILES`.** The two concordance tables look like the `frequencies.csv` case to us, but
+   whether they belong in the manifest's `derived` block is your call about what a downloader receives.
+
+**What we did meanwhile.** Nothing on your side, and nothing we can do on ours: we cannot make a file
+survive a list we do not own. Our adoption of the overlay is blocked behind this, since teaching an
+author to write `overrides.csv` while a re-publish drops it would be teaching them to lose work.
+
+**One thing that is not a complaint.** Nothing in the format tree's `INTEGRATION_0_7.md` is wrong
+here — its § 3 asks you for exactly this and calls it "the one item in this document with a deadline".
+We are corroborating it from the consumer side with the measurement attached, because the deadline is
+now close enough to matter and neither 0.18.2 nor your 0.23.0 tree has it.
+
+## S20 — the day format 0.7 reaches PyPI, a fresh install of any client cannot publish to either live instance
+**Status — ask 1 accepted and it is a deployment rather than a roadmap item; ask 2 answered, and we
+argue against the ceiling; the third thing, which you did not ask for, is already in
+`registry-client` and has been since 0.7.1.**
+
+**Ask 1, and the sequencing is sharper than you framed it.** You have the dependency right but the
+trigger slightly wrong: it is not only upstream's PyPI publish, it is ours. This package's own base
+dependency at 0.25.0 is `just-dna-format>=0.7.0`, so the day *we* publish, the client a consumer
+installs from us is a 0.7 client and measures your 409 against a 0.6.1 box without any consumer
+having chosen anything. So the order is explicit and it is ours to hold: **both live instances run
+registry 0.25 on format 0.7 before `just-dna-registry` 0.25.0 goes to PyPI.** Upstream's own cut is
+theirs to time and we do not control it; what we control is not adding a second way to arrive at the
+same outage, and that one we can make zero rather than short.
+
+**Ask 2: no — and the argument is that a ceiling states a fact about somebody's deployment schedule
+in the one place that cannot see a deployment.** Four reasons, in the order we found them convincing:
+
+1. **It cannot fix the case you are describing.** The package a fresh `uv sync` installs today is
+   `just-dna-registry 0.18.2`, published and ceiling-less. Anything we add binds only installs of
+   0.25.0 and later, by which time ask 1 has either held or failed.
+2. **The claim would be false.** `<0.8` asserts that no 0.7.x format works with this code. A 0.7
+   client against a 0.7 server works perfectly; what fails is a *pairing with one instance*, and a
+   dependency specifier cannot see an instance. Encoding a deployment lag as a resolver constraint
+   is the same category error as reading `artifact.digest` to ask "same module?" — a static
+   declaration standing in for a measurement that exists.
+3. **The measurement exists, is correct, and you have already built on it.** `contract_compatible`
+   over `GET /api/v1/version` answers exactly "can I work with this instance", which is why you were
+   able to put a tri-state in `registry_health` from outside our code at all.
+4. **A ceiling never protects independently of the floor it travels with.** On the day we adopt 0.8,
+   `<0.8` must become `<0.9` in the same release that moves the floor — so the window in which the
+   ceiling is wrong (raised, instances not yet deployed) is precisely the window it was meant to
+   cover. Outside that window it binds only the consumer who wants the new minor for a reason
+   unrelated to us, which is the cost you correctly worried about and the whole of the benefit is
+   already gone.
+
+The asymmetry underneath, which is the part worth keeping if the four reasons ever stop applying: a
+**floor** is a statement about our own code's requirements and is true whatever anyone has deployed;
+a **ceiling** here would be a statement about a third party's release schedule. Only the first
+belongs in a dependency specifier. Your instinct not to add one downstream was right for the same
+reason, and it generalises — the pin nobody agreed to gets frozen in because the repo that adds it is
+never the repo that can measure whether it is still true.
+
+We have written the sequencing rule into [ROADMAP.md](ROADMAP.md) under *Next registry version*
+instead, so the thing that needs remembering is remembered where releases are planned.
+
+**Your third point is already shipped, and we mention it because you offered it rather than asked.**
+The endpoint and the programmatic guard landed in 0.7.1; the CLI command that renders them arrived
+with the 0.9.0 rename (`c48deae`), so `registry-client version` has reported the pair and the verdict
+for sixteen releases:
+
+```
+client:  registry 0.25.0  format 0.7.0  api v1
+server:  registry 0.18.2  format 0.6.1  compiler 0.6.1  api v1
+INCOMPATIBLE — just-dna-format contract mismatch: server 0.6.1, client 0.7.0. …
+```
+
+with `RegistryClient.server_version()` and `.assert_compatible()` as the programmatic halves, the
+latter raising `VersionMismatchError` carrying both `VersionInfo`s. So we agree with your sentence and
+had reached it: `/health` answers *is this box up*, `/version` answers *can I work with it*. What we
+will not do is fold the verdict into `/health`, and the reason is the shape rather than the cost —
+`contract_compatible` is a statement about a **pair**, so it needs the caller's version, and a
+liveness probe that answers differently per caller has stopped being a liveness probe. Two endpoints
+answering two questions is the correct number here.
+<!-- triaged: 0.25.0 · sha efa3f5c5ded4 -->
+
+
+*Measured 2026-09-03, running `just-dna-format`/`-compiler`/`-enricher` 0.7.0 (editable from the
+uncut 0.7 branch at `f4a9b14`) beside `just-dna-registry` 0.18.2 from PyPI.*
+
+**What we ran.** `GET /api/v1/version` on both deployments, then our whole registry tool surface:
+
+```
+https://module-registry.just-dna.life -> {"api":"v1","registry":"0.18.2","format":"0.6.1","compiler":"0.6.1","mode":"prod"}
+https://module-polygon.just-dna.life  -> {"api":"v1","registry":"0.18.2","format":"0.6.1","compiler":"0.6.1","mode":"test"}
+```
+
+| call | result |
+| --- | --- |
+| `health` / `search` / `whoami` / `get_module` / `namespace_available` | **OK**, both instances |
+| `validate` | `HTTP 409: just-dna-format contract mismatch: server 0.6.1, client 0.7.0` |
+| `check` | same 409 |
+
+That is `assert_compatible` doing exactly what it is for, and **we are not asking you to weaken it**.
+The 409's text is the best error in the ecosystem — it says the instance is the problem, that nothing
+about the spec will change the answer, and that it is an operator's call. We would not improve a word.
+
+**The report is about the sequencing, and the number is what makes it urgent.** Neither the format
+tree nor the registry client declares an *upper* bound on `just-dna-format`; every consumer we can see
+pins a floor. So on the day 0.7 is published, `uv sync` on a clean checkout of any client resolves
+format to 0.7.0 and the client stops being able to publish, validate, check, download or import
+against either live box — with reads still working, which is what makes it read as a partial outage
+rather than a version skew. Our own `pyproject.toml` says `just-dna-format>=0.6.6` and would do this
+to us; so would anyone else's.
+
+Your S18 answer already flagged the deployment as scheduled ("Deploying is ours to schedule and we
+have flagged it"), and at 0.6.5-vs-0.6.1 the cost was one refused column. At 0.7 the cost is the whole
+write surface, and the trigger is a PyPI publish in a repo you do not control.
+
+**What we think the ask is, and we are genuinely unsure which half is yours.**
+
+1. **The one that is definitely yours: deploy 0.7 before or with the cut**, so the window where a
+   fresh install cannot publish is zero rather than however long the upgrade takes to schedule.
+2. **The one we would like your opinion on: should a client carry a format ceiling?** A
+   `just-dna-format>=0.6.6,<0.8` in `just-dna-registry`'s own dependencies would turn "publishing is
+   dead" into "the resolver holds you at 0.6.x", which is a much better failure — but it would also
+   hold back every consumer that wants 0.7 for reasons unrelated to you, and we may be wrong about it
+   being your dependency rather than each consumer's. We have not added one on our side, because
+   guessing at ecosystem policy from a downstream repo is how a pin nobody agreed to gets frozen in.
+
+**One thing we fixed on our side, which is not a request.** `registry_health` read `/health` and never
+`/version`, so it reported `status: ok`, `mode_matches_target: true` and said nothing about the
+contract — an author's first diagnostic answering "healthy" about an instance that refuses every
+write. It now reports `server_format`, `client_format` and a tri-state `contract_compatible` beside
+your own sentence. We mention it only so you know the mismatch is visible from our side now, and
+because the shape may be worth having in `registry-client` too: **whatever `/health` is for, it is not
+answering "can I work with this instance", and `/version` is.**
+
+## S21 — the column-to-release map you declined to hand-keep for S18 ships in format 0.7 as `field_first_seen`
+**Status — not a duplicate, you are right that the blocker moved, and the first thing we owe you is a
+correction to our own roadmap: the map is not private.** The composition that names the release is not
+quite the one your example implies, though, and the reason is the property your own paragraph praises.
+
+**The roadmap was wrong and is fixed.** Our 0.24 update said the filename→row-model map is
+`just_dna_compiler.compiler._TABLE_KINDS`, private and in the compiler tier, and therefore unusable
+without an upstream ask. `hints.model_for` is public, in the same tier, and does exactly that job:
+
+```
+hints.model_for("studies.csv")             -> just_dna_format.spec.StudyRow
+base.field_first_seen(StudyRow)["curator"] -> '0.6.5'
+```
+
+Corrected in [ROADMAP.md](ROADMAP.md) under *Next registry version*, along with the upstream ask it
+justified — your format-tree **S81** is answered and RM146 shipped, so what is left of the objection
+is the **tier** and not the privacy: `model_for` lives in `just-dna-compiler`, an optional extra for a
+thin client, so anything built on it degrades where it is absent rather than being unconditional. That
+is a much smaller residue than "we do not hold the map", which is what we had written down.
+
+**Where it cannot go is the server, and that is structural rather than a preference.** The advisory
+fires when the *client* is the newer side. The server holds the older models, so an instance on 0.6.1
+has no `curator` on `StudyRow` at all — `field_first_seen` over its own schema returns a roster that
+by construction cannot contain the column in question, and `[curator]` and `[curatr]` stay exactly as
+indistinguishable as they were. Whatever names the release has to run where the newer models are,
+which is the client.
+
+**And it cannot read the finding.** `ValidationResult.errors` is `list[str]`; there is no structured
+`(file, field)` member on a validation error. So getting from *"studies.csv line 2 [curator]: Extra
+inputs are not permitted"* to the column name means matching pydantic's sentence — which is the
+property you correctly identify as the one that makes the advisory trustworthy, and is also the rule
+one tier down in our own guidance: never discriminate on the sentence, because the wording is
+upstream's to change and only the pinned catalogue is an API.
+
+**So the legal shape is an enumeration rather than a lookup, and we think it is better than the
+sentence you proposed.** Given the two version strings, the client computes the whole gap from the
+schema and never looks at a finding:
+
+```python
+{csv: {f: rel for f, rel in field_first_seen(model_for(csv)).items()
+       if server_format < rel <= client_format}}
+```
+
+rendered beside the advisory as *columns added between 0.6.1 and 0.7.0: `studies.csv[curator]`
+(0.6.5), `studies.csv[statistical_test]` (0.7.0), …*. The author reads `[curator]` in the refusal,
+finds it in that list, and knows the instance is behind; `[curatr]` appears in no list at any release
+and is a typo. We do the versions-and-schema half, the author does the matching, and nothing here
+ever reads an error string — so the signature property is intact by construction rather than merely
+respected, which is the stronger version of what your paragraph argued for.
+
+**Not shipped in this pass, and the reason is scheduling rather than doubt.** The advisory is a
+*patch*-grain surface: it fires only within a minor. The pair you measured in S20 — server 0.6.1,
+client 0.7.0 — is a **minor** gap, refused outright by `compatibility_error` with the 409 you called
+the best error in the ecosystem, and the advisory never runs on it at all. So this improves the world
+*after* the deployment S20 is about, for the next within-minor skew, and it belongs in the release
+that follows that cut rather than ahead of it. The roadmap bullet now carries the composition written
+out, so what remains is typing rather than a question — which is the state your S81 reply upstream
+described, one tier up.
+<!-- triaged: 0.25.0 · sha 9e73dbfda817 -->
+
+
+*Same session as S20; filed separately because it is a different fix and a much smaller one.*
+
+Your S18 reply said the `format_advisory` could not name the offending column's release, and gave a
+good reason: *"that needs a column-to-release map we do not hold and will not hand-keep, having had a
+hand-kept map of upstream spellings point the wrong way for a release"*, filed upstream as their S81.
+
+**Upstream answered it. It is RM146 in format 0.7 and it is not hand-kept** — the release is declared
+on each field and read back per model:
+
+```python
+>>> from just_dna_format import base
+>>> from just_dna_format.spec import StudyRow
+>>> base.field_first_seen(StudyRow)
+{'rsid': '0.2.0', ..., 'statistical_test': '0.7.0', 'confidence': '0.7.0',
+ 'confidence_unit': '0.7.0', 'curator': '0.6.5', 'p_value_num': '0.5.0'}
+```
+
+It is per `(model, field)` rather than per column name, which matters for the case that would
+otherwise mislead: `curator` is `0.2.0` on `VariantRow` and `0.6.5` on `StudyRow`, so a map keyed on
+the bare column would give the wrong answer for exactly the field that produced S18.
+
+Your architectural objection stands and is *why this works*: you would still not be hand-keeping
+anything, and you would still not be reading your own error text to decide whether to advise —
+`field_first_seen` is data on the model, so the advisory stays derived from versions and schema rather
+than from findings, which is the property your signature test pins.
+
+**What it would let the advisory say.** Today: *server 0.6.1, client 0.7.0, and a column added in that
+range is refused in the same words a misspelling gets.* With this: **`[curator]` is a 0.6.5 column and
+this server serves 0.6.1 — the column is real and this deployment is behind**, versus `[curatr]`
+matching no field at any release, which is a typo. Those are opposite actions for the author, and the
+one thing the current advisory cannot separate is the one thing an author needs separated.
+
+**We are reporting, not asking for a date.** It is gated on you adopting format 0.7, which S20 is
+about; and if you have already seen RM146 and decided against it, this is a duplicate you can close
+with a line. We are filing it because your S18 answer named a blocker, the blocker was removed
+upstream three weeks later, and nothing notifies you of that.
+
+---
+
+*Corroboration on `S19`, added 2026-09-11 by the same reporter — not a new item.*
+
+**The three names are in your tree now** (`src/just_dna_registry/specfiles.py`, as of `33fabd7`):
+`overrides.csv` in the authored set, and `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv`
+beside the other fact tables. Re-checked from a consumer's side and confirmed by symbol, so this half
+of `S19` needs nothing more from you — we are noting it because the entry is still in the inbox and
+the state a consumer can *act* on is different from the state your tree is in.
+
+**What we are still holding for, and it is a release rather than a decision.** PyPI is
+`just-dna-registry 0.18.2`, which recognises none of the three, and that is what a `uv sync` gives us.
+So our side is unchanged: we answer `overrides.csv` when an agent asks `describe_table`, and no skill
+routes an author into writing one, because a re-publish through an instance running 0.18.2 still drops
+it silently while the module recompiles green. A test of ours asserts the file is *still* unrecognised
+by the installed client, so the day a release carrying your fix reaches our lockfile it fails and tells
+us to go teach the overlay. **Nothing is owed us until then** — this is a note about sequencing, not a
+nudge.
+
+**Two other things we saw in your tree and are glad about, neither needing a reply.** `374fb9c` renders
+the concordance record by `opposed_count` and `unchecked_count` rather than a bare row count, which is
+`S19`'s second ask and the reading we argued for — a row count on its own reads as confidence. And
+`9268d80` fixes `/check` grading strictly before enriching, so a dry run answers for an rsID module;
+we had not reported that one and would have, eventually, from the other side.

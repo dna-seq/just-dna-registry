@@ -201,6 +201,54 @@ Anonymous, read-only, and it reports every lane rather than the seven a pass her
 - It composes `lane_presence()` (0.24.1) rather than resolving a second time. Two projections of one
   registry is the drift upstream's `CACHE_LANES` and our own `6ddd430` each exist to end.
 
+### Consumer triage: S19, S20 and S21 answered
+
+Three field notes from `just-module-creator`, filed against the uncut 0.7 branch. All three are
+answered in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md); none of them changed
+code in this release, and two of them changed what we had written down.
+
+- **S19** corroborates the `overrides.csv` item in 0.24.0 below from the consumer side, with the measurement attached.
+  Nothing further was needed: their snippet reproduces green here, and both sub-questions they
+  declined to guess at — `overrides.csv` in `SIGNATURE_INPUTS`, the two concordance tables in
+  `DERIVED_FILES` — were already resolved that way, the first of them by a test that reads the
+  compiler's own `_INPUT_FILES` rather than a list of ours. What they are still waiting on is a
+  release, which is S20.
+- **S20** is the sequencing, and it is the reason that release is now a roadmap item rather than an
+  assumption. 0.25.0's base dependency is `just-dna-format>=0.7.0`, so publishing this package before
+  the instances are deployed arms the same `409` from our own side, with no consumer having chosen
+  anything: **deploy both boxes on format 0.7, then publish.** They asked whether a format *ceiling*
+  belongs in our dependencies and we argued against it — a floor states our own code's requirements
+  and is true whatever anyone deployed, while a ceiling would state a third party's release schedule,
+  and it never protects independently of the floor it travels with. The argument is in the roadmap
+  because it will be proposed again.
+- **S21** is a correction to our own roadmap. The 0.24 note said the filename → row-model map needed
+  to name a rejected column's release was private (`compiler._TABLE_KINDS`) and asked upstream for a
+  way around it; `hints.model_for` is public and is that map, and upstream's S81 was answered by RM146
+  months before we re-read our own bullet. What survives is smaller and different: the map is
+  compiler-tier, so the surface degrades on a thin client; it cannot run on the server, which holds
+  the *older* models by definition; and it cannot read the finding, because errors are `list[str]` and
+  recovering the column from the sentence is the matching the advisory exists not to do. The legal
+  shape is a client-side enumeration of the whole version gap, written out in the roadmap, and it is
+  scheduled after the S20 deployment because the advisory is a patch-grain surface that the pair which
+  motivated it never reaches.
+
+The general one, and it is why the roadmap edits are the deliverable here: **a blocker recorded in a
+roadmap is a claim with a date on it, and nothing re-checks it.** Two of these three items exist
+because a consumer read something we wrote, went and looked, and found it had stopped being true —
+once about a file list, once about what upstream had shipped.
+
+**The triage scripts lost half of S19 on the way to the history file, and that is fixed rather than
+worked around.** `.claude/triage-state.py` and `.claude/triage-archive.py` found a section's span with
+`^#{1,2} ` and knew nothing about code fences, so the `# ['clin_sig_authority_calls.csv', …]` output
+comment inside S19's own snippet ended the section there: 55 of 112 lines archived, the rest orphaned
+in the live inbox, and every fingerprint verified intact because both halves hashed the same truncated
+span. Upstream's S62 is the same failure already spent. `fence_mask` / `boundary_at` mask fenced lines
+out of every boundary test in both scripts; S19 re-stamped `fdf6d180940a` → `68d1c403938d` over prose
+nobody touched, and all 18 previously archived items stayed `current`, which is the check that the fix
+disturbs nothing else. The standing advice in `CLAUDE.md` — do not write a flush-left `#` in a fenced
+block — is demoted from *the thing preventing data loss* to ordinary writing guidance, because it was
+never something we could ask of a report already filed. Owed to the gist, which holds the same bug.
+
 ## [0.24.0] — unreleased, and not installable
 
 **Client surface: unchanged.** No `RegistryClient` method *moved*. One was added —

@@ -14,7 +14,8 @@ wherever the *fix* would land.
 `../just-dna-marketplace`. We understand that to be a legacy directory name rather
 than a current one, and refer to the project as `just-dna-registry` throughout.)
 
-S1–S4 were answered in 0.13.0, S5–S7 in 0.14.0, S8–S9 in 0.15.0 and S10–S12 in 0.16.0, all moved to
+S1–S4 were answered in 0.13.0, S5–S7 in 0.14.0, S8–S9 in 0.15.0, S10–S12 in 0.16.0 and
+S19–S21 in 0.25.0, all moved to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md).
 
 ---
@@ -26,7 +27,7 @@ reply moves to [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md
 the one-line summary of every one; the runbook for answering them is
 [CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md).
 
-### The next item is S19
+### The next item is S22
 
 **Claim ids from the ledger, never from what this file shows** — once answered items move out, an empty
 inbox says nothing about how many ids are taken, and the next report would be a second S1:
@@ -48,5 +49,3 @@ Your prose is left byte-for-byte when it is answered and when it is moved, so it
 was observed rather than of what was decided. Replies are appended, never written over it.
 
 ---
-
-*The inbox is empty. Nothing is owed.*

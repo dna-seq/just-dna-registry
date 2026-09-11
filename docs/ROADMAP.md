@@ -596,8 +596,9 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ## Next registry version (post-0.11)
 
-- **Name the format release a rejected column arrived in** (**severity medium, open — blocked on the
-  format 0.7 adoption**; motivated by **S18**). 0.22.0 ships the half this service can compute on its
+- **Name the format release a rejected column arrived in** (**severity medium, open — unblocked since
+  0.25, scheduled behind the deployment in the next bullet**; motivated by **S18**, reopened and
+  corrected by **S21**). 0.22.0 ships the half this service can compute on its
   own: `format_version` on every dry-run report and `format_advisory` when the caller's format is
   newer at patch grain. What it still cannot say is the sentence the consumer actually asked for —
   *`curator` is a 0.6.5 field* — because that needs a map from a spec column to the release that
@@ -608,23 +609,87 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
   ships RM146 — `base.since` declares the release a field first appeared in, and
   `base.field_first_seen(model)` reads it back as `{field: release}`. That is the input-side roster
   this item was waiting for, and upstream's own integration guide names this exact use: it is what
-  tells an "Extra inputs are not permitted" finding apart from a typo. What is still missing is the
-  **filename → row model** map needed to use it: `field_first_seen` takes a model, and the mapping
-  from `studies.csv` to `StudyRow` is `just_dna_compiler.compiler._TABLE_KINDS`, which is private and
-  in the compiler tier — while `reference.authoring_reference()` is public, light-tier and keyed by
-  class name, carrying no filename and no `first_seen`. So the advisory can name the release from the
-  **client** side of a `422` (where the newer models live) once one of those two gains the other's
-  half. Ask upstream for `first_seen` on `authoring_reference()`'s field entries, which costs them a
-  key and needs no new surface. Hand-keeping the map here is what `RENAMED_ON_UPLOAD` exists to warn
-  against.
+  tells an "Extra inputs are not permitted" finding apart from a typo.
+
+  **0.25 correction (S21): the map is public, and this bullet said otherwise for a release.** The
+  0.24 paragraph claimed the **filename → row model** mapping was only
+  `just_dna_compiler.compiler._TABLE_KINDS`, private, and asked upstream for `first_seen` on
+  `reference.authoring_reference()`'s field entries to route around it. `hints.model_for` is public,
+  in the compiler tier, and is that map: `model_for("studies.csv") -> StudyRow`, composed with
+  `field_first_seen` to give `'0.6.5'`. Upstream's S81 is answered and RM146 shipped, so no ask is
+  outstanding. What survives is the **tier**, not the privacy — `model_for` is in `just-dna-compiler`,
+  an optional extra for a thin client, so the surface degrades where the extra is absent rather than
+  being unconditional. (`authoring_reference()` remains light-tier, keyed by class name, and carries
+  neither filename nor `first_seen`; that is a description of it, not a gap anyone is waiting on.)
+
+  **Two constraints on the shape, both of which rule out the obvious implementation.** It cannot run
+  on the **server**: the advisory fires when the client is newer, so the server holds the older
+  models and a 0.6.1 instance has no `curator` on `StudyRow` at all — `field_first_seen` over its own
+  schema cannot by construction contain the column in question. And it cannot read the **finding**:
+  `ValidationResult.errors` is `list[str]` with no structured `(file, field)`, so recovering the
+  column name from *"studies.csv line 2 [curator]: Extra inputs are not permitted"* means matching
+  pydantic's sentence, which is the wording rule in CLAUDE.md and the signature property S18's reply
+  pinned a test around.
+
+  **So the legal shape is a client-side enumeration**, derived from the two version strings and the
+  schema alone:
+
+  ```python
+  {csv: {f: rel for f, rel in field_first_seen(model_for(csv)).items()
+         if server_format < rel <= client_format}}
+  ```
+
+  rendered beside the advisory in `registry-client validate` / `check`. The author matches the
+  refused column against that list; a column present in it means the instance is behind, a column in
+  no list at any release is a typo. Nothing here reads an error string, which is the same property
+  the current advisory has, kept by construction rather than by care.
+
+  **Scheduled after the format 0.7 deployment, not before it.** The advisory is a *patch*-grain
+  surface — it fires only within a minor — and the pair that motivated this (server 0.6.1, client
+  0.7.0) is a MINOR gap that `compatibility_error` refuses outright. So this improves the first
+  within-minor skew *after* the cut in the bullet below, and lands in the release following it.
 
   **Do not close this by reading `release_records`' `parquet_schema` axis.** Format 0.7 (RM126) ships
   a per-release record whose `parquet_schema` targets are spelled `file:column`, and for `curator` it
   would happen to give the right answer. It is a channel about compiled **output**: an optional
   authored column that no module in the interval set, or a column the compiler does not emit,
   never appears on it — so reading it as an input-schema roster is the same category error as using
-  `artifact.digest` to ask "same module?". Filed upstream as **S81** (their ledger) asking for the
-  input-side counterpart. When it exists, the advisory names the release and stops being a range.
+  `artifact.digest` to ask "same module?". Upstream measured it after we filed **S81** (their ledger):
+  the axis names **4 of 402** authored columns, and `curator` is one of them — the right answer for
+  the case in hand and silent wrong answers for 398 others, where absence reads as *this column has
+  always been legal*. `field_first_seen` is the input-side counterpart and it shipped as RM146; that
+  is the roster to read, and this paragraph stays as the reason not to reach for the other one.
+
+- **The instances run format 0.7 before this package is published to PyPI** (**severity high, open**;
+  motivated by **S20**). Not a code item and deliberately filed here anyway, because it is the one
+  release step whose omission breaks every consumer at once and nothing in the tree can assert it.
+
+  0.25.0's own base dependency is `just-dna-format>=0.7.0`. So the day this package reaches PyPI, a
+  fresh `uv sync` in any consumer resolves our client to a 0.7 client, and against the live boxes —
+  both still answering format `0.6.1`, re-measured 2026-09-11 — every write path returns the `409`
+  contract mismatch while reads
+  keep working. That reads as a partial outage rather than a version skew, which is what makes it
+  expensive to diagnose from outside. The trigger is ours as much as upstream's: even with the format
+  cut timed by somebody else, publishing this package first arms the same failure with no consumer
+  having chosen anything.
+
+  **Order: deploy both instances on 0.25 / format 0.7, then publish.** The window is then zero rather
+  than however long a deployment takes to schedule — which is the residue S18's ask 3 left behind, met
+  properly this time instead of being flagged.
+
+  **A format *ceiling* on our dependencies is not the fix, and the argument is worth keeping because
+  it will be proposed again.** `just-dna-format>=0.7.0,<0.8` would turn "publishing is dead" into "the
+  resolver holds you at 0.7.x", which looks strictly better and is not. It cannot help the release
+  already on PyPI, which is ceiling-less and is what a consumer installs today. The claim would be
+  false — a 0.7 client against a 0.7 server works; what fails is a *pairing with one instance*, and a
+  dependency specifier cannot see an instance, so this is a static declaration standing in for a
+  measurement that exists (`contract_compatible` over `GET /api/v1/version`, which is correct and
+  which consumers already build on). And it never protects independently of the floor it travels with:
+  adopting 0.8 moves `<0.8` to `<0.9` in the same release that moves the floor, so the window where
+  the ceiling is wrong is exactly the window it was meant to cover, and outside that window it binds
+  only a consumer wanting the new minor for reasons unrelated to us. **A floor states our own code's
+  requirements and is true whatever anyone deployed; a ceiling here would state a third party's
+  release schedule.** Only the first belongs in a dependency specifier.
 
 - **Adopt `manifest.readme` when format 0.6 lands** (**done in 0.17**). Shipped as filed: publish
   and `amend_readme` both set the entry, `/files/{path}` and the tarball admit the file without their
