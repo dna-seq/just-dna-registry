@@ -20,6 +20,31 @@ with no consumer having chosen anything. The window where a fresh install cannot
 zero, not however long an upgrade takes to schedule. See the S20 reply and the roadmap item for the
 sequencing.
 
+**Nothing in this release has ever been driven over a socket.** Every route added here — `GET
+/caches`, `POST .../derived`, `POST /drafts`, the six `/hint/*` — has been exercised through
+`TestClient` and by no other means, on either side of the seam: `just-module-creator` built their
+thin client against these fixtures and says so in their own changelog too. That is an honest state to
+ship a branch in and a poor one to *deploy* from, because `TestClient` is exactly the client that
+cannot see a proxy.
+
+So before this serves traffic, drive these five over the wire. Each is a shape where something
+between the caller and the app can change the answer without any test here noticing:
+
+1. **An anonymous online hint must be `401`**, not a reverse proxy's own `403` or a redirect.
+   `GET /api/v1/hint/variant?rsid=rs4244285&offline=false` with no bearer. The free tier is the
+   product; the refusal is what keeps the paid one attributable.
+2. **The contract-mismatch `409`**, by sending an `X-Format-Version` the server disagrees with. It is
+   the error the whole 0.7 sequencing turns on and its body has to survive whatever sits in front.
+3. **A real multipart upload with a genuine boundary**, to any spec route. The `Content-Type`
+   boundary is the header the console's own proxy had to be taught to forward, and nothing
+   in-process generates one the way a browser does.
+4. **A body over `max_upload_bytes`.** That setting exists *only* to mirror the deployment's HAProxy
+   request-body cap so an oversized upload gets our structured `413` instead of a severed
+   connection — and no in-process client has a HAProxy in front of it, so the mirroring has never
+   been observed working.
+5. **`registry-client ui` against the deployed host**, which exercises the header whitelist and the
+   bearer injection in the one configuration they exist for.
+
 **`pyproject.toml` reads 0.25.0 and the environment still reports 0.24.0, deliberately.** This branch
 inherits 0.24's state: `just-dna-format` 0.7.0 is bumped upstream and tagged nowhere, so `uv.lock` is
 deliberately stale (main's content, PyPI 0.6.6) and **`uv sync` must not be run here** — it would
