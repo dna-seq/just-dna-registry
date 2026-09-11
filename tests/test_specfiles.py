@@ -69,10 +69,18 @@ def test_fact_tables_match_the_compiler() -> None:
     **So this is also the detector for the next table, and it fires at the right moment.**
     `just-module-creator` reported `expression_effects.csv` (their S22) as missing from our roster: it
     is in upstream's `_FACT_TABLES` as of their AlphaGenome round, which landed *after* the wheels
-    this branch pins. Adding it ahead of the compiler was the tempting fix and is wrong twice over —
-    it breaks this equality, and it cannot prevent anything, because a table the pinned compiler does
-    not read is a table nothing can produce and therefore nothing can drop. This test goes red on the
-    wheel bump, which is exactly when the name becomes both necessary and testable.
+    this branch had been pinning. Adding it ahead of the compiler was the tempting fix and is wrong
+    twice over — it breaks this equality, and it cannot prevent anything, because a table the pinned
+    compiler does not read is a table nothing can produce and therefore nothing can drop. It was
+    tried, reverted, and written down here rather than argued from.
+
+    **The bump has since happened, and this test did exactly that.** Rebuilding the sibling's wheels
+    took `ARTIFACT_PARQUETS` 22 → 23 and this assertion went red immediately, with
+    `expression_effects.csv` as the single difference; the name is now in `FACT_CSVS` and folds into
+    `DERIVED_FILES` and `RECOGNIZED_SPEC_FILES` by derivation. Keep the history, because the useful
+    half is not that the roster was wrong: it is that **the equality was green for days against a
+    stale artifact**, so a tie-back test is only as current as the wheels it imports. That applies to
+    every `*_match_the_compiler` test here, and none of them can report it about itself.
     """
     assert {csv for csv, _, _ in _FACT_TABLES} == set(FACT_CSVS)
 

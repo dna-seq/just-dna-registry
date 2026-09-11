@@ -353,7 +353,7 @@ Anonymous, read-only, and it reports every lane rather than the seven a pass her
 - It composes `lane_presence()` (0.24.1) rather than resolving a second time. Two projections of one
   registry is the drift upstream's `CACHE_LANES` and our own `6ddd430` each exist to end.
 
-### Consumer triage: S19, S20 and S21 answered
+### Consumer triage: S19–S22 answered
 
 Three field notes from `just-module-creator`, filed against the uncut 0.7 branch. All three are
 answered in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md); none of them changed
@@ -383,6 +383,24 @@ code in this release, and two of them changed what we had written down.
   shape is a client-side enumeration of the whole version gap, written out in the roadmap, and it is
   scheduled after the S20 deployment because the advisory is a patch-grain surface that the pair which
   motivated it never reaches.
+
+- **S22** is the same lesson at the dependency instead of the roadmap. `expression_effects.csv`
+  (RM194/RM200) is a compiler fact table this tree did not carry, so a server-side rebuild would drop
+  it. It is now in `FACT_CSVS`, which folds it into `DERIVED_FILES` and `RECOGNIZED_SPEC_FILES` by
+  derivation — one name, because those two are computed rather than kept.
+
+  **The detector was never missing.** `test_fact_tables_match_the_compiler` asserts set *equality*
+  against `_FACT_TABLES`, which is stronger than the subset check the report proposed. It was green
+  because this branch imported wheels built on 9 September, four upstream rounds before the table
+  existed: `ARTIFACT_PARQUETS` was genuinely 22 here. Rebuilding the sibling's wheels took it to 23
+  and the assertion went red at once, with `expression_effects.csv` as the single difference. **A
+  tie-back test is only as current as the artifact it ties back to**, and it cannot say that about
+  itself — a green equality means *these two agree*, never *these two are both current*.
+
+  The bump is also what makes the entry honest rather than tidy: adding the name beforehand was tried
+  and reverted, because a table the pinned compiler does not read is one nothing produces and nothing
+  can drop, so the roster edit would have advertised a file that could not exist while preventing
+  nothing.
 
 The general one, and it is why the roadmap edits are the deliverable here: **a blocker recorded in a
 roadmap is a claim with a date on it, and nothing re-checks it.** Two of these three items exist

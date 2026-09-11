@@ -112,6 +112,15 @@ FACT_CSVS: tuple[str, ...] = (
     "gwas_effects.csv",
     "clin_sig_concordance.csv",
     "clin_sig_authority_calls.csv",
+    # RM194/RM200's AlphaGenome table, adopted at the wheel bump that made it real (S22). It landed
+    # upstream *after* the wheels this branch had been pinning, so for a few days the compiler read a
+    # tenth fact table that `test_fact_tables_match_the_compiler` could not see — the equality was
+    # green against a stale artifact rather than against agreement. Adding the name before the bump
+    # was wrong twice over and was correctly reverted once: it breaks that equality, and it prevents
+    # nothing, since a table the pinned compiler does not read is one nothing produces and nothing can
+    # drop. The lesson is the one the reporter stated: **a tie-back test is only as current as the
+    # artifact it ties back to**, which is true of every `*_match_the_compiler` test in this file.
+    "expression_effects.csv",
 )
 
 # The rsid↔coordinate table. Produced by the enricher (the only tier permitted to fetch) and

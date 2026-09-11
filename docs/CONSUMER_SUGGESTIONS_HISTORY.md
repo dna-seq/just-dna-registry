@@ -40,6 +40,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S19** 0.7's three spec files unrecognised — shipped, reaches PyPI in 0.25.0
 - **S20** a 0.7 client cannot write to a 0.6.1 box — deploy before publish
 - **S21** `field_first_seen` unblocks S18 — roadmap corrected, after S20
+- **S22** `expression_effects.csv` dropped by a rebuild — in FACT_CSVS, 0.25.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2268,3 +2269,120 @@ the concordance record by `opposed_count` and `unchecked_count` rather than a ba
 `S19`'s second ask and the reading we argued for — a row count on its own reads as confidence. And
 `9268d80` fixes `/check` grading strictly before enriching, so a dry run answers for an rsID module;
 we had not reported that one and would have, eventually, from the other side.
+
+# Field notes from just-module-creator — 2026-09-11
+
+## S22 — `expression_effects.csv` is a compiler-recognised derived table and is not in `RECOGNIZED_SPEC_FILES`, so a rebuild drops it
+**Status — accepted, not deliberate, and shipped: `expression_effects.csv` is in `FACT_CSVS` as of
+0.25.0, which folds it into `DERIVED_FILES` and `RECOGNIZED_SPEC_FILES` by derivation.** Sub-question
+2 answers itself in this tree — `DERIVED_FILES` is *computed* from `FACT_CSVS`, so the distinction you
+were pinning against does not exist here and the one name is the whole change. Sub-question 1: no,
+nothing about the Atlas gating was weighed, and had it been the answer would still have been to carry
+the file. A licence that stops a deployment re-deriving a table is an argument for carrying bytes we
+cannot regenerate, not against.
+
+**But your diagnosis is better than the one you filed, and the correction is the part worth keeping.**
+It did not fall between the two trees. We already had the detector, and it is *stronger* than the test
+you proposed: `tests/test_specfiles.py::test_fact_tables_match_the_compiler` asserts set **equality**
+against the compiler's `_FACT_TABLES`, not the `<=` your sketch suggests — a name we carry that the
+compiler does not read is caught too, which matters because it advertises a file that can never exist.
+
+The reason it was green is not that the rosters agreed. It is that **this branch was importing wheels
+built on 9 September, before RM194/RM200 landed** — so `ARTIFACT_PARQUETS` really was 22 here, the
+compiler really did read nine fact tables, and the equality really did hold against the artifact it
+was tying back to. Your install is editable against the `0.7` branch; ours was a wheel four RMs
+behind. Rebuilding it took the count to 23 and the assertion went red immediately with
+`expression_effects.csv` as the single difference, which we ran and watched before changing anything.
+
+**A tie-back test is only as current as the artifact it ties back to**, and it cannot report that
+about itself — a green equality means *these two agree*, never *these two are both current*. That
+applies to every `*_match_the_compiler` assertion in that file and is now written into the one you
+found. It is the same shape as the `INTEGRATION_0_7.md` § 2.2 count you caught: a number taken at a
+moment, read later as a fact.
+
+**Two things that were tried and reverted before the rebuild, because the record is more useful than
+the outcome.** Adding the name ahead of the pinned compiler breaks the equality, and it prevents
+nothing — a table the pinned compiler does not read is one nothing produces and therefore nothing can
+drop. So your decision to leave `expression_effects.csv` out of your own `refresh_sidecar` roster and
+record the reason was right, and right for the same reason ours was: the mitigation was unavailable
+to both of us until the wheel moved, not merely unattractive.
+
+**What the rebuild cost elsewhere, since you are running the same wheels.** The suite came back 549
+passed with one failure, and it was not in the rosters: the enricher's `VariantHint` gained
+`snapshots: dict[str, str]`, and `checked` changed from a path-bearing set to a set of *labels*. Our
+`/hint/*` proxy scrubbed `checked` precisely because it held absolute paths, so the fix was an
+**inversion** rather than an addition — report `checked`, scrub `snapshots` — and it has shipped.
+Worth knowing on your side: a meaning moved under a name that did not change, which no roster test can
+see. If your tooling reads either field, re-read it rather than assume.
+
+**And one for your own count.** If anything you own derives a number from `ARTIFACT_PARQUETS` rather
+than reading `manifest.artifact.files`, 22 → 23 moves under you at a wheel bump rather than at a
+release of ours — which is the same trap as § 2.2's, one tree over.
+<!-- triaged: 0.25.0 · sha 7fecffe46365 -->
+
+
+**What we ran.** Our preview branch installs `just-dna-format`/`-compiler`/`-enricher` `0.7.0` from
+`../just-dna-format`'s `0.7` branch and `just-dna-registry` `0.25.0` from this tree's
+`format-0.7-adoption` branch (editable, both). Then:
+
+```
+$ uv run python -c "
+from just_dna_compiler import compiler, hints
+from just_dna_registry.specfiles import FACT_CSVS, RECOGNIZED_SPEC_FILES, DERIVED_FILES
+print('expression_effects.parquet in ARTIFACT_PARQUETS:',
+      'expression_effects.parquet' in compiler.ARTIFACT_PARQUETS)
+print('expression_effects.csv in DERIVED_TABLE_MODELS:',
+      'expression_effects.csv' in hints.DERIVED_TABLE_MODELS)
+for name, roster in [('FACT_CSVS', FACT_CSVS), ('DERIVED_FILES', DERIVED_FILES),
+                     ('RECOGNIZED_SPEC_FILES', RECOGNIZED_SPEC_FILES)]:
+    print(f'expression_effects.csv in {name}:', 'expression_effects.csv' in roster)"
+expression_effects.parquet in ARTIFACT_PARQUETS: True
+expression_effects.csv in DERIVED_TABLE_MODELS: True
+expression_effects.csv in FACT_CSVS: False
+expression_effects.csv in DERIVED_FILES: False
+expression_effects.csv in RECOGNIZED_SPEC_FILES: False
+```
+
+`ARTIFACT_PARQUETS` is **23** on that install, not the 22 `INTEGRATION_0_7.md` § 2.2 states — the
+AlphaGenome round (RM194/RM200) added `expression_effects` after that count was taken, which is
+presumably why this fell between the two trees rather than being decided against.
+
+**What we expected.** The same treatment `clin_sig_concordance.csv` and
+`clin_sig_authority_calls.csv` got. Those three tables arrived in the same minor, all three are
+machine-written, all three are hashed into `artifact.digest` via their parquet, and two of the three
+are in all three of your rosters.
+
+**What happens instead.** `expression_effects.csv` is not a recognised spec file, so a server-side
+rebuild — `revalidate`, `upgrade`, and the `normalize_spec` leg of `/check` and `POST .../derived` —
+reconstructs a spec directory without it. That is the failure mode your own 0.16.2 fixed for
+`licensing.csv` and 0.14 fixed for readmes: the file is not refused, it is dropped, and the only
+symptom is a module that silently stops carrying a table it was compiled with. A module whose author
+ran `just-dna-enricher expression` and then had the registry rebuild its spec loses the pass's whole
+output, and the recompiled `artifact.digest` moves for a reason nothing reports.
+
+**What we did about it meanwhile.** Nothing yet, and we would rather not: a mitigation here means
+our own roster naming a file yours does not recognise, which is the drift both trees keep filing
+against. Our `refresh_sidecar` roster is being extended to the two concordance tables in this same
+sitting (they are in your `FACT_CSVS`, so they round-trip); `expression_effects.csv` is being left
+out of it with this note as the reason, so the omission is a recorded decision rather than an
+oversight. We are also not yet teaching `expression_effects.csv` in our authoring skills, for the
+same reason — a table a publish drops is not one to route an author at.
+
+**Two sub-questions we are not guessing at.**
+
+1. Is the omission deliberate — e.g. the expression pass is Atlas-gated and licence-bound, so a
+   deployment may be unable to reproduce the table and you would rather not carry bytes you cannot
+   re-derive? If so, that is a good reason and we would like it written down, because from the
+   consumer side it is indistinguishable from the drift.
+2. If it is not deliberate: does it want `FACT_CSVS` (re-derivable, and `refresh`/`upgrade` may
+   rebuild it) or only `RECOGNIZED_SPEC_FILES` + `DERIVED_FILES` (carried through a rebuild but
+   never regenerated)? The distinction matters to us because `FACT_CSVS` is what our refresh roster
+   is pinned against.
+
+**The general shape, offered as the part worth keeping rather than as a request.** Three rosters in
+this tree and two constants in the compiler have to agree about the same set, and nothing walks the
+compiler's side. `hints.DERIVED_TABLE_MODELS` is public and is the producer's own answer to *which
+CSVs are machine-written*; a test asserting `DERIVED_TABLE_MODELS.keys() - {licensing/sources
+spellings} <= RECOGNIZED_SPEC_FILES` would have failed the hour RM194 landed instead of on a
+consumer's install. That is your own `@registry-completeness` rule — assert an equality over a
+walked set — applied across the tree boundary rather than inside one.
