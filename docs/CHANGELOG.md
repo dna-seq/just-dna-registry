@@ -50,6 +50,16 @@ has never been watched working is not a tested guard, whatever the suite says.
 5. **`registry-client ui` against the deployed host**, which exercises the header whitelist and the
    bearer injection in the one configuration they exist for.
 
+**And the version was stamped before the surface it names was finished.** `pyproject.toml` went to
+`0.25.0` at 03:45; `draft()` landed at 03:57 and the six `hint_*` methods at 04:09. So commits exist
+in this tree carrying `0.25.0` with two of the release's nine new client methods, and a consumer
+pinning `just-dna-registry>=0.25.0` **from a source checkout** gets whatever that checkout held rather
+than what this entry describes. Nothing was built or published from those commits, so no artifact
+carries the mismatch — but it is the same "one release number, several answers" problem this release
+documents inheriting from upstream, minted locally instead. `just-module-creator` found it from the
+outside and had already made their own probe symbol-based, which is why it cost nobody anything.
+Stamp at the cut next time.
+
 **`pyproject.toml` reads 0.25.0 and the environment still reports 0.24.0, deliberately.** This branch
 inherits 0.24's state: `just-dna-format` 0.7.0 is bumped upstream and tagged nowhere, so `uv.lock` is
 deliberately stale (main's content, PyPI 0.6.6) and **`uv sync` must not be run here** — it would

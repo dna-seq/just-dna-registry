@@ -640,7 +640,15 @@ def _finalize(
                 # published manifest carries this literal and clients verify against it, and those
                 # manifests are immutable, so a major version changes nothing about them. It can be
                 # retired when no manifest a client may still verify carries the old value — which is
-                # a catalog-wide re-bake, not a cleanup, and is checkable by asking the catalog.
+                # a catalog-wide re-bake rather than a cleanup.
+                #
+                # **Half of that is a query and half is a judgement, and saying so is the point.**
+                # "Does this catalog still hold one" is answerable here. "Does any client still hold
+                # a downloaded manifest it will verify offline" is not answerable from here at all,
+                # and a condition that reads crisp while resting on an unanswerable half is the same
+                # trap as a date, one layer in. So: query the catalog, then decide about the clients
+                # deliberately — do not read this note as a green light because the first half came
+                # back empty.
                 compiled_by=MARKETPLACE_COMPILED_BY,
                 ensembl_reference=settings.ensembl_reference,
                 # `log_files` / `provenance_file` / `logo_file` are left to the compiler's own

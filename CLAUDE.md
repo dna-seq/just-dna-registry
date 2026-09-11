@@ -524,7 +524,13 @@ what it is for.
   wrong for any snapshot this deployment does not configure. Nothing is lost: *a snapshot answered*
   is already said by the labels beside it and by the hint's own findings.
 
-  **A note that schedules an action must name the *condition*, never a time.** "Delete this when the
+  **A note that schedules an action must name a *condition*, never a time — and the condition has to
+  be one somebody can go and check.** "A condition you cannot query is a schedule wearing different
+  words" is the sharper form, and it is the test to apply to your own replacement: the
+  `positionally_joinable` facet passes it because *"has the last pre-0.6 version left this catalog"*
+  is a query. Where a condition is only half queryable, say which half — the `compiled_by` note below
+  is honest that the catalog side is answerable and the "what clients still hold" side is a
+  judgement, because a condition that reads crisp and is not is the same trap one layer in. "Delete this when the
   floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
   test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
   there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,
@@ -534,7 +540,14 @@ what it is for.
   says it retires "when the last pre-0.6 version leaves a catalog, **not on a release**".
 
   **A capability check comes out when its fact goes unconditional, never because a floor appears to
-  guarantee it.** `served_from`'s path filter will look deletable the day 0.7 is cut, and it is not:
+  guarantee it.** **And we minted one of these ourselves**: `pyproject.toml` was stamped `0.25.0` at
+  03:45 and seven of the release's nine client methods landed at 03:57 and 04:09, so commits exist in
+  this tree carrying that version with two of the nine. A version stamped mid-branch names a
+  different surface at different commits, which is the "one release number, several answers" problem
+  minted locally rather than inherited. Stamp at the cut, or expect a consumer pinning from a source
+  checkout to get whatever that checkout happened to hold.
+
+  `served_from`'s path filter will look deletable the day 0.7 is cut, and it is not:
   a floor that was never able to carry the fact does not start carrying it at a release, and there is
   no version to raise the pin to because the split has no version of its own.
 
