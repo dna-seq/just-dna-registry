@@ -1210,7 +1210,7 @@ class CacheStatusReport(BaseModel):
     enricher_available: bool = Field(
         description=(
             "Whether the network tier is installed at all. `false` makes every lane `absent` with no "
-            "route, which is a deployment fact rather than fourteen separate failures."
+            "route, which is a deployment fact rather than one failure reported per lane."
         )
     )
     declared_use: str = Field(

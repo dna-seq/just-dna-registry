@@ -93,7 +93,7 @@ Non-2xx responses raise **`RegistryError(status_code, detail)`**.
 
 - **`cache_status() -> CacheStatusReport`** — which snapshot lanes that deployment can read, and for
   an absent one the route it would arrive by and the reason it has not. The question to ask *before*
-  deciding whether to provision fourteen multi-gigabyte snapshots locally or lean on a registry that
+  deciding whether to provision the multi-gigabyte snapshots locally or lean on a registry that
   already has them, and the one to ask *after* a `check` reports a source skipped — the reason is
   usually here rather than in the spec.
 

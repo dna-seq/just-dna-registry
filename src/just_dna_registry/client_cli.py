@@ -91,7 +91,7 @@ def cache_status(
     """Which snapshot lanes the registry holds, and for an absent one the route and the reason.
 
     Anonymous. Ask it before deciding whether to lean on a registry for authoring work instead of
-    provisioning fourteen multi-gigabyte snapshots locally, and after a `check` reports that a source
+    provisioning the multi-gigabyte snapshots locally, and after a `check` reports that a source
     was skipped — the reason is usually here rather than in the spec.
 
     **The three states are not two.** `partial` is a directory holding something that is not a
@@ -896,7 +896,7 @@ def derived(
 ) -> None:
     """Get a spec's derived tables from a registry that holds the snapshot caches.
 
-    **The call to make when you do not have fourteen snapshots on disk.** `resolution.csv` is what
+    **The call to make when you do not have the snapshots on disk.** `resolution.csv` is what
     places rsID-authored rows onto coordinates, the compiler never fetches, so without it an
     rsID-authored module does not compile anywhere but on a provisioned box. This asks a registry
     that *is* provisioned to derive the tables and hand them back.

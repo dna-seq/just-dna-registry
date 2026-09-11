@@ -161,6 +161,67 @@ def test_every_source_declares_lanes_parameters_and_what_it_produces() -> None:
         assert callable(source.run)
 
 
+def test_the_panel_sources_are_spelled_the_way_the_enricher_spells_them() -> None:
+    """Our source names are a vocabulary, and upstream owns four of the seven.
+
+    `cli.PANEL_SOURCES` is `draft-panel --source`'s own set. The other three (`cpic`, `clinpgx`,
+    `strchive`) are standalone commands upstream and have no shared constant, so this is a superset
+    check rather than an equality — but the four that *are* upstream's must be spelled its way, or a
+    rename there leaves us offering a source nobody else calls by that name.
+    """
+    from just_dna_enricher.cli import PANEL_SOURCES
+
+    assert set(PANEL_SOURCES) <= set(DRAFT_SOURCES), (
+        f"upstream renamed a panel source: {sorted(set(PANEL_SOURCES) - set(DRAFT_SOURCES))}"
+    )
+    for name in PANEL_SOURCES:
+        assert DRAFT_SOURCES[name].genes in {"many", "optional"}
+
+
+def test_every_draft_source_names_an_error_type_the_enricher_defines() -> None:
+    """The catch list resolves, so it cannot name a class that moved and silently catch nothing.
+
+    Upstream carries the full roster of this tier's error types and walks it against the package
+    (RM216), which is what makes naming them on our side safe rather than a hand-kept list going
+    stale in the dark. This is the half of that guard that lives here.
+    """
+    from just_dna_registry.services.drafting import draft_errors
+
+    for name in DRAFT_SOURCES:
+        caught = draft_errors(name)
+        assert all(issubclass(cls, Exception) for cls in caught)
+        # The shared preconditions plus exactly one type of the source's own.
+        assert len(caught) == 4, f"{name} does not inherit the shared precondition errors"
+        assert {c.__name__ for c in caught} >= {"DraftError", "EnrichmentError", "LicenseRefusal"}
+
+
+@pytest.mark.skipif(_CLINVAR is None, reason="this box has no ClinVar snapshot")
+def test_a_spec_mid_authoring_is_reported_rather_than_crashing_the_endpoint(tmp_path) -> None:
+    """A `module_spec.yaml` carrying only `name:` is an ordinary state, not a broken request.
+
+    `enrich.source_build_mismatch` runs before any provider writes a coordinate and raises
+    `EnrichmentError` on a spec whose declaration it cannot read. Nothing caught it, so this endpoint
+    answered with a traceback — the shape CLAUDE.md records for `/check` before enricher 0.6.2, an
+    endpoint whose whole contract is to report, failing over something it was built to report on.
+    """
+    client = _app(tmp_path, clinvar_cache=_CLINVAR)
+    resp = client.post(
+        _URL,
+        params={"source": "clinvar", "gene": ["F5"]},
+        files=[("files", ("module_spec.yaml", b'schema_version: "1.0"\nmodule:\n  name: halfway\n',
+                          "text/yaml"))],
+        headers=_AUTH,
+    )
+
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["error"] == "draft_failed"
+    assert detail["source"] == "clinvar"
+    assert detail["error_type"] == "EnrichmentError"
+    # The enricher's own sentence, which names the remedy — kept rather than replaced by ours.
+    assert "genome_build" in detail["errors"][0]
+
+
 @pytest.mark.skipif(_CLINVAR is None, reason="this box has no ClinVar snapshot")
 def test_a_real_draft_comes_back_as_a_tree_that_deliberately_does_not_validate(tmp_path) -> None:
     """The whole point, driven end to end against a real snapshot.

@@ -50,6 +50,47 @@ from just_dna_registry.services.enrich import cache_lanes, enricher_available, l
 from just_dna_registry.services.publish import PublishError, normalize_spec
 from just_dna_registry.specfiles import DRAFT_REPORT_FILE
 
+#: The exception each source raises, as `(module, class)` — resolved lazily, like every other enricher
+#: import here. Upstream's ENRICHER.md carries the full roster (RM216) and walks it against the
+#: package, which is what makes naming them here safe rather than a hand-kept list going stale in the
+#: dark: `test_every_draft_source_names_an_error_type_the_enricher_defines` resolves every entry.
+_SOURCE_ERRORS: dict[str, tuple[str, str]] = {
+    "clinvar": ("just_dna_enricher.clinvar_draft", "ClinVarDraftError"),
+    "pubmind": ("just_dna_enricher.pubmind_draft", "PubMindDraftError"),
+    "civic": ("just_dna_enricher.civic_draft", "CivicDraftError"),
+    "mitomap-miss": ("just_dna_enricher.mitomap_draft", "MitomapDraftError"),
+    "clinpgx": ("just_dna_enricher.clinpgx_draft", "ClinPgxEnrichmentError"),
+    "cpic": ("just_dna_enricher.pgx_draft", "CpicError"),
+    "strchive": ("just_dna_enricher.strchive_draft", "StrchiveDraftError"),
+}
+
+#: What **every** drafter can raise regardless of source, which is the half a per-source list misses.
+#: `enrich.source_build_mismatch` runs before any provider writes a coordinate and raises
+#: `EnrichmentError` on a `module_spec.yaml` it cannot read — an ordinary mid-authoring state, not a
+#: broken request. Upstream hit this exact shape and answered it with a shared tuple rather than two
+#: more `except` clauses, precisely so the next provider inherits the handling instead of
+#: rediscovering it. We were the next provider and rediscovered it: a spec carrying only `name:`
+#: returned a traceback from `POST /drafts` until 0.25.
+_PRECONDITION_ERRORS: tuple[tuple[str, str], ...] = (
+    ("just_dna_compiler.draft", "DraftError"),
+    ("just_dna_enricher.enrich", "EnrichmentError"),
+    ("just_dna_enricher.licensing", "LicenseRefusal"),
+)
+
+
+def draft_errors(source_name: str) -> tuple[type[Exception], ...]:
+    """Every exception this source's drafter can raise that is the caller's problem, not a bug.
+
+    Deliberately **not** a bare `except Exception`: a drafter failing in a way nobody predicted is a
+    defect and should reach the logs as one, rather than being flattened into a `422` that tells a
+    publisher to fix a spec that is fine.
+    """
+    import importlib
+
+    names = [*_PRECONDITION_ERRORS, _SOURCE_ERRORS[source_name]]
+    return tuple(getattr(importlib.import_module(module), cls) for module, cls in names)
+
+
 #: Re-exported from `specfiles`, where the client can reach it too. It is dropped at the archive root
 #: beside the spec files rather than in a wrapper folder, so the archive is directly re-uploadable to
 #: `/check` or back to this route — safe there for the reason `derived/` is safe: the compiler
@@ -378,7 +419,17 @@ def run_draft(
 
         request.spec_dir = spec_dir
         request.snapshots = snapshots
-        result = source.run(request)
+        try:
+            result = source.run(request)
+        except draft_errors(source_name) as exc:
+            # A refusal the caller can act on, reported as one. Without this the endpoint answered a
+            # mid-authoring `module_spec.yaml` with a traceback, which is the shape CLAUDE.md records
+            # for `/check` before enricher 0.6.2: an endpoint whose contract is to report, failing.
+            raise PublishError(
+                "draft_failed",
+                errors=[str(exc)],
+                extra={"source": source.name, "error_type": type(exc).__name__},
+            ) from exc
         return _pack(
             spec_dir, source, result, snapshots, request,
             info=normalization.info, warnings=normalization.warnings,

@@ -149,7 +149,7 @@ async def hint_variant(
     into a tautology.
 
     `offline=true` is the default and costs nothing: it reads this deployment's snapshots, which is
-    the reason to ask a registry rather than provision fourteen of your own. Going online needs a
+    the reason to ask a registry rather than provision your own. Going online needs a
     token, and `frequencies=true` additionally needs the deployment to have enabled gnomAD.
     """
     _require_enabled(settings)

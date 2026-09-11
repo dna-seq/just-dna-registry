@@ -70,6 +70,43 @@ Process-wide for the reason `shared_lookup_clients()` is, and deliberately not i
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
 
+### Adopted from upstream's post-review docs (RM202, RM216, RM217)
+
+Their 0.7 tree moved after we built against it. Three things landed here, one of which was a live bug.
+
+- **`POST /drafts` answered a mid-authoring spec with a traceback.** `enrich.source_build_mismatch`
+  runs before any provider writes a coordinate and raises `EnrichmentError` on a `module_spec.yaml`
+  it cannot read — a spec carrying only `name:`, which is an ordinary state to be in. Nothing caught
+  it. That is the shape recorded for `/check` before enricher 0.6.2: an endpoint whose entire
+  contract is to report, failing over the thing it exists to report on. Reproduced, then fixed.
+
+  Upstream had already hit exactly this and answered it with a **shared** tuple rather than two more
+  `except` clauses, *"so the next provider inherits the handling instead of rediscovering it"*. We
+  were the next provider and rediscovered it. `draft_errors()` now carries the three shared
+  preconditions (`DraftError`, `EnrichmentError`, `LicenseRefusal`) plus each source's own type, and
+  a test resolves every entry so the list cannot name a class that moved and silently catch nothing.
+  Deliberately not a bare `except Exception`: a drafter failing in a way nobody predicted is a defect
+  and should reach the logs as one, not be flattened into a `422` telling a publisher to fix a spec
+  that is fine.
+
+  RM216 is what made this findable — their error roster went from a ten-row table to all 83 classes,
+  grouped by what raises them, walked against the package.
+- **The lane count came out of our prose, in thirteen places.** Upstream is at **15** lanes and ours
+  said "fourteen". Their own rule (`@counted-prose-needs-a-fixed-field`) is that a number no test
+  reads is true the day it is written and quietly wrong the first time the registry grows correctly —
+  which had already happened. Nothing computed on it; every use was narrative, and every one of them
+  was already false.
+- **Our source names are a vocabulary and upstream owns four of the seven.** `cli.PANEL_SOURCES` is
+  now asserted to be a subset of `DRAFT_SOURCES`, so a rename there fails here instead of leaving us
+  offering a source nobody else calls by that name. A superset check rather than an equality, because
+  `cpic`, `clinpgx` and `strchive` are standalone commands upstream with no shared constant.
+
+**Checked and needing nothing.** RM202's `publish_command` is an enricher-operator field, not a
+dashboard one. `alphagenome_avi` — the fifteenth lane, `rebuild=None` **with** an `ensure` — is
+exactly the case our route derivation was written against, and reports `pullable` correctly because
+the two stages are read independently. RM207, RM209 and RM212 are upstream behaviour we inherit with
+the next wheel.
+
 ### `/hint/*` — the lookups, and the first anonymous surface that spends anything
 
 `just_dna_enricher.lookup` was already the right shape: snapshot first, live only for what the

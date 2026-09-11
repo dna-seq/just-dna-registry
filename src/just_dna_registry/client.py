@@ -651,7 +651,7 @@ class RegistryClient:
         """What a registry knows about one variant — coordinates, alleles, clinical calls.
 
         **`offline=True` is the default and costs nothing**: it reads the deployment's snapshots,
-        which is the reason to ask a registry instead of provisioning fourteen of your own. It needs
+        which is the reason to ask a registry instead of provisioning your own. It needs
         no token. Going online spends that server's standing with upstreams that rate-limit by IP, so
         it needs one, and `frequencies=True` additionally needs the deployment to proxy gnomAD.
 
@@ -1281,7 +1281,7 @@ class RegistryClient:
         """Which snapshot lanes this deployment holds, and for an absent one the route and the reason.
 
         Anonymous — no bearer needed. The question a thin client asks before deciding whether to lean
-        on this registry for authoring work rather than downloading fourteen multi-gigabyte snapshots
+        on this registry for authoring work rather than downloading the multi-gigabyte snapshots
         of its own, and the question a publisher asks after a `/check` reported a source skipped.
 
         Reports only: nothing here provisions anything. That is `registry warm-caches`, an operator

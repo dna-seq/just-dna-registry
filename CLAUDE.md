@@ -453,7 +453,7 @@ control: it is the only thing holding our aggregate rate inside a limit we canno
 ## The caching proxy (0.25) — what this box holds, other people can borrow
 
 **A thin client's cache miss is answered by the registry, and the registry's own miss is answered by
-the remote source.** The enricher's snapshot lanes are fourteen artifacts running to tens of
+the remote source.** The enricher's snapshot lanes are artifacts running to tens of
 gigabytes, and every consumer that is not a provisioned server — a module author, an agent, a
 `just-module-creator` session, a `just-dna-lite` install — has none of them. This box has them. So the
 authoring half of the ecosystem, which was reachable only by whoever had already downloaded the

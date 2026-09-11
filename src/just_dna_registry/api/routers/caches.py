@@ -29,8 +29,8 @@ router = APIRouter(tags=["ops"])
 SettingsDep = Annotated[Settings, Depends(settings_dep)]
 
 #: Seconds a computed report is served from memory. The answer changes only when an operator
-#: provisions something, so this is not a staleness trade so much as a refusal to walk fourteen
-#: directories per request on a route anonymous callers can hit.
+#: provisions something, so this is not a staleness trade so much as a refusal to walk every
+#: lane's directory per request on a route anonymous callers can hit.
 CACHE_TTL_SECONDS = 30.0
 
 _cached: dict[tuple, tuple[float, CacheStatusReport]] = {}
@@ -80,7 +80,7 @@ async def cache_status(settings: SettingsDep) -> CacheStatusReport:
     and it is the first thing to run when a `/check` says a source was skipped. Provisioning is
     `registry warm-caches`, deliberately an operator command rather than a request-path concern.
 
-    The walk stats fourteen directories and parses fourteen small JSON files, so it runs on a
+    The walk stats one directory per lane and parses a small JSON file in each, so it runs on a
     threadpool worker behind a short TTL rather than on the event loop.
     """
     return await run_in_threadpool(_fresh, settings)

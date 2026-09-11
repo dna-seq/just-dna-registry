@@ -560,11 +560,11 @@ def test_every_lane_the_enricher_knows_is_reported_by_warm_caches(
     """The provisioning report names every lane, not the ones somebody remembered to list.
 
     **The failure this pins is silence, which is why it is asserted against upstream's registry
-    rather than against a list here.** `warm-caches` hand-kept six lanes. Format 0.7 ships fourteen
+    rather than against a list here.** `warm-caches` hand-kept six lanes. Format 0.7 ships more than that and keeps adding
     (RM176), and the eight it had never heard of included `acmg` — whose setting this service
     already had and whose pass already read it, so an operator saw a green provisioning run and
     still had the ACMG check falling back to a live page serving last year's list. A test naming the
-    fourteen would go stale the same way; this one fails the day upstream adds a fifteenth.
+    a number here would go stale the same way; this one fails the day upstream adds another.
 
     The tag beside each lane is asserted too. `[not read here]` is a real answer — most lanes belong
     to authoring commands this server does not run — and it is what keeps a complete list from
@@ -616,7 +616,7 @@ def test_a_lane_no_pass_here_reads_can_still_be_present(
     `available_references` is keyed by `REFERENCE_NAMES` — the lanes something on this box opens —
     and is right to be: that map feeds the boot gate and the `/check` notes, and a lane named there
     that nothing reads is how `constraint` came to trigger boot warnings about a file no pass would
-    open. But `warm-caches` lists all fourteen, and reading presence out of that map answered `None`
+    open. But `warm-caches` lists every lane, and reading presence out of that map answered `None`
     for the seven it does not cover: a provisioned `civic` could never render as present, and under
     `--all` it rendered as **missing** and was queued for a download of bytes already on disk. Same
     class of defect as the hand-kept list that command was rewritten to end, arriving through the map

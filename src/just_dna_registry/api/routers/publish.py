@@ -615,7 +615,7 @@ async def derived_tables(
     **The one thing a client without the snapshot caches cannot make for itself.** The compiler never
     fetches, so `resolution.csv` is what places rsID-authored rows onto coordinates and it has to
     travel with a spec for that spec to compile anywhere else. Producing it needs the Ensembl and
-    ClinVar snapshots — fourteen lanes and tens of gigabytes across the set — which this box has and
+    ClinVar snapshots — tens of gigabytes across the lane set — which this box has and
     an author's laptop does not. `GET /caches` says which of them this deployment actually holds.
 
     Both wire forms, like every spec route: loose `files=` parts or one `archive=`. The response is a

@@ -101,7 +101,9 @@ CHECK_REFERENCES: tuple[str, ...] = ("acmg",)
 #: `available_references` are keyed by, and what the boot check and the `/check` notes name.
 #:
 #: Narrower than the lanes that exist: `provisionable_lanes()` is every lane the enricher knows about
-#: (fourteen at format 0.7), most of which belong to authoring commands this server does not run.
+#: most of which belong to authoring commands this server does not run. **The count is not stated
+#: here on purpose** — upstream added a fifteenth in 0.7 and keeps adding them, and a number in prose
+#: that no test reads is wrong the first time the registry grows correctly.
 #: Naming a lane here is a claim that something on this box opens it, and a lane named here that
 #: nothing reads is how `constraint` came to trigger boot warnings and appear in a `/check` note
 #: about a resolution failure it could not have caused.
@@ -427,7 +429,7 @@ def lane_presence(settings: Settings) -> dict[str, Path | None]:
     pass would open.
 
     This one exists because a **report** has a different job from a gate. `warm-caches` lists all
-    fourteen, and reading presence out of the narrow map gave `None` for the seven it does not cover —
+    every lane, and reading presence out of the narrow map gave `None` for the ones it does not cover —
     so a lane genuinely provisioned on disk could never render as present, and under `--all` it
     rendered as *missing* and was queued for a download of bytes already there. Same class of defect
     as the one that command was rewritten to fix, arriving through the map rather than the list.

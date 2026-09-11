@@ -1,7 +1,7 @@
 """The enriched `derived/` tree, handed back (0.25) — the one thing a cacheless client cannot make.
 
 `resolution.csv` and the fact sidecars are produced by the network tier from snapshots that run to
-fourteen artifacts and tens of gigabytes. A module author on a laptop has none of them, and the
+artifacts running to tens of gigabytes. A module author on a laptop has none of them, and the
 compiler never fetches — so `resolution.csv` has to *travel with* a spec for it to compile anywhere
 else. This service already builds that tree on every publish and on every `/check`, and then throws
 it away. Returning it is the smallest possible version of the whole caching-proxy idea.
