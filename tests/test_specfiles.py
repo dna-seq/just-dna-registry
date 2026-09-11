@@ -1070,7 +1070,10 @@ def test_a_derived_table_never_enters_the_content_signature() -> None:
     from just_dna_compiler import hints
 
     signature = set(specfiles.SIGNATURE_INPUTS)
-    assert not (signature & set(hints.DERIVED_TABLE_MODELS) - {specfiles.SOURCES_CSV}), (
-        "a derived table reached SIGNATURE_INPUTS"
-    )
+    # No exemptions. The first draft of this carried `- {SOURCES_CSV}`, written pre-emptively against
+    # the sidecar pair — and `sources.csv` is not in `SIGNATURE_INPUTS`, so it excluded nothing while
+    # standing ready to hide the exact regression this exists to catch. An exemption that is dead
+    # today is an exemption nobody re-examines the day it starts doing something.
+    overlap = sorted(signature & set(hints.DERIVED_TABLE_MODELS))
+    assert not overlap, f"a derived table reached SIGNATURE_INPUTS: {overlap}"
     assert not (signature & set(specfiles.DERIVED_FILES))
