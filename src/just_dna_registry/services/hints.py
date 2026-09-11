@@ -123,14 +123,29 @@ class HintScrubber:
 
     @staticmethod
     def served_from(checked: Any) -> list[str]:
-        """The labels, straight through.
+        """The labels — and **a path is withheld rather than mapped or passed on**.
 
         **No mapping since enricher 0.7.** `checked` is label-only now (S93), so translating it would
-        be this service re-deriving something upstream already states — and would silently pass a
-        path through unchanged if one ever reappeared, rather than failing. The test that walks
-        `VariantHint`'s fields is what holds that claim.
+        be this service re-deriving something upstream already states.
+
+        The withholding is the part that is not obvious, and it is a floor problem rather than a
+        hypothetical. Our floor is `just-dna-enricher>=0.7.0`, and the split that made `checked`
+        label-only landed *after* that version number existed — so an install can satisfy the floor
+        and still hand us paths, and no floor we can write expresses the difference. Passing an entry
+        straight through would leak one; mapping it back to a lane would invent a vocabulary of ours
+        inside a field that is upstream's, and be wrong for any snapshot this deployment does not
+        configure.
+
+        So an entry that looks like a path is dropped. Nothing is lost by it: *a snapshot answered*
+        is already said by the labels beside it and by the hint's own findings, and a caller reading
+        `served_from` wants lanes rather than a filesystem. `just-module-creator` reached the same
+        answer for the same reason on their in-process read, which is the corroboration that made
+        this worth doing rather than assuming the floor held.
         """
-        return sorted({str(entry) for entry in (checked or ())})
+        return sorted({
+            str(entry) for entry in (checked or ())
+            if "/" not in str(entry) and "\\" not in str(entry)
+        })
 
 
 def _findings(hint: Any, scrub: HintScrubber) -> list[dict[str, Any]]:

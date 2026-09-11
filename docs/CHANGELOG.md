@@ -83,6 +83,18 @@ entry means *not produced here*, never *this module has none*, and the question 
 server rather than the module. That is this tier's standing rule about empty collections applied to
 an empty *file set*, which is where it had not been applied.
 
+**A floor cannot express a change that landed after its number did.** `served_from` passes `checked`
+through unmapped, which is right on the wheels this branch pins — but the split that made `checked`
+label-only arrived *after* `0.7.0` existed as a version, so an install can satisfy
+`just-dna-enricher>=0.7.0` and still hand us `str(reference)`. No floor distinguishes them. So an
+entry that looks like a path is now **withheld**: passing it on leaks, and mapping it back to a lane
+would invent a vocabulary of ours inside a field that is upstream's and be wrong for any snapshot
+this deployment does not configure. Nothing is lost — *a snapshot answered* is already said by the
+labels beside it and by the hint's own findings. Asserted on the shape (no member may contain a
+separator) rather than against paths this box happens to hold. `just-module-creator` reached the same
+answer independently for their in-process read, which is what turned "the floor probably holds" into
+a thing worth checking.
+
 **And the note's own advice had the defect it was written to prevent.** It named
 `layout.sidecar_key`, which arrives with format **0.7.0** and is absent from the wheels this branch
 pins — so every consumer reading it today would have gone looking for a function that is not there,

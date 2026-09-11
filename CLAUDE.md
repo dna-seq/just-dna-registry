@@ -515,6 +515,21 @@ what it is for.
   **The general lesson is the one that cost the red test**: a filing that gets adopted changes the
   meaning of a name without changing the name, and a passthrough fix would have left us scrubbing a
   field that no longer needs it while serializing the one that does.
+
+  **And a version floor cannot express a change that landed after its number did.** Ours is
+  `just-dna-enricher>=0.7.0`; the split arrived *after* 0.7.0 existed as a version, so an install can
+  satisfy the floor and still hand us the old shape. There is no floor to write. So `served_from`
+  **withholds** an entry that looks like a path rather than passing it on or mapping it back — the
+  first leaks, and the second invents a vocabulary of ours inside a field that is upstream's and is
+  wrong for any snapshot this deployment does not configure. Nothing is lost: *a snapshot answered*
+  is already said by the labels beside it and by the hint's own findings.
+
+  **One release number, three different answers depending on which install asks** — in a sibling's
+  source tree, in the wheels built from it, and on PyPI. `layout.sidecar_key` was in all three states
+  at once on the day it landed, and a note here named it as though it were available. Check the
+  *installed* symbol before writing advice about it, and probe the **behaviour** rather than the
+  symbol's presence where the two can differ: `hasattr` is the sentence-matching rule wearing an
+  import.
 - **`lane_status()` composes `lane_presence()`; it does not resolve a second time.** Two projections
   of one lane registry is the drift `CACHE_LANES` and `6ddd430` each exist to end. And `absent` is
   three states, not one: `partial` (a directory holding something that is not a readable snapshot) is

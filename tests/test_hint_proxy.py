@@ -111,6 +111,16 @@ def test_checked_is_reported_as_given_because_upstream_made_it_label_only() -> N
         "ensembl-live",
     ]
 
+    # **And a path is withheld, not mapped and not passed on.** The floor cannot express this: the
+    # split landed after `0.7.0` existed as a version, so an install can satisfy
+    # `just-dna-enricher>=0.7.0` and still hand us `str(reference)`. Asserted on the *shape* — no
+    # member may contain a separator — rather than against a list of paths this box happens to have,
+    # which is the form that also covers a snapshot the deployment never configured.
+    mixed = {"clinvar", "/data/just-dna-cache/ensembl", "ensembl-live", "C:\\caches\\clinvar"}
+    served = hint_service.HintScrubber.served_from(mixed)
+    assert served == ["clinvar", "ensembl-live"]
+    assert all("/" not in entry and "\\" not in entry for entry in served)
+
 
 def test_a_path_surviving_in_third_party_error_text_is_still_scrubbed(tmp_path) -> None:
     """The one scrub left, and upstream names why it has to stay.
