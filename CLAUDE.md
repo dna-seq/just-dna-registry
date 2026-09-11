@@ -524,6 +524,11 @@ what it is for.
   wrong for any snapshot this deployment does not configure. Nothing is lost: *a snapshot answered*
   is already said by the labels beside it and by the hint's own findings.
 
+  **A capability check comes out when its fact goes unconditional, never because a floor appears to
+  guarantee it.** `served_from`'s path filter will look deletable the day 0.7 is cut, and it is not:
+  a floor that was never able to carry the fact does not start carrying it at a release, and there is
+  no version to raise the pin to because the split has no version of its own.
+
   **One release number, three different answers depending on which install asks** — in a sibling's
   source tree, in the wheels built from it, and on PyPI. `layout.sidecar_key` was in all three states
   at once on the day it landed, and a note here named it as though it were available. Check the

@@ -141,6 +141,15 @@ class HintScrubber:
         `served_from` wants lanes rather than a filesystem. `just-module-creator` reached the same
         answer for the same reason on their in-process read, which is the corroboration that made
         this worth doing rather than assuming the floor held.
+
+        **Do not delete this when 0.7 is cut**, and the reason is the one that made it necessary: a
+        floor that was never able to carry the fact does not start carrying it at a release. Raising
+        the pin to a version that postdates the split would work — but there is no such version,
+        because the split has no version of its own. A capability check comes out when its fact goes
+        **unconditional**, never because a floor now appears to guarantee it.
+
+        It also covers a case that is not a version question in any direction: a lane a deployment
+        configured under a path we hold no label for at all.
         """
         return sorted({
             str(entry) for entry in (checked or ())
