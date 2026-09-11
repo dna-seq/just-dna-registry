@@ -21,6 +21,7 @@ from just_dna_compiler.compiler import (
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.verification import VerificationDoc
 
+from just_dna_registry import specfiles
 from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
 from just_dna_registry.specfiles import (
@@ -59,6 +60,20 @@ def test_table_kinds_match_the_compiler() -> None:
 
 
 def test_fact_tables_match_the_compiler() -> None:
+    """An **equality** with the compiler we pin, and the equality is the point (S22).
+
+    Not a subset in either direction. A name here the compiler does not read advertises a file that
+    can never exist; a name the compiler reads and this does not is a file silently dropped the first
+    time a module carrying it is re-published, which is the `licensing.csv` cost.
+
+    **So this is also the detector for the next table, and it fires at the right moment.**
+    `just-module-creator` reported `expression_effects.csv` (their S22) as missing from our roster: it
+    is in upstream's `_FACT_TABLES` as of their AlphaGenome round, which landed *after* the wheels
+    this branch pins. Adding it ahead of the compiler was the tempting fix and is wrong twice over —
+    it breaks this equality, and it cannot prevent anything, because a table the pinned compiler does
+    not read is a table nothing can produce and therefore nothing can drop. This test goes red on the
+    wheel bump, which is exactly when the name becomes both necessary and testable.
+    """
     assert {csv for csv, _, _ in _FACT_TABLES} == set(FACT_CSVS)
 
 
@@ -1007,3 +1022,55 @@ def test_the_archive_filter_keeps_everything_the_planner_acts_on() -> None:
     for name in (LEGACY_README_FILE, f"{DERIVED_DIR}/{RESOLUTION_CSV}", "logs/reviewer.log"):
         assert carries_spec_content(name), name
     assert not carries_spec_content("weights.parquet")
+
+
+# ── The roster, walked against the compiler's own ──────────────────────────────
+
+
+def test_every_table_the_compiler_reads_is_recognized_here() -> None:
+    """Our spec-file roster against upstream's, as an equality of coverage rather than by eye.
+
+    **This is the check a consumer has now run for us twice.** `just-module-creator` compares these
+    two sets in their own suite, and it is how `overrides.csv` and the two concordance tables were
+    caught before 0.7 (their S19) and how `expression_effects.csv` was caught after (their S22). A
+    file the compiler reads and this list does not name is a file silently dropped the first time a
+    module carrying it is re-published — `revalidate` and `upgrade` rebuild a spec directory from
+    `RECOGNIZED_SPEC_FILES`, so a missing name is not a missing feature, it is data loss that keeps
+    compiling green. That is the `licensing.csv` failure, and it has now recurred at four tables.
+
+    It lives here rather than upstream because the drift is ours: they own which names exist, and
+    this asserts we read the same list they write. Hand-keeping the list is still necessary —
+    `specfiles` may not import the compiler, since `client.py` imports `specfiles` and the compiler
+    tier is an optional extra — so the list stays a literal and *this* is what makes it honest.
+    """
+    from just_dna_compiler import draft, hints
+
+    recognized = set(specfiles.RECOGNIZED_SPEC_FILES)
+
+    unrecognized_derived = sorted(set(hints.DERIVED_TABLE_MODELS) - recognized)
+    assert not unrecognized_derived, (
+        f"the compiler reads these derived tables and we do not carry them: {unrecognized_derived}. "
+        f"A re-publish drops them silently while the module keeps compiling green."
+    )
+
+    unrecognized_authored = sorted(set(draft.DRAFTABLE) - recognized)
+    assert not unrecognized_authored, (
+        f"the compiler reads these authored tables and we do not carry them: "
+        f"{unrecognized_authored}. Dropping an authored table loses the author's own work."
+    )
+
+
+def test_a_derived_table_never_enters_the_content_signature() -> None:
+    """Coverage must not be bought by widening the signature — they answer opposite questions.
+
+    `RECOGNIZED_SPEC_FILES` says *carry this file forward*; `SIGNATURE_INPUTS` says *this file is the
+    module's content identity*. Adding a derived table to the second would make a re-derivation mint a
+    fresh `409 duplicate_content` claim on data that did not change, and only a purge frees one.
+    """
+    from just_dna_compiler import hints
+
+    signature = set(specfiles.SIGNATURE_INPUTS)
+    assert not (signature & set(hints.DERIVED_TABLE_MODELS) - {specfiles.SOURCES_CSV}), (
+        "a derived table reached SIGNATURE_INPUTS"
+    )
+    assert not (signature & set(specfiles.DERIVED_FILES))

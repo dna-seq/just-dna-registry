@@ -70,6 +70,35 @@ Process-wide for the reason `shared_lookup_clients()` is, and deliberately not i
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
 
+### S22 — answered by a test that was already there, and a roster guard that was not
+
+`just-module-creator` reported `expression_effects.csv` as present in the compiler's `_FACT_TABLES`,
+`ARTIFACT_PARQUETS` and `OVERRIDABLE_TABLES` and absent from our `RECOGNIZED_SPEC_FILES` — the S19
+shape at a fourth table, and they were right that it reads as the AlphaGenome round landing after our
+0.7 roster sweep.
+
+**Both of their sub-questions have an unambiguous answer**: it sits in `_FACT_TABLES`, so it is a
+**fact table** — same class as the two concordance tables — and it is **not** in `_INPUT_FILES`, so it
+never touches `content_signature`. It would go in `FACT_CSVS`, which folds it into
+`RECOGNIZED_SPEC_FILES` and `DERIVED_FILES` and leaves the signature alone.
+
+**And it should not be added yet.** Adding it was the tempting fix and is wrong twice over.
+`test_fact_tables_match_the_compiler` asserts an **equality** with the compiler this branch pins, not
+a subset — a name we carry that the compiler does not read advertises a file that can never exist.
+More to the point it cannot prevent anything: a table the pinned compiler does not read is a table
+nothing produces, so there is nothing to drop. That test goes red on the wheel bump, which is exactly
+when the name becomes both necessary and testable. Its docstring now says so, so the next person to
+meet it red knows it is a prompt rather than a break.
+
+**What was genuinely missing is the authored half.** The existing equality covers derived tables
+against a *private* symbol; nothing compared our roster to `draft.DRAFTABLE`, the 14 authored kinds.
+That check now exists beside a second one asserting coverage is never bought by widening
+`SIGNATURE_INPUTS` — the two lists answer opposite questions, and a derived table in the signature
+would make a re-derivation mint a fresh `409 duplicate_content` claim on data that did not change.
+
+Worth recording that this is the **second** time a consumer's suite caught our roster before ours did.
+Their check is the one we now run.
+
 ### Adopted from upstream's post-review docs (RM202, RM216, RM217)
 
 Their 0.7 tree moved after we built against it. Three things landed here, one of which was a live bug.
