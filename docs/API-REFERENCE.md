@@ -600,8 +600,10 @@ runs the offline pass over every key at no cost and goes online only for what mi
 provisioned deployment a whole module's worth of keys comes back charging nothing. `frequencies` is
 refused in a batch outright: at six seconds per key it cannot finish inside a request.
 
-**No filesystem path appears in any hint.** The enricher records a snapshot's location in `checked`
-and interpolates it into one finding's prose; both are mapped to lane names here.
+**No filesystem path appears in any hint**, and since enricher 0.7 that is upstream's design rather
+than our audit. `checked` is a set of **labels** — a lane name, or a live source like `ensembl-live` —
+and `snapshots` is the label → path map, which this service **never serializes**. One scrub survives
+because upstream keeps a third-party error's own first line as evidence, and it may name a file.
 
 **These are registry models, not the enricher's types — a consumer needs a thin translation.** Every
 field the enricher reports survives, but two are reshaped and one is replaced:
@@ -609,7 +611,8 @@ field the enricher reports survives, but two are reshaped and one is replaced:
 | enricher | here | why |
 |---|---|---|
 | `VariantHint.rsid_status` (a `RsidStatus`) | `rsid_state` + `rsid_current` | flattened, so a consumer does not need the dataclass |
-| `VariantHint.checked` (absolute paths) | `cost.served_from` (lane names) | the paths are this server's business |
+| `VariantHint.checked` (labels, since 0.7) | `cost.served_from` | a rename, not a scrub — it belongs with what the answer cost |
+| `VariantHint.snapshots` (label → path) | *(dropped)* | the one field carrying paths; upstream built it to be droppable |
 | `OldAssemblyHint.recovery` (an `RsidRecovery`) | its fields, inlined | same reason as `rsid_status` |
 | — | `cost` | new here: what the answer spent and where it came from |
 | — | `ambiguous` | the enricher exposes it as a property, so it does not survive serialization |

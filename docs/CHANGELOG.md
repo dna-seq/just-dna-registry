@@ -70,6 +70,40 @@ Process-wide for the reason `shared_lookup_clients()` is, and deliberately not i
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
 
+### The wheels moved, and an S-filing came back as an inverted fix
+
+A sibling session rebuilt `just-dna-format`'s wheels against their current 0.7 branch, which is
+several RMs ahead of the Sep 9 build this work was written on. One test went red and it was a good
+one to go red.
+
+**`VariantHint` gained `snapshots`, and `checked` changed meaning under an unchanged name.** This is
+upstream adopting our own **S93** — we reported that `checked` held an absolute snapshot path and a
+finding interpolated the same path, so a host had to scrub two places and re-audit on every new
+field. They did not add a scrub; they **split** the field. `checked` is now labels only, `snapshots`
+is the label → path map, and their docstring calls it *"the one place a path lives in the payload, so
+a host that does not want to publish its layout drops this field and audits nothing else"*.
+
+So the fix inverted rather than grew, and a passthrough would have been wrong in both directions —
+still scrubbing a field that no longer needs it, while serializing the one that does:
+
+- `checked` is reported **as given**. `HintScrubber.served_from` no longer maps, and the absence of a
+  mapping is now the assertion: translating it would re-derive what upstream states, and a mapping
+  that passes an unrecognized entry through unchanged is exactly how a path would escape silently if
+  one ever returned.
+- `snapshots` is **never serialized**, and the field-parity guard names it as the third deliberate
+  exception beside `checked` and `rsid_status`.
+- **One scrub survives**, for the reason upstream gives: a duckdb error's own first line contains the
+  file it could not read, kept deliberately as evidence. It now prefers the hint's own `snapshots`
+  map — exact for that lookup — over the deployment-wide one it falls back on.
+
+The general form is worth more than the fix: **a filing that gets adopted changes the meaning of a
+name without changing the name.** The red test was the field-parity guard added three days earlier
+because a consumer asked what the shape was; it caught this for the same reason it caught `pubmind`.
+
+**Also confirmed by that rebuild**, and it is the better-stated half of S22: a tie-back test is only
+as current as the wheels it imports. `test_fact_tables_match_the_compiler` was green for days against
+a stale artifact, not because the rosters agreed.
+
 ### S22 — answered by a test that was already there, and a roster guard that was not
 
 `just-module-creator` reported `expression_effects.csv` as present in the compiler's `_FACT_TABLES`,

@@ -13,10 +13,19 @@ of that CLI already types.
 
 Two things this layer owes that the enricher does not:
 
-**Paths never leave the process.** `VariantHint.checked` holds `str(reference)` — an absolute
-snapshot path — and one finding interpolates the same path into its prose. Both are scrubbed to lane
-names here, and the fix is filed upstream: a source *label* beside the path would make the payload
-safe by construction rather than by audit.
+**Paths never leave the process — and since enricher 0.7 that is mostly upstream's doing rather than
+ours.** We filed it as S93: `checked` held `str(reference)` and a finding interpolated the same path,
+so a host had to scrub its own directory layout out of two places and re-audit every time a field was
+added. Upstream answered by **splitting the two**. `checked` is now a set of *labels* — a lane name or
+a live source — and `snapshots` is the label → path map, described in their own words as *"the one
+place a path lives in the payload, so a host that does not want to publish its layout drops this
+field and audits nothing else"*.
+
+So the handling inverted rather than grew: `checked` is reported **as-is** and is the thing a thin
+client actually wanted, and `snapshots` is **never serialized**. One scrub survives, and upstream
+names why: a duckdb error's own first line may still contain the filename, and that is their sentence
+kept as evidence. `hint.snapshots` is the exact label → path map for *this* lookup, which makes that
+scrub precise where ours was an approximation over the whole deployment.
 
 **Egress is metered, per upstream, before it is spent.** See `pacing.py` for why the units cannot be
 exchanged. The charge is computed from the *shape* of the request — which legs it will run — rather
@@ -24,6 +33,7 @@ than measured afterwards, because nothing downstream reports what it actually sp
 bound and the field says so.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -72,10 +82,16 @@ def observed_intervals() -> dict[str, float]:
 
 @dataclass
 class HintScrubber:
-    """Rewrites this box's snapshot paths to lane names, wherever they appear in a hint.
+    """Rewrites this box's snapshot paths to lane names wherever they survive in a hint's prose.
 
-    Built per request from `lane_presence`, which is the same resolution the lookup itself used, so
-    the mapping cannot describe a different set of snapshots from the one that answered.
+    Since enricher 0.7 this is a **backstop, not the mechanism**: the payload's structured fields are
+    already label-only, and the one place a path lives (`snapshots`) is dropped rather than scrubbed.
+    What is left is third-party error text — a duckdb failure names the file it could not read, which
+    upstream deliberately keeps as evidence.
+
+    Built per request from `lane_presence`, the same resolution the lookup itself used, so the mapping
+    cannot describe a different set of snapshots from the one that answered. `text()` additionally
+    takes the hint's own `snapshots` map, which is exact for that lookup where this is deployment-wide.
     """
 
     by_path: dict[str, str] = field(default_factory=dict)
@@ -93,34 +109,37 @@ class HintScrubber:
                 mapping.setdefault(str(Path(configured)), lane)
         return cls(by_path=mapping)
 
-    def label(self, entry: str) -> str:
-        """A `checked` entry as a lane name, or unchanged when it is already a label.
-
-        `_lookup_from_cache` records the snapshot's path; `_lookup_live_loci` records a source label
-        like `ensembl-live`. Both arrive in the same set, which is why this maps rather than strips —
-        the labels are the half a caller actually needs.
-        """
-        return self.by_path.get(entry, entry)
-
-    def text(self, message: str) -> str:
+    def text(self, message: str, snapshots: Mapping[str, str] | None = None) -> str:
         """Prose with any known snapshot path replaced by its lane name.
 
-        Longest path first, so a nested cache directory is not half-rewritten by its parent.
+        `snapshots` is the hint's own label → path map and takes precedence, because it is exact for
+        this lookup where `by_path` is whatever the deployment happens to hold. Longest path first, so
+        a nested cache directory is not half-rewritten by its parent.
         """
-        for path in sorted(self.by_path, key=len, reverse=True):
-            message = message.replace(path, f"<{self.by_path[path]} snapshot>")
+        mapping = {**self.by_path, **{path: label for label, path in (snapshots or {}).items()}}
+        for path in sorted(mapping, key=len, reverse=True):
+            message = message.replace(path, f"<{mapping[path]} snapshot>")
         return message
 
-    def served_from(self, checked: Any) -> list[str]:
-        return sorted({self.label(str(entry)) for entry in (checked or ())})
+    @staticmethod
+    def served_from(checked: Any) -> list[str]:
+        """The labels, straight through.
+
+        **No mapping since enricher 0.7.** `checked` is label-only now (S93), so translating it would
+        be this service re-deriving something upstream already states — and would silently pass a
+        path through unchanged if one ever reappeared, rather than failing. The test that walks
+        `VariantHint`'s fields is what holds that claim.
+        """
+        return sorted({str(entry) for entry in (checked or ())})
 
 
 def _findings(hint: Any, scrub: HintScrubber) -> list[dict[str, Any]]:
+    snapshots = getattr(hint, "snapshots", None)
     return [
         {
             "level": finding.level,
             "column": finding.column,
-            "message": scrub.text(str(finding.message)),
+            "message": scrub.text(str(finding.message), snapshots),
         }
         for finding in getattr(hint, "findings", [])
     ]
@@ -141,7 +160,8 @@ def _alterations(hint: Any, scrub: HintScrubber) -> list[dict[str, Any]]:
             "source": alteration.source,
             "applied": alteration.applied,
             "refusal": alteration.refusal,
-            "note": scrub.text(str(alteration.note)) if alteration.note else None,
+            "note": scrub.text(str(alteration.note), getattr(hint, "snapshots", None))
+            if alteration.note else None,
         }
         for alteration in getattr(hint, "alterations", [])
     ]

@@ -72,11 +72,18 @@ def test_a_hint_with_no_key_is_refused_rather_than_answered_emptily(tmp_path) ->
 
 
 def test_no_snapshot_path_reaches_the_wire(tmp_path) -> None:
-    """`VariantHint.checked` holds an absolute path and one finding interpolates it into prose.
+    """The end-to-end claim, which now rests on upstream's split rather than on our scrubbing.
 
-    Both are scrubbed to lane names here. Asserted against the rendered body using the path this
-    deployment is actually configured with, rather than a list of likely prefixes — a prefix list
-    passes on a box whose caches live somewhere it did not think of.
+    Enricher 0.7 answered our S93: `checked` is labels, `snapshots` is the one field holding paths,
+    and the findings interpolate the label. So what this asserts is that **we drop `snapshots` and
+    report the rest** — the same guarantee, reached by not carrying the path rather than by removing
+    it afterwards.
+
+    Kept at the rendered-body level on purpose. The field-level guard next door says which fields are
+    dropped; this says no path reached the wire by *any* route, including a third-party error string
+    nobody thought to look at. Asserted against the path this deployment is actually configured with,
+    rather than a list of likely prefixes — a prefix list passes on a box whose caches live somewhere
+    it did not think of.
     """
     cache = tmp_path / "pretend-ensembl"
     cache.mkdir()
@@ -91,8 +98,27 @@ def test_no_snapshot_path_reaches_the_wire(tmp_path) -> None:
     assert str(tmp_path) not in raw
 
 
-def test_the_scrubber_maps_a_snapshot_path_to_its_lane_name(tmp_path) -> None:
-    """The mapping is built from the same resolution the lookup used, so it cannot describe another set."""
+def test_checked_is_reported_as_given_because_upstream_made_it_label_only() -> None:
+    """No mapping, and the absence of one is the assertion.
+
+    Enricher 0.7 answered our S93 by splitting the two: `checked` carries labels and `snapshots`
+    carries paths. Translating `checked` would re-derive what upstream already states — and worse, a
+    mapping that passes an unrecognized entry through unchanged would let a path escape silently if
+    one ever came back, rather than failing.
+    """
+    assert hint_service.HintScrubber.served_from({"clinvar", "ensembl-live"}) == [
+        "clinvar",
+        "ensembl-live",
+    ]
+
+
+def test_a_path_surviving_in_third_party_error_text_is_still_scrubbed(tmp_path) -> None:
+    """The one scrub left, and upstream names why it has to stay.
+
+    A duckdb failure's own first line contains the file it could not read, and the enricher keeps that
+    sentence deliberately as evidence. The hint's own `snapshots` map is the exact label-to-path pair
+    for that lookup, which beats the deployment-wide map this falls back on.
+    """
     from just_dna_registry.config import Settings
 
     settings = Settings(
@@ -102,21 +128,27 @@ def test_the_scrubber_maps_a_snapshot_path_to_its_lane_name(tmp_path) -> None:
     (tmp_path / "cv").mkdir()
     scrub = hint_service.HintScrubber.build(settings)
 
-    assert scrub.label(str(tmp_path / "cv")) == "clinvar"
-    # A label that is not a path is passed through: `_lookup_live_loci` records `ensembl-live`, and
-    # that is the half a caller actually needs.
-    assert scrub.label("ensembl-live") == "ensembl-live"
-    assert "<clinvar snapshot>" in scrub.text(f"snapshot at {tmp_path / 'cv'} unreadable")
+    assert "<clinvar snapshot>" in scrub.text(f"IO Error: no such file {tmp_path / 'cv'}")
+    # And via the hint's own map, which covers a lane this deployment never configured.
+    elsewhere = "/somewhere/else/pubmind"
+    assert "<pubmind snapshot>" in scrub.text(
+        f"IO Error: {elsewhere}/x.parquet", {"pubmind": elsewhere}
+    )
 
 
 def test_every_field_the_enricher_reports_about_a_variant_survives_the_proxy() -> None:
     """A field dropped in the model is a fact a thin client cannot get any other way.
 
     `pubmind` was missing until a consumer asked what the shape was, which is exactly how a silent
-    omission is found — nothing fails, the answer is just quietly smaller. `checked` and `rsid_status`
-    are the two deliberate exceptions: the first is scrubbed into `cost.served_from` because it holds
-    absolute paths, and the second is flattened into `rsid_state` / `rsid_current` because a nested
-    dataclass is a translation layer for every consumer.
+    omission is found — nothing fails, the answer is just quietly smaller.
+
+    **Three deliberate exceptions, and one of them changed meaning under an unchanged name.**
+    `rsid_status` is flattened into `rsid_state` / `rsid_current`, so no consumer carries a nested
+    dataclass. `checked` is reported as `cost.served_from`, which is a rename and no longer a scrub:
+    enricher 0.7 made it label-only in answer to our own S93. `snapshots` is the field that now holds
+    the paths, and it is **dropped rather than scrubbed** — upstream built it to be droppable, in
+    their words *"the one place a path lives in the payload, so a host that does not want to publish
+    its layout drops this field and audits nothing else"*.
     """
     import dataclasses
 
@@ -127,7 +159,7 @@ def test_every_field_the_enricher_reports_about_a_variant_survives_the_proxy() -
     upstream = {f.name for f in dataclasses.fields(VariantHint)}
     ours = set(VariantHintReport.model_fields)
 
-    assert upstream - ours == {"checked", "rsid_status"}, (
+    assert upstream - ours == {"checked", "rsid_status", "snapshots"}, (
         "a field of the enricher's variant hint is not reported by the proxy"
     )
     assert {"rsid_state", "rsid_current"} <= ours, "rsid_status was flattened into nothing"

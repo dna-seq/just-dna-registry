@@ -499,11 +499,22 @@ what it is for.
   no snapshot in this tree. `POST /hint/variants` runs the offline pass over every key at zero cost
   and goes online only for the misses. A test asserts zero charge **and** zero egress with the socket
   tripwire armed; if that stops holding, this is a proxy and not a cache.
-- **No filesystem path leaves the process, on any of these routes.** `VariantHint.checked` holds an
-  absolute snapshot path, one finding interpolates it into prose, and `DraftReport.path` is absolute
-  too. All are mapped to lane names. The tests assert it against the *rendered* body using paths this
-  box actually resolves, not a list of likely-looking prefixes — a prefix list passes on a machine
-  whose caches live somewhere it did not think of.
+- **No filesystem path leaves the process, on any of these routes** — and since enricher 0.7 most of
+  that is upstream's doing rather than ours. We filed it as **S93**: `checked` held an absolute
+  snapshot path and a finding interpolated the same path, so a host had to scrub two places and
+  re-audit on every new field. Upstream **split** them instead — `checked` is now labels, `snapshots`
+  is the label → path map, and their docstring calls it *"the one place a path lives in the payload,
+  so a host that does not want to publish its layout drops this field and audits nothing else"*.
+
+  So the handling **inverted rather than grew**: report `checked` as-is, never serialize `snapshots`,
+  and keep exactly one scrub, for the reason upstream names — a duckdb error's own first line
+  contains the file it could not read, kept deliberately as evidence. `DraftReport.path` is still
+  absolute and is still answered by reporting `csv_name`. Assert at the *rendered* body using paths
+  this box actually resolves, not a list of likely-looking prefixes.
+
+  **The general lesson is the one that cost the red test**: a filing that gets adopted changes the
+  meaning of a name without changing the name, and a passthrough fix would have left us scrubbing a
+  field that no longer needs it while serializing the one that does.
 - **`lane_status()` composes `lane_presence()`; it does not resolve a second time.** Two projections
   of one lane registry is the drift `CACHE_LANES` and `6ddd430` each exist to end. And `absent` is
   three states, not one: `partial` (a directory holding something that is not a readable snapshot) is
