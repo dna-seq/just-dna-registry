@@ -41,6 +41,7 @@ export const ROUTES = {
   whoami: "/api/v1/auth/whoami",
   register: "/api/v1/auth/register",
   pubkey: "/api/v1/pubkey",
+  caches: "/api/v1/caches",
 } as const;
 
 export type RouteTemplate = (typeof ROUTES)[keyof typeof ROUTES];

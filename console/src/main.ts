@@ -1,8 +1,9 @@
 /* Entry point and hash router. `#/` catalog, `#/m/<ns>/<name>[?tab=]` module, `#/rehearse`,
- * `#/publish`, `#/lookup`, `#/account`. */
+ * `#/publish`, `#/lookup`, `#/caches`, `#/account`. */
 
 import { errorText } from "./api";
 import { viewAccount } from "./account";
+import { viewCaches } from "./caches";
 import { readCatalogHash, viewCatalog } from "./catalog";
 import { $, h, put } from "./dom";
 import { viewLookup } from "./lookup";
@@ -13,7 +14,7 @@ import { loadMe, loadServer } from "./server";
 import { loadToken } from "./state";
 
 type View = (root: HTMLElement) => void | Promise<void>;
-const VIEWS: Record<string, View> = { catalog: viewCatalog, rehearse: viewRehearse, publish: viewPublish, lookup: viewLookup, account: viewAccount };
+const VIEWS: Record<string, View> = { catalog: viewCatalog, rehearse: viewRehearse, publish: viewPublish, lookup: viewLookup, caches: viewCaches, account: viewAccount };
 
 async function render(): Promise<void> {
   const raw = location.hash.replace(/^#\/?/, "");

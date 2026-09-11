@@ -396,6 +396,29 @@ export interface GroupInfo {
   description: string;
 }
 
+export interface CacheLaneStatus {
+  name: string;
+  serves: string;
+  state: string;
+  release: string | null;
+  release_unreadable: boolean;
+  route: string;
+  route_reason: string | null;
+  build_command: string | null;
+  licence_gated: boolean;
+  licence_skip: string | null;
+  read_here: boolean;
+  group: string | null;
+  configured: boolean;
+  parents: string[];
+}
+
+export interface CacheStatusReport {
+  enricher_available: boolean;
+  declared_use: string;
+  lanes: CacheLaneStatus[];
+}
+
 // ── Shapes with no pydantic model (plain dict responses and the two ops endpoints) ─────────────
 
 export interface Page<T> { items: T[]; total: number; page: number; per_page: number; }

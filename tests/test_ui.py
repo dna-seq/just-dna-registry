@@ -149,6 +149,24 @@ def test_the_route_params_are_the_servers_names(app) -> None:
         assert key in ("module", "version"), key
 
 
+def test_the_cache_renderer_keeps_the_three_states_apart() -> None:
+    """The same rule one field over: "not provisioned" is several states with different remedies.
+
+    A lane that is `partial` needs the directory moved aside — provisioning refuses to overwrite it,
+    since it never deletes — and a lane whose `licence_skip` is set will never arrive from a pull
+    however often one is run. A page that renders all three as one red cross tells an operator to do
+    the one thing that cannot work, which is the terminal renderer's `✓ would publish` over an outage
+    wearing different clothes.
+    """
+    script = _source("caches.ts")
+    for field in (
+        "partial", "absent", "present",
+        "licence_skip", "route_reason", "release_unreadable", "build_command",
+        "enricher_available", "read_here", "configured", "parents",
+    ):
+        assert re.search(rf"\b{field}\b", script), f"the cache renderer no longer reads `{field}`"
+
+
 def test_the_check_renderer_reads_every_unchecked_sibling() -> None:
     """The renderer's half of the standing rule: a count whose absence could mean either "nothing
     was wrong" or "nothing was checked" is rendered beside the field that says which. These are

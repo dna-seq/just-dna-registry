@@ -1,6 +1,6 @@
 # The console — a browser UI over the registry API (0.23)
 
-**Normative for:** registry **0.23.x**. The console is a *consumer* of the API documented in
+**Normative for:** registry **0.23.x–0.25.x**. The console is a *consumer* of the API documented in
 [API-REFERENCE.md](API-REFERENCE.md); it adds no route, and every path it fetches is asserted to be
 a served one (`tests/test_ui.py`).
 
@@ -53,6 +53,7 @@ to loopback, and pairing a token with any other `--host` needs `--expose-token` 
 | **Manage** (signed in) | `POST …/yank`, `PATCH …/versions/{v}`, `POST …/readme`, `POST …/logo`, `PATCH …/short-description`, `DELETE …` | Metadata only — the artifact is immutable. The delete buttons render **only when `/health` says `mode: test`**: on production the route is not mounted, and a button that 405s would only repeat what the badge already says. |
 | **Rehearse** | `POST …/validate`, `POST …/check` | Both wire forms: a picked directory (loose `files=` parts, spec-relative names so `derived/` survives) or one `.zip`/`.tar.gz` (`archive=`). The report renders every "unchecked" sibling beside the count it qualifies — see below. A finding in `carried` (format 0.7) renders as info rather than as a warning, by set membership and never by matching the prose: it is a limit of the tier or a fact of a source, and no edit to the spec clears it. |
 | **Publish** | `POST …/versions` (loose files) or `POST …/versions/import` (archive) | Confirms before a production publish; surfaces `format_advisory`, the `409 duplicate_content` explanation, and the `allow_test_data` override with its purge warning. |
+| **Caches** (0.25) | `GET /caches` | Which snapshot lanes the deployment holds, and for the rest the route and the recorded reason. Anonymous, like the endpoint — it is the question a client asks *before* it has an account. Three states, not two: `partial` gets the loudest badge on the page because it is the only one whose obvious next move is wrong. |
 | **Lookup** | `POST /modules/lookup` | Paste digests and/or content signatures; each comes back with where it is published, or *not published*. |
 | **Account** | `GET/PATCH /auth/whoami`, `POST /auth/register`, `GET/POST /namespaces…`, `…/members` | Token sign-in (kept in this browser's local storage, sent to this origin only), profile, namespace availability → claim (with the `requires_allow_test_data` pre-flight), members. Registration grinds the proof-of-work install-id in a Web Worker and posts it — the same `jdi1_…` scheme as `just_dna_registry.installid`. |
 
@@ -75,7 +76,11 @@ Both are this repo's standing rules, restated for a page:
   `✓ would publish` over an outage in 0.11). The check view reads `unreachable`,
   `unreachable_rsids`, `clin_sig_not_checked`, `gene_loci_not_checked`, `quotes_unchecked`,
   `titles_as_quotes`, `skipped_offline`, `skipped_reason`, `format_version` and
-  `format_advisory`, and a test fails if any of them stops being read. `format_advisory` is shown
+  `format_advisory`, and a test fails if any of them stops being read. The **Caches** page is held
+  to the same bar by `test_the_cache_renderer_keeps_the_three_states_apart`: `partial`,
+  `licence_skip` and `route_reason` each have their own line, because "not provisioned" is several
+  states with different remedies and one red cross for all of them sends an operator to run a pull
+  that is going to refuse. `format_advisory` is shown
   whenever present and never conditioned on the verdict, for the reason 0.22 gives: a note that
   appears only beside a failure makes its own absence ambiguous. (From a browser it is usually
   `null`, since the page sends no `X-Format-Version`; `format_version` is always shown.)
@@ -102,7 +107,7 @@ console/                       # the TypeScript project (repo root, outside the 
   src/types.ts               # response shapes, mirrored from models/api.py (tested)
   src/dom.ts                 # h(), put(), esc(), formatters, the URL gates
   src/markdown.ts            # escape-first renderer
-  src/{catalog,module,manage,reports,rehearse,publish,lookup,account}.ts
+  src/{catalog,module,manage,reports,rehearse,publish,lookup,caches,account}.ts
   src/main.ts                # router and entry point
 src/just_dna_registry/ui/
   static/index.html          # the shell (version-stamped asset URLs at serve time)
