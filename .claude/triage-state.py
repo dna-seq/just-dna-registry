@@ -64,6 +64,45 @@ MARKER_RE = re.compile(r"<!-- *triaged:.*?sha +([0-9a-f]{12}) *-->")
 RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 
 
+# A fenced code block. `BOUNDARY_RE` knows nothing about fences, so a flush-left `#` inside one — an
+# ordinary Python comment in a reporter's snippet — used to end the section there. That is not
+# hypothetical: our S62 carried one and upstream's archiver moved half the item to the history file
+# and left the rest orphaned in the live inbox, reporting every fingerprint intact and being right
+# to, because both halves hashed the same truncated span. The writing-side advice ("indent the
+# comment") cannot be given retroactively to prose already filed, and a reporter's prose is never
+# edited, so the fix belongs here.
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def fence_mask(lines: list[str]) -> list[bool]:
+    """True for every line inside a fenced code block (the fence lines themselves included).
+
+    Closing rule follows CommonMark: same character, at least as long as the opener, and no info
+    string. An unclosed fence runs to the end of the document, which is what a reader sees too.
+    """
+    mask = [False] * len(lines)
+    char: str | None = None
+    width = 0
+    for i, line in enumerate(lines):
+        m = FENCE_RE.match(line)
+        if char is None:
+            if m:
+                char, width = m.group(1)[0], len(m.group(1))
+                mask[i] = True
+            continue
+        mask[i] = True
+        if m and m.group(1)[0] == char and len(m.group(1)) >= width and not m.group(2).strip():
+            char, width = None, 0
+    return mask
+
+
+def boundary_at(lines: list[str], i: int, mask: list[bool] | None = None) -> bool:
+    """Whether line `i` starts a new section or group — a heading, not a comment in a snippet."""
+    if mask is None:
+        mask = fence_mask(lines)
+    return bool(BOUNDARY_RE.match(lines[i])) and not mask[i]
+
+
 def sections(lines: list[str]) -> list[tuple[str, int, list[str]]]:
     """Split into (id, 1-based heading line, body lines). Ids repeat if the doc repeats them."""
     out = []
@@ -73,7 +112,7 @@ def sections(lines: list[str]) -> list[tuple[str, int, list[str]]]:
         ident = PREFIX + SECTION_RE.match(line).group(1)
         end = len(lines)
         for j in range(start + 1, len(lines)):
-            if BOUNDARY_RE.match(lines[j]):
+            if boundary_at(lines, j):
                 end = j
                 break
         out.append((ident, start + 1, lines[start + 1 : end]))
@@ -92,7 +131,7 @@ def block_replies(lines: list[str]) -> dict[str, int]:
         if not line.startswith("# "):
             continue
         for i in range(start + 1, len(lines)):
-            if BOUNDARY_RE.match(lines[i]):  # preamble ends at the first section
+            if boundary_at(lines, i):  # preamble ends at the first section
                 break
             if not STATUS_RE.match(lines[i]):
                 continue
@@ -279,7 +318,7 @@ def backfill(doc: pathlib.Path, lines: list[str], rows: list, covered: dict[str,
             continue
         end, standalone = None, False
         for i in range(line, len(lines)):
-            if BOUNDARY_RE.match(lines[i]):
+            if boundary_at(lines, i):
                 break
             if STATUS_RE.match(lines[i]):
                 end = i
@@ -289,7 +328,7 @@ def backfill(doc: pathlib.Path, lines: list[str], rows: list, covered: dict[str,
         if end is None and ident in covered:  # shared block reply, mark the section itself
             end, standalone = line, True
             for i in range(line, len(lines)):
-                if BOUNDARY_RE.match(lines[i]):
+                if boundary_at(lines, i):
                     break
                 if lines[i].strip():
                     end = i

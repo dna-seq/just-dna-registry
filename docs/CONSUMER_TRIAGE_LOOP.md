@@ -463,6 +463,39 @@ found upstream, some here, and as of 2026-08-21 all of them are in both copies:
   cannot show that, `revised` is honest and you re-triage. `--backfill` will not do it for you on
   purpose: it touches only `unmarked-reply`, because silently restamping a `revised` section is exactly
   how a genuine re-triage signal gets erased.
+- **`BOUNDARY_RE` knew nothing about code fences, so a reporter's own `# comment` ended their
+  section.** A section body runs to the next `^#{1,2} ` line, and a flush-left `#` inside a ```python
+  block matches it — which is an ordinary thing to write in a snippet and impossible to ask for
+  retroactively, because a reporter's prose is never edited. Found here on **S19**, whose report
+  carried `# ['clin_sig_authority_calls.csv', 'clin_sig_concordance.csv']` as the output comment in
+  the very snippet that made its case: the archiver moved **55 of 112 lines** to the history file and
+  left the rest orphaned in the live inbox under a heading that had gone. Upstream's S62 is the same
+  failure, already lost.
+
+  **The fingerprint check is blind to it, for the third time in this list.** Both halves hash the same
+  truncated span, so the move verifies clean and reports every fingerprint intact — the title-is-not-a-
+  group and document-footer entries above are the identical shape at the two ends of a file. *Ask what
+  your check is blind to* is now the single most load-bearing sentence in §5.
+
+  Fixed in both scripts with `fence_mask` / `boundary_at`: a CommonMark-ish fence scan (same character,
+  at least as long as the opener, no info string on the closer; an unclosed fence runs to EOF, which is
+  what a reader sees too), consulted by every boundary test in `sections`, `block_replies`,
+  `section_span`, `group_span` and `backfill`. **Re-stamping is expected and is not a re-triage**: a
+  section that was being measured short gets a new fingerprint the moment the span is right, with the
+  prose byte-identical — S19 went `fdf6d180940a` → `68d1c403938d` that way, and all 18 already-archived
+  items stayed `current`, which is the check that the fix disturbs nothing else. Run the ledger over
+  both files after adopting it and expect movement only where a fence hid a `#`.
+
+  **`STATUS_RE` and `MARKER_RE` are still fence-blind, deliberately and on notice.** A reporter quoting
+  a `**Status` line or a `<!-- triaged: … -->` marker inside a code block would read as an answered
+  section. Neither file contains one today (21 of 21 archived items read `current` after the fix), and
+  the boundary case is the one that loses data, so this is recorded rather than fixed. If it ever
+  fires, the same `fence_mask` is already there to consult.
+
+  **Owed to the gist**, with the S62 cross-reference — this is a change to the pattern, not to this
+  repo's routing. The writing-side advice ("indent the comment") stays worth giving for the tools that
+  are still fence-blind, `grep '^# '` included, but it is no longer what stands between a report and
+  being cut in half.
 - **A Python script named `.sh` gets run as bash sooner or later, and `import` is an ImageMagick
   binary.** The ledger and the archiver shipped as `.sh` with a `#!/usr/bin/env python3` shebang, which
   is correct only for a caller who *executes* them; eventually someone goes by the extension and types

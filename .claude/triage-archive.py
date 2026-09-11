@@ -49,6 +49,45 @@ GROUP_RE = re.compile(r"^# +\S")
 BOUNDARY_RE = re.compile(r"^#{1,2} ")
 
 
+# A fenced code block. `BOUNDARY_RE` knows nothing about fences, so a flush-left `#` inside one — an
+# ordinary Python comment in a reporter's snippet — used to end the section there. That is not
+# hypothetical: our S62 carried one and upstream's archiver moved half the item to the history file
+# and left the rest orphaned in the live inbox, reporting every fingerprint intact and being right
+# to, because both halves hashed the same truncated span. The writing-side advice ("indent the
+# comment") cannot be given retroactively to prose already filed, and a reporter's prose is never
+# edited, so the fix belongs here.
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def fence_mask(lines: list[str]) -> list[bool]:
+    """True for every line inside a fenced code block (the fence lines themselves included).
+
+    Closing rule follows CommonMark: same character, at least as long as the opener, and no info
+    string. An unclosed fence runs to the end of the document, which is what a reader sees too.
+    """
+    mask = [False] * len(lines)
+    char: str | None = None
+    width = 0
+    for i, line in enumerate(lines):
+        m = FENCE_RE.match(line)
+        if char is None:
+            if m:
+                char, width = m.group(1)[0], len(m.group(1))
+                mask[i] = True
+            continue
+        mask[i] = True
+        if m and m.group(1)[0] == char and len(m.group(1)) >= width and not m.group(2).strip():
+            char, width = None, 0
+    return mask
+
+
+def boundary_at(lines: list[str], i: int, mask: list[bool] | None = None) -> bool:
+    """Whether line `i` starts a new section or group — a heading, not a comment in a snippet."""
+    if mask is None:
+        mask = fence_mask(lines)
+    return bool(BOUNDARY_RE.match(lines[i])) and not mask[i]
+
+
 def section_span(lines: list[str], ident: str) -> tuple[int, int]:
     """(start, end) indices of `## <ident>` and one past its last line."""
     for i, line in enumerate(lines):
@@ -57,7 +96,7 @@ def section_span(lines: list[str], ident: str) -> tuple[int, int]:
             continue
         end = len(lines)
         for j in range(i + 1, len(lines)):
-            if BOUNDARY_RE.match(lines[j]):
+            if boundary_at(lines, j):
                 end = j
                 break
         return i, end
@@ -93,7 +132,7 @@ def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
         return None
     end = len(lines)
     for j in range(start + 1, len(lines)):
-        if BOUNDARY_RE.match(lines[j]):
+        if boundary_at(lines, j):
             end = j
             break
     return start, end

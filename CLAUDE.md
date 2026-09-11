@@ -935,12 +935,20 @@ directory. They were `.sh` until 2026-08-16.
   response field is minor; a trivial one fixed by renaming a query param is major. The table is in the
   runbook, along with the four traps (immutability, the global `content_hash` claim, the lockstep
   `just-dna-format` minor, and `REGISTRY_MODE` not being a repair).
-- **Never write a flush-left `#` inside a fenced block in one of these documents.** The ledger and the
-  archiver find an item's span with `BOUNDARY_RE = ^#{1,2} `, which knows nothing about code fences — so
-  a `# comment` at column 0 inside a ```python block ends the section there. Our S62 carried one, and it
-  truncated the item mid-fence: upstream's archiver moved half of it to their history file and left the
-  rest orphaned in the live inbox, reporting every fingerprint intact and being right to, because both
-  halves hashed the same truncated span. Indent the comment, or write the line without a leading `#`.
+- **A flush-left `#` inside a fenced block used to end the section there, and since 0.25 the scripts
+  handle it.** The ledger and the archiver found an item's span with `BOUNDARY_RE = ^#{1,2} `, which
+  knew nothing about code fences — so a `# comment` at column 0 inside a ```python block ended the
+  section at that line. Our S62 carried one and was truncated mid-fence: upstream's archiver moved half
+  of it to their history file and left the rest orphaned in the live inbox, reporting every fingerprint
+  intact and being right to, because both halves hashed the same truncated span. **S19 then carried one
+  too** — 55 of its 112 lines would have moved — which is what finally bought the fix rather than
+  another restatement of the advice. `fence_mask` / `boundary_at` in both scripts now mask fenced lines
+  out of every boundary test; see the runbook's §5 entry, which is owed to the gist.
+  **Two things this does not license.** A reporter's prose is still never edited, which is *why* the fix
+  had to be in the tool — the advice to indent the comment cannot be given retroactively to a report
+  already filed. And it stays good advice for writing: `grep '^# '` is still fence-blind, and so is
+  every other reader that is not these two scripts. What changed is that following it is no longer what
+  stands between an item and being cut in half.
 - **A fifth route exists here: upstream.** If the fix belongs to the manifest, compiler or enricher, restate
   the item in *their* terms in `../just-dna-format/docs/CONSUMER_SUGGESTIONS.md` with an id from *their*
   ledger — that file is the one writable path in a sibling repo, append-only, and never committed by us.
