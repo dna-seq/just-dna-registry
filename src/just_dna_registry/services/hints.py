@@ -148,6 +148,18 @@ class HintScrubber:
         because the split has no version of its own. A capability check comes out when its fact goes
         **unconditional**, never because a floor now appears to guarantee it.
 
+        **The query, so deciding does not require inventing one** (verified against this venv):
+
+            python -c "import dataclasses as d; from just_dna_enricher.lookup import VariantHint; \
+                       print('snapshots' in {f.name for f in d.fields(VariantHint)})"
+
+        `False` means this install predates the split and `checked` can hand over paths. The field is
+        the split rather than a correlate of it — it was added *by* the change that made `checked`
+        label-only — which is what makes a symbol probe legitimate here where it usually is not. To
+        ask about a version other than the installed one, `just-module-creator` uses
+        `uv run --isolated --no-project --with 'just-dna-enricher==<floor>'` around the same body;
+        that form is theirs and I have not run it.
+
         It also covers a case that is not a version question in any direction: a lane a deployment
         configured under a path we hold no label for at all.
         """

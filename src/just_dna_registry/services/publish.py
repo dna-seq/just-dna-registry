@@ -649,6 +649,17 @@ def _finalize(
                 # trap as a date, one layer in. So: query the catalog, then decide about the clients
                 # deliberately — do not read this note as a green light because the first half came
                 # back empty.
+                #
+                # **The answerable half, written out so it gets run.** `compiled_by` is not a column;
+                # it lives in each stored `manifest.json` under `compilation`, so the query is a scan
+                # over the catalog's versions, joining each to its manifest in storage:
+                #
+                #     SELECT m.namespace, m.name, v.version FROM versions v
+                #       JOIN modules m ON m.id = v.module_id
+                #
+                # then read `compilation.compiled_by` from each version's manifest and count the ones
+                # still carrying MARKETPLACE_COMPILED_BY. Empty answers the catalog half and nothing
+                # else.
                 compiled_by=MARKETPLACE_COMPILED_BY,
                 ensembl_reference=settings.ensembl_reference,
                 # `log_files` / `provenance_file` / `logo_file` are left to the compiler's own

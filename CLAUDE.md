@@ -530,7 +530,14 @@ what it is for.
   `positionally_joinable` facet passes it because *"has the last pre-0.6 version left this catalog"*
   is a query. Where a condition is only half queryable, say which half — the `compiled_by` note below
   is honest that the catalog side is answerable and the "what clients still hold" side is a
-  judgement, because a condition that reads crisp and is not is the same trap one layer in. "Delete this when the
+  judgement, because a condition that reads crisp and is not is the same trap one layer in.
+
+  **And write the query next to it.** This is the part that decides whether the rule does anything: a
+  condition somebody has to *invent a check for* gets skipped, and the prose gets read as permission.
+  A queryable condition with no query beside it costs the same as an unqueryable one, by a different
+  route. Both live conditions here now carry the command — a one-line probe for the enricher split,
+  the version-scan SQL for `compiled_by` — and where only half is answerable, the note says which
+  half the command settles and which is left as a decision. "Delete this when the
   floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
   test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
   there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,
