@@ -279,6 +279,11 @@ DERIVED_FILES: tuple[str, ...] = tuple(
 DERIVED_NOTE_FILE: str = "WHERE-THIS-CAME-FROM.md"
 DERIVED_REPORT_FILE: str = "check.json"
 
+#: The report `POST /drafts` puts at the root of the archive it returns. Here for the same reason the
+#: two above are: `client_cli` names it when it renders a draft, and the client path may import
+#: nothing from `services/`.
+DRAFT_REPORT_FILE: str = "draft-report.json"
+
 #: Names that arrive under one spelling and are stored under another, because the author wrote a name
 #: that is not the one this registry's storage should hold. Two entries, and they are the same repair
 #: pointing in opposite directions — which is the point worth keeping.

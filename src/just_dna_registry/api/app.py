@@ -15,7 +15,16 @@ from fastapi import FastAPI, HTTPException, Request, status
 from just_dna_format.signing import public_key_b64_from_pem
 
 from just_dna_registry import __version__
-from just_dna_registry.api.routers import auth, caches, modules, namespaces, orgs, publish, reviews
+from just_dna_registry.api.routers import (
+    auth,
+    caches,
+    drafts,
+    modules,
+    namespaces,
+    orgs,
+    publish,
+    reviews,
+)
 from just_dna_registry.config import API_PREFIX, Settings, get_settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
@@ -117,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     app.include_router(caches.router, prefix=API_PREFIX)
+    app.include_router(drafts.router, prefix=API_PREFIX)
     app.include_router(modules.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)
     app.include_router(publish.router, prefix=API_PREFIX)

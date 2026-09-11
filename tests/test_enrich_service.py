@@ -61,6 +61,24 @@ def test_the_compile_path_does_not_import_the_enricher() -> None:
     assert out.stdout.strip() == "False", out.stdout
 
 
+def test_importing_the_drafting_service_does_not_pull_the_network_tier() -> None:
+    """The same laziness one module along, asserted rather than promised by a comment.
+
+    `services/drafting.py` calls seven enricher drafters, and every one of those imports sits inside
+    the adapter that uses it. Two things break if one drifts to module level: the module stops being
+    importable on an install without the `server` extra, and the network tier lands one import away
+    from `services/publish`, which drafting already imports from.
+    """
+    probe = (
+        "import sys; import just_dna_registry.services.drafting; "
+        "print('just_dna_enricher' in sys.modules)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "False", out.stdout
+
+
 # ── VRS coverage ──────────────────────────────────────────────────────────────
 
 

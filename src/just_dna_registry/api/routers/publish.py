@@ -69,6 +69,12 @@ _PUBLISH_ERROR_STATUS: dict[str, int] = {
     # Same family as `upload_too_large` — too much payload — so the same status. Distinct name
     # because the fix is different: this one is not solved by compressing harder.
     "archive_too_large": status.HTTP_413_CONTENT_TOO_LARGE,
+    # A lane this deployment has not provisioned. **Not** `enrichment_unavailable`, which means the
+    # tier is not installed at all: retrying neither helps, but the remedies are different and only
+    # one of them is "install the server extra". No `Retry-After` for the same reason as that one —
+    # nothing changes until an operator provisions the snapshot.
+    "snapshot_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+    "enrichment_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 

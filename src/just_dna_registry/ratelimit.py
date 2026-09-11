@@ -47,14 +47,15 @@ class RateLimiter:
 #: Every bucket the service defines. Named here (rather than only inside `default_limiter`) so a
 #: test can assert the set matches what the routes actually ask for.
 CATEGORIES: frozenset[str] = frozenset(
-    {"publish", "download", "search", "social", "validate", "enrich"}
+    {"publish", "download", "search", "social", "validate", "enrich", "draft"}
 )
 
 
 def default_limiter(settings) -> RateLimiter:
     """Build a limiter from settings.
 
-    Defaults: publish 10/h, download 1000/h, search 60/min, social 30/min, validate 60/h, enrich 5/h.
+    Defaults: publish 10/h, download 1000/h, search 60/min, social 30/min, validate 60/h, enrich 5/h,
+    draft 10/h.
 
     The two pre-flight buckets are sized by who pays. `validate` costs server CPU — cheaper than a
     publish, since nothing is stored, but not free: it runs the real compiler over uploaded CSVs.
@@ -70,6 +71,11 @@ def default_limiter(settings) -> RateLimiter:
             "social": (settings.rate_social_per_min, settings.rate_social_per_min / 60.0),
             "validate": (settings.rate_validate_per_hour, settings.rate_validate_per_hour / 3600.0),
             "enrich": (settings.rate_enrich_per_hour, settings.rate_enrich_per_hour / 3600.0),
+            # Drafting spends no egress — it is snapshot-only by construction — but it is duckdb over
+            # a whole gene panel and it reads licence-gated snapshots this deployment acquired under
+            # its own declared use. Tighter than `validate` for the first reason and authenticated
+            # for the second.
+            "draft": (settings.rate_draft_per_hour, settings.rate_draft_per_hour / 3600.0),
         },
         enabled=settings.rate_limit_enabled,
     )

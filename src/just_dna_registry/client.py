@@ -6,6 +6,7 @@ tests. Depends only on `httpx` + the `just-dna-format` contract (for verify-then
 import io
 import logging
 import tarfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -627,6 +628,62 @@ class RegistryClient:
             files=spec_upload(spec_dir, pack=pack),
         )
         return ValidationReport.model_validate(self._json(resp))
+
+    def draft(
+        self,
+        spec_dir: Path,
+        *,
+        source: str,
+        gene: Sequence[str] = (),
+        drug: Sequence[str] = (),
+        allele: Sequence[str] = (),
+        population: str | None = None,
+        clin_sig: Sequence[str] = (),
+        min_review_stars: int | None = None,
+        max_citations: int | None = None,
+        min_confidence: int | None = None,
+        min_evidence_level: str | None = None,
+        declared_use: str | None = None,
+        dry_run: bool = False,
+        pack: bool = False,
+        dest: Path | None = None,
+    ) -> bytes:
+        """Draft spec rows from a source the registry holds a snapshot for. Returns a `.tar.gz`.
+
+        `source` is one of `clinvar`, `pubmind`, `civic`, `mitomap-miss`, `clinpgx`, `cpic`,
+        `strchive`. Ask `cache_status()` which of those this deployment can actually serve — a lane it
+        does not hold comes back `503 snapshot_unavailable` naming the lane.
+
+        **What comes back will not validate yet, by design.** Drafted rows carry a placeholder wherever
+        only a curator can decide the value, so the tree needs exactly the judgement a machine must not
+        supply. `draft-report.json` at the archive root carries `next_step`, what was appended, what
+        was already there, and what *differs* from the source and was therefore left alone.
+
+        **Draft into a fresh spec directory.** Drafting is append-only, so drafting twice into the
+        same tree puts corrected rows beside the ones they supersede — the `already_present` and
+        `differs` counts are how that shows up. `dry_run=True` reports and writes nothing.
+
+        Parameters are per source and a stray one is refused rather than ignored: `min_evidence_level`
+        with `source="clinvar"` is a `422`, because a silently dropped filter produces a draft
+        answering a different question from the one asked.
+        """
+        self.assert_compatible()
+        params: dict[str, Any] = {"source": source, "dry_run": dry_run}
+        for name, value in (
+            ("gene", list(gene)), ("drug", list(drug)), ("allele", list(allele)),
+            ("clin_sig", list(clin_sig)), ("population", population),
+            ("min_review_stars", min_review_stars), ("max_citations", max_citations),
+            ("min_confidence", min_confidence), ("min_evidence_level", min_evidence_level),
+            ("declared_use", declared_use),
+        ):
+            if value not in (None, []):
+                params[name] = value
+        resp = self._http.post("/drafts", params=params, files=spec_upload(spec_dir, pack=pack))
+        self._raise_for_status(resp)
+        if dest is not None:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(resp.content)
+        return resp.content
 
     def derived(
         self,

@@ -147,6 +147,27 @@ class Settings(BaseSettings):
     clinpgx_cache: Path | None = None
     acmg_snapshot_dir: Path | None = None
 
+    # The authoring lanes (0.25). Nothing on the *publish* path reads these — they are what the
+    # drafting endpoint runs against, which is the first thing here to open a lane no publish opens.
+    #
+    # Why they need settings at all, when `lane_destinations()` already falls through to each lane's
+    # own default: a drafter is handed its snapshot **explicitly**, for the reason `configured_caches`
+    # gives for `enrich()` one rule along — passing `None` licenses the enricher's ambient ladder
+    # ($JUST_DNA_<LANE>_CACHE, then $JUST_DNA_PIPELINES_CACHE_DIR, then platformdirs), so a deployment
+    # that pinned nothing would draft against whatever stray cache the host happens to carry. Unset
+    # still means "not configured", and the lane's own ladder is then what a just-dna-lite box reuses.
+    #
+    # `strchive_catalogue` is a *file*, not a directory, and is named for what it is: the drafter
+    # takes `catalogue=`, not `snapshot=`. A field named `..._cache` that had to be a JSON file is the
+    # kind of mismatch that gets a directory pointed at it.
+    civic_cache: Path | None = None
+    strchive_catalogue: Path | None = None
+    mitomap_cache: Path | None = None
+    mitomap_miss_cache: Path | None = None
+    pubmind_cache: Path | None = None
+    drug_labels_cache: Path | None = None
+    mane_cache: Path | None = None
+
     # Declared use — a THIRD axis, orthogonal to strict/offline (format Principle 5). `mode` says how
     # hard to fail on a finding; this says who is using the data and why, and it is checked at
     # *acquisition*, because under a data-usage policy that is when the terms are accepted.
@@ -292,6 +313,10 @@ class Settings(BaseSettings):
     # the tightest bucket in the service.
     rate_validate_per_hour: float = 60
     rate_enrich_per_hour: float = 5
+    # Drafting (0.25). No egress — snapshot-only by construction — so this is not the shared-standing
+    # bound `enrich` is; it is CPU over a gene panel, and an access bound on snapshots this
+    # deployment acquired under its own declared use.
+    rate_draft_per_hour: float = 10
 
     # Listing groups (0.8.0). Namespaces whose name matches this regex are classified as
     # "test/sandbox" — surfaced only under `?group=test` and hidden from every other tab (`all`,

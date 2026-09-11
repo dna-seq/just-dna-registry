@@ -16,9 +16,10 @@ sibling checkout's `dist/`. The editable install's `dist-info` therefore lags th
 cut, which is where the relock belongs. Run the suite with the venv directly, or
 `UV_FIND_LINKS=/data/sources/just-dna-format/dist uv run`, and restore `uv.lock` before committing.
 
-**Client surface: unchanged.** No `RegistryClient` method moved. Two were added — `cache_status()`
-and `derived()` — with one route each (`GET /api/v1/caches`, `POST /modules/{ns}/{name}/derived`); a
-new method breaks nobody, which is what that word means here. No existing response model changed.
+**Client surface: unchanged.** No `RegistryClient` method moved. Three were added —
+`cache_status()`, `derived()` and `draft()` — with one route each (`GET /api/v1/caches`,
+`POST /modules/{ns}/{name}/derived`, `POST /drafts`); a new method breaks nobody, which is what that
+word means here. No existing response model changed.
 
 The release turns this service into a **caching proxy for the clients that cannot hold the
 snapshots**. The enricher's lanes are fourteen multi-gigabyte artifacts, and every consumer that is
@@ -57,6 +58,48 @@ sized wrongly eats the publishing capability.
 Process-wide for the reason `shared_lookup_clients()` is, and deliberately not in the catalog DB:
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
+
+### `POST /drafts` — the drafters rented out, not adopted
+
+Drafting is still authoring-side and this service still drafts nothing of its own. The recorded
+position — *"the honest answer for this service was that it has none"* — was about a `registry
+upgrade` sweep and it stays true: a re-draft is not a catalog migration, and nothing here re-drafts a
+published module. What changes is that a client that cannot run a drafter can ask a box that can.
+That client is concrete: `just-module-creator` is a Claude Code / Codex plugin reaching this registry
+over HTTPS from an author's machine, and its own `.env.template` warns that author that *"the Ensembl
+snapshot alone is ~14 GB"*. It has the enricher package — it calls these drafters as a Python API
+already — and what it does not reliably have is the snapshots.
+
+- **Stateless is the safety argument.** `CLAUDE.md` records that a re-draft over an existing spec
+  appends corrected rows *beside* the ones they supersede, so the publisher needs a fresh spec
+  directory. Nothing is held between calls, so the server cannot do that to anyone across two calls;
+  what a caller can still do to themselves is drafted into the `already_present` and `differs`
+  counts, and `dry_run` is the documented first move.
+- **Snapshot-only, forced — and for a sharper reason than convenience.** `pgx_draft.draft_gene` takes
+  a bare `client=` and `LookupClients` has no CPIC field at all, so an online CPIC draft would build
+  an unshared, unpaced client per request — the violation *one shared bundle per process* exists to
+  prevent. Filed upstream rather than worked around. The consequence is that a draft makes no
+  outbound request, takes no enrichment permit, and cannot be slowed by a running `/check`.
+- **A parameter the chosen source does not read is a `422`, never dropped.** One route over seven
+  drafters means a union of parameters, and a silently ignored `min_evidence_level` produces a draft
+  answering a different question from the one asked.
+- **A missing lane is `503 snapshot_unavailable`**, naming the lane, its route and the route's own
+  recorded reason — not `enrichment_unavailable`, which means the tier is absent entirely. Both are
+  un-retryable; only one is fixed by installing an extra.
+- **`needs_curation` is read off the bytes, and the test is what found that.** The first version
+  claimed every drafted table needs a curator and named everything the source writes. A real ClinVar
+  draft of `F5` writes `variants.csv` (genotype and conclusion — a curator's) *and* `studies.csv`
+  (rsid and pmid — nobody's judgement), so the report was telling authors to fill cells that were
+  already complete. It now names only the tables that actually hold a placeholder. The dry-run case
+  gets its own sentence for the sibling-field reason: an empty `needs_curation` there means *nothing
+  was written*, not *nothing is owed*.
+- The seven upstream result classes are **not** uniform — `StrchiveDraftResult` carries `report`
+  singular, `PubMindDraftResult` has no `skipped` at all, and the derived count properties differ per
+  class. So the counts are computed from `RowOutcome.status`, which all seven share.
+
+`ratelimit.CATEGORIES` gains `draft` in the same commit as the route, because `RateLimiter.allow`
+returns `True` for a category nobody registered — a route asking for an unregistered bucket is
+silently *unlimited*.
 
 ### `POST .../derived` — the one thing a client without the caches cannot make for itself
 

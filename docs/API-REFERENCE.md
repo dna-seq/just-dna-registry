@@ -19,7 +19,9 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   now a compile **error**, so a spec that published before can come back `422`.
   **0.25 adds two routes**: `GET /api/v1/caches` — anonymous, read-only, and the first endpoint that
   answers *what can this deployment do for a client that holds no snapshots* (§ 1a) — and
-  `POST /modules/{ns}/{name}/derived`, which answers it with bytes (§ 29a).
+  `POST /modules/{ns}/{name}/derived`, which answers it with bytes (§ 29a) — plus
+  `POST /drafts` (§ 29b), the only route here that is not namespace-scoped, because a draft is not
+  about a published module.
   **0.24 adds one route**, `PATCH /modules/{ns}/{name}/short-description` — the first module-level
   amend, where the readme and the logo are per version. It adopts `just-dna-format` 0.7 and adds five
   response fields: `short_description` on `ModuleCard`,
@@ -131,6 +133,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 1 | GET | `/health` | — | Liveness + `mode`, uptime, gate occupancy, catalog counts |
 | 1a | GET | `/api/v1/caches` | — | Snapshot lanes this deployment holds, and why not for the rest |
 | 29a | POST | `/api/v1/modules/{ns}/{name}/derived` | bearer | Enrich a spec, return its `derived/` tables |
+| 29b | POST | `/api/v1/drafts?source=` | bearer | Draft spec rows from a snapshot this box holds |
 | 2 | GET | `/api/v1/modules` | — | List / search (card grid) |
 | 3 | GET | `/api/v1/modules/lookup?digest=` | — | Find versions by artifact digest |
 | 4 | GET | `/api/v1/modules/{ns}/{name}` | — | Module detail |
@@ -489,6 +492,47 @@ WHERE-THIS-CAME-FROM.md             # the one caveat that bites; see below
 
 `registry-client derived <ns> <name> <spec_dir>` unpacks it over the spec directory, which is the
 point: the module then compiles where it sits. `--out` writes the archive instead.
+
+### 29b. `POST /api/v1/drafts?source=…`  *(bearer)*
+Append drafted rows to an uploaded spec, from a source this deployment holds a snapshot for.
+
+`source` is one of `clinvar`, `pubmind`, `civic`, `mitomap-miss`, `clinpgx`, `cpic`, `strchive` —
+the enricher's own `draft-panel --source` vocabulary with its three standalone drafting commands
+folded in. Multipart, both wire forms. Returns `application/gzip` of the drafted tree with
+`draft-report.json` at its root.
+
+**Not namespace-scoped**, and the only route here that is not: a draft is not about a published
+module, so there is no namespace for a capability to be about. `require_account` — any authenticated
+caller — in the `draft` bucket (10/h). Anonymous is refused for a stated reason: drafting reads
+licence-gated snapshots this deployment acquired under **its own** declared use, and an anonymous
+drafter would make the box a free panel generator whose licence acceptance belongs to somebody else.
+
+- **What comes back will not validate yet, and that is the design.** Drafted rows carry
+  `<<REPLACE>>` wherever only a curator can decide the value. `validates: false` is stated in the
+  report rather than left to be inferred, and `needs_curation` names the tables that actually hold a
+  placeholder — read off the bytes, because not every drafted table has one. A ClinVar draft writes
+  `variants.csv` (genotype and conclusion: a curator's) *and* `studies.csv` (rsid and pmid: nobody's
+  judgement), so naming both would send an author to fill cells that are already complete.
+- **Stateless, which is the safety argument.** A re-draft over an existing spec appends corrected
+  rows *beside* the ones they supersede. Nothing is held between calls: you upload a tree, the
+  drafter appends into that tree, the tree comes back. Draft into a fresh spec directory; if you
+  draft into one that already carries drafted rows, the `already_present` and `differs` counts are
+  how you see it. `?dry_run=true` reports and writes nothing — and says so in `next_step`, because a
+  dry run's empty `needs_curation` means "nothing was written", not "nothing is owed".
+- **Snapshot-only by construction.** `download=False` and `offline=True` are forced, so the route
+  makes no outbound request, takes no enrichment permit, and cannot be slowed by a running `/check`.
+  A lane this deployment lacks is **`503 snapshot_unavailable`** naming the lane, its route and the
+  route's recorded reason — deliberately not `enrichment_unavailable`, which means the tier is not
+  installed at all. `GET /caches` answers which lanes are here before you ask.
+- **A parameter the chosen source does not read is `422 param_not_for_source`**, carrying both what
+  was rejected and what that source does accept. A silently dropped `min_evidence_level` produces a
+  draft answering a different question from the one asked.
+- Gene arity is checked up front: `cpic` drafts exactly one gene per call, `clinvar` and `pubmind`
+  need at least one, the rest are optional. `422 gene_count` rather than an error from inside a
+  drafter.
+
+`registry-client draft <spec_dir> --source clinvar -g F5` unpacks the result over the spec directory
+and prints what was appended, what was already there, and what differs and was left alone.
 
 ### 29–30. `GET`/`POST /api/v1/modules/lookup`
 

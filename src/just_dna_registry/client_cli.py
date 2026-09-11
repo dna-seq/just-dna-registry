@@ -7,6 +7,7 @@ here went stale twice, and a partial list of commands reads as a complete one.
 """
 
 import io
+import json
 import os
 import sys
 import tarfile
@@ -19,7 +20,7 @@ from just_dna_format.manifest import read_manifest, write_manifest
 
 from just_dna_registry.client import RegistryClient, RegistryError
 from just_dna_registry.installid import generate_install_id
-from just_dna_registry.specfiles import DERIVED_NOTE_FILE
+from just_dna_registry.specfiles import DERIVED_NOTE_FILE, DRAFT_REPORT_FILE
 from just_dna_registry.ui import standalone
 from just_dna_registry.version import compatibility_error
 
@@ -599,6 +600,120 @@ def validate(
         )
         return
     raise typer.Exit(code=1)
+
+
+@app.command()
+def draft(
+    spec_dir: Path,
+    source: str = typer.Option(
+        ..., "--source",
+        help="clinvar | pubmind | civic | mitomap-miss | clinpgx | cpic | strchive",
+    ),
+    gene: list[str] = typer.Option([], "--gene", "-g", help="Repeatable. CPIC takes exactly one"),
+    drug: list[str] = typer.Option([], "--drug", help="Repeatable (clinpgx, cpic)"),
+    allele: list[str] = typer.Option([], "--allele", help="Repeatable (cpic)"),
+    population: str | None = typer.Option(None, "--population", help="cpic only"),
+    clin_sig: list[str] = typer.Option([], "--clin-sig", help="Repeatable (clinvar, pubmind)"),
+    min_review_stars: int | None = typer.Option(None, "--min-review-stars", help="clinvar only"),
+    max_citations: int | None = typer.Option(None, "--max-citations", help="clinvar only"),
+    min_confidence: int | None = typer.Option(None, "--min-confidence", help="pubmind only"),
+    min_evidence_level: str | None = typer.Option(None, "--min-evidence-level", help="clinpgx only"),
+    use: str | None = typer.Option(
+        None, "--use", help="Declared use: unstated | non_commercial | commercial"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be appended, write nothing"),
+    out: Path = typer.Option(None, "--out", help="Write the archive here instead of unpacking"),
+    pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Draft spec rows from a source the registry holds a snapshot for.
+
+    For authoring on a machine that does not carry the snapshots — which is most of them, since the
+    Ensembl lane alone is about 14 GB. Run `registry-client caches` first to see which sources a
+    deployment can actually serve.
+
+    **Draft into a fresh spec directory.** Drafting appends, so drafting twice into the same tree puts
+    corrected rows beside the ones they supersede. The report's `already_present` and `differs` counts
+    are how that shows up; `--dry-run` reports without writing anything.
+
+    **What comes back will not validate yet, and that is the design** — drafted rows carry a
+    placeholder wherever only a curator can decide the value. Fill those cells, then `check`, then
+    `publish`.
+    """
+    with _client(url, token, need_token=True) as c:
+        blob = c.draft(
+            spec_dir, source=source, gene=gene, drug=drug, allele=allele, population=population,
+            clin_sig=clin_sig, min_review_stars=min_review_stars, max_citations=max_citations,
+            min_confidence=min_confidence, min_evidence_level=min_evidence_level,
+            declared_use=use, dry_run=dry_run, pack=pack,
+        )
+
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(blob)
+        typer.secho(f"wrote {out} ({len(blob)} bytes)", fg=typer.colors.GREEN)
+        return
+
+    report: dict = {}
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            target = (spec_dir / member.name).resolve()
+            if not member.isfile() or not str(target).startswith(str(spec_dir.resolve())):
+                continue
+            handle = tar.extractfile(member)
+            if handle is None:
+                continue
+            data = handle.read()
+            if member.name == DRAFT_REPORT_FILE:
+                report = json.loads(data)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+
+    _echo_draft(report, dry_run=dry_run)
+
+
+def _echo_draft(report: dict, *, dry_run: bool) -> None:
+    """Render a draft report, including the fields that say a pass did not actually do anything.
+
+    The renderer's half of the standing rule. `added: 0` has two opposite histories — the source held
+    nothing for these genes, or the whole draft was skipped over a licence — and a renderer that shows
+    only the counts presents the second as the first.
+    """
+    if not report:
+        typer.secho("the server returned no draft report", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    if report.get("skipped"):
+        typer.secho(
+            "SKIPPED — nothing was drafted. This is not 'the source had nothing':",
+            fg=typer.colors.YELLOW,
+        )
+    typer.echo(f"source: {report.get('source')}   declared use: {report.get('declared_use')}")
+    typer.echo(f"read snapshots: {', '.join(report.get('lanes_read') or []) or '(none)'}")
+
+    for table in report.get("tables", []):
+        bits = [f"{table.get('added', 0)} added"]
+        for key, label in (("already_present", "already present"), ("differs", "differ"),
+                           ("appended_unkeyed", "appended unkeyed"), ("invalid", "invalid")):
+            if table.get(key):
+                bits.append(f"{table[key]} {label}")
+        colour = typer.colors.GREEN if table.get("added") else typer.colors.YELLOW
+        typer.secho(f"  {table.get('csv')}: {', '.join(bits)}", fg=colour)
+        for entry in table.get("differences", []):
+            for name, pair in (entry.get("fields") or {}).items():
+                typer.echo(
+                    f"      differs on {name}: authored {pair.get('authored')!r} vs source "
+                    f"{pair.get('source')!r} (left unchanged)"
+                )
+    for warning in report.get("warnings", []):
+        typer.secho(f"  ! {warning}", fg=typer.colors.YELLOW)
+
+    if dry_run or report.get("dry_run"):
+        typer.secho("dry run — nothing was written", fg=typer.colors.YELLOW)
+        return
+    typer.secho(report.get("next_step", ""), fg=typer.colors.CYAN)
 
 
 @app.command()

@@ -293,6 +293,11 @@ def enricher_available() -> bool:
 def configured_caches(settings: Settings) -> dict[str, Path | None]:
     """The cache paths to hand the enricher — **as configured**, not as resolved.
 
+    Every lane this service opens on some path, which since 0.25 means the authoring lanes too: the
+    drafting endpoint reads seven that no publish reads. Still narrower than `provisionable_lanes()`
+    only in the sense that a lane nothing here opens has no setting; `lane_destinations` covers the
+    rest by falling through to each lane's own default.
+
     The distinction is load-bearing and cost a bug. `enrich()` runs the resolver ladder itself, and
     that ladder reads `None` as *"find one for me"*: explicit argument → `$JUST_DNA_ENSEMBL_CACHE` →
     `$JUST_DNA_PIPELINES_CACHE_DIR` → a platformdirs default. So passing the *resolved* value through
@@ -316,6 +321,16 @@ def configured_caches(settings: Settings) -> dict[str, Path | None]:
         # a pass here opens — it was outside, and so was invisible to `warm-caches` and to the boot
         # report while `_acmg_check` was reading it.
         "acmg": settings.acmg_snapshot_dir,
+        # The authoring lanes (0.25). No publish pass opens these; the drafting endpoint does, and it
+        # passes each drafter its snapshot explicitly for the reason above. Keys are the lane names in
+        # `CACHE_LANES`, because `lane_destinations` and `lane_presence` index by those.
+        "civic": settings.civic_cache,
+        "strchive": settings.strchive_catalogue,
+        "mitomap": settings.mitomap_cache,
+        "mitomap_miss": settings.mitomap_miss_cache,
+        "pubmind": settings.pubmind_cache,
+        "drug_labels": settings.drug_labels_cache,
+        "mane": settings.mane_cache,
     }
 
 
