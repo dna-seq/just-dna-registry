@@ -176,6 +176,75 @@ def test_every_field_the_enricher_reports_about_a_variant_survives_the_proxy() -
     assert "cost" in ours
 
 
+def test_every_field_of_the_other_three_hint_shapes_survives_the_proxy() -> None:
+    """The same guard the variant shape has, over the three that did not have one.
+
+    **Written because the one guard that existed is the only reason the `checked`/`snapshots`
+    inversion was caught**, and it covered one of four shapes. A meaning moving under an unchanged
+    name is the failure class with no symptom — nothing raises, nothing goes red, the answer is just
+    about a different thing — and no roster or route test can see it. The venv moved four upstream
+    rounds in a day; "no test broke" is a weaker statement than this one.
+
+    `recovery` is the single deliberate exception: `OldAssemblyHint` nests an `RsidRecovery` and we
+    inline its fields, so that a consumer carries no upstream dataclass. Asserted by inlining rather
+    than waved through — every field of the nested type has to appear on ours.
+    """
+    import dataclasses
+
+    from just_dna_enricher.grch37 import RsidRecovery
+    from just_dna_enricher.identifiers import GeneStatus, TraitStatus
+    from just_dna_enricher.lookup import CitationHint, OldAssemblyHint
+
+    from just_dna_registry.models.api import (
+        CitationHintReport,
+        GeneHintReport,
+        OldAssemblyHintReport,
+        TraitHintReport,
+    )
+
+    cases = [
+        (CitationHint, CitationHintReport, set()),
+        (OldAssemblyHint, OldAssemblyHintReport, {"recovery"}),
+        (GeneStatus, GeneHintReport, set()),
+        (TraitStatus, TraitHintReport, set()),
+    ]
+    for upstream_type, ours, expected_exceptions in cases:
+        upstream = {f.name for f in dataclasses.fields(upstream_type)}
+        mine = set(ours.model_fields)
+        assert upstream - mine == expected_exceptions, (
+            f"{upstream_type.__name__} has a field {ours.__name__} does not report: "
+            f"{sorted(upstream - mine - expected_exceptions)}"
+        )
+        assert "cost" in mine, f"{ours.__name__} does not say what the answer cost"
+
+    # The nested type is inlined, so its fields are the assertion rather than its name.
+    recovery = {f.name for f in dataclasses.fields(RsidRecovery)}
+    assert recovery <= set(OldAssemblyHintReport.model_fields), (
+        f"RsidRecovery fields lost in the inlining: "
+        f"{sorted(recovery - set(OldAssemblyHintReport.model_fields))}"
+    )
+
+
+def test_the_lane_attributes_the_dashboard_reads_all_exist() -> None:
+    """`lane_status` reads ten attributes off `CacheLane`, and a rename is silent until it is not.
+
+    `getattr`-free by design — the service reads them directly, so a removed attribute is an
+    `AttributeError` at request time rather than a quiet `None`. This is what turns that into a test
+    failure instead, on a tier whose registry grew a lane and three fields in one release.
+    """
+    from just_dna_enricher.caches import CACHE_LANES
+
+    read_by_the_dashboard = (
+        "name", "subdir", "serves", "build_command", "resolve", "default_dir",
+        "env_var", "rebuild", "ensure", "terms", "unpublished", "unbuilt",
+        "release_label", "parents",
+    )
+    assert CACHE_LANES, "the enricher reports no lanes at all"
+    for lane in CACHE_LANES:
+        missing = [name for name in read_by_the_dashboard if not hasattr(lane, name)]
+        assert not missing, f"{lane.name} lost {missing}"
+
+
 def test_the_charge_is_shaped_by_which_legs_will_run() -> None:
     """NCBI only with an rsID, gnomAD only with frequencies, nothing at all offline.
 

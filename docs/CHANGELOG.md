@@ -83,6 +83,19 @@ entry means *not produced here*, never *this module has none*, and the question 
 server rather than the module. That is this tier's standing rule about empty collections applied to
 an empty *file set*, which is where it had not been applied.
 
+**The parity guard covered one hint shape of four, which is why the inversion was caught at all.** A
+sibling session's rebuild put the venv four upstream rounds ahead in a day, and their honest summary
+of it was that no test broke — which is a weaker statement than that nothing we read changed, and the
+`checked`/`snapshots` split is proof the gap between those two is real. A meaning moving under an
+unchanged name has no symptom: nothing raises, nothing goes red, the answer is simply about a
+different thing, and no roster or route test can see it.
+
+So the guard that caught it now covers the other three — `CitationHint`, `OldAssemblyHint`,
+`GeneStatus`, `TraitStatus` — with `recovery` as the single deliberate exception, asserted by
+inlining every field of the nested type rather than waved through. A second guard names the fourteen
+`CacheLane` attributes the dashboard reads, on a tier whose registry grew a lane and three fields in
+one release.
+
 **A floor cannot express a change that landed after its number did.** `served_from` passes `checked`
 through unmapped, which is right on the wheels this branch pins — but the split that made `checked`
 label-only arrived *after* `0.7.0` existed as a version, so an install can satisfy
