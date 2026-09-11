@@ -593,7 +593,21 @@ what it is for.
 
   The failure this prevents is the worst on the ladder because it is the only one that produces
   *work*: rungs one to four end in silence, which gets ignored, while an instrument reporting on
-  itself produces a plausible list that somebody sets about fixing. "Delete this when the
+  itself produces a plausible list that somebody sets about fixing.
+
+  **A floor is not always a count, so do not sweep for one.** Three protections are equivalent and a
+  grep for `assert len(...) >=` finds only the first: an explicit count; an **adjacent exact
+  assertion** over the same set; and **direction** — a foreign set on the *left* of a `<=` fails when
+  it empties, so `REFERENCE_NAMES <= cache_lanes()` is already safe and `PANEL_SOURCES <=
+  DRAFT_SOURCES` was not. Triage by asking *"if the foreign enumeration came back empty, does this
+  still pass?"*, never by pattern.
+
+  **And for a *search*, the floor is an anchor rather than a count** — you cannot count what is
+  outside the search path. When a sweep reports a name as undefined, look up the one you are most
+  confident about first: if the anchor also comes back undefined the instrument is wrong, and if it
+  resolves the finding may be real. `just-module-creator` lost two names to a search aimed at
+  `src/` when the subject was a sibling subdirectory, and "not found" was a well-formed answer to a
+  badly aimed question with nothing in the output to distrust. "Delete this when the
   floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
   test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
   there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,

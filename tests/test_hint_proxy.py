@@ -218,7 +218,17 @@ def test_every_field_of_the_other_three_hint_shapes_survives_the_proxy() -> None
         assert "cost" in mine, f"{ours.__name__} does not say what the answer cost"
 
     # The nested type is inlined, so its fields are the assertion rather than its name.
+    #
+    # **Floored, and it is the one check in this module the loop above does not cover.** `RsidRecovery`
+    # is not in `cases`, so an emptied version of it leaves every assertion up there passing while
+    # `set() <= anything` passes here too — the inlining would read as complete because there was
+    # nothing to inline. The loop protects the four it walks by *direction*: a foreign set on the left
+    # of a `<=` fails when it empties, which is why only this one needed a count.
     recovery = {f.name for f in dataclasses.fields(RsidRecovery)}
+    assert len(recovery) >= 6, (
+        f"RsidRecovery reports only {len(recovery)} fields — read that as the dataclass moving, not "
+        f"as the inlining being complete"
+    )
     assert recovery <= set(OldAssemblyHintReport.model_fields), (
         f"RsidRecovery fields lost in the inlining: "
         f"{sorted(recovery - set(OldAssemblyHintReport.model_fields))}"
