@@ -1217,3 +1217,184 @@ class CacheStatusReport(BaseModel):
         description="The deployment's declared use, which is what `licence_skip` is computed against"
     )
     lanes: list[CacheLaneStatus] = Field(default_factory=list)
+
+
+class HintCost(BaseModel):
+    """What one hint spent, where it was answered from, and whether a limit shaped the answer.
+
+    **`charged` is reported even when it is empty**, and that is the field this whole surface exists
+    to teach: an `offline=true` answer costs the deployment nothing. Without it a caller has no way to
+    learn which of their traffic is free — and "you are being throttled" has two opposite histories,
+    spent egress or a plain request bucket, with opposite remedies.
+    """
+
+    charged: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Units committed per upstream. Charged from the *shape* of the request rather than "
+            "measured, because nothing downstream reports what it actually spent — so it is an upper "
+            "bound, and a request served entirely from a snapshot charges nothing at all."
+        ),
+    )
+    served_from: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Which snapshots or live sources answered, by lane name. Never a filesystem path: the "
+            "enricher records the snapshot's location here and it is mapped back to the lane."
+        ),
+    )
+    limit: str | None = Field(
+        default=None,
+        description=(
+            "`pace` when the per-upstream ledger slowed this answer, `bucket` when the request "
+            "limiter did, null when nothing did. The sibling that tells those two apart — the "
+            "remedies are opposite and 'you are being throttled' cannot distinguish them."
+        ),
+    )
+    waited_seconds: float = Field(
+        default=0.0, description="Seconds this request was held to keep the caller inside its pace"
+    )
+    remedy: str | None = Field(
+        default=None,
+        description=(
+            "What to do about it, per upstream reached, and only past the free tier. It is never "
+            "'obtain an API key' where no key exists — gnomAD sells none at any price, NCBI's paces "
+            "whoever holds it, OLS4 and HGNC issue none."
+        ),
+    )
+
+
+class VariantHintReport(BaseModel):
+    """`GET /hint/variant` — what is known about one variant, and what of it is the author's to type.
+
+    Nothing here is written anywhere and nothing is decided: a one-to-many rsID returns every locus
+    rather than picking one, and a position matching several rsIDs returns every candidate. Every
+    entry in `alterations` carries `applied: false` and a `refusal`, because almost every fact here
+    is cross-examined later by a check that only works if the author wrote the value independently.
+    """
+
+    rsid: str | None = None
+    rsid_state: str | None = Field(
+        default=None, description="dbSNP merge status: live, merged, withdrawn, unchecked"
+    )
+    rsid_current: str | None = Field(
+        default=None, description="The id this one was merged into — reported, never written"
+    )
+    loci: list[dict] = Field(default_factory=list)
+    rsid_candidates: list[str] = Field(default_factory=list)
+    populations: list[dict] = Field(default_factory=list)
+    clin_sig: list[dict] = Field(default_factory=list)
+    vrs_id: str | None = None
+    ambiguous: bool = Field(
+        default=False, description="More than one locus or rsID candidate — the author must choose"
+    )
+    findings: list[dict] = Field(default_factory=list)
+    alterations: list[dict] = Field(default_factory=list)
+    cost: HintCost = Field(default_factory=HintCost)
+
+
+class CitationHintReport(BaseModel):
+    """`GET /hint/citation` — does this citation exist, and what is its other identifier?
+
+    **Existence is not identity.** PMIDs are densely allocated, so a recalled or invented number is
+    very likely to be a real record for a different paper, and `pmid_exists` alone cannot catch a
+    fabrication. The bibliographic fields arrive in the same response that answers existence, so
+    naming the paper costs nothing and is the only thing that makes the answer checkable.
+    """
+
+    pmid: str | None = None
+    doi: str | None = None
+    pmcid: str | None = None
+    pmid_exists: bool | None = None
+    doi_exists: bool | None = None
+    registry_doi: str | None = None
+    open_access: bool | None = None
+    abstract_available: bool | None = None
+    title: str | None = None
+    journal: str | None = None
+    year: str | None = None
+    first_author: str | None = None
+    findings: list[dict] = Field(default_factory=list)
+    alterations: list[dict] = Field(default_factory=list)
+    cost: HintCost = Field(default_factory=HintCost)
+
+
+class GeneHintReport(BaseModel):
+    """`GET /hint/gene` — is this gene symbol approved or retired? HGNC exact, never fuzzy search."""
+
+    symbol: str | None = None
+    state: str | None = None
+    current: str | None = None
+    hgnc_id: str | None = None
+    location: str | None = None
+    cost: HintCost = Field(default_factory=HintCost)
+
+
+class TraitHintReport(BaseModel):
+    """`GET /hint/trait` — is this trait CURIE current, obsolete or unknown? (OLS4.)"""
+
+    curie: str | None = None
+    state: str | None = None
+    label: str | None = None
+    replaced_by: str | None = None
+    cost: HintCost = Field(default_factory=HintCost)
+
+
+class OldAssemblyHintReport(BaseModel):
+    """`GET /hint/old-assembly` — an hg19 coordinate to an rs-number. Recovery, never liftover.
+
+    An rs-number authored into `variants.csv` resolves through the ordinary chain into a coordinate a
+    later check can cross-examine. A lifted-over position becomes the row's sole identity with nothing
+    to check it against, which is an unverifiable-by-construction identity — so candidates are
+    reported and never written, and never picked when there is more than one.
+    """
+
+    chrom: str | None = None
+    start: int | None = None
+    outcome: str | None = None
+    ref: str | None = None
+    alts: str | None = None
+    rsids: list[str] = Field(default_factory=list)
+    candidates: list[dict] = Field(default_factory=list)
+    note: str | None = None
+    findings: list[dict] = Field(default_factory=list)
+    alterations: list[dict] = Field(default_factory=list)
+    cost: HintCost = Field(default_factory=HintCost)
+
+
+class VariantKey(BaseModel):
+    """One variant to resolve in a batch: an rsID, a coordinate, or both."""
+
+    rsid: str | None = None
+    chrom: str | None = None
+    start: int | None = None
+    ref: str | None = None
+    alts: str | None = None
+
+
+class VariantHintBatch(BaseModel):
+    """Body for `POST /hint/variants`."""
+
+    keys: list[VariantKey] = Field(default_factory=list)
+
+
+class VariantHintBatchResponse(BaseModel):
+    """`POST /hint/variants` — snapshot first for every key, live only for what missed.
+
+    The per-key `cost.charged` is where the caching proxy becomes visible: on a provisioned
+    deployment a whole module's worth of keys comes back charging nothing, because the snapshot
+    answered and only a miss costs anything.
+    """
+
+    results: list[VariantHintReport] = Field(default_factory=list)
+    total_charged: dict[str, int] = Field(
+        default_factory=dict, description="Units committed across the batch, per upstream"
+    )
+    cost: HintCost = Field(
+        default_factory=HintCost,
+        description=(
+            "The batch's own meter result — what it waited and why, and the remedy if it was paced. "
+            "Per-key `charged` says which keys cost anything; this says what the batch as a whole "
+            "was held to."
+        ),
+    )

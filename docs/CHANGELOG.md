@@ -16,10 +16,9 @@ sibling checkout's `dist/`. The editable install's `dist-info` therefore lags th
 cut, which is where the relock belongs. Run the suite with the venv directly, or
 `UV_FIND_LINKS=/data/sources/just-dna-format/dist uv run`, and restore `uv.lock` before committing.
 
-**Client surface: unchanged.** No `RegistryClient` method moved. Three were added —
-`cache_status()`, `derived()` and `draft()` — with one route each (`GET /api/v1/caches`,
-`POST /modules/{ns}/{name}/derived`, `POST /drafts`); a new method breaks nobody, which is what that
-word means here. No existing response model changed.
+**Client surface: unchanged.** No `RegistryClient` method moved. Nine were added —
+`cache_status()`, `derived()`, `draft()` and the six `hint_*` wrappers — with one route each; a new
+method breaks nobody, which is what that word means here. No existing response model changed.
 
 The release turns this service into a **caching proxy for the clients that cannot hold the
 snapshots**. The enricher's lanes are fourteen multi-gigabyte artifacts, and every consumer that is
@@ -58,6 +57,52 @@ sized wrongly eats the publishing capability.
 Process-wide for the reason `shared_lookup_clients()` is, and deliberately not in the catalog DB:
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
+
+### `/hint/*` — the lookups, and the first anonymous surface that spends anything
+
+`just_dna_enricher.lookup` was already the right shape: snapshot first, live only for what the
+snapshot missed, and it **writes nothing** — every answer is an `Alteration` with `applied=false` and
+a `refusal`, because almost every fact there is cross-examined later by a check that only works if the
+author wrote the value independently. Proxying it changes none of that. It changes who holds the
+snapshots.
+
+**Named `hint`, not `lookup`.** `/modules/lookup`, `lookup_by_digest` and the console's Lookup page
+already mean *"is this content published?"*. `hint` is the enricher's own word for this surface, so it
+collides with nothing and matches what a user of that CLI already types.
+
+- **Three tiers, and the free one is the product.** Anonymous callers may ask anything with
+  `offline=true` — a thin client with no Ensembl snapshot getting an rsID placed onto a coordinate,
+  at zero egress to anyone. Anonymous *online* is refused on both instances and does not vary by
+  mode: gnomAD rate-limits by IP and sells no key at any price, so one anonymous caller could throttle
+  every publisher on the box, and the cooldown needs a stable identity. gnomAD sits behind its own
+  switch on top of that, default **off**.
+- **Use the batch, not a loop, and the reason is not politeness.** An online single lookup egresses
+  unconditionally — dbSNP merge status has no snapshot in this tree, so `_check_rsid_currency` runs
+  whatever the cache said. `POST /hint/variants` runs the offline pass over every key at no cost and
+  goes online only for the misses, so on a provisioned deployment a module's worth of keys charges
+  nothing. A test asserts exactly that with the socket tripwire armed: zero charge **and** zero
+  egress. If that stops holding, this is a proxy and not a cache.
+- **`cost` is on every answer, including when it is empty.** An empty `charged` is what teaches a
+  client which of its traffic is free; without it *"you are being throttled"* has two opposite
+  histories with opposite remedies, and `limit` is the sibling that separates them.
+- **The decay is expressed in the upstream's own spacing, read off the client that does the pacing.**
+  `EutilsClient` picks 10/s with `NCBI_API_KEY` set and 3/s without, so the constant in
+  `pacing.UPSTREAMS` describes the wrong deployment half the time; `PaceLedger(intervals=…)` is filled
+  at boot from the live clients. `UPSTREAMS` gains `literature` and `ontology` — Crossref and Europe
+  PMC share a budget because they serve one leg, and a caller must not be able to spend one to dodge
+  the other.
+- **No filesystem path appears in any hint.** `VariantHint.checked` holds an absolute snapshot path
+  and one finding interpolates it into prose; both are mapped to lane names. Filed upstream: a source
+  *label* beside the path would make the payload safe by construction rather than by audit.
+
+**And a real unpaced-egress hole closed on the way.** `shared_lookup_clients()` filled six of
+`LookupClients`' eight fields. That dataclass carries **three different lazy-build semantics** and
+which one a field gets is invisible at the call site: `_lookup_live_loci` and `lookup_old_assembly`
+assign their client *back onto* the bundle (so a shared bundle ends up pacing those), while
+`_check_pmcid` and `_lookup_frequencies` build-and-close per call (so an unfilled field there is
+per-request pacing however shared the bundle is). `gnomad` was filled and `pmc_idconv` was not, which
+made the citation route the one leg that would have egressed unpaced. All eight are filled now, and
+the underlying inconsistency is filed upstream rather than papered over here.
 
 ### `POST /drafts` — the drafters rented out, not adopted
 

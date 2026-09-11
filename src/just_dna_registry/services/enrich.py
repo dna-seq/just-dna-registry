@@ -254,8 +254,13 @@ def shared_lookup_clients() -> Any:
                 from just_dna_enricher.ensembl import EnsemblResolver
                 from just_dna_enricher.eutils import EutilsClient
                 from just_dna_enricher.gnomad import GnomadClient
+                from just_dna_enricher.grch37 import Grch37Client
                 from just_dna_enricher.identifiers import OntologyClient
-                from just_dna_enricher.literature import CrossrefClient, EuropePmcClient
+                from just_dna_enricher.literature import (
+                    CrossrefClient,
+                    EuropePmcClient,
+                    PmcIdConverterClient,
+                )
                 from just_dna_enricher.lookup import LookupClients
 
                 # `EutilsClient` reads `NCBI_API_KEY` at construction to pick its interval (3/s
@@ -268,6 +273,17 @@ def shared_lookup_clients() -> Any:
                     crossref=CrossrefClient(),
                     ontology=OntologyClient(),
                     ensembl=EnsemblResolver(),
+                    # **Eight, not six (0.25).** `LookupClients` carries three different lazy-build
+                    # semantics and which one a field gets is invisible at the call site:
+                    # `_lookup_live_loci` and `lookup_old_assembly` assign their client *back onto*
+                    # the bundle, so a shared bundle ends up pacing those; `_check_pmcid` and
+                    # `_lookup_frequencies` build-and-close per call, so an unfilled field there is
+                    # per-request pacing however shared the bundle is. `gnomad` was already filled and
+                    # `pmc_idconv` was not, which made the citation route the one leg that would have
+                    # egressed unpaced. Filling all eight removes the distinction rather than
+                    # requiring a reader to know it; filed upstream as the real fix.
+                    pmc_idconv=PmcIdConverterClient(),
+                    grch37=Grch37Client(),
                 )
     return _shared_clients
 

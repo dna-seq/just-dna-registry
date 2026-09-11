@@ -54,6 +54,11 @@ export REGISTRY_TOKEN=mk_live_…
 | Which snapshots it holds | `cache_status()` | `caches` | — |
 | Get derived tables for a spec | `derived(ns, name, spec_dir)` | `derived` | bearer |
 | Draft rows from a server snapshot | `draft(spec_dir, source=…)` | `draft` | bearer |
+| What is this variant? | `hint_variant(rsid=…)` | `hint variant` | — (offline) |
+| Many variants at once | `hint_variants(keys)` | *(programmatic)* | — (offline) |
+| Does this citation exist? | `hint_citation(pmid=…)` | `hint citation` | bearer |
+| Gene / trait currency | `hint_gene(symbol=…)` · `hint_trait(curie=…)` | `hint gene` · `hint trait` | bearer |
+| hg19 coordinate → rsID | `hint_old_assembly(chrom=…, start=…)` | `hint old-assembly` | bearer |
 | Exchange key for a JWT | `issue_jwt_token(api_key)` | *(programmatic)* | api key |
 | Self-register | `register(install_id, account)` | `register` | install-id |
 | Namespace availability | `namespace_available(ns)` | `namespace-available` | — |

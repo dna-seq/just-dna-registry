@@ -19,6 +19,7 @@ from just_dna_registry.api.routers import (
     auth,
     caches,
     drafts,
+    hints,
     modules,
     namespaces,
     orgs,
@@ -29,8 +30,10 @@ from just_dna_registry.config import API_PREFIX, Settings, get_settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.logging_setup import configure_logging
+from just_dna_registry.pacing import PaceLedger
 from just_dna_registry.ratelimit import default_limiter
 from just_dna_registry.services.enrich import EnrichmentGate, close_lookup_clients
+from just_dna_registry.services.hints import observed_intervals
 from just_dna_registry.startup import (
     export_enricher_credentials,
     validate_db_path,
@@ -95,6 +98,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         quiet_seconds=settings.enrich_idle_quiet_seconds,
         poll_seconds=settings.enrich_idle_poll_seconds,
     )
+    # **Process-wide, for the reason `shared_lookup_clients()` is** — a ledger built per request paces
+    # nothing, and the pacing state is the whole product. The intervals are read off the clients that
+    # actually do the pacing rather than from the constants in `pacing.UPSTREAMS`: `EutilsClient`
+    # picks 10/s with `NCBI_API_KEY` set and 3/s without, so a constant would describe the wrong
+    # deployment half the time. Empty when the network tier is absent, which is the fallback case
+    # `interval_for` already handles.
+    app.state.pace_ledger = PaceLedger(
+        max_tier=settings.hint_max_tier,
+        max_interval=settings.hint_max_interval_seconds,
+        min_daily_units=settings.hint_min_daily_units,
+        intervals=observed_intervals(),
+    )
     # `local()` reads installed package metadata, which cannot know the deployment mode — that is a
     # property of this process's settings, so it is stamped on here.
     server_versions = VersionInfo.local().model_copy(update={"mode": settings.mode})
@@ -127,6 +142,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(caches.router, prefix=API_PREFIX)
     app.include_router(drafts.router, prefix=API_PREFIX)
+    app.include_router(hints.router, prefix=API_PREFIX)
     app.include_router(modules.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)
     app.include_router(publish.router, prefix=API_PREFIX)

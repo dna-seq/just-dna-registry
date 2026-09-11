@@ -232,7 +232,7 @@ def test_every_upstream_carries_a_remedy_and_none_of_them_sells_a_key_we_do_not_
     not be sent here. Both remedies have to say the general escape — provision the snapshot, or run
     the enricher yourself — because that is the one answer that is true for every upstream.
     """
-    assert set(pacing.UPSTREAMS) == {"ncbi", "ensembl", "gnomad"}
+    assert set(pacing.UPSTREAMS) == {"ncbi", "ensembl", "gnomad", "literature", "ontology"}
 
     for name, terms in pacing.UPSTREAMS.items():
         assert terms.name == name
@@ -244,10 +244,34 @@ def test_every_upstream_carries_a_remedy_and_none_of_them_sells_a_key_we_do_not_
     assert "no API key at any price" in pacing.UPSTREAMS["gnomad"].remedy
     assert "paces the process that holds it" in pacing.UPSTREAMS["ncbi"].remedy
     assert "issues no key" in pacing.UPSTREAMS["ensembl"].remedy
+    assert "issue no key" in pacing.UPSTREAMS["ontology"].remedy
+    assert "rather than a key" in pacing.UPSTREAMS["literature"].remedy
+
+
+def test_the_spacing_can_be_grounded_in_the_client_that_actually_paces(clock: FakeTime) -> None:
+    """`base_interval` is a fallback, not the truth: the real number is on the client.
+
+    `EutilsClient` picks 10/s with `NCBI_API_KEY` set and 3/s without, so a constant in `UPSTREAMS`
+    describes the wrong deployment half the time. A server passes the observed intervals in, and the
+    decay is then a multiple of what the caller is actually being paced at.
+    """
+    led = ledger(clock, intervals={"gnomad": 0.25})
+    assert led.interval_for("gnomad") == 0.25
+    assert led.interval_for("ncbi") == pacing.UPSTREAMS["ncbi"].base_interval
+
+    spend(led, clock, "gnomad", 5)
+    clock.advance(10_000.0)
+    led.charge("author", {"gnomad": 1})
+    (verdict,) = led.charge("author", {"gnomad": 1})
+
+    assert verdict.tier == 1
+    assert verdict.wait_seconds == pytest.approx(0.25 * 2)
 
 
 def test_gnomad_is_budgeted_far_below_the_others_because_its_limit_cannot_be_bought() -> None:
     """The one budget relation that is a design decision rather than a tuning choice."""
     gnomad = pacing.UPSTREAMS["gnomad"]
-    assert gnomad.free_daily_units < pacing.UPSTREAMS["ncbi"].free_daily_units // 10
+    others = [t.free_daily_units for name, t in pacing.UPSTREAMS.items() if name != "gnomad"]
+    assert gnomad.free_daily_units < min(others) // 10
     assert gnomad.base_interval == 6.0, "gnomAD publishes 10 requests per 60 seconds"
+    assert gnomad.base_interval == max(t.base_interval for t in pacing.UPSTREAMS.values())

@@ -602,6 +602,172 @@ def validate(
     raise typer.Exit(code=1)
 
 
+hint_app = typer.Typer(
+    help=(
+        "Ask a registry that holds the snapshots. `offline` reads its caches and costs nothing; "
+        "going online spends that server's standing with rate-limited upstreams and needs a token."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(hint_app, name="hint")
+
+
+def _echo_cost(cost) -> None:  # noqa: ANN001 — a HintCost, kept loose so the CLI never imports a model
+    """Render what the answer cost, including the case where it cost nothing.
+
+    **Printed even when the charge is empty**, because that is the fact this surface exists to teach:
+    an offline answer is free. A renderer that showed the charge only when there was one would make
+    its own absence ambiguous, which is the rule the check renderer learned the hard way.
+    """
+    charged = {k: v for k, v in (cost.charged or {}).items() if v}
+    if charged:
+        typer.secho(
+            "  cost: " + ", ".join(f"{k} x{v}" for k, v in sorted(charged.items())),
+            fg=typer.colors.YELLOW,
+        )
+    else:
+        typer.secho("  cost: nothing — answered from the registry's snapshots", fg=typer.colors.GREEN)
+    if cost.served_from:
+        typer.echo(f"  served from: {', '.join(cost.served_from)}")
+    if cost.limit:
+        typer.secho(f"  limited by: {cost.limit} (waited {cost.waited_seconds:.1f}s)", fg=typer.colors.YELLOW)
+    if cost.remedy:
+        typer.secho(f"  {cost.remedy}", fg=typer.colors.CYAN)
+
+
+def _echo_advisories(rows: list) -> None:
+    """Every advisory, with the refusal that says why the value is the author's to type.
+
+    The refusal is the point rather than a footnote: a value filled from the same oracle a later
+    check consults turns that check into a tautology, so printing the suggestion without the reason
+    would invite exactly the edit the refusal exists to prevent.
+    """
+    for row in rows or []:
+        typer.echo(f"  {row.get('column')}: {row.get('value')}  [{row.get('source')}]")
+        if row.get("refusal"):
+            typer.secho(f"      not written for you — {row['refusal']}", fg=typer.colors.YELLOW)
+        if row.get("note"):
+            typer.echo(f"      {row['note']}")
+
+
+@hint_app.command("variant")
+def hint_variant(
+    rsid: str | None = typer.Option(None, "--rsid"),
+    chrom: str | None = typer.Option(None, "--chrom"),
+    start: int | None = typer.Option(None, "--start"),
+    ref: str | None = typer.Option(None, "--ref"),
+    alts: str | None = typer.Option(None, "--alts"),
+    frequencies: bool = typer.Option(False, "--frequencies", help="gnomAD; needs the server to allow it"),
+    online: bool = typer.Option(False, "--online", help="Let the server reach live sources (needs a token)"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """What a registry knows about one variant, from its snapshots."""
+    with _client(url, token) as c:
+        report = c.hint_variant(
+            rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
+            frequencies=frequencies, offline=not online,
+        )
+    typer.secho(f"{report.rsid or '(position)'}", bold=True)
+    if report.rsid_state and report.rsid_state != "live":
+        typer.secho(f"  rsID is {report.rsid_state}" +
+                    (f" — current is {report.rsid_current}" if report.rsid_current else ""),
+                    fg=typer.colors.YELLOW)
+    for locus in report.loci:
+        typer.echo(f"  {locus.get('chrom')}:{locus.get('start')} {locus.get('ref')}>{locus.get('alts')}")
+    if report.ambiguous:
+        typer.secho("  ambiguous — reported, never picked; you choose", fg=typer.colors.YELLOW)
+    for candidate in report.rsid_candidates:
+        typer.echo(f"  candidate rsID: {candidate}")
+    for row in report.clin_sig:
+        typer.echo(f"  clin_sig: {row}")
+    for pop in report.populations:
+        typer.echo(f"  frequency: {pop}")
+    _echo_advisories(report.alterations)
+    for finding in report.findings:
+        typer.echo(f"  [{finding.get('level')}] {finding.get('message')}")
+    _echo_cost(report.cost)
+
+
+@hint_app.command("citation")
+def hint_citation(
+    pmid: str | None = typer.Option(None, "--pmid"),
+    doi: str | None = typer.Option(None, "--doi"),
+    pmcid: str | None = typer.Option(None, "--pmcid"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Does this citation exist, and what is its other identifier?
+
+    Existence is not identity: check the title against the paper you meant.
+    """
+    with _client(url, token) as c:
+        report = c.hint_citation(pmid=pmid, doi=doi, pmcid=pmcid)
+    typer.secho(f"pmid={report.pmid} doi={report.doi} pmcid={report.pmcid}", bold=True)
+    typer.echo(f"  pmid exists: {report.pmid_exists}   doi exists: {report.doi_exists}")
+    if report.title:
+        typer.secho(
+            f"  {report.title} — {report.first_author or '?'}, {report.journal or '?'} "
+            f"{report.year or '?'}",
+            fg=typer.colors.CYAN,
+        )
+        typer.echo("  ^ compare this against the paper you meant: a real record is not the right one")
+    _echo_advisories(report.alterations)
+    for finding in report.findings:
+        typer.echo(f"  [{finding.get('level')}] {finding.get('message')}")
+    _echo_cost(report.cost)
+
+
+@hint_app.command("gene")
+def hint_gene(
+    symbol: str, url: str | None = UrlOpt, token: str | None = TokenOpt
+) -> None:
+    """Is this gene symbol approved or retired? (HGNC exact; online, so it needs a token.)"""
+    with _client(url, token, need_token=True) as c:
+        report = c.hint_gene(symbol=symbol)
+    typer.secho(f"{report.symbol}: {report.state}", bold=True)
+    if report.current and report.current != report.symbol:
+        typer.secho(f"  current symbol is {report.current}", fg=typer.colors.YELLOW)
+    typer.echo(f"  hgnc: {report.hgnc_id}   locus: {report.location}")
+    _echo_cost(report.cost)
+
+
+@hint_app.command("trait")
+def hint_trait(
+    curie: str, url: str | None = UrlOpt, token: str | None = TokenOpt
+) -> None:
+    """Is this trait CURIE current, obsolete or unknown? (OLS4; online, so it needs a token.)"""
+    with _client(url, token, need_token=True) as c:
+        report = c.hint_trait(curie=curie)
+    typer.secho(f"{report.curie}: {report.state}", bold=True)
+    if report.label:
+        typer.echo(f"  {report.label}")
+    if report.replaced_by:
+        typer.secho(f"  replaced by {report.replaced_by}", fg=typer.colors.YELLOW)
+    _echo_cost(report.cost)
+
+
+@hint_app.command("old-assembly")
+def hint_old_assembly(
+    chrom: str = typer.Option(..., "--chrom"),
+    start: int = typer.Option(..., "--start"),
+    ref: str | None = typer.Option(None, "--ref"),
+    alts: str | None = typer.Option(None, "--alts"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """An hg19 coordinate to an rs-number. Recovery, not liftover — type the rsID yourself."""
+    with _client(url, token, need_token=True) as c:
+        report = c.hint_old_assembly(chrom=chrom, start=start, ref=ref, alts=alts)
+    typer.secho(f"{report.chrom}:{report.start} — {report.outcome}", bold=True)
+    if report.note:
+        typer.echo(f"  {report.note}")
+    for candidate in report.candidates:
+        typer.echo(f"  candidate: {candidate}")
+    _echo_advisories(report.alterations)
+    _echo_cost(report.cost)
+
+
 @app.command()
 def draft(
     spec_dir: Path,

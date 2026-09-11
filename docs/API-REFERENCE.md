@@ -21,7 +21,8 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   answers *what can this deployment do for a client that holds no snapshots* (§ 1a) — and
   `POST /modules/{ns}/{name}/derived`, which answers it with bytes (§ 29a) — plus
   `POST /drafts` (§ 29b), the only route here that is not namespace-scoped, because a draft is not
-  about a published module.
+  about a published module — and the six `/hint/*` routes (§ 29c–g), which are the first endpoints
+  here an **anonymous** caller can spend server resources on, under a per-upstream pace ledger.
   **0.24 adds one route**, `PATCH /modules/{ns}/{name}/short-description` — the first module-level
   amend, where the readme and the logo are per version. It adopts `just-dna-format` 0.7 and adds five
   response fields: `short_description` on `ModuleCard`,
@@ -134,6 +135,11 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 1a | GET | `/api/v1/caches` | — | Snapshot lanes this deployment holds, and why not for the rest |
 | 29a | POST | `/api/v1/modules/{ns}/{name}/derived` | bearer | Enrich a spec, return its `derived/` tables |
 | 29b | POST | `/api/v1/drafts?source=` | bearer | Draft spec rows from a snapshot this box holds |
+| 29c | GET | `/api/v1/hint/variant` | — / bearer | One variant: coordinates, alleles, clinical calls |
+| 29d | POST | `/api/v1/hint/variants` | — / bearer | Many variants: snapshot first, live for misses |
+| 29e | GET | `/api/v1/hint/citation` | bearer | Does this citation exist, and is it the right paper |
+| 29f | GET | `/api/v1/hint/gene` · `/trait` | bearer | HGNC symbol / OLS4 CURIE currency |
+| 29g | GET | `/api/v1/hint/old-assembly` | bearer | An hg19 coordinate to an rs-number |
 | 2 | GET | `/api/v1/modules` | — | List / search (card grid) |
 | 3 | GET | `/api/v1/modules/lookup?digest=` | — | Find versions by artifact digest |
 | 4 | GET | `/api/v1/modules/{ns}/{name}` | — | Module detail |
@@ -533,6 +539,69 @@ drafter would make the box a free panel generator whose licence acceptance belon
 
 `registry-client draft <spec_dir> --source clinvar -g F5` unpacks the result over the spec directory
 and prints what was appended, what was already there, and what differs and was left alone.
+
+### 29c–g. `/api/v1/hint/*`
+The enricher's authoring lookups, answered from this deployment's snapshots. Named `hint`, not
+`lookup`: `/modules/lookup` already means *"is this content published?"*, and `hint` is the
+enricher's own word for this surface.
+
+| route | answers |
+|---|---|
+| `GET /hint/variant` | validity, coordinates, alleles, clinical calls, frequencies |
+| `POST /hint/variants` | the same for many keys — snapshot first, live only for misses |
+| `GET /hint/citation` | does this citation exist, and *which paper is it* |
+| `GET /hint/gene` · `GET /hint/trait` | HGNC symbol / OLS4 CURIE currency |
+| `GET /hint/old-assembly` | an hg19 coordinate to an rs-number |
+
+**Nothing is written and nothing is decided.** Every suggestion comes back as an entry in
+`alterations` with `applied: false` and a `refusal` saying why the value is the author's to type. That
+is not fastidiousness: almost every fact here is cross-examined later by a check that only works
+because the author wrote it *independently*, so filling a cell from the same oracle the checker
+consults turns that check into a tautology. A one-to-many rsID returns every locus rather than
+picking one, and a position matching several rsIDs returns every candidate.
+
+**Three tiers, and the free one is the product:**
+
+| tier | may set | metered by |
+|---|---|---|
+| anonymous | `offline=true` only | the `hint` request bucket |
+| authenticated | `offline=false` | bucket + the per-upstream pace ledger |
+| authenticated, and `REGISTRY_HINT_ALLOW_GNOMAD=true` | `frequencies=true` | as above, with gnomAD's own tiny allowance |
+
+A thin client with no Ensembl snapshot getting an rsID placed onto a coordinate, for free, at zero
+egress to anyone, is this surface working exactly as designed. Anonymous *online* is refused on both
+instances and does not vary by mode: gnomAD rate-limits by IP and sells no key at any price, so one
+anonymous caller could throttle every publisher on the box, and the cooldown needs a stable identity
+(a shared NAT makes the IP branch worthless as a key).
+
+**`cost` is on every answer, including when it is empty.**
+
+```json
+"cost": {"charged": {}, "served_from": ["ensembl"], "limit": null, "waited_seconds": 0.0, "remedy": null}
+```
+
+An empty `charged` is the field that teaches a client which of its traffic is free — without it,
+*"you are being throttled"* has two opposite histories (spent egress, or the plain request bucket)
+with opposite remedies, and `limit` is the sibling that tells them apart. Units are **per upstream and
+not exchangeable**: one fungible counter would let a caller spend gnomAD's unbuyable ten-per-minute
+allowance at the price of a three-per-second NCBI call.
+
+**Past the daily allowance the pace decays rather than stopping.** The minimum interval between
+charged calls is the upstream's *own* spacing doubled once per tier, so *"4× gnomAD's own interval"*
+is actionable where a bare number is arbitrary. A wait under `hint_inline_wait_seconds` is absorbed by
+the server; a longer one is `429 hint_pace_decayed` with `Retry-After` and a remedy that is honest for
+that upstream — gnomAD sells no key, NCBI's key paces whoever holds it, OLS4 and HGNC issue none. The
+one remedy true everywhere is to provision the snapshot or run the enricher yourself. A day finished
+over the allowance halves the next day's; a clean day restores it in full.
+
+**Use the batch, not a loop.** An online single lookup egresses unconditionally — dbSNP merge status
+has no snapshot in this tree, so that leg runs whatever the cache said — while `POST /hint/variants`
+runs the offline pass over every key at no cost and goes online only for what missed. On a
+provisioned deployment a whole module's worth of keys comes back charging nothing. `frequencies` is
+refused in a batch outright: at six seconds per key it cannot finish inside a request.
+
+**No filesystem path appears in any hint.** The enricher records a snapshot's location in `checked`
+and interpolates it into one finding's prose; both are mapped to lane names here.
 
 ### 29–30. `GET`/`POST /api/v1/modules/lookup`
 

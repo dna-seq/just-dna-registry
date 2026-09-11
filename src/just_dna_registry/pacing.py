@@ -53,10 +53,15 @@ class UpstreamTerms:
     """
 
     name: str
-    #: The upstream's own published spacing. The decay is expressed as a multiple of it so the figure
-    #: in a `429` means something — "4x gnomAD's own interval" is actionable where "24 seconds" is
-    #: arbitrary — and so one schedule produces gentle behaviour where the budget is cheap and hard
-    #: behaviour where it cannot be bought, with no special case per upstream.
+    #: The upstream's own published spacing, as a **fallback**. The decay is expressed as a multiple
+    #: of it so the figure in a `429` means something — "4x gnomAD's own interval" is actionable where
+    #: "24 seconds" is arbitrary — and so one schedule produces gentle behaviour where the budget is
+    #: cheap and hard behaviour where it cannot be bought, with no special case per upstream.
+    #:
+    #: A deployment should override it from the client that actually does the pacing
+    #: (`PaceLedger(intervals=…)`), because the real number is not always this one: `EutilsClient`
+    #: picks 10/s when `NCBI_API_KEY` is set and 3/s when it is not, so a constant here would describe
+    #: the wrong deployment half the time. Read the structured member, never restate it.
     base_interval: float
     #: Units per identity per UTC day before the pace starts decaying.
     free_daily_units: int
@@ -90,6 +95,27 @@ UPSTREAMS: dict[str, UpstreamTerms] = {
             "Ensembl issues no key; the pacing is all there is. A provisioned Ensembl snapshot "
             "removes this leg entirely — pull one with `just-dna-enricher cache pull`, or ask this "
             "registry with offline=true, which reads the snapshot it already holds."
+        ),
+    ),
+    "literature": UpstreamTerms(
+        name="literature",
+        # Crossref and Europe PMC serve one leg (does this citation exist, and what is it), so they
+        # share a budget: a caller cannot spend one to dodge the other.
+        base_interval=0.5,
+        free_daily_units=512,
+        remedy=(
+            "Crossref and Europe PMC ask for a contact address rather than a key, and both are "
+            "generous — this budget exists so one caller cannot spend the deployment's standing with "
+            "them. Run just-dna-enricher yourself if you need more."
+        ),
+    ),
+    "ontology": UpstreamTerms(
+        name="ontology",
+        base_interval=0.2,
+        free_daily_units=512,
+        remedy=(
+            "OLS4 and HGNC issue no key. The budget is per caller so one client cannot spend the "
+            "deployment's standing with them; run just-dna-enricher yourself if you need more."
         ),
     ),
     "gnomad": UpstreamTerms(
@@ -178,6 +204,7 @@ class PaceLedger:
         max_interval: float = 300.0,
         min_daily_units: int = 4,
         budgets: Mapping[str, int] | None = None,
+        intervals: Mapping[str, float] | None = None,
         clock=time.monotonic,  # noqa: ANN001 — a callable returning float, matching time.monotonic
         today=None,  # noqa: ANN001 — a callable returning a YYYY-MM-DD str
     ) -> None:
@@ -188,6 +215,10 @@ class PaceLedger:
         #: Overrides for `UPSTREAMS[...].free_daily_units`, so a deployment can retune a budget
         #: without editing the terms that carry the licence reasoning beside it.
         self.budgets = dict(budgets or {})
+        #: Observed spacing per upstream, overriding `UPSTREAMS[...].base_interval`. A server fills
+        #: this from the clients that actually pace, so the decay is a multiple of the real interval
+        #: rather than of a constant that may describe a different deployment.
+        self.intervals = dict(intervals or {})
         self._clock = clock
         self._today = today or (lambda: datetime.now(UTC).date().isoformat())
         self._entries: dict[tuple[str, str], _Entry] = {}
@@ -195,6 +226,9 @@ class PaceLedger:
 
     def budget_for(self, upstream: str) -> int:
         return self.budgets.get(upstream, UPSTREAMS[upstream].free_daily_units)
+
+    def interval_for(self, upstream: str) -> float:
+        return self.intervals.get(upstream, UPSTREAMS[upstream].base_interval)
 
     def _entry(self, identity: str, upstream: str) -> _Entry:
         """The identity's row for today, rolling the day over and carrying the tier down one step.
@@ -283,7 +317,7 @@ class PaceLedger:
                 tier = self._tier_for(entry, upstream)
                 wait = 0.0
                 if self.enabled and units > 0 and tier > 0:
-                    interval = min(self.max_interval, terms.base_interval * (2**tier))
+                    interval = min(self.max_interval, self.interval_for(upstream) * (2**tier))
                     if entry.last_charge is not None:
                         wait = max(0.0, entry.last_charge + interval - now)
                 if units > 0:

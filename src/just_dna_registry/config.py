@@ -317,6 +317,36 @@ class Settings(BaseSettings):
     # bound `enrich` is; it is CPU over a gene panel, and an access bound on snapshots this
     # deployment acquired under its own declared use.
     rate_draft_per_hour: float = 10
+    # The hint proxy (0.25). Burst control only — the real bound on egress is the per-upstream pace
+    # ledger below, because a request bucket caps one caller and is unbounded in the number of them.
+    rate_hint_per_hour: float = 600
+
+    # --- The hint proxy -------------------------------------------------------------------------
+    # **The anonymous tier is the product, not a consolation prize.** A thin client with no Ensembl
+    # snapshot getting an rsID placed onto a coordinate, for free, at zero egress to anyone, is this
+    # whole surface working as designed — so anonymous callers are allowed, clamped to `offline=true`.
+    #
+    # Anonymous *online* is refused on both instances and that does not vary by mode: gnomAD's limit
+    # is keyed on our IP and cannot be bought, so one anonymous caller can throttle every publisher on
+    # the box, and the pace ledger needs a stable identity to mean anything (a shared NAT makes the
+    # IP branch worthless as a cooldown key).
+    hint_enabled: bool = True
+    hint_allow_anonymous: bool = True
+    # gnomAD behind its own switch, default off. 512 frequency lookups is 51 minutes of serialized
+    # pacing and 85% of what gnomAD grants the WHOLE deployment in an hour — the same allowance
+    # `/check?frequencies=true` draws on to gate a publish.
+    hint_allow_gnomad: bool = False
+    # A batch is bounded by what can finish inside the request, not by a round number: an online batch
+    # runs its misses sequentially at the upstream's own pace.
+    hint_max_batch: int = 256
+    hint_max_batch_online: int = 20
+    # Waits up to this are absorbed in the coroutine; longer ones come back as `429` with a
+    # `Retry-After`. Past a couple of seconds, holding the connection open is a slowloris we consented
+    # to, and the header carries the same information for free.
+    hint_inline_wait_seconds: float = 2.0
+    hint_max_interval_seconds: float = 300.0
+    hint_max_tier: int = 6
+    hint_min_daily_units: int = 4
 
     # Listing groups (0.8.0). Namespaces whose name matches this regex are classified as
     # "test/sandbox" — surfaced only under `?group=test` and hidden from every other tab (`all`,

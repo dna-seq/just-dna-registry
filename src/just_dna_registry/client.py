@@ -17,7 +17,13 @@ from just_dna_format.manifest import ModuleManifest, write_manifest
 from just_dna_registry.models.api import (
     CacheStatusReport,
     CheckReport,
+    CitationHintReport,
+    GeneHintReport,
+    OldAssemblyHintReport,
+    TraitHintReport,
     ValidationReport,
+    VariantHintBatchResponse,
+    VariantHintReport,
     VersionRef,
 )
 from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES
@@ -628,6 +634,121 @@ class RegistryClient:
             files=spec_upload(spec_dir, pack=pack),
         )
         return ValidationReport.model_validate(self._json(resp))
+
+    # ── Authoring hints: ask a registry that holds the snapshots ───────────────
+
+    def hint_variant(
+        self,
+        *,
+        rsid: str | None = None,
+        chrom: str | None = None,
+        start: int | None = None,
+        ref: str | None = None,
+        alts: str | None = None,
+        frequencies: bool = False,
+        offline: bool = True,
+    ) -> VariantHintReport:
+        """What a registry knows about one variant — coordinates, alleles, clinical calls.
+
+        **`offline=True` is the default and costs nothing**: it reads the deployment's snapshots,
+        which is the reason to ask a registry instead of provisioning fourteen of your own. It needs
+        no token. Going online spends that server's standing with upstreams that rate-limit by IP, so
+        it needs one, and `frequencies=True` additionally needs the deployment to proxy gnomAD.
+
+        Nothing you get back is written anywhere, and nothing is decided for you: a one-to-many rsID
+        returns every locus, a position matching several rsIDs returns every candidate, and each
+        entry in `alterations` carries `applied=False` with a `refusal` saying why the value is yours
+        to type. That is not fastidiousness — a value filled from the same oracle a later check
+        consults turns that check into a tautology.
+
+        Read `cost.charged`: an empty map means the answer was free.
+        """
+        return VariantHintReport.model_validate(self._json(self._http.get("/hint/variant", params={
+            "rsid": rsid, "chrom": chrom, "start": start, "ref": ref, "alts": alts,
+            "frequencies": frequencies, "offline": offline,
+        })))
+
+    def hint_variants(
+        self,
+        keys: Sequence[dict],
+        *,
+        frequencies: bool = False,
+        offline: bool = True,
+    ) -> VariantHintBatchResponse:
+        """Resolve many variants in one call — snapshot first, live only for what missed.
+
+        **Use this, not a loop over `hint_variant`.** An online single lookup egresses
+        unconditionally (dbSNP merge status has no snapshot, so that leg runs whatever the cache
+        said), while a batch runs the offline pass over every key at no cost and goes online only for
+        the misses. On a provisioned deployment a whole module's worth of keys comes back charging
+        nothing, which is the number that makes this worth calling.
+
+        Each key is `{"rsid": …}` or `{"chrom": …, "start": …}` (optionally `ref`/`alts`).
+        """
+        body = {"keys": list(keys)}
+        return VariantHintBatchResponse.model_validate(self._json(self._http.post(
+            "/hint/variants", params={"frequencies": frequencies, "offline": offline}, json=body,
+        )))
+
+    def hint_citation(
+        self,
+        *,
+        pmid: str | None = None,
+        doi: str | None = None,
+        pmcid: str | None = None,
+        offline: bool = False,
+    ) -> CitationHintReport:
+        """Does this citation exist, and what is its other identifier?
+
+        **Existence is not identity, which is why the answer names the paper.** PMIDs are densely
+        allocated, so a recalled or invented number is very likely to be a real record for a
+        *different* paper — `pmid_exists` alone cannot catch a fabricated citation. Compare `title`,
+        `journal`, `year` and `first_author` against the paper you meant.
+
+        No snapshot exists for this family, so `offline=True` reports that nothing was asked rather
+        than that nothing was found.
+        """
+        return CitationHintReport.model_validate(self._json(self._http.get("/hint/citation", params={
+            "pmid": pmid, "doi": doi, "pmcid": pmcid, "offline": offline,
+        })))
+
+    def hint_gene(self, *, symbol: str) -> GeneHintReport:
+        """Is this gene symbol approved or retired? HGNC's exact endpoints, never a fuzzy search.
+
+        Online only — HGNC publishes no snapshot — so this needs a token.
+        """
+        return GeneHintReport.model_validate(
+            self._json(self._http.get("/hint/gene", params={"symbol": symbol}))
+        )
+
+    def hint_trait(self, *, curie: str) -> TraitHintReport:
+        """Is this trait CURIE current, obsolete or unknown? OLS4, online only, needs a token."""
+        return TraitHintReport.model_validate(
+            self._json(self._http.get("/hint/trait", params={"curie": curie}))
+        )
+
+    def hint_old_assembly(
+        self,
+        *,
+        chrom: str,
+        start: int,
+        ref: str | None = None,
+        alts: str | None = None,
+        offline: bool = False,
+    ) -> OldAssemblyHintReport:
+        """I have an hg19 coordinate — what is its rs-number?
+
+        **Recovery, not liftover.** An rs-number authored into `variants.csv` resolves through the
+        ordinary chain into a coordinate a later check can cross-examine; a lifted-over position
+        becomes the row's only identity with nothing to check it against. So candidates come back as
+        advisories you type yourself, and several are reported rather than picked — `ref` and `alts`
+        narrow them.
+        """
+        return OldAssemblyHintReport.model_validate(self._json(
+            self._http.get("/hint/old-assembly", params={
+                "chrom": chrom, "start": start, "ref": ref, "alts": alts, "offline": offline,
+            })
+        ))
 
     def draft(
         self,
