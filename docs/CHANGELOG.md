@@ -8,6 +8,18 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [0.25.0] — unreleased
 
+**Release gate, and it is not a formality: deploy both instances on format 0.7 *before* this package
+reaches PyPI.** 0.25.0's base dependency is `just-dna-format>=0.7.0` (`pyproject.toml:67`), so the day
+this is published a `uv sync` on any clean consumer checkout resolves format to 0.7.0 — and both live
+boxes still answer `0.6.1` (re-measured 2026-09-11). `assert_compatible` then refuses `validate`,
+`check`, `publish`, `import` and `download` against production *and* the polygon, with reads still
+working, which is what makes it read as a partial outage rather than a version skew.
+
+That is `just-module-creator`'s **S20** exactly, and publishing first would arm it **from our side**,
+with no consumer having chosen anything. The window where a fresh install cannot publish should be
+zero, not however long an upgrade takes to schedule. See the S20 reply and the roadmap item for the
+sequencing.
+
 **`pyproject.toml` reads 0.25.0 and the environment still reports 0.24.0, deliberately.** This branch
 inherits 0.24's state: `just-dna-format` 0.7.0 is bumped upstream and tagged nowhere, so `uv.lock` is
 deliberately stale (main's content, PyPI 0.6.6) and **`uv sync` must not be run here** — it would
