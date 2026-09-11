@@ -240,6 +240,7 @@ def run_variant(
             "rsid_candidates": list(hint.rsid_candidates),
             "populations": list(hint.populations),
             "clin_sig": list(hint.clin_sig),
+            "pubmind": list(hint.pubmind),
             "vrs_id": hint.vrs_id,
             # Reported, never picked: more than one locus or more than one rsID at a position is the
             # author's to resolve, and a pick among equals is not a finding.

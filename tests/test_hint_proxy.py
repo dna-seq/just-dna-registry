@@ -109,6 +109,31 @@ def test_the_scrubber_maps_a_snapshot_path_to_its_lane_name(tmp_path) -> None:
     assert "<clinvar snapshot>" in scrub.text(f"snapshot at {tmp_path / 'cv'} unreadable")
 
 
+def test_every_field_the_enricher_reports_about_a_variant_survives_the_proxy() -> None:
+    """A field dropped in the model is a fact a thin client cannot get any other way.
+
+    `pubmind` was missing until a consumer asked what the shape was, which is exactly how a silent
+    omission is found — nothing fails, the answer is just quietly smaller. `checked` and `rsid_status`
+    are the two deliberate exceptions: the first is scrubbed into `cost.served_from` because it holds
+    absolute paths, and the second is flattened into `rsid_state` / `rsid_current` because a nested
+    dataclass is a translation layer for every consumer.
+    """
+    import dataclasses
+
+    from just_dna_enricher.lookup import VariantHint
+
+    from just_dna_registry.models.api import VariantHintReport
+
+    upstream = {f.name for f in dataclasses.fields(VariantHint)}
+    ours = set(VariantHintReport.model_fields)
+
+    assert upstream - ours == {"checked", "rsid_status"}, (
+        "a field of the enricher's variant hint is not reported by the proxy"
+    )
+    assert {"rsid_state", "rsid_current"} <= ours, "rsid_status was flattened into nothing"
+    assert "cost" in ours
+
+
 def test_the_charge_is_shaped_by_which_legs_will_run() -> None:
     """NCBI only with an rsID, gnomAD only with frequencies, nothing at all offline.
 

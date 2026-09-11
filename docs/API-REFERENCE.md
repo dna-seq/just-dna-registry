@@ -603,6 +603,22 @@ refused in a batch outright: at six seconds per key it cannot finish inside a re
 **No filesystem path appears in any hint.** The enricher records a snapshot's location in `checked`
 and interpolates it into one finding's prose; both are mapped to lane names here.
 
+**These are registry models, not the enricher's types — a consumer needs a thin translation.** Every
+field the enricher reports survives, but two are reshaped and one is replaced:
+
+| enricher | here | why |
+|---|---|---|
+| `VariantHint.rsid_status` (a `RsidStatus`) | `rsid_state` + `rsid_current` | flattened, so a consumer does not need the dataclass |
+| `VariantHint.checked` (absolute paths) | `cost.served_from` (lane names) | the paths are this server's business |
+| `OldAssemblyHint.recovery` (an `RsidRecovery`) | its fields, inlined | same reason as `rsid_status` |
+| — | `cost` | new here: what the answer spent and where it came from |
+| — | `ambiguous` | the enricher exposes it as a property, so it does not survive serialization |
+
+`findings` and `alterations` keep their names but are lists of plain objects rather than `Finding` /
+`Alteration` dataclasses: `{level, column, message}` and `{column, value, source, applied, refusal,
+note}` — the latter is the enricher's own `as_report_rows` shape, scrubbed. `CitationHintReport` is
+field-for-field `CitationHint` plus `cost`.
+
 ### 29–30. `GET`/`POST /api/v1/modules/lookup`
 
 Two identities, one endpoint, because they answer different questions:

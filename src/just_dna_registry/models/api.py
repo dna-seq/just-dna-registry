@@ -1284,6 +1284,15 @@ class VariantHintReport(BaseModel):
     rsid_candidates: list[str] = Field(default_factory=list)
     populations: list[dict] = Field(default_factory=list)
     clin_sig: list[dict] = Field(default_factory=list)
+    pubmind: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "PubMind's records at each resolved allele — every PVID, never one winner. **An empty "
+            "list is two opposite histories**: the corpus holds nothing there, or no snapshot was "
+            "consulted. `cost.served_from` is what tells them apart, since a PubMind answer names "
+            "that lane and a run without the snapshot names nothing."
+        ),
+    )
     vrs_id: str | None = None
     ambiguous: bool = Field(
         default=False, description="More than one locus or rsID candidate — the author must choose"
