@@ -6,6 +6,7 @@ ASGI transport — so each call is bridged onto a worker thread with `asyncio.to
 FastAPI app is driven in-process through Starlette's ASGI transport. Real routers, DB, and auth —
 no stubbed HTTP layer."""
 
+import ast
 import asyncio
 import inspect
 import io
@@ -442,11 +443,60 @@ async def test_import_module_threads_genome_build(sdk, tmp_path) -> None:
 # rather than trusted to review. The table is the contract: adding a route without wrapping it fails
 # here with the route named, and so does renaming a client method out from under one.
 
+_CLIENT_MODULES: tuple[str, ...] = ("client.py", "client_cli.py")
+
+#: What a base `pip install just-dna-registry` does **not** get. The compiler is the `compiler`
+#: extra, the enricher and FastAPI are the `server` extra, and `just_dna_registry.services.*` imports
+#: the compiler at module level — so a single import of one of those from the client path turns
+#: `registry-client` into an ImportError on every install that did not ask for a server.
+_SERVER_ONLY_PREFIXES: tuple[str, ...] = (
+    "just_dna_compiler", "just_dna_enricher", "just_dna_registry.services",
+    "fastapi", "starlette", "uvicorn",
+)
+
+
+def _module_level_imports(path: Path) -> set[str]:
+    """Imports at the top level of a module — deliberately not `ast.walk`.
+
+    A guarded `try/except ImportError` **inside a function** is the documented exception and is how
+    `RegistryClient.content_signature` reaches the compiler tier without requiring it. Walking the
+    whole tree would flag that and make the guard unusable, which is how a real boundary test gets
+    deleted for crying wolf.
+    """
+    names: set[str] = set()
+    for node in ast.parse(path.read_text()).body:
+        if isinstance(node, ast.Import):
+            names |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.add(node.module)
+    return names
+
+
+def test_the_client_path_imports_nothing_the_base_install_lacks() -> None:
+    """`registry-client` has to work on `pip install just-dna-registry`, with no extra.
+
+    Caught in the act: `registry-client derived` wanted the name of the note file the server puts in
+    its archive, and importing `services.derived` to get it would have pulled `just_dna_compiler`
+    through `services.publish` into every client install. The constant moved to `specfiles`, which
+    both sides already share; this test is what makes the next one fail loudly instead of at a user's
+    terminal.
+    """
+    root = Path(__file__).resolve().parents[1] / "src" / "just_dna_registry"
+    for filename in _CLIENT_MODULES:
+        for imported in _module_level_imports(root / filename):
+            assert not imported.startswith(_SERVER_ONLY_PREFIXES), (
+                f"{filename} imports `{imported}` at module level, which a base install does not "
+                f"have — move the shared name to `specfiles`, or guard the import inside the "
+                f"function that needs it"
+            )
+
+
 _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/health"): ("health",),
     ("GET", "/api/v1/version"): ("server_version",),
     ("GET", "/api/v1/pubkey"): ("pubkey",),
     ("GET", "/api/v1/caches"): ("cache_status",),
+    ("POST", "/api/v1/modules/{namespace}/{name}/derived"): ("derived",),
     ("POST", "/api/v1/auth/register"): ("register",),
     ("POST", "/api/v1/auth/tokens"): ("issue_jwt_token",),
     ("GET", "/api/v1/auth/whoami"): ("whoami",),

@@ -17,8 +17,9 @@ Exhaustive reference for the registry HTTP API (v1). For the design rationale se
   rather than `variants.csv` alone (so `?gene=` can find a PGx or copy-number module, for versions
   compiled from 0.6.6 on), and a duplicate `(source, layer)` row in `licensing.csv`/`sources.csv` is
   now a compile **error**, so a spec that published before can come back `422`.
-  **0.25 adds one route**, `GET /api/v1/caches` — anonymous, read-only, and the first endpoint that
-  answers *what can this deployment do for a client that holds no snapshots*; see § 1a.
+  **0.25 adds two routes**: `GET /api/v1/caches` — anonymous, read-only, and the first endpoint that
+  answers *what can this deployment do for a client that holds no snapshots* (§ 1a) — and
+  `POST /modules/{ns}/{name}/derived`, which answers it with bytes (§ 29a).
   **0.24 adds one route**, `PATCH /modules/{ns}/{name}/short-description` — the first module-level
   amend, where the readme and the logo are per version. It adopts `just-dna-format` 0.7 and adds five
   response fields: `short_description` on `ModuleCard`,
@@ -129,6 +130,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 |---|---|---|---|---|
 | 1 | GET | `/health` | — | Liveness + `mode`, uptime, gate occupancy, catalog counts |
 | 1a | GET | `/api/v1/caches` | — | Snapshot lanes this deployment holds, and why not for the rest |
+| 29a | POST | `/api/v1/modules/{ns}/{name}/derived` | bearer | Enrich a spec, return its `derived/` tables |
 | 2 | GET | `/api/v1/modules` | — | List / search (card grid) |
 | 3 | GET | `/api/v1/modules/lookup?digest=` | — | Find versions by artifact digest |
 | 4 | GET | `/api/v1/modules/{ns}/{name}` | — | Module detail |
@@ -440,6 +442,53 @@ The cap counts
 `haplotypes.csv` and `heteroplasmy.csv`, so a PGx module with no `variants.csv` is not a module with
 nothing to enrich. It is an upper bound — subjects are de-duplicated by `variant_key` downstream, so a
 locus named in three tables counts three times here and is asked once.
+
+### 29a. `POST /api/v1/modules/{ns}/{name}/derived`  *(bearer)*
+Run the network tier over an uploaded spec and return its derived tables as a `.tar.gz`.
+
+Multipart, both wire forms: loose `files=` parts or one `archive=`. `PUBLISH` on `{ns}`, the `enrich`
+bucket, and the same gate lane as `/check` — `503 enrichment_busy` on a full gate,
+`504 enrichment_timeout` past `enrich_timeout_seconds` — because the cost to the deployment is the
+same.
+
+**Why the route exists.** The compiler never fetches, so `resolution.csv` is what places
+rsID-authored rows onto coordinates, and producing it needs the Ensembl and ClinVar snapshots. Those
+run to tens of gigabytes across fourteen lanes; this box has them and an author's laptop does not. So
+the tables have to *travel with* a spec for that spec to compile anywhere else, and until now the
+only way to get them was to become a provisioned box. `GET /caches` says which lanes this deployment
+actually holds before you ask.
+
+```
+derived/resolution.csv              # what places rsID-authored rows onto coordinates
+derived/clin_sig_concordance.csv    # and the other fact sidecars the run produced
+derived/verification.json
+check.json                          # the validation report + {name, sha256, size} per member
+WHERE-THIS-CAME-FROM.md             # the one caveat that bites; see below
+```
+
+- **It runs what a publish runs, not what `/check` runs.** `normalize_spec` then `enrich_spec`, and
+  deliberately none of the opt-in check passes (frequencies, literature, identifiers, ACMG, PGx):
+  those are egress spent producing a *verdict*, and a caller asking for the tree did not ask for one.
+  Use `/check` for the verdict. Sharing the normalize-then-enrich order is what keeps the two from
+  describing different specs.
+- **The folder is a consequence of the contents, never a promise ahead of them** — the same rule
+  `download(layout="split")` follows. A module that authors its own coordinates and needs no sidecars
+  gets a report and a note and no `derived/` at all, which is the honest answer.
+- **`check.json`'s digests let a caller verify what arrived; they are not an attestation.** There is
+  no manifest before a compile. Attestation is the publish's — to hold this service to *"these are
+  the bytes it would have compiled"*, publish and compare `artifact.digest`.
+- **A spec too broken to enrich is a `422` carrying the `ValidationResult` errors**, not a `200` with
+  an empty archive. That is deliberately the opposite of `/validate` and `/check` and not a
+  contradiction of them: their contract is to *report* a finding, so a finding is a `200`. This
+  route's contract is to *produce*, and a spec that cannot be enriched produces nothing.
+- **The caveat in the note file, because it is the likeliest support ticket.**
+  `derived/licensing.csv` is genuinely both provenances — your authored rows with the enricher's
+  merged in. If your spec directory still carries its own `sources.csv` you now hold two spellings of
+  one fact table, and `layout.resolve_sidecar` **raises** rather than preferring one, so the next
+  upload is a `422` rather than a publish. Keep the file from here and drop the old spelling.
+
+`registry-client derived <ns> <name> <spec_dir>` unpacks it over the spec directory, which is the
+point: the module then compiles where it sits. `--out` writes the archive instead.
 
 ### 29–30. `GET`/`POST /api/v1/modules/lookup`
 

@@ -265,6 +265,20 @@ DERIVED_FILES: tuple[str, ...] = tuple(
     preferred_spelling(name) for name in FACT_CSVS
 ) + (RESOLUTION_CSV, VERIFICATION_FILE)
 
+#: The two files `POST .../derived` puts at the root of the archive it returns, beside `DERIVED_DIR`.
+#:
+#: Here rather than in `services/derived.py` because the **client** names them too — the CLI tells a
+#: caller which file to read before their next upload — and `client_cli` must import nothing from
+#: `services/`, whose modules pull in `just_dna_compiler` at module level. That tier is an optional
+#: extra, so a base `pip install just-dna-registry` would stop having a working `registry-client` the
+#: moment one of those imports crossed over. `specfiles` is the seam both sides already share.
+#:
+#: `DERIVED_NOTE_FILE` is deliberately **not** `README.md`: `plan_layout` hoists a recognized spec
+#: file out of any subdirectory, so a readme written here would be lifted to the root on the next
+#: upload and would either overwrite the module's own prose or collide with it.
+DERIVED_NOTE_FILE: str = "WHERE-THIS-CAME-FROM.md"
+DERIVED_REPORT_FILE: str = "check.json"
+
 #: Names that arrive under one spelling and are stored under another, because the author wrote a name
 #: that is not the one this registry's storage should hold. Two entries, and they are the same repair
 #: pointing in opposite directions — which is the point worth keeping.

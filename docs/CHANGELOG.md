@@ -8,9 +8,9 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [0.25.0] — unreleased
 
-**Client surface: unchanged.** No `RegistryClient` method moved. One was added, `cache_status()`,
-with one route behind it (`GET /api/v1/caches`); a new method breaks nobody, which is what that word
-means here. No existing response model changed.
+**Client surface: unchanged.** No `RegistryClient` method moved. Two were added — `cache_status()`
+and `derived()` — with one route each (`GET /api/v1/caches`, `POST /modules/{ns}/{name}/derived`); a
+new method breaks nobody, which is what that word means here. No existing response model changed.
 
 The release turns this service into a **caching proxy for the clients that cannot hold the
 snapshots**. The enricher's lanes are fourteen multi-gigabyte artifacts, and every consumer that is
@@ -49,6 +49,45 @@ sized wrongly eats the publishing capability.
 Process-wide for the reason `shared_lookup_clients()` is, and deliberately not in the catalog DB:
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
+
+### `POST .../derived` — the one thing a client without the caches cannot make for itself
+
+The compiler never fetches, so `resolution.csv` is what places rsID-authored rows onto coordinates,
+and producing it needs the Ensembl and ClinVar snapshots. This service already builds that tree on
+every publish and every `/check`, and then throws it away. Handing it back is the smallest complete
+version of the whole idea: unpack the archive over a spec directory and the module compiles where it
+sits.
+
+- **It runs what a publish runs, not what `/check` runs.** `normalize_spec` then `enrich_spec`, and
+  none of the opt-in check passes — those are egress spent producing a verdict, and a caller asking
+  for the tree did not ask for one. The shared normalize-then-enrich order is what stops the two
+  describing different specs.
+- **The tree is flat on disk; the split is constructed on the way out.** `normalize_spec_layout`
+  removes the directories it empties, so `derived/` does not exist at the moment enrichment finishes.
+  The folder in the archive is a layout for readers, and it is safe for the reason it always was:
+  `SIGNATURE_INPUTS` is entirely root-level, so nothing that can live there can move a module's
+  content identity.
+- **The folder appears only when something lands in it**, as with `download(layout="split")`. An
+  archive advertising an empty `derived/` would say a pass ran and found nothing, when nothing ran.
+- **`check.json` carries a SHA-256 per member, and that is not an attestation.** There is no manifest
+  before a compile. It lets a caller check what arrived; holding this service to *"these are the
+  bytes it would have compiled"* is done by publishing and comparing `artifact.digest`.
+- **A spec too broken to enrich is a `422`, not a `200` with an empty archive.** Deliberately the
+  opposite of `/validate` and `/check`: their contract is to report a finding, so a finding is a 200.
+  This route's contract is to produce.
+- `WHERE-THIS-CAME-FROM.md` travels in the archive because the collision it describes is the
+  likeliest support ticket: a derived `licensing.csv` beside an authored `sources.csv` is two
+  spellings of one fact table, and `layout.resolve_sidecar` raises rather than choosing.
+
+**One bug caught in the act while building it.** `registry-client derived` wanted the name of that
+note file, and importing `services.derived` to get it would have pulled `just_dna_compiler` — an
+optional extra — through `services.publish` into every base install, turning `registry-client` into
+an `ImportError` for anyone who had not asked for a server. The constant moved to `specfiles`, which
+both sides already share, and `test_the_client_path_imports_nothing_the_base_install_lacks` now walks
+the module-level imports of `client.py` and `client_cli.py` so the next one fails in CI rather than
+at a user's terminal. It checks top-level imports only, on purpose: a guarded `try/except ImportError`
+inside a function is the documented exception and is how `content_signature` reaches the compiler
+tier without requiring it.
 
 ### `GET /api/v1/caches` — the question a thin client has to be able to ask
 

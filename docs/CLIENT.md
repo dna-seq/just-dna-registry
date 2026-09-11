@@ -52,6 +52,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Full publish dry run | `check(ns, name, spec_dir)` | `check` | bearer |
 | Server liveness | `health()` | *(programmatic)* | — |
 | Which snapshots it holds | `cache_status()` | `caches` | — |
+| Get derived tables for a spec | `derived(ns, name, spec_dir)` | `derived` | bearer |
 | Exchange key for a JWT | `issue_jwt_token(api_key)` | *(programmatic)* | api key |
 | Self-register | `register(install_id, account)` | `register` | install-id |
 | Namespace availability | `namespace_available(ns)` | `namespace-available` | — |

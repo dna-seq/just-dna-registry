@@ -43,6 +43,7 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.lowpriority import run_at_low_priority
 from just_dna_registry.models.api import CheckReport, ValidationReport
 from just_dna_registry.permissions import Capability
+from just_dna_registry.services import derived as derived_service
 from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services import publish as publish_service
 from just_dna_registry.specfiles import REQUIRED_SPEC_FILES
@@ -585,6 +586,91 @@ async def check_spec(
         ) from exc
     except publish_service.PublishError as exc:
         raise _publish_http_error(exc, client_format) from exc
+
+
+@router.post(
+    "/{namespace}/{name}/derived",
+    dependencies=[Depends(rate_limit("enrich"))],
+    responses={200: {"content": {"application/gzip": {}}, "description": "The derived tables"}},
+    summary="Enrich a spec and return its derived tables",
+)
+async def derived_tables(
+    request: Request,
+    repo: RepoDep,
+    settings: SettingsDep,
+    account: AccountDep,
+    namespace: str,
+    name: str,
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI default, never mutated
+    archive: Annotated[UploadFile | None, File()] = None,
+) -> Response:
+    """Run the network tier over an uploaded spec and hand back `derived/` as a `.tar.gz`.
+
+    **The one thing a client without the snapshot caches cannot make for itself.** The compiler never
+    fetches, so `resolution.csv` is what places rsID-authored rows onto coordinates and it has to
+    travel with a spec for that spec to compile anywhere else. Producing it needs the Ensembl and
+    ClinVar snapshots — fourteen lanes and tens of gigabytes across the set — which this box has and
+    an author's laptop does not. `GET /caches` says which of them this deployment actually holds.
+
+    Both wire forms, like every spec route: loose `files=` parts or one `archive=`. The response is a
+    producer and has one form; the both-forms rule is about uploads.
+
+    Runs what a **publish** runs — `normalize_spec` then `enrich_spec` — and deliberately not what
+    `/check` runs: the opt-in check passes are egress spent producing a verdict, and a caller asking
+    for the tree did not ask for one. Use `/check` when you want the verdict; the two share the
+    normalize-then-enrich order so they cannot disagree about the spec they are describing.
+
+    `check.json` travels at the archive root with the validation report and a SHA-256 per member.
+    Those digests let a caller verify what arrived; they are not an attestation, because there is no
+    manifest before a compile. Attestation is the publish's.
+
+    Same gate lane as `/check` — `503 enrichment_busy` on a full gate, `504 enrichment_timeout` past
+    `enrich_timeout_seconds` — because the cost to this deployment is the same. A spec too broken to
+    enrich is a `422` carrying the `ValidationResult` errors rather than a `200` with an empty
+    archive: this route's contract is to produce, not to report.
+    """
+    require_capability(repo, account, namespace, Capability.PUBLISH)
+    gate = request.app.state.enrichment_gate
+    client_format = _client_format(request)
+    try:
+        uploads = await _preflight_uploads(files, archive, settings)
+        if not gate.try_acquire():
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="enrichment_busy",
+                headers={"Retry-After": "60"},
+            )
+        try:
+            built = await asyncio.wait_for(
+                run_in_threadpool(
+                    derived_service.build_derived_tree,
+                    settings=settings, repo=repo, uploads=uploads,
+                    namespace=namespace, name=name,
+                    client_format=client_format, gate=gate,
+                ),
+                timeout=settings.enrich_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise HTTPException(
+                status.HTTP_504_GATEWAY_TIMEOUT, detail="enrichment_timeout"
+            ) from exc
+    except enrich_service.EnrichmentUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "enrichment_unavailable",
+                "missing": exc.missing,
+                "errors": [str(exc)],
+            },
+        ) from exc
+    except publish_service.PublishError as exc:
+        raise _publish_http_error(exc, client_format) from exc
+
+    return Response(
+        content=built.archive,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{built.filename}"'},
+    )
 
 
 @router.patch("/{namespace}/{name}/versions/{version}")

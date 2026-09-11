@@ -6,8 +6,10 @@ with `--token` (or `$REGISTRY_TOKEN`). `--help` lists the commands; the enumerat
 here went stale twice, and a partial list of commands reads as a complete one.
 """
 
+import io
 import os
 import sys
+import tarfile
 from pathlib import Path
 
 import typer
@@ -17,6 +19,7 @@ from just_dna_format.manifest import read_manifest, write_manifest
 
 from just_dna_registry.client import RegistryClient, RegistryError
 from just_dna_registry.installid import generate_install_id
+from just_dna_registry.specfiles import DERIVED_NOTE_FILE
 from just_dna_registry.ui import standalone
 from just_dna_registry.version import compatibility_error
 
@@ -596,6 +599,65 @@ def validate(
         )
         return
     raise typer.Exit(code=1)
+
+
+@app.command()
+def derived(
+    namespace: str,
+    name: str,
+    spec_dir: Path,
+    out: Path = typer.Option(
+        None, "--out", help="Write the archive here instead of unpacking into the spec directory"
+    ),
+    pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Get a spec's derived tables from a registry that holds the snapshot caches.
+
+    **The call to make when you do not have fourteen snapshots on disk.** `resolution.csv` is what
+    places rsID-authored rows onto coordinates, the compiler never fetches, so without it an
+    rsID-authored module does not compile anywhere but on a provisioned box. This asks a registry
+    that *is* provisioned to derive the tables and hand them back.
+
+    By default the archive is unpacked over `SPEC_DIR`, which is the point: the module then compiles
+    where it sits. `--out` writes the `.tar.gz` instead, for inspecting it first.
+
+    Run `registry-client caches --url ...` first if you want to know which lanes that deployment
+    actually holds — a lane it does not have is a pass that will report it was skipped rather than
+    one that silently found nothing.
+    """
+    with _client(url, token, need_token=True) as c:
+        blob = c.derived(namespace, name, spec_dir, pack=pack)
+
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(blob)
+        typer.secho(f"wrote {out} ({len(blob)} bytes)", fg=typer.colors.GREEN)
+        return
+
+    written: list[str] = []
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            # The server builds these names, but an archive is an archive: a member that escapes the
+            # destination is refused rather than trusted, because the one time it matters is the one
+            # time the archive did not come from where the caller thought.
+            target = (spec_dir / member.name).resolve()
+            if not member.isfile() or not str(target).startswith(str(spec_dir.resolve())):
+                continue
+            source = tar.extractfile(member)
+            if source is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read())
+            written.append(member.name)
+
+    for entry in written:
+        typer.secho(f"  {entry}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"{len(written)} file(s) into {spec_dir}. Read {DERIVED_NOTE_FILE} before the next "
+        f"upload — a derived licensing.csv beside an authored sources.csv is refused, not merged."
+    )
 
 
 @app.command()

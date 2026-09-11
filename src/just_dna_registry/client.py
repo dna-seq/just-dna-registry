@@ -628,6 +628,46 @@ class RegistryClient:
         )
         return ValidationReport.model_validate(self._json(resp))
 
+    def derived(
+        self,
+        namespace: str,
+        name: str,
+        spec_dir: Path,
+        *,
+        pack: bool = False,
+        dest: Path | None = None,
+    ) -> bytes:
+        """Enrich a spec on the server and get its `derived/` tables back as a `.tar.gz`.
+
+        **The call for a client that holds no snapshot caches.** The compiler never fetches, so
+        `resolution.csv` is what places rsID-authored rows onto coordinates, and producing it needs
+        the Ensembl and ClinVar snapshots — tens of gigabytes this registry has and your machine
+        probably does not. Ask `cache_status()` first if you want to know which lanes the deployment
+        actually holds.
+
+        Unpack it over your spec directory and the module compiles locally. `check.json` at the
+        archive root carries the validation report and a SHA-256 per member; `WHERE-THIS-CAME-FROM.md`
+        carries the one caveat that bites, which is that `derived/licensing.csv` and an existing
+        `sources.csv` are two spellings of one table and the next upload refuses rather than choosing.
+
+        Runs what a publish runs, not what `check()` runs: no frequency, literature, identifier, ACMG
+        or PGx pass, because those are egress spent on a verdict and this call is for the bytes. Use
+        `check()` when you want the verdict.
+
+        `spec_dir` may be a directory or a `.tar.gz`/`.zip`; `pack=True` compresses a directory
+        client-side. With `dest`, the archive is written there as well as returned.
+        """
+        self.assert_compatible()
+        resp = self._http.post(
+            f"/modules/{namespace}/{name}/derived",
+            files=spec_upload(spec_dir, pack=pack),
+        )
+        self._raise_for_status(resp)
+        if dest is not None:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(resp.content)
+        return resp.content
+
     def check(
         self,
         namespace: str,
