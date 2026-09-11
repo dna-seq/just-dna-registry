@@ -98,6 +98,55 @@ def test_the_derived_folder_appears_only_when_something_lands_in_it(tmp_path) ->
     assert all(members[name] for name in derived), "an empty member is not a derived table"
 
 
+def test_a_table_that_was_not_produced_is_named_rather_than_simply_missing(tmp_path) -> None:
+    """Absence has two histories and the archive cannot show which, so it enumerates rather than hides.
+
+    A derived table this run did not produce is indistinguishable from one the module has nothing to
+    say about: there is simply no member. `files_absent` makes the first fact readable;
+    `enrichment.notes` carries the reason wherever a pass recorded one. Some skips leave no note at
+    all — a gated source whose credential this deployment lacks writes nothing and says nothing —
+    which is exactly why the list says *not produced here* rather than *this module has none*.
+
+    Reported by `just-module-creator`, whose displacement diff went silent on precisely this shape.
+    """
+    from just_dna_registry.specfiles import DERIVED_FILES
+
+    client = _app(tmp_path)
+    members = _members(_post(client).content)
+    report = json.loads(members[DERIVED_REPORT_FILE])
+
+    produced = {name.split("/", 1)[-1] for name in members if name.startswith(f"{DERIVED_DIR}/")}
+    assert set(report["files_absent"]) == set(DERIVED_FILES) - produced
+    assert report["files_absent"], "every derived table was produced, so this proved nothing"
+    # The two halves partition the roster: nothing is both produced and absent, nothing is neither.
+    assert produced | set(report["files_absent"]) == set(DERIVED_FILES)
+    assert not (produced & set(report["files_absent"]))
+
+    note = members[DERIVED_NOTE_FILE].decode()
+    assert "files_absent" in note
+    assert "not produced here" in note
+
+
+def test_the_note_tells_a_merger_which_sidecar_spelling_to_drop(tmp_path) -> None:
+    """`DERIVED_FILES` emits `licensing.csv` and never `sources.csv`, which is a trap for a merger.
+
+    A consumer resolving the archive's member name against a spec that still carries the deprecated
+    spelling finds nothing and reports no change, while the write lands under the other name — the
+    bug `just-module-creator` hit and filed upstream as their S96. Our side cannot fix their
+    resolution, but it can say plainly which name arrives and which to delete.
+    """
+    from just_dna_registry.specfiles import DERIVED_FILES
+
+    assert "licensing.csv" in DERIVED_FILES and "sources.csv" not in DERIVED_FILES
+
+    client = _app(tmp_path)
+    note = _members(_post(client).content)[DERIVED_NOTE_FILE].decode()
+
+    assert "sources.csv" in note and "licensing.csv" in note
+    assert "delete it" in note
+    assert "sidecar_key" in note, "the note should name the resolution helper, not just the symptom"
+
+
 def test_a_spec_too_broken_to_enrich_fails_like_a_publish(tmp_path) -> None:
     """A 422 with the reasons, not a 200 with an empty archive.
 

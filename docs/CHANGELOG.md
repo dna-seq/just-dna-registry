@@ -70,6 +70,25 @@ Process-wide for the reason `shared_lookup_clients()` is, and deliberately not i
 that database is a rebuildable projection of the published manifests, and a pace ledger is derivable
 from no manifest, so a rebuild would either wipe it or have to preserve rows it cannot derive.
 
+### `/derived` says what it did **not** produce
+
+A table missing from the archive and a table with nothing in it are the same bytes — no member — and
+`just-module-creator`'s displacement diff went silent on exactly that. `check.json` now carries
+`files_absent`, every derived name this run did not produce, and the note says how to read it.
+
+It deliberately does not claim to know *which* history. `enrichment.notes` carries a pass's own
+reason where there is one, and some skips leave none at all: a gated source whose credential this
+deployment lacks — Atlas, for `expression_effects.csv` — writes nothing and says nothing. So the
+entry means *not produced here*, never *this module has none*, and the question may be about the
+server rather than the module. That is this tier's standing rule about empty collections applied to
+an empty *file set*, which is where it had not been applied.
+
+The same note now names the sidecar spelling to drop. `DERIVED_FILES` emits `licensing.csv` and never
+`sources.csv`, so a consumer resolving the member name against a spec still carrying the deprecated
+one finds nothing, reports no change, and writes under the other name — the bug they hit and filed as
+format-tree S96, answered upstream by `layout.sidecar_key` (RM224). Our side cannot fix their
+resolution; it can say which name arrives and which to delete, and point at the helper.
+
 ### The wheels moved, and an S-filing came back as an inverted fix
 
 A sibling session rebuilt `just-dna-format`'s wheels against their current 0.7 branch, which is

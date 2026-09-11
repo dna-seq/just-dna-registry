@@ -53,13 +53,25 @@ attestation, because there is no manifest before a compile. The attestation is t
 hold this service to "these are the bytes it would have compiled", publish and compare
 `artifact.digest`.
 
-## One thing to watch when you merge this back
+## Two things to watch when you merge this back
 
-`{DERIVED_DIR}/licensing.csv` is genuinely both provenances: your authored rows with the enricher's
-merged into them. If your spec directory still carries its own `sources.csv`, you now have two
-spellings of one fact table, and the next upload is a `422 ambiguous_spec_layout` rather than a
-publish — `just_dna_format.layout.resolve_sidecar` raises on two copies rather than preferring one.
-Keep the file from here and drop the old spelling.
+**The licence ledger arrives under its preferred spelling.** `{DERIVED_DIR}/licensing.csv` is
+genuinely both provenances: your authored rows with the enricher's merged into them. It is always
+named `licensing.csv` here — `sources.csv` is the deprecated spelling of the same table and is never
+emitted — so **if your spec directory still carries a `sources.csv`, delete it and keep this file**.
+Leaving both is two spellings of one fact table, and the next upload is a `422 ambiguous_spec_layout`
+rather than a publish: `just_dna_format.layout.resolve_sidecar` raises on two copies rather than
+preferring one. Resolve the name through `layout.sidecar_key` rather than by string-matching, or a
+tool that looks for the spelling your spec happens to use will report no change while a file lands
+under the other one.
+
+**A table missing from this archive is not the same as a table with nothing in it.**
+`{DERIVED_REPORT_FILE}`'s `files_absent` lists every derived name this run did not produce, and
+`enrichment.notes` carries the reason wherever the pass recorded one. Some skips leave no note at
+all — a gated source whose credential this deployment does not hold writes nothing and says nothing —
+so treat an entry in `files_absent` as *"not produced here"*, never as *"this module has none"*.
+Which of the two it is may be a question about the server rather than about your module; `GET /caches`
+answers the snapshot half.
 """
 
 
@@ -163,6 +175,18 @@ def _pack(
         {"name": arcname, "sha256": _digest(data), "size": len(data)}
         for arcname, data in members
     ]
+    # **Absence is a fact, so it is enumerated rather than left to be noticed.** A derived table this
+    # run did not produce has two opposite histories — the module has nothing to say on that axis, or
+    # the pass behind it could not run — and from outside the archive they are indistinguishable:
+    # there is simply no member. `just-module-creator` met the second one and asked for this, and
+    # they are right that it is the same rule this tier already applies to every empty collection.
+    #
+    # It does not claim to know *which* history: that is what `enrichment.notes` is for, where a pass
+    # that skipped records its own reason. Some skips are invisible even there — a gated source whose
+    # credential this deployment lacks (Atlas, for `expression_effects.csv`) writes nothing and says
+    # nothing — so the honest report is "expected, not produced", beside whatever the run did say.
+    produced = {arcname.split("/", 1)[-1] for arcname, _ in members}
+    absent = [name for name in DERIVED_FILES if name not in produced]
     report = {
         "namespace": namespace,
         "name": name,
@@ -176,6 +200,7 @@ def _pack(
             "notes": enrichment.notes,
         },
         "files": listing,
+        "files_absent": absent,
     }
     extras = [
         (DERIVED_REPORT_FILE, json.dumps(report, indent=2, sort_keys=True).encode()),

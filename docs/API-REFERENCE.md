@@ -483,6 +483,16 @@ WHERE-THIS-CAME-FROM.md             # the one caveat that bites; see below
 - **The folder is a consequence of the contents, never a promise ahead of them** — the same rule
   `download(layout="split")` follows. A module that authors its own coordinates and needs no sidecars
   gets a report and a note and no `derived/` at all, which is the honest answer.
+- **`check.json`'s `files_absent` names every derived table this run did not produce**, because
+  absence in the archive has two histories and the bytes cannot show which: the module has nothing to
+  say on that axis, or the pass behind it could not run. `enrichment.notes` carries the reason
+  wherever a pass recorded one — and some skips leave no note at all, since a gated source whose
+  credential this deployment lacks writes nothing and says nothing. So read an entry there as *"not
+  produced here"*, never as *"this module has none"*; `GET /caches` answers the snapshot half of why.
+- **The licence ledger always arrives as `licensing.csv`, never `sources.csv`.** The deprecated
+  spelling is never emitted, so a consumer resolving the member name against a spec that still
+  carries the old one finds nothing, reports no change, and writes under the other name. Resolve
+  through `layout.sidecar_key` rather than by string match. The archive's note says so too.
 - **`check.json`'s digests let a caller verify what arrived; they are not an attestation.** There is
   no manifest before a compile. Attestation is the publish's — to hold this service to *"these are
   the bytes it would have compiled"*, publish and compare `artifact.digest`.
