@@ -28,7 +28,13 @@ ship a branch in and a poor one to *deploy* from, because `TestClient` is exactl
 cannot see a proxy.
 
 So before this serves traffic, drive these five over the wire. Each is a shape where something
-between the caller and the app can change the answer without any test here noticing:
+between the caller and the app can change the answer without any test here noticing.
+
+**If only one gets run, run № 4.** The other four have *some* in-process coverage — the logic is
+tested, only the proxy in front of it is not. `max_upload_bytes` is different in kind: it exists
+**solely** to mirror a cap that lives in HAProxy, so no in-process client can exercise the mirroring
+at all, and it has therefore never once been observed doing its job. A guard whose whole mechanism
+has never been watched working is not a tested guard, whatever the suite says.
 
 1. **An anonymous online hint must be `401`**, not a reverse proxy's own `403` or a redirect.
    `GET /api/v1/hint/variant?rsid=rs4244285&offline=false` with no bearer. The free tier is the
@@ -38,10 +44,9 @@ between the caller and the app can change the answer without any test here notic
 3. **A real multipart upload with a genuine boundary**, to any spec route. The `Content-Type`
    boundary is the header the console's own proxy had to be taught to forward, and nothing
    in-process generates one the way a browser does.
-4. **A body over `max_upload_bytes`.** That setting exists *only* to mirror the deployment's HAProxy
-   request-body cap so an oversized upload gets our structured `413` instead of a severed
-   connection — and no in-process client has a HAProxy in front of it, so the mirroring has never
-   been observed working.
+4. **A body over `max_upload_bytes`** — see above; run this one first. An oversized upload has to
+   come back as our structured `413`, not as a severed connection. If the two caps disagree, the
+   setting is worse than absent: it promises a diagnosis it cannot deliver.
 5. **`registry-client ui` against the deployed host**, which exercises the header whitelist and the
    bearer injection in the one configuration they exist for.
 
