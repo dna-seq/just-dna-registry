@@ -524,6 +524,15 @@ what it is for.
   wrong for any snapshot this deployment does not configure. Nothing is lost: *a snapshot answered*
   is already said by the labels beside it and by the hint's own findings.
 
+  **A note that schedules an action must name the *condition*, never a time.** "Delete this when the
+  floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
+  test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
+  there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,
+  and the check is what catches the case where the fact never became true. Ours was the worst of the
+  three, because it named the action *and* would have removed the guard together with the test that
+  would have caught the regression; the `positionally_joinable` facet is the model to copy, since it
+  says it retires "when the last pre-0.6 version leaves a catalog, **not on a release**".
+
   **A capability check comes out when its fact goes unconditional, never because a floor appears to
   guarantee it.** `served_from`'s path filter will look deletable the day 0.7 is cut, and it is not:
   a floor that was never able to carry the fact does not start carrying it at a release, and there is

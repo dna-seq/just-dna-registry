@@ -631,8 +631,16 @@ def _finalize(
                 # Trust token stamped into the manifest + enforced by just-dna-format's
                 # verify_manifest. Deliberately kept as the legacy value "marketplace-server" across
                 # the registry rebrand: it's an internal token (not user-facing), and changing it
-                # would invalidate every already-published manifest until re-baked. Retire at the
-                # next just-dna-format major cleanup, not here.
+                # would invalidate every already-published manifest until re-baked.
+                #
+                # **The condition for retiring it, not a date.** This said "retire at the next
+                # just-dna-format major cleanup", which names a *time* — and a note that names a time
+                # gets obeyed by whoever is standing there on the day, while one that names the fact
+                # it rests on gets checked. The fact here is not on a release schedule at all: every
+                # published manifest carries this literal and clients verify against it, and those
+                # manifests are immutable, so a major version changes nothing about them. It can be
+                # retired when no manifest a client may still verify carries the old value — which is
+                # a catalog-wide re-bake, not a cleanup, and is checkable by asking the catalog.
                 compiled_by=MARKETPLACE_COMPILED_BY,
                 ensembl_reference=settings.ensembl_reference,
                 # `log_files` / `provenance_file` / `logo_file` are left to the compiler's own
