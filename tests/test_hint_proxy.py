@@ -93,7 +93,18 @@ def test_no_snapshot_path_reaches_the_wire(tmp_path) -> None:
     resp = client.get("/api/v1/hint/variant", params={"rsid": "rs4244285", "offline": True})
 
     assert resp.status_code == 200, resp.text
-    raw = json.dumps(resp.json())
+    body = resp.json()
+    raw = json.dumps(body)
+
+    # **An absence assertion needs its haystack floored, or it passes on an empty one.** This is the
+    # inverse of the split-that-becomes-everything: there the block grows until every name is
+    # "present", here the payload shrinks until no path is "absent". Both end with the check reporting
+    # success about something it never examined. So the body is shown to be the answer we asked for
+    # before anything is asserted to be missing from it.
+    assert body["rsid"] == "rs4244285"
+    assert "cost" in body and "served_from" in body["cost"]
+    assert len(raw) > 200, f"the payload is {len(raw)} bytes — too small to have carried an answer"
+
     assert str(cache) not in raw
     assert str(tmp_path) not in raw
 

@@ -540,6 +540,13 @@ what it is for.
   wrong for any snapshot this deployment does not configure. Nothing is lost: *a snapshot answered*
   is already said by the labels beside it and by the hint's own findings.
 
+  **Generalise on the way out, not while documenting.** Every rule in this section was already a
+  habit somewhere in this tree, correct, in the file where it was invented — `test_ui.py` had both
+  denominator floors before any newer test missed them. The moment to catch that is not while writing
+  documentation; it is **while writing the second instance of something**, asking what the first one
+  knew. Neither of the two sessions that found all of this did that, and both wrote the second
+  instance beside the first.
+
   **A note that schedules an action must name a *condition*, never a time — and the condition has to
   be one somebody can go and check.** "A condition you cannot query is a schedule wearing different
   words" is the sharper form, and it is the test to apply to your own replacement: the
@@ -601,6 +608,14 @@ what it is for.
   it empties, so `REFERENCE_NAMES <= cache_lanes()` is already safe and `PANEL_SOURCES <=
   DRAFT_SOURCES` was not. Triage by asking *"if the foreign enumeration came back empty, does this
   still pass?"*, never by pattern.
+
+  **Two more shapes, both of which make an assertion vacuous by moving the haystack rather than the
+  count.** Where a denominator comes from *splitting text*, floor the **split**: the marker exists,
+  and the block is neither empty nor the whole file — a heading that moves turns the haystack into
+  everything, and every name is then "present". The inverse is an **absence** assertion: `X not in
+  body` passes on an empty body, so show the haystack is the answer you asked for before asserting
+  what is missing from it. A count sees neither, because the block is the wrong *size* rather than
+  the wrong length.
 
   **And for a *search*, the floor is an anchor rather than a count** — you cannot count what is
   outside the search path. When a sweep reports a name as undefined, look up the one you are most
