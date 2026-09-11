@@ -562,6 +562,38 @@ number is worth spending, because that cost is ours and differs per consumer.
 - **No sweep, no migration, no schema move.** Format and compiler stay at 0.6.1; a compiler patch is
   deliberately not a contract gap (0.18.0), and this is not even that.
 
+## 0.25 — the caching proxy ✅
+
+The registry becomes the box other people borrow snapshots from. Four surfaces, all shipped:
+`GET /caches` (which lanes are here, and for an absent one why), `POST .../derived` (the enriched
+tables a client with no Ensembl cache cannot make), `POST /drafts` (the drafters rented out) and
+`/hint/*` (the authoring lookups, metered per upstream). The principle and the rules it turns on are
+in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surface is in the changelog.
+
+**Still open, and deliberately:**
+
+- **A console page for the hint proxy.** The cache dashboard got one; the hints did not, because the
+  console is a publisher-and-operator surface and a variant lookup is an authoring one. If
+  `just-module-creator` or the webui wants it, it is a page over routes that already exist and needs
+  no API change.
+- **A durable pace ledger.** `pacing.PaceLedger` is process-local, like `RateLimiter` and with the
+  same consequences written down: two replicas is two budgets, a restart forgives a streak. That is
+  honest for one instance and wrong for a horizontally scaled one, and the fix is a shared store —
+  **not** a table in the catalog DB, which is a rebuildable projection of the manifests and would
+  either wipe the ledger on reindex or have to preserve rows it cannot derive.
+- **Production and the polygon share one IP** (`57.128.215.86`, confirmed by resolution and
+  independently by `just-module-creator`). So they share gnomAD's single unbuyable allowance while
+  each holds its own process-local gate *and* its own process-local ledger. This is already true of
+  `/check` today; the hint proxy makes it easy to reach. Until that is untangled, the polygon should
+  run with `REGISTRY_HINT_ALLOW_GNOMAD=false` — which is the default — and any argument in this repo
+  that reasons about per-instance limits should be re-read knowing there is one budget, not two.
+- **Upstream, filed as S91–S95** in the format tree: a read-only `lane_status()` in `caches.py`;
+  `LookupClients`' three lazy-build semantics; the absolute snapshot paths in the lookup payload; a
+  resolver-ladder rung pointing at a peer; and a spend counter on `PacingGate`. The first three are
+  the ones that would remove work from here rather than add it.
+
+---
+
 ## Next registry version (post-0.11)
 
 - **Name the format release a rejected column arrived in** (**severity medium, open — blocked on the

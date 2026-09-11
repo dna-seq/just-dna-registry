@@ -333,11 +333,22 @@ Four rules that each cost a bug to learn:
   permit is now about the *budget*, not about the race: the pace is shared, so concurrent runs interleave
   on one spacing rather than going faster, and `enrich_max_concurrency` stays 1 as a latency choice
   rather than a correctness one.
-  **And the bundle has to be *constructed*: bare `LookupClients()` is six `None`s.** Its docstring's
+  **And the bundle has to be *constructed*: bare `LookupClients()` is eight `None`s.** Its docstring's
   "lazily built" describes `lookup.py`, whose functions do `clients.x or XClient()` and close what
   they made — nothing fills the dataclass. An empty bundle passes `None` into every `resolver=` /
   `gnomad_client=` / `eutils=` argument, so each pass builds its own client, the pacing is per call
-  again, and `close_lookup_clients` closes nothing. `shared_lookup_clients()` builds all six.
+  again, and `close_lookup_clients` closes nothing. `shared_lookup_clients()` builds all eight.
+
+  **It said "six" until 0.25, and the two it was missing were not a rounding error.** That dataclass
+  carries **three different lazy-build semantics and which one a field gets is invisible at the call
+  site**: `_lookup_live_loci` and `lookup_old_assembly` assign the client they build *back onto the
+  caller's bundle*, so a shared bundle ends up pacing those whether you filled the field or not;
+  `_check_pmcid` and `_lookup_frequencies` build-and-close per call, so an unfilled field there is
+  per-request pacing however shared the bundle is. `gnomad` happened to be filled and `pmc_idconv`
+  did not, which made the citation leg the one that would have egressed unpaced the moment it was
+  exposed over HTTP. **Fill every field; do not reason about which ones matter** — the reasoning is
+  what was wrong, not the count. Filed upstream as the real fix: one constructor, or one uniform
+  lazy path.
 - **`offline` means *snapshot only*, not "that source is off" (enricher 0.5.1 / RM38).** Every pass
   is snapshot → live → skipped-with-a-reason, so a provisioned deployment gets the full `?pgx=` check
   with zero egress. Assuming the family is online-only silently skips work a cache could have done.
@@ -436,6 +447,77 @@ PharmVar's terms §2 — so on a public deployment third parties would query it 
 with no credential, and it is the one cache nothing publishes (the bulk data comes down under that
 same key), so an operator builds it once. That is also why the concurrency gate is not merely a cost
 control: it is the only thing holding our aggregate rate inside a limit we cannot buy our way out of.
+
+---
+
+## The caching proxy (0.25) — what this box holds, other people can borrow
+
+**A thin client's cache miss is answered by the registry, and the registry's own miss is answered by
+the remote source.** The enricher's snapshot lanes are fourteen artifacts running to tens of
+gigabytes, and every consumer that is not a provisioned server — a module author, an agent, a
+`just-module-creator` session, a `just-dna-lite` install — has none of them. This box has them. So the
+authoring half of the ecosystem, which was reachable only by whoever had already downloaded the
+caches, is reachable through here: `GET /caches` says what is held, `POST .../derived` hands back the
+enriched tables, `POST /drafts` runs the drafters, and `/hint/*` answers the lookups.
+
+**It is an authoring and publish-time surface, and saying so is what keeps it one.** Annotation at
+install time stays self-contained — a compiled module's parquets carry what a join needs — and if that
+ever stops being true this whole layer has become a runtime dependency for every install, which is not
+what it is for.
+
+- **Drafting is still authoring-side and this service still drafts nothing of its own.** The recorded
+  position above was about a `registry upgrade` sweep and it stands: a re-draft is not a catalog
+  migration, and nothing here re-drafts a published module. What `POST /drafts` does is *rent the
+  drafters out* — and it is stateless for exactly the reason that section gives, that a re-draft over
+  an existing spec appends corrected rows beside the ones they supersede. The server holds nothing
+  between calls, so it cannot do that to anyone across two of them.
+- **Snapshot-only is the default on every one of these, and `offline=true` is the free tier.** A
+  request path never downloads (a missing snapshot is a well-defined error, not a five-minute pull
+  inside a handler), and an answer served from a snapshot costs the deployment nothing. That is the
+  whole product, so it is what an anonymous caller gets.
+- **The meter is per upstream and the units are not exchangeable.** `pacing.PaceLedger` is the third
+  layer under `RateLimiter` (one caller's request rate) and `EnrichmentGate` (the process's
+  concurrency): it answers *how much of a budget we cannot buy has this caller spent today, against
+  which upstream*. One fungible egress counter would let a caller spend gnomAD's unbuyable
+  ten-per-minute allowance at the price of a three-per-second eutils call. gnomAD's allowance is two
+  orders of magnitude below the others and the reason sits beside the number.
+- **The decay is a multiple of the upstream's own spacing, read off the client that paces it** — not
+  a constant. `EutilsClient` picks 10/s with `NCBI_API_KEY` set and 3/s without, so a literal in
+  `UPSTREAMS` describes the wrong deployment half the time. `PaceLedger(intervals=…)` is filled at
+  boot from the live clients; the constants are the fallback.
+- **The cooldown is on the allowance, not the tier.** Carrying the tier down one step per clean day
+  was the first design and has a hole a caller can sit in forever: spending exactly twice the
+  allowance every day ends each day at tier 1, carries 0, and returns the whole free tier every
+  morning. Halving the allowance per consecutive over-day ratchets, and one clean day restores it.
+- **A remedy is per upstream, and three of the four are not "get a key".** gnomAD sells none at any
+  price, NCBI's paces whoever holds it (so ours cannot help a caller and theirs must not be sent
+  here), OLS4 and HGNC issue none. The only remedy true everywhere is the point of the release:
+  provision the snapshot, or run the enricher yourself. A generic "obtain an API key" is a lie the
+  caller can check.
+- **Use the batch, and know why.** An online *single* variant lookup egresses unconditionally —
+  `_check_rsid_currency` puts every rsID to dbSNP whatever the snapshot said, because merge status has
+  no snapshot in this tree. `POST /hint/variants` runs the offline pass over every key at zero cost
+  and goes online only for the misses. A test asserts zero charge **and** zero egress with the socket
+  tripwire armed; if that stops holding, this is a proxy and not a cache.
+- **No filesystem path leaves the process, on any of these routes.** `VariantHint.checked` holds an
+  absolute snapshot path, one finding interpolates it into prose, and `DraftReport.path` is absolute
+  too. All are mapped to lane names. The tests assert it against the *rendered* body using paths this
+  box actually resolves, not a list of likely-looking prefixes — a prefix list passes on a machine
+  whose caches live somewhere it did not think of.
+- **`lane_status()` composes `lane_presence()`; it does not resolve a second time.** Two projections
+  of one lane registry is the drift `CACHE_LANES` and `6ddd430` each exist to end. And `absent` is
+  three states, not one: `partial` (a directory holding something that is not a readable snapshot) is
+  the one provisioning *refuses* to act on rather than overwriting, so reporting it as absent tells an
+  operator to run a pull that is going to decline.
+- **An unregistered rate-limit category is silently unlimited.** `RateLimiter.allow` returns `True`
+  for a category nobody put in `CATEGORIES`, so a route that egresses must land its bucket in the same
+  commit as the route. `hint` and `draft` are there; the next one has to be.
+- **`client_cli` may import nothing from `services/`.** Those modules import `just_dna_compiler` at
+  module level and that tier is an optional extra, so one such import turns `registry-client` into an
+  `ImportError` on every base install. Shared names live in `specfiles`. A guard walks the
+  module-level imports of `client.py` and `client_cli.py`; it checks *top-level* imports only, because
+  a guarded `try/except ImportError` inside a function is the documented exception and is how
+  `content_signature` reaches the compiler tier without requiring it.
 
 ---
 
