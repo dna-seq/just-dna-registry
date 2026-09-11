@@ -569,7 +569,18 @@ what it is for.
   the project's own interpreter.
 
   Where only half a condition is answerable, say which half the command settles and which is left as
-  a decision. "Delete this when the
+  a decision.
+
+  **And check the probe before believing it.** Sweeping this repo's docs for flags that no longer
+  exist, the first pass reported *"3 flags exist, 64 named in docs are absent"* — the traversal never
+  descended, because `TyperGroup` is not an `isinstance` of `click.Group` in the installed click, so
+  it read the two root commands and stopped. Three flags across two full CLIs is not a finding, it is
+  a broken instrument, and reporting it would have manufactured sixty-four phantom defects for
+  somebody to chase. Fixed (duck-type on `.commands`), it reports 109 real flags and **seven** doc
+  mentions that are not ours — ruff's `--fix`, uv's `--isolated/--no-project/--with`, the enricher's
+  `--no-verify-clinsig`, and the triage scripts' `--pending/--next`, all correct in context. A sweep
+  whose count is implausible is reporting on itself; sanity-check the denominator before reading the
+  numerator. "Delete this when the
   floor moves to 0.7", "retire at the next major cleanup", "when RM44 lands, delete the facet and the
   test" — all three of those existed in this ecosystem, and they share a tell: whoever is standing
   there on the named day will simply obey. A note naming the fact it rests on gets *checked* instead,
