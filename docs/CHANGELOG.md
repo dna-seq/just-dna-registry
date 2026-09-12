@@ -6,6 +6,47 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased]
+
+**`.env.template` had gone stale by 38 of 83 settings, and `REGISTRY_MODE` was one of them.** The
+file was last touched on 2026-08-10, before 0.12 introduced deployment modes — so the one variable
+that governs every irreversible decision on a box, and that refuses to boot on a typo, was
+discoverable only by reading `config.py`. Also absent: the whole 0.25 hint proxy (nine settings), six
+rate-limit buckets, the console switch, backups, artifact signing, self-registration and quotas,
+five enrichment switches, and seven of the fifteen cache lanes.
+
+Found from a report that the AlphaGenome API key had no entry. It still does not have a
+`REGISTRY_`-prefixed one, and the template now says why rather than leaving the absence to be read
+as an oversight: nothing in this service reads that key. The registry neither runs the AlphaGenome
+check nor builds its data — the key belongs to the enricher's AVI *build* path, which is
+authoring-side and gated, and provisioning the `alphagenome_avi` lane here is a **pull** from
+HuggingFace (the 88.5 GB source sits behind an eligibility gate this tier cannot pass), so it needs
+`HF_TOKEN` instead. `ALPHAGENOME_API_KEY` is documented as the bare variable the enricher reads
+directly, beside `NCBI_API_KEY` and `PHARMVAR_API_KEY`, with its output terms noted — they travel
+inside derivatives.
+
+`alphagenome_avi` is also the one lane of fifteen with no per-lane setting, and that is by design
+rather than drift: `lane_destinations` resolves a lane with no override under the shared base every
+lane already agrees on. The template says so, because 14 of 15 having one makes the fifteenth look
+like a gap.
+
+**Three tests now hold the file to the code**, since the real defect was that nothing did. Every
+`Settings` field must appear, every `REGISTRY_*` name in the file must still be a field (documenting
+a removed knob is worse than documenting none — an operator sets it, sees no effect, and cannot tell
+a typo from a retirement), and every lane in `CACHE_LANES` must be mentioned. A field with a
+`validation_alias` counts under any of its choices, which is how `HF_TOKEN` and `NCBI_API_KEY` pass
+under the conventional spellings the template documents on purpose.
+
+**The first version of the settings test passed with `REGISTRY_MODE` deleted from its own block**,
+because it searched the whole file for the string and the prose two paragraphs up says the words
+"`REGISTRY_MODE` in a unit file". Prose is not a documented knob — an operator copies this file and
+uncomments lines — so the match is anchored to the start of a line with an optional comment marker.
+That is this repo's vacuous-assertion rule at a new haystack: the check was reporting on itself, and
+only deliberately breaking the file in three ways showed which of the three checks could actually
+see it.
+
+**Client surface: unchanged.**
+
 ## [0.25.1] — 2026-09-12
 
 **`python -m just_dna_registry.cli` was serving a CLI six commands short, and `backup` was one of
