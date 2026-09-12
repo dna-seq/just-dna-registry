@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased]
+## [0.25.1] — 2026-09-12
 
 **`python -m just_dna_registry.cli` was serving a CLI six commands short, and `backup` was one of
 them.** The `if __name__ == "__main__": app()` guard sat above the 0.11 operator block rather than at
