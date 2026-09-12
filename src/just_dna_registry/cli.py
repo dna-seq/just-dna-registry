@@ -990,11 +990,32 @@ def warm_caches(
         elif name not in selected:
             typer.echo(f"  – {name} {tag}: not selected")
         elif name in pullable:
-            typer.secho(
-                f"  ✗ {name} {tag}: not provisioned — pull"
-                + (" (licence-gated)" if name in gated else ""),
-                fg=typer.colors.YELLOW,
-            )
+            # **A gated lane says what the gate is, in the listing.** `--apply` already prints
+            # upstream's full sentence ("clinpgx forbids sale and no use was declared…"), but the
+            # listing is what an operator reads *first* and decides from, and "(licence-gated)" alone
+            # named neither the source, the term, nor the flag. Beside `pharmvar`, which carries its
+            # whole reason, it read as an unexplained failure of the same kind — the "a new report
+            # field is only half a fix" rule, at the renderer.
+            note = "not provisioned — pull"
+            if name in gated:
+                terms = getattr(lane_obj, "terms", None)
+                source = getattr(terms, "source", name)
+                if declared == "unstated":
+                    note += (
+                        f" — WILL BE SKIPPED: {source} forbids sale and no use is declared. "
+                        f"Add `--use non-commercial` to record one"
+                    )
+                elif declared == "commercial":
+                    note += (
+                        f" — WILL BE REFUSED: {source} forbids sale and this deployment declares "
+                        f"commercial use"
+                    )
+                else:
+                    note += f" (licence-gated: {source}, {declared} declared)"
+                url = getattr(terms, "license_url", None)
+                if url:
+                    note += f" ({url})"
+            typer.secho(f"  ✗ {name} {tag}: {note}", fg=typer.colors.YELLOW)
             missing.append(name)
         elif lane_obj.rebuild is not None:
             # Not a failure to report as one. Nothing publishes it, and the lane says why in its own
@@ -1033,10 +1054,15 @@ def warm_caches(
     # and `--source acmg=<workbook>` still wins for an operator who does have the build extra.
     fetch_failures = 0
     if "acmg" in missing and "acmg" not in sources:
-        acmg_dest = lane_destinations(settings).get("acmg")
+        # `lane_destinations` returns None to mean *the lane's own default*, not "unresolved" — and
+        # by here `export_lane_locations` has already published any configured path into
+        # `JUST_DNA_ACMG_CACHE`, so the lane's bare `default_dir()` IS the configured one. Treating
+        # None as an error made `REGISTRY_ACMG_SNAPSHOT_DIR` mandatory, which it is not: it is an
+        # override of where the snapshot lives, and a box that sets nothing has a perfectly good
+        # default under the shared cache base.
+        configured = lane_destinations(settings).get("acmg")
         try:
-            if acmg_dest is None:
-                raise ValueError("no destination resolved — set REGISTRY_ACMG_SNAPSHOT_DIR")
+            acmg_dest = Path(configured) if configured is not None else lanes["acmg"].default_dir()
             detail = _fetch_acmg_snapshot(settings, Path(acmg_dest))
         except (httpx.HTTPError, ValueError, OSError) as exc:
             typer.secho(

@@ -8,6 +8,34 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+**`REGISTRY_ACMG_SNAPSHOT_DIR` was made mandatory by mistake.** The fetch read
+`lane_destinations()`, whose `None` means *"the lane's own default"* — the docstring says so — and
+treated it as "unresolved", so a box that configured nothing got
+`FAILED — no destination resolved`. By that point `export_lane_locations` has already published any
+configured path into `JUST_DNA_ACMG_CACHE`, so the lane's bare `default_dir()` **is** the configured
+one; that is the same reasoning `_lane_directory` records for the reporting path. The setting is an
+override of where the snapshot lives, never a requirement: with nothing set the fetch now lands under
+the shared cache base and the pass reads it there. Verified with no `REGISTRY_*` cache variable at all.
+
+**A licence-gated lane now says what the gate is *in the listing*.** `drug_labels` reported only
+`not provisioned — pull (licence-gated)` — naming neither the source, the term, nor the flag — while
+`pharmvar` beside it carried its whole reason ("a key PharmVar's terms §2 make personal and
+non-transferable"). So two lanes blocked for completely different causes read as the same
+unexplained failure, and the one that was one flag away from working looked like the harder case.
+
+The information already existed: `--apply` prints upstream's full sentence. It just never reached the
+pre-apply listing, which is what an operator reads first and decides from — this repo's *"a new
+report field is only half a fix"* rule, arriving at the renderer again. The listing now predicts the
+outcome per declaration, derived from the lane's own `SourceTerms` rather than a sentence written
+here: `WILL BE SKIPPED` under `unstated` with the `--use` remedy and the licence URL, `WILL BE
+REFUSED` under `commercial`, and the plain gated note once a use is declared.
+
+Worth stating because it is the counter-intuitive part: **declaring more gets you less.**
+`commercial` is a harder refusal than saying nothing, because the licence forbids sale outright —
+`unstated` is merely "nobody has said", which is a skip.
+
+**Client surface: unchanged.**
+
 **`warm-caches --checks --apply` now fetches the ACMG SF list, and the advice it replaces was wrong
 in a way worth naming.** This file and `docs/UPGRADE.md` told an operator to provision the lane with
 `--source acmg=<workbook.xlsx>`, "with a workbook you hold". Two things were wrong with that. A
