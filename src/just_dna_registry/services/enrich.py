@@ -92,8 +92,11 @@ PGX_REFERENCES: tuple[str, ...] = ("cpic", "pharmvar", "clinpgx")
 #: had the ACMG pass falling back to a live page — which through 0.6 served SF **v3.2** while the
 #: current list is v3.3, a check silently answering about last year's genes.
 #:
-#: Nothing publishes it: the SF workbook is ACMG/Elsevier supplementary material and no one grants
-#: redistribution, so the lane's only route is a local build from a workbook the operator holds. That
+#: Nothing *upstream* publishes it: the SF workbook is ACMG/Elsevier supplementary material and no one
+#: grants redistribution of it. Upstream's only route is therefore a local build from a workbook the
+#: operator holds — which a deployment cannot run at all, since that build needs `openpyxl` (a `[dev]`
+#: extra there, in no extra here). So `warm-caches` fetches the *built* list instead, from this repo's
+#: `assets/acmg_sf/` via `acmg_snapshot_url`; see `cli._fetch_acmg_snapshot`. That
 #: is a reason, not a failure, and `warm-caches` reports it as the lane's own recorded sentence.
 CHECK_REFERENCES: tuple[str, ...] = ("acmg",)
 

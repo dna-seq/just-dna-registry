@@ -62,13 +62,43 @@ on your own catalog: a version compiled under the release you now hold has an em
 nothing is declared and nothing acts.
 
 **4. `registry warm-caches --all` before you decide you are provisioned.** The command reported six
-lanes through 0.23 and the enricher has fourteen, so a box that looked fully warmed may not be. The
-one that matters here is **`acmg`**: this service reads it for the `?acmg=` check, the setting existed,
-and the provisioning command never mentioned it — so a deployment with no ACMG snapshot has been
-falling back to a live page serving SF **v3.2** while the current list is v3.3. Nothing publishes that
-lane (the SF list is ACMG/Elsevier supplementary material), so provisioning it means
-`registry warm-caches --checks --apply --source acmg=<workbook.xlsx>` with a workbook you hold. A lane
-that cannot run unattended is reported as such and is **not** a failure.
+lanes through 0.23 and the enricher's registry now carries **fifteen** (`alphagenome_avi` is the
+fifteenth, added after this note first said fourteen), so a box that looked fully warmed may not be.
+Read the count from `caches.CACHE_LANES` rather than from this sentence — that is the whole point of
+deriving the set instead of writing it down.
+
+The one that matters here is **`acmg`**: this service reads it for the `?acmg=` check, the setting
+existed, and the provisioning command never mentioned it — so a deployment with no ACMG snapshot has
+been falling back to a live page serving SF **v3.2** while the current list is v3.3. A lane that
+cannot run unattended is reported as such and is **not** a failure.
+
+**"A workbook you hold" was the stale part, and there is now nothing to hold.** `warm-caches` fetches
+the built list:
+
+    registry --mode <prod|test> warm-caches --checks --apply
+
+**Why a fetch and not a build.** Upstream's only build path reads ACMG's supplementary workbook
+through `openpyxl` — a `[dev]` extra there, and a dependency of no extra here — so a deployment
+cannot run that build *whatever* workbook it has, and fetching the workbook would not change that.
+Nor is a checkout an answer: a deployment has none. What travels is the **built** list, two small
+files the pass reads with the standard library, so a box needs no new dependency. It comes from this
+repo's `assets/acmg_sf/`, deliberately outside `src/` and therefore not inside the published wheel;
+`REGISTRY_ACMG_SNAPSHOT_URL` repoints it at a fork, a mirror or an air-gapped copy, and an explicit
+`--source acmg=<workbook.xlsx>` still wins for whoever does have the build extra.
+
+Provenance survives the fetch: `release.json` carries the DOI (`10.1016/j.gim.2025.101454`) and the
+workbook's own `source_sha256`, so a fetched snapshot says exactly what it was built from. The
+workbook itself is ACMG/Elsevier supplementary material and is not redistributed. Driven end to end
+over HTTP on 2026-09-12 — v3.3, 84 genes; a 404 and an HTML page served with a `200` both fail
+without writing anything, since a directory holding a non-snapshot is the `partial` state
+provisioning refuses to touch.
+
+The distinction worth keeping: **v3.2 is not something we fetch by choice, it is what the only
+scrapeable source publishes.** NCBI's adaptation of ACMG Table 1 is the sole machine-reachable form
+and it is a year behind; a disagreement against it is as likely to be the list being old as the
+module being wrong, which is why the enricher demotes those to `unverifiable` rather than
+`mismatches`. Configuring the snapshot is what replaces a guess with an answer — and with neither a
+snapshot nor a network the pass reports `unchecked`, a question never put rather than a negative.
 
 **5. Re-pin anything holding an `artifact.digest`.** Every module's digest moves at a contract cut, and
 from 0.7 a digest no longer reproduces across two compiles of one spec wherever a clinical-significance

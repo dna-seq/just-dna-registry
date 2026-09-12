@@ -13,14 +13,18 @@ Three things worth pinning that no HTTP test reaches:
   whether a deployment can be pinned at all.
 """
 
+import json
 import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from unittest import mock
 
+import httpx
 import pytest
 
+from just_dna_registry import cli
 from just_dna_registry.config import Settings
 from just_dna_registry.models.api import SpecStats
 from just_dna_registry.services.enrich import (
@@ -929,3 +933,42 @@ def _shadowed_handlers(source: str) -> list[str]:
                     )
             seen.extend(caught)
     return offenders
+
+
+def test_acmg_snapshot_fetch_writes_only_a_real_snapshot(tmp_path: Path) -> None:
+    """`_fetch_acmg_snapshot` parses before it writes, so a bad URL leaves no partial lane.
+
+    This lane is the one a server has no other route to: upstream's only build path reads ACMG's
+    supplementary workbook through `openpyxl`, a `[dev]` extra there and a dependency of no extra
+    here, so `prepare_caches` can only ever report it unbuildable. Fetching the *built* list is the
+    route — two files the pass reads with the standard library.
+
+    A 404 or an HTML error page arriving with a 200 must not land on disk, because a directory
+    holding something that is not a readable snapshot is the `partial` state `prepare_lane` refuses
+    to act on — so a bad fetch would turn a missing lane into one an operator has to clear by hand.
+    """
+    settings = Settings(acmg_snapshot_url="https://example.invalid/acmg")
+
+    # A payload that is served successfully but is not a snapshot.
+    def _html(url: str, **_: object) -> httpx.Response:
+        return httpx.Response(200, text="<html>not a snapshot</html>", request=httpx.Request("GET", url))
+
+    dest = tmp_path / "acmg"
+    with mock.patch.object(httpx, "get", _html), pytest.raises((ValueError, json.JSONDecodeError)):
+        cli._fetch_acmg_snapshot(settings, dest)
+    assert not dest.exists() or not list(dest.iterdir()), "a non-snapshot was written to disk"
+
+    # The real shape round-trips, and the detail line names the version the pass will read.
+    release = {"sf_version": "3.3", "gene_count": 84, "doi": "10.1016/j.gim.2025.101454"}
+    csv_body = "gene,gene_id,disease\nABCD1,,X-linked adrenoleukodystrophy\n"
+
+    def _good(url: str, **_: object) -> httpx.Response:
+        body = json.dumps(release) if url.endswith("release.json") else csv_body
+        return httpx.Response(200, text=body, request=httpx.Request("GET", url))
+
+    with mock.patch.object(httpx, "get", _good):
+        detail = cli._fetch_acmg_snapshot(settings, dest)
+
+    assert "3.3" in detail and "84" in detail, detail
+    assert (dest / "acmg_sf.csv").read_text() == csv_body
+    assert json.loads((dest / "release.json").read_text())["sf_version"] == "3.3"

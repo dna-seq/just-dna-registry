@@ -1,0 +1,12 @@
+{
+  "sf_version": "3.3",
+  "source_url": "https://doi.org/10.1016/j.gim.2025.101454",
+  "source_file": "acmg_sf_v3.3.xlsx",
+  "source_sha256": "sha256:6dd829bb2c92e7b2236806e23250dab39f93c1f93db86bdc022b801bdb11fe0c",
+  "doi": "10.1016/j.gim.2025.101454",
+  "gene_count": 84,
+  "row_count": 100,
+  "built_at": "2026-09-02T23:17:30Z",
+  "builder": "just_dna_enricher.acmg_build",
+  "source_note": "ACMG SF v3.3 supplementary workbook (Miller et al. 2025). Built from the workbook with just_dna_enricher.acmg_build; source_sha256 pins the exact workbook bytes. The workbook itself is ACMG/Elsevier supplementary material and is not redistributed here \u2014 this is the derived gene list the ?acmg= pass reads."
+}

@@ -8,6 +8,47 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+**`warm-caches --checks --apply` now fetches the ACMG SF list, and the advice it replaces was wrong
+in a way worth naming.** This file and `docs/UPGRADE.md` told an operator to provision the lane with
+`--source acmg=<workbook.xlsx>`, "with a workbook you hold". Two things were wrong with that. A
+deployment **cannot run that build at all**: upstream's only build path reads ACMG's supplementary
+workbook through `openpyxl`, a `[dev]` extra there and a dependency of no extra here — so holding the
+workbook would not have helped, and neither would fetching it. And the first correction attempted
+here was worse — it pointed at `../just-dna-format/assets/`, a sibling checkout, which exists on a
+dev box and on no deployment.
+
+What travels is the **built** list: `acmg_sf.csv` plus a `release.json`, read by the pass with the
+standard library, so a box needs no new dependency and no checkout. It is fetched from this repo's
+`assets/acmg_sf/`, deliberately outside `src/` and therefore **not** in the published wheel — the
+derived list is served on request rather than shipped inside an artifact we publish.
+`REGISTRY_ACMG_SNAPSHOT_URL` repoints it at a fork, a mirror or an air-gapped copy, and an explicit
+`--source acmg=<workbook>` still wins for whoever does have the build extra.
+
+Provenance survives: `release.json` carries the DOI (`10.1016/j.gim.2025.101454`) and the workbook's
+own `source_sha256`, so a fetched snapshot says exactly what it was built from. The workbook itself
+is ACMG/Elsevier supplementary material and is not redistributed here.
+
+**It parses before it writes**, because a directory holding something that is not a readable snapshot
+is the `partial` state provisioning refuses to act on — so a bad fetch would turn a missing lane into
+one an operator has to clear by hand. Driven end to end over HTTP: v3.3, 84 genes; a 404 and an HTML
+page served with a `200` both fail leaving nothing on disk. A failed fetch also drops the lane from
+the provisioning set rather than passing it to `prepare_caches`, which has no route for it and was
+reporting a *second*, different failure naming a path the fetch never used — two contradictory
+sentences about one lane, with the misleading one last.
+
+**What this does not change:** v3.2 is not something we fetch by choice. NCBI's adaptation of ACMG
+Table 1 is the only machine-reachable form of the list and it is a year behind, which is why a
+disagreement against it is demoted to `unverifiable` rather than counted as a mismatch. Configuring
+the snapshot is what replaces a guess with an answer.
+
+Also corrected: the lane count had gone stale at **fourteen** in four places (`docs/UPGRADE.md` and
+three in `docs/API-REFERENCE.md`) now that `alphagenome_avi` is the fifteenth — the
+`@counted-prose-needs-a-fixed-field` failure again, a number no test reads being true the day it is
+written. The UPGRADE.md sentence now points at `caches.CACHE_LANES` instead of restating the number.
+
+**Client surface: unchanged.**
+
+
 **`.env.template` had gone stale by 38 of 83 settings, and `REGISTRY_MODE` was one of them.** The
 file was last touched on 2026-08-10, before 0.12 introduced deployment modes — so the one variable
 that governs every irreversible decision on a box, and that refuses to boot on a typo, was

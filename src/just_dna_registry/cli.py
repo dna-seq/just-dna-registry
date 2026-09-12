@@ -905,6 +905,7 @@ def warm_caches(
         enricher_available,
         export_lane_locations,
         gated_lanes,
+        lane_destinations,
         lane_presence,
         provisionable_lanes,
         pullable_lanes,
@@ -1026,6 +1027,39 @@ def warm_caches(
     for var, value in sorted(export_lane_locations(settings).items()):
         typer.echo(f"  · {var}={value}")
 
+    # **ACMG before the enricher gets a say, because the enricher has no route for it here.** Its
+    # only build path needs `openpyxl` (a `[dev]` extra upstream, in no extra of ours), so
+    # `prepare_caches` can only report the lane as unbuildable. Fetching the built list is the route,
+    # and `--source acmg=<workbook>` still wins for an operator who does have the build extra.
+    fetch_failures = 0
+    if "acmg" in missing and "acmg" not in sources:
+        acmg_dest = lane_destinations(settings).get("acmg")
+        try:
+            if acmg_dest is None:
+                raise ValueError("no destination resolved — set REGISTRY_ACMG_SNAPSHOT_DIR")
+            detail = _fetch_acmg_snapshot(settings, Path(acmg_dest))
+        except (httpx.HTTPError, ValueError, OSError) as exc:
+            typer.secho(
+                f"✗ acmg: FAILED — {type(exc).__name__}: {exc}", fg=typer.colors.RED, err=True
+            )
+            typer.secho(
+                "   set REGISTRY_ACMG_SNAPSHOT_URL, or build it where you have the workbook "
+                "and openpyxl: `just-dna-enricher acmg build --out <dir>`.",
+                fg=typer.colors.YELLOW, err=True,
+            )
+            fetch_failures = 1
+        else:
+            typer.secho(f"✓ acmg: fetched — {detail}", fg=typer.colors.GREEN)
+        # Out of `missing` either way. Leaving it in on failure hands the lane to `prepare_caches`,
+        # which has no route for it and reports a *second*, different failure naming a path we did not
+        # use — two contradictory sentences about one lane, and the misleading one last.
+        missing = [name for name in missing if name != "acmg"]
+
+    if not missing:
+        if fetch_failures:
+            raise typer.Exit(code=1)
+        return
+
     from just_dna_enricher.caches import prepare_caches
 
     outcomes = prepare_caches(
@@ -1034,7 +1068,7 @@ def warm_caches(
         pins=pins or None,
         sources=sources or None,
     )
-    failures = 0
+    failures = fetch_failures
     for outcome in outcomes:
         if outcome.ready is True:
             typer.secho(f"✓ {outcome.lane}: {outcome.route} — {outcome.detail}", fg=typer.colors.GREEN)
@@ -1083,6 +1117,44 @@ def _lane_pairs(pairs: list[str], flag: str, lanes: dict[str, Any]) -> dict[str,
             raise typer.Exit(code=2)
         out[name] = Path(value) if flag == "--source" else value
     return out
+
+
+def _fetch_acmg_snapshot(settings: Settings, dest: Path) -> str:
+    """Download the built ACMG SF list into `dest`, returning a one-line detail for the report.
+
+    **The one lane a server has no other route to, and `openpyxl` is the reason.** Upstream's only
+    build path reads ACMG's supplementary workbook through `openpyxl`, a `[dev]` extra there and a
+    dependency of no extra here — so a deployment cannot run that build whatever workbook it holds,
+    and fetching the workbook would not change that. What travels is the *built* list: `acmg_sf.csv`
+    plus `release.json`, read by the pass with the standard library, so this needs no new dependency
+    and no checkout on the box.
+
+    `release.json` carries the DOI and the workbook's own `source_sha256`, so a fetched snapshot still
+    says exactly what it was built from — the workbook itself is ACMG/Elsevier supplementary material
+    and is not redistributed.
+    """
+    base = settings.acmg_snapshot_url.rstrip("/")
+    payload: dict[str, bytes] = {}
+    for filename in ("acmg_sf.csv", "release.json"):
+        resp = httpx.get(f"{base}/{filename}", timeout=60.0, follow_redirects=True)
+        resp.raise_for_status()
+        payload[filename] = resp.content
+
+    # Parse before writing: a 404 page or an HTML error that arrived with a 200 must not land on disk
+    # as a snapshot, which is the `partial` state `prepare_lane` refuses to act on.
+    release = json.loads(payload["release.json"])
+    version = release.get("sf_version")
+    genes = release.get("gene_count")
+    if not version or not genes:
+        raise ValueError(f"release.json from {base} names no sf_version/gene_count: {release!r}")
+    header = payload["acmg_sf.csv"].split(b"\n", 1)[0].decode()
+    if "gene" not in header:
+        raise ValueError(f"acmg_sf.csv from {base} has no gene column, got header {header!r}")
+
+    dest.mkdir(parents=True, exist_ok=True)
+    for filename, content in payload.items():
+        (dest / filename).write_bytes(content)
+    return f"SF v{version}, {genes} genes → {dest}"
 
 
 def _looks_like_auth(detail: str) -> bool:

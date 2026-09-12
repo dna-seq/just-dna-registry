@@ -462,7 +462,7 @@ same.
 
 **Why the route exists.** The compiler never fetches, so `resolution.csv` is what places
 rsID-authored rows onto coordinates, and producing it needs the Ensembl and ClinVar snapshots. Those
-run to tens of gigabytes across fourteen lanes; this box has them and an author's laptop does not. So
+run to tens of gigabytes across fifteen lanes; this box has them and an author's laptop does not. So
 the tables have to *travel with* a spec for that spec to compile anywhere else, and until now the
 only way to get them was to become a provisioned box. `GET /caches` says which lanes this deployment
 actually holds before you ask.
@@ -711,7 +711,7 @@ arrive by and the reason it has not.
 ```
 
 This is the registry answering *"what can I lean on you for?"* — the question a client without the
-multi-gigabyte snapshots has to ask before deciding whether to provision fourteen of its own, and the
+multi-gigabyte snapshots has to ask before deciding whether to provision fifteen of its own, and the
 question a publisher has after a `/check` reported a source skipped.
 
 - **Three states, not two.** `present` · `absent` · **`partial`**, where the directory holds
@@ -740,7 +740,7 @@ question a publisher has after a `/check` reported a source skipped.
   enumerate lane state through `/check`, which needs the `PUBLISH` capability.
 - **Reports only.** Nothing here downloads or builds anything — that is `registry warm-caches`, an
   operator command on the box that holds the caches, deliberately not a request-path concern.
-- `enricher_available: false` is one deployment fact rather than fourteen separate failures: the
+- `enricher_available: false` is one deployment fact rather than fifteen separate failures: the
   `server` extra is what carries `just-dna-enricher`, and a client that cannot tell the two apart
   tells an operator to provision snapshots on a box with nothing to read them with.
 

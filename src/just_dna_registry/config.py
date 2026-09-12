@@ -146,6 +146,29 @@ class Settings(BaseSettings):
     pharmvar_cache: Path | None = None
     clinpgx_cache: Path | None = None
     acmg_snapshot_dir: Path | None = None
+    #: Where `warm-caches --checks --apply` fetches the built ACMG SF snapshot from when the lane is
+    #: absent and no `--source` was given.
+    #:
+    #: **This lane is the one with no other route on a server, and openpyxl is why.** Upstream's only
+    #: build path reads ACMG's supplementary *workbook* through `openpyxl`, which is a `[dev]` extra
+    #: there and is not a dependency of any extra here — so a deployment cannot build this snapshot
+    #: at all, whatever workbook it holds. Fetching the workbook would not help for the same reason.
+    #: What travels instead is the *built* list: two small files that the pass reads with the standard
+    #: library, so a box needs no new dependency and no checkout.
+    #:
+    #: Pointed at this repo's own `assets/acmg_sf/`, which is deliberately outside `src/` and so is
+    #: **not** in the wheel — the derived list is fetched on request rather than shipped inside a
+    #: published artifact. The workbook itself is ACMG/Elsevier supplementary material and is not
+    #: redistributed; `release.json` carries the DOI and the workbook's `source_sha256`, so a fetched
+    #: snapshot still says exactly what it was built from.
+    #:
+    #: Without it the `?acmg=` pass falls back to scraping NCBI's adaptation of ACMG Table 1, the only
+    #: machine-reachable form of the list — and that page serves SF **v3.2** while ACMG published
+    #: **v3.3** in June 2025. A disagreement against the page is then as likely to be the list being a
+    #: year old as the module being wrong, which is why the enricher demotes those to `unverifiable`.
+    acmg_snapshot_url: str = (
+        "https://raw.githubusercontent.com/dna-seq/just-dna-registry/main/assets/acmg_sf"
+    )
 
     # The authoring lanes (0.25). Nothing on the *publish* path reads these — they are what the
     # drafting endpoint runs against, which is the first thing here to open a lane no publish opens.
