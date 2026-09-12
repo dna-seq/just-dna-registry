@@ -26,9 +26,17 @@ unexplained failure, and the one that was one flag away from working looked like
 The information already existed: `--apply` prints upstream's full sentence. It just never reached the
 pre-apply listing, which is what an operator reads first and decides from — this repo's *"a new
 report field is only half a fix"* rule, arriving at the renderer again. The listing now predicts the
-outcome per declaration, derived from the lane's own `SourceTerms` rather than a sentence written
-here: `WILL BE SKIPPED` under `unstated` with the `--use` remedy and the licence URL, `WILL BE
-REFUSED` under `commercial`, and the plain gated note once a use is declared.
+outcome per declaration by **calling `check_declared_use`** — the same function `prepare_caches`
+gates on — so the forecast cannot drift from what `--apply` then does.
+
+**Deriving it was not the first attempt, and the first attempt was wrong in the expensive
+direction.** `gated_lanes()` means *"has recorded terms"*, not *"forbids sale"*, and a version of
+this line restated the rule in our own words on that assumption. `alphagenome_avi` records terms and
+has `commercial_use=True`, so `check_declared_use` returns `None` for it on every declaration and no
+declaration is needed — but the line told an operator it "forbids sale and no use is declared".
+Predicting a refusal that will not happen is worse than saying nothing: it sends someone to argue
+with a licence they already satisfy. A test now asserts no lane permitting sale can be described as
+skipped, refused, or forbidding sale, with floors on both halves of the partition.
 
 Worth stating because it is the counter-intuitive part: **declaring more gets you less.**
 `commercial` is a harder refusal than saying nothing, because the licence forbids sale outright —

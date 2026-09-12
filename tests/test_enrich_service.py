@@ -35,6 +35,7 @@ from just_dna_registry.services.enrich import (
     EnrichOutcome,
     _render_notes,
     available_references,
+    cache_lanes,
     clin_sig_skip_note,
     configured_caches,
     enricher_available,
@@ -972,3 +973,40 @@ def test_acmg_snapshot_fetch_writes_only_a_real_snapshot(tmp_path: Path) -> None
     assert "3.3" in detail and "84" in detail, detail
     assert (dest / "acmg_sf.csv").read_text() == csv_body
     assert json.loads((dest / "release.json").read_text())["sf_version"] == "3.3"
+
+
+@pytest.mark.skipif(not enricher_available(), reason="the network tier is not installed")
+def test_gate_forecast_does_not_invent_a_refusal_for_a_lane_that_permits_sale() -> None:
+    """`gated` means "has recorded terms", not "forbids sale", and the two must not be conflated.
+
+    `alphagenome_avi` records terms *and* has `commercial_use=True`, so `check_declared_use` returns
+    None for it on every declaration — no declaration is needed. A first cut of the forecast assumed
+    gated implied no-sale and told an operator the lane "forbids sale and no use is declared", which
+    predicts a skip that will not happen and sends someone to argue with a licence they already
+    satisfy.
+
+    The four CC-BY-SA lanes are the opposite case and must still forecast a skip under `unstated` and
+    a refusal under `commercial`, because that is what the fetch will actually do.
+    """
+    from just_dna_registry.cli import _gate_forecast
+
+    lanes = cache_lanes()
+    permits_sale = [n for n, o in lanes.items() if o.terms is not None and o.terms.commercial_use is True]
+    forbids_sale = [n for n, o in lanes.items() if o.terms is not None and o.terms.commercial_use is False]
+
+    # Floors: an emptied lane registry or a terms refactor would make both loops vacuous.
+    assert permits_sale, "no lane with commercial_use=True — the case this test exists for is gone"
+    assert len(forbids_sale) >= 3, f"only {len(forbids_sale)} no-sale lanes, expected the PGx family"
+
+    for name in permits_sale:
+        for declared in ("unstated", "non_commercial", "commercial"):
+            line = _gate_forecast(lanes[name], declared)
+            assert "WILL BE SKIPPED" not in line, f"{name}/{declared}: invented a skip — {line}"
+            assert "WILL BE REFUSED" not in line, f"{name}/{declared}: invented a refusal — {line}"
+            assert "forbids sale" not in line, f"{name}/{declared}: claimed a no-sale term — {line}"
+
+    for name in forbids_sale:
+        assert "WILL BE SKIPPED" in _gate_forecast(lanes[name], "unstated")
+        assert "WILL BE REFUSED" in _gate_forecast(lanes[name], "commercial")
+        settled = _gate_forecast(lanes[name], "non_commercial")
+        assert "WILL BE" not in settled, f"{name}: a declared use should proceed — {settled}"

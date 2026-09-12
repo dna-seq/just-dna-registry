@@ -996,26 +996,10 @@ def warm_caches(
             # named neither the source, the term, nor the flag. Beside `pharmvar`, which carries its
             # whole reason, it read as an unexplained failure of the same kind — the "a new report
             # field is only half a fix" rule, at the renderer.
-            note = "not provisioned — pull"
-            if name in gated:
-                terms = getattr(lane_obj, "terms", None)
-                source = getattr(terms, "source", name)
-                if declared == "unstated":
-                    note += (
-                        f" — WILL BE SKIPPED: {source} forbids sale and no use is declared. "
-                        f"Add `--use non-commercial` to record one"
-                    )
-                elif declared == "commercial":
-                    note += (
-                        f" — WILL BE REFUSED: {source} forbids sale and this deployment declares "
-                        f"commercial use"
-                    )
-                else:
-                    note += f" (licence-gated: {source}, {declared} declared)"
-                url = getattr(terms, "license_url", None)
-                if url:
-                    note += f" ({url})"
-            typer.secho(f"  ✗ {name} {tag}: {note}", fg=typer.colors.YELLOW)
+            forecast = _gate_forecast(lane_obj, declared) if name in gated else "pull"
+            typer.secho(
+                f"  ✗ {name} {tag}: not provisioned — {forecast}", fg=typer.colors.YELLOW
+            )
             missing.append(name)
         elif lane_obj.rebuild is not None:
             # Not a failure to report as one. Nothing publishes it, and the lane says why in its own
@@ -1143,6 +1127,38 @@ def _lane_pairs(pairs: list[str], flag: str, lanes: dict[str, Any]) -> dict[str,
             raise typer.Exit(code=2)
         out[name] = Path(value) if flag == "--source" else value
     return out
+
+
+def _gate_forecast(lane: Any, declared: str) -> str:
+    """What `declared_use` will do to this lane, asked of upstream's own gate rather than restated.
+
+    **`gated_lanes()` means "has recorded terms", not "forbids sale"**, and conflating the two got a
+    sentence wrong in the one direction that matters: `alphagenome_avi` records terms *and* permits
+    commercial use, so it needs no declaration at all, and a first cut of this line told an operator
+    it "forbids sale and no use is declared". Predicting a refusal that will not happen sends someone
+    to argue with a licence they already satisfy.
+
+    So the forecast calls `check_declared_use`, which is the function `prepare_caches` itself gates
+    on — three outcomes: raise (a declared `commercial` against a no-sale source), a reason string (a
+    skip: nothing declared, or terms that could not be established), or `None` to proceed. Deriving
+    it means this cannot drift from what `--apply` then does, which restating it in our own words
+    demonstrably could.
+    """
+    terms = getattr(lane, "terms", None)
+    if terms is None:  # not gated; the caller checked, but do not assume it
+        return "pull"
+    from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
+
+    try:
+        reason = check_declared_use(terms, declared)
+    except LicenseRefusal as exc:
+        return f"WILL BE REFUSED: {exc}"
+    if reason is not None:
+        # No remedy appended: upstream's reason already ends with "Re-run with --use non-commercial
+        # to record a declaration", and saying it twice in one line is how a message stops being read.
+        return f"WILL BE SKIPPED: {reason}"
+    settled = "no declaration needed" if terms.commercial_use is True else f"{declared} declared"
+    return f"pull (licence-gated: {terms.source}, {settled})"
 
 
 def _fetch_acmg_snapshot(settings: Settings, dest: Path) -> str:
