@@ -6,12 +6,16 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [0.25.0] — unreleased
+## [0.25.0] — 2026-09-12
 
 **Release gate, and it is not a formality: deploy both instances on format 0.7 *before* this package
 reaches PyPI.** 0.25.0's base dependency is `just-dna-format>=0.7.0` (`pyproject.toml:67`), so the day
 this is published a `uv sync` on any clean consumer checkout resolves format to 0.7.0 — and both live
-boxes still answer `0.6.1` (re-measured 2026-09-11). `assert_compatible` then refuses `validate`,
+boxes still answer `0.6.1` (re-measured 2026-09-11). **Upstream cut 0.7.0 on 2026-09-12, so the gate
+is now live rather than hypothetical**: the tag and the GitHub release are the whole of this cut, and
+the PyPI upload is deliberately withheld until both instances serve 0.7. Tagging reaches no index —
+there is no CI in this repo, checked rather than assumed — so the artifacts exist without arming
+anything. `assert_compatible` then refuses `validate`,
 `check`, `publish`, `import` and `download` against production *and* the polygon, with reads still
 working, which is what makes it read as a partial outage rather than a version skew.
 
@@ -60,13 +64,27 @@ documents inheriting from upstream, minted locally instead. `just-module-creator
 outside and had already made their own probe symbol-based, which is why it cost nobody anything.
 Stamp at the cut next time.
 
-**`pyproject.toml` reads 0.25.0 and the environment still reports 0.24.0, deliberately.** This branch
-inherits 0.24's state: `just-dna-format` 0.7.0 is bumped upstream and tagged nowhere, so `uv.lock` is
-deliberately stale (main's content, PyPI 0.6.6) and **`uv sync` must not be run here** — it would
-resolve that lock and downgrade the format tier out from under a branch that needs 0.7.0 from the
-sibling checkout's `dist/`. The editable install's `dist-info` therefore lags the version until the
-cut, which is where the relock belongs. Run the suite with the venv directly, or
-`UV_FIND_LINKS=/data/sources/just-dna-format/dist uv run`, and restore `uv.lock` before committing.
+**`just-dna-format` 0.7.0 is cut, and `uv.lock` resolves the whole tier from PyPI again.** For most of
+this branch's life 0.7.0 was bumped upstream and tagged nowhere, so the lock was held at main's
+content (PyPI 0.6.6) on purpose, `uv sync` was not to be run here, and the suite ran either against
+the venv directly or with `UV_FIND_LINKS` pointed at the sibling checkout's `dist/`. Upstream
+published on 2026-09-12 and the relock landed here, which is where it always belonged. `uv run
+pytest -q` is the plain form again, and the branch note in `CLAUDE.md` that carried the workaround is
+deleted — its stated condition was met, which is the point of writing a condition instead of a date.
+
+Two things were measured rather than assumed before that was written down, because a version number
+is not an identity. Every installed file is byte-identical to its PyPI wheel's own `RECORD` — 144 of
+144 across the three packages — and the sibling's local `dist/` wheels and sdists hash equal to what
+PyPI serves, all six. So the artifacts this branch was developed against and the published ones are
+the same bytes, not merely the same version. The `Generator:` line differs between the tiers
+(`uv 0.12.13` for format and compiler, `hatchling 1.32.0` for the enricher) and that is upstream's
+own build choice, visible inside the PyPI wheels themselves; it is not a local-build tell, which is
+the thing it most looks like.
+
+The relock also swept up roughly twenty transitive pins along with the tier — anyio 4.14.2 → 4.15.1,
+click 8.4.2 → 8.5.0, cryptography 50.0.0 → 50.0.1 among them. That assembly is the one the suite is
+green on (555 passed) and the one this release was cut from; relocking minimally afterwards would
+have shipped an assembly nobody had run, which is the argument the 0.6.4 floor was taken on.
 
 **Client surface: unchanged.** No `RegistryClient` method moved. Nine were added —
 `cache_status()`, `derived()`, `draft()` and the six `hint_*` wrappers — with one route each; a new
@@ -472,7 +490,7 @@ disturbs nothing else. The standing advice in `CLAUDE.md` — do not write a flu
 block — is demoted from *the thing preventing data loss* to ordinary writing guidance, because it was
 never something we could ask of a report already filed. Owed to the gist, which holds the same bug.
 
-## [0.24.0] — unreleased, and not installable
+## [0.24.0] — 2026-09-11 (tagged retrospectively at the 0.7 cut; never published to an index)
 
 **Client surface: unchanged.** No `RegistryClient` method *moved*. One was added —
 `set_short_description` — and one route with it, `PATCH /modules/{ns}/{name}/short-description`; a
@@ -491,6 +509,16 @@ sibling checkout's `dist/` is machine-specific and would pin a pre-cut snapshot 
 `uv sync` on this branch fails on the floor until 0.7.0 is published, which is the honest state and the
 loud one; relock at the cut. *Answered, in the tree, cut and installable are four different states* —
 upstream's rule, and it applies to this entry.
+
+**Settled on 2026-09-12, and both halves of the paragraph above moved.** Upstream cut 0.7.0 to PyPI,
+so the relock happened in 0.25.0 and this entry's "not installable from an index" is history rather
+than a warning. The `variant_impact_agreement` caveat is also retired: the published 0.7.0 carries it
+(`VALID_VERIFICATION_CHECKS` holds 26 members, RM193 among them), because the `dist/` wheels were
+rebuilt from post-AlphaGenome upstream before the upload — and those rebuilt wheels hash equal to what
+PyPI now serves. The reason the caveat was harmless is the part worth keeping, since it is a rule and
+not a fact about one snapshot: nothing in this repo validates a check name against its own copy of
+that vocabulary. The tag on this version is a marker for where the work landed; nothing was ever
+built or published from it.
 
 ### The overlay, and the one item with a deadline
 
