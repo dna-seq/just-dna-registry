@@ -2,6 +2,10 @@
 and reset the catalog while keeping the keys. `reset-db` is gated behind a typed RESET confirmation.
 The Ed25519 signing key is a separate PEM file (not in the DB) — untouched by any of this."""
 
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -104,3 +108,53 @@ def test_reset_db_cli_requires_typed_confirmation(tmp_path: Path, monkeypatch) -
     ok = runner.invoke(app, ["reset-db"], input="RESET\n")
     assert ok.exit_code == 0 and "catalog reset" in ok.stdout
     get_settings.cache_clear()  # don't leak the temp settings to other tests
+
+
+def test_python_m_registers_every_command_the_console_script_does() -> None:
+    """`python -m just_dna_registry.cli` must expose the same commands as the `registry` script.
+
+    The module executes top to bottom under `-m`, so a `if __name__ == "__main__": app()` guard
+    placed above any `@app.command` calls `app()` before those commands are registered. The guard
+    sat above the 0.11 operator block and cost six of them on that entry point only — `warm-caches`,
+    `backup`, `list-backups`, `restore-backup`, `purge-test-data` and `rederive-signatures` —
+    while the console script, which imports the module and never trips the guard, listed all of
+    them. So `--help` was simultaneously right and wrong depending on how you started it, and the
+    missing one that matters is `backup`: every destructive ops command is documented as snapshotting
+    first.
+
+    An import-based check cannot see this — importing the module runs every decorator regardless of
+    where the guard sits — so both entry points are driven as subprocesses.
+    """
+    def commands(argv: list[str]) -> set[str]:
+        out = subprocess.run(
+            argv + ["--help"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "COLUMNS": "200", "NO_COLOR": "1"},
+            check=True,
+        ).stdout
+        # Typer frames the command table; a row starts with the name in the first column.
+        return {
+            m.group(1)
+            for line in out.splitlines()
+            if (m := re.match(r"^\W*\b([a-z][a-z0-9-]{2,})\b\s{2,}\S", line))
+        }
+
+    module = commands([sys.executable, "-m", "just_dna_registry.cli"])
+    # `info.name` is None where a command was registered as a bare `@app.command()`, so fall back
+    # to the callback name the way Typer renders it. Filtering the Nones out instead is what made a
+    # first version of this test report 24 of 31 and blame the CLI.
+    registered = {
+        info.name or (info.callback.__name__.replace("_", "-") if info.callback else "")
+        for info in app.registered_commands
+    } - {""}
+
+    # Floor first: an empty or barely-populated parse makes the comparison below vacuous.
+    assert len(registered) >= 25, f"only {len(registered)} commands registered — CLI broken"
+    assert len(module) >= 25, f"parsed only {len(module)} from -m help — parser broken, not the CLI"
+
+    missing = registered - module
+    assert not missing, f"`python -m` is missing registered commands: {sorted(missing)}"
+    # The six the misplaced guard actually cost, named so a regression says which.
+    for late in ("warm-caches", "backup", "list-backups", "restore-backup", "purge-test-data"):
+        assert late in module, f"{late} not exposed under `python -m`"

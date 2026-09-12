@@ -813,10 +813,6 @@ def revoke_account(account: str, yes: bool = typer.Option(False, "--yes", "-y"))
     typer.echo(f"revoked {repo.revoke_api_keys_for_account(account)} key(s)")
 
 
-if __name__ == "__main__":
-    app()
-
-
 # ── 0.11 operator commands ────────────────────────────────────────────────────
 
 
@@ -1288,3 +1284,12 @@ def purge_test_data(
         f"{len(plan.accounts)} account(s); {len(plan.disowned_versions)} version(s) disowned",
         fg=typer.colors.GREEN,
     )
+
+
+# Last in the file on purpose. `python -m just_dna_registry.cli` executes the module top to bottom,
+# so a guard placed mid-file calls `app()` before the commands below it are registered — this sat
+# above the 0.11 operator block and cost six of them, `backup` included, on that entry point only.
+# The console script (`registry`) imports the module and never trips the guard, so `--help` was
+# right there and wrong under `python -m`, which is the hard direction to notice.
+if __name__ == "__main__":
+    app()

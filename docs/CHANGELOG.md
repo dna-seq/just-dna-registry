@@ -6,6 +6,31 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased]
+
+**`python -m just_dna_registry.cli` was serving a CLI six commands short, and `backup` was one of
+them.** The `if __name__ == "__main__": app()` guard sat above the 0.11 operator block rather than at
+the end of the file, so under `-m` the module executed top to bottom and called `app()` before
+`warm-caches`, `backup`, `list-backups`, `restore-backup`, `purge-test-data` and
+`rederive-signatures` had been registered. The console script (`registry`) imports the module and
+never trips the guard, so it listed all 31 — `--help` was right and wrong at the same time depending
+on how you started it, which is the hard direction to notice.
+
+Found while checking that `registry warm-caches`, which `docs/UPGRADE.md` step 4 tells an operator to
+run, exists at all: it does, and the probe was reading the entry point that cannot see it. The
+missing one that matters is `backup`, because every destructive ops command here is documented as
+snapshotting first — and the guard hid it from the entry point somebody reaching for a
+module-qualified command is most likely to use.
+
+The regression test drives **both** entry points as subprocesses and diffs the command sets, because
+an import-based check cannot see this: importing the module runs every decorator regardless of where
+the guard sits. It carries a denominator floor for the same reason the console's guards do, and a
+first version of it reported 24 of 31 and blamed the CLI — `info.name` is `None` for a bare
+`@app.command()`, so the Nones have to resolve to the callback name rather than be filtered out. It
+was run against the reintroduced bug before being kept: it names the six.
+
+**Client surface: unchanged.**
+
 ## [0.25.0] — 2026-09-12
 
 **Release gate, and it is not a formality: deploy both instances on format 0.7 *before* this package
