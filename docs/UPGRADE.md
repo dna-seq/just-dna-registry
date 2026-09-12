@@ -1,13 +1,38 @@
 # Contract upgrades & the stale-module procedure
 
-## 0.24 format 0.7 adoption (operator note — a coordinated cut, and not yet installable)
+## 0.24 format 0.7 adoption (operator note — a coordinated cut)
 
-**Do not start this procedure until `just-dna-format` 0.7.0 is published.** Upstream has bumped all
-three packages to 0.7.0 and tagged none of them, so the floor in `pyproject.toml` resolves to nothing
-on an index and `uv sync` fails. That failure is deliberate and loud: `uv.lock` is not regenerated on
-this branch, because a lock resolving 0.7.0 out of a sibling checkout's `dist/` would be
-machine-specific and would pin a pre-cut snapshot for everyone who ran it. When the release is cut,
-`uv lock && uv sync` and continue below.
+**Runnable as of 2026-09-12: `just-dna-format` 0.7.0 is published.** The gate that used to open this
+section is met — upstream cut all three packages to PyPI, `uv.lock` is regenerated on `main`, and
+`uv sync` resolves the floor. Nothing needs `UV_FIND_LINKS` any more.
+
+**But this package is not on PyPI yet, and that ordering is the point.** 0.25.0's base dependency is
+`just-dna-format>=0.7.0`, so publishing it before the instances are upgraded would make
+`assert_compatible` refuse `validate`, `check`, `publish`, `import` and `download` while reads kept
+working — a partial outage rather than a version skew, arming `just-module-creator`'s S20 from our
+side. So the instances go first, from the tagged wheel:
+
+    # on each box, from a checkout at the tag
+    git fetch --tags && git checkout v0.25.0
+    uv sync
+
+Confirm the tier actually moved before going on — the version the box *serves* is the one that
+matters, not the one in the lock. `/health` does **not** carry it; `/api/v1/version` does, and the
+field is `format`. Both of these were run verbatim on 2026-09-12 before being written here:
+
+    curl -s https://module-registry.just-dna.life/api/v1/version
+    curl -s https://module-polygon.just-dna.life/api/v1/version
+
+On that date both answered `{"api":"v1","registry":"0.18.2","format":"0.6.1","compiler":"0.6.1",…}`
+— so **the live boxes are seven releases behind, not one**, and this section alone does not describe
+their upgrade. Going 0.18.2 → 0.25.0 crosses *two* coordinated format cuts, 0.6.1 → 0.6.6 (the 0.20
+note below) and 0.6.6 → 0.7.0 (this one). Read and run 0.20's section, then 0.21's, then this one, in
+that order; each names a sweep whose trigger the next one's compiler stamp depends on. A box that
+jumps straight here has a catalog whose pre-0.6.6 versions were never re-baselined, and RM121's
+`stats.genes` fix is the one that goes quietly missing — `?gene=` returns less than it should and
+nothing fails.
+
+Both must report `"format": "0.7.0"` before this package is published to PyPI.
 
 **It is a contract cut.** The format minor moves 0.6 → 0.7, so `version.contract_compatible` refuses
 every client still on 0.6 — align them in the same window — and `registry upgrade` scores every
