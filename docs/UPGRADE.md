@@ -24,13 +24,17 @@ field is `format`. Both of these were run verbatim on 2026-09-12 before being wr
     curl -s https://module-polygon.just-dna.life/api/v1/version
 
 On that date both answered `{"api":"v1","registry":"0.18.2","format":"0.6.1","compiler":"0.6.1",…}`
-— so **the live boxes are seven releases behind, not one**, and this section alone does not describe
-their upgrade. Going 0.18.2 → 0.25.0 crosses *two* coordinated format cuts, 0.6.1 → 0.6.6 (the 0.20
-note below) and 0.6.6 → 0.7.0 (this one). Read and run 0.20's section, then 0.21's, then this one, in
-that order; each names a sweep whose trigger the next one's compiler stamp depends on. A box that
-jumps straight here has a catalog whose pre-0.6.6 versions were never re-baselined, and RM121's
-`stats.genes` fix is the one that goes quietly missing — `?gene=` returns less than it should and
-nothing fails.
+— so **the live boxes are seven releases behind**, and the jump crosses what were two coordinated
+cuts when they landed separately, 0.6.1 → 0.6.6 and 0.6.6 → 0.7.0.
+
+**It is still one sweep, not three, and this is worth being precise about.** A version stamped
+`0.6.1` is not `contract_compatible` with an installed `0.7.0` — the minor differs — so
+`compute_gap` scores it `GAP_CONTRACT` (`services/upgrade.py:442`), and `contract` is the one scale
+that acts on its own. One `registry upgrade --apply` recompiles it, under compiler 0.7.0, which
+carries RM121. So the `stats.genes` fix arrives with the contract recompile rather than needing
+0.20's `--force`: that fallback is superseded twice over, by 0.21 measuring the drift and by the
+contract gap subsuming it here. Read 0.20's and 0.21's sections to know *what* the one sweep picks
+up and how to read its output — do not run their sweeps in sequence first.
 
 Both must report `"format": "0.7.0"` before this package is published to PyPI.
 
