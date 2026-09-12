@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased]
+## [0.25.2] — 2026-09-12
 
 **`REGISTRY_ACMG_SNAPSHOT_DIR` was made mandatory by mistake.** The fetch read
 `lane_destinations()`, whose `None` means *"the lane's own default"* — the docstring says so — and
@@ -41,8 +41,6 @@ skipped, refused, or forbidding sale, with floors on both halves of the partitio
 Worth stating because it is the counter-intuitive part: **declaring more gets you less.**
 `commercial` is a harder refusal than saying nothing, because the licence forbids sale outright —
 `unstated` is merely "nobody has said", which is a skip.
-
-**Client surface: unchanged.**
 
 **`warm-caches --checks --apply` now fetches the ACMG SF list, and the advice it replaces was wrong
 in a way worth naming.** This file and `docs/UPGRADE.md` told an operator to provision the lane with
@@ -81,8 +79,6 @@ Also corrected: the lane count had gone stale at **fourteen** in four places (`d
 three in `docs/API-REFERENCE.md`) now that `alphagenome_avi` is the fifteenth — the
 `@counted-prose-needs-a-fixed-field` failure again, a number no test reads being true the day it is
 written. The UPGRADE.md sentence now points at `caches.CACHE_LANES` instead of restating the number.
-
-**Client surface: unchanged.**
 
 
 **`.env.template` had gone stale by 38 of 83 settings, and `REGISTRY_MODE` was one of them.** The

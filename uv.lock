@@ -575,7 +575,7 @@ wheels = [
 
 [[package]]
 name = "just-dna-registry"
-version = "0.25.1"
+version = "0.25.2"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
