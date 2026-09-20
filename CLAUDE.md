@@ -638,13 +638,20 @@ what it is for.
   three states, not one: `partial` (a directory holding something that is not a readable snapshot) is
   the one provisioning *refuses* to act on rather than overwriting, so reporting it as absent tells an
   operator to run a pull that is going to decline.
-- **An unregistered rate-limit category is silently unlimited.** `RateLimiter.allow` returns `True`
-  for a category nobody put in `CATEGORIES`, so a route that egresses must land its bucket in the same
-  commit as the route. This line said "`hint` and `draft` are there" from 0.25.0 to 0.25.2, and `hint`
-  was not: six routes asked for it, `rate_hint_per_hour` sat unread, and the guard compared
-  `CATEGORIES` to `default_limiter`'s keys — two hand-kept sets that agreed with each other. The guard
-  now reads the route side off the app (each `rate_limit(...)` dependency carries `rate_category`),
-  so the next unregistered bucket fails a test rather than a sentence here.
+- **An unregistered rate-limit category is silently unlimited.** `RateLimiter.take` answers
+  *allowed* for a category nobody put in `CATEGORIES`, so a route that egresses must land its bucket
+  in the same commit as the route. This line said "`hint` and `draft` are there" from 0.25.0 to
+  0.25.2, and `hint` was not: six routes asked for it, `rate_hint_per_hour` sat unread, and the guard
+  compared `CATEGORIES` to `default_limiter`'s keys — two hand-kept sets that agreed with each other.
+  The guard now reads the route side off the app (each `rate_limit(...)` dependency carries
+  `rate_category`), so the next unregistered bucket fails a test rather than a sentence here.
+  **Two more rules from S23 (0.26).** The bucket is a route *dependency*, so it resolves before the
+  handler reaches the concurrency gate: a handler that refuses before doing the work the bucket
+  prices must `refund_rate_charge`, or a `503 enrichment_busy` costs the caller a run that never
+  happened. And a `429`'s `detail` is the bare string `"rate_limited"`, compared with `==` by clients
+  since 0.4.4 — every new fact about a refusal goes in a header (`Retry-After` from the bucket's own
+  refill, `X-RateLimit-Bucket`), never into that string, and reaches the SDK's `RegistryError`, the
+  CLI's `_CliClient.__exit__` and the console's `ApiError` in the same patch.
 - **`client_cli` may import nothing from `services/`.** Those modules import `just_dna_compiler` at
   module level and that tier is an optional extra, so one such import turns `registry-client` into an
   `ImportError` on every base install. Shared names live in `specfiles`. A guard walks the

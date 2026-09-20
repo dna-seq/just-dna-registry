@@ -23,6 +23,7 @@ from just_dna_registry import client_cli
 from just_dna_registry.client import (
     ModeMismatchError,
     RegistryClient,
+    RegistryError,
     gather_spec_files,
     split_derived,
 )
@@ -392,6 +393,34 @@ async def test_a_429_reaches_the_sdk_with_its_bucket_and_wait(tmp_path) -> None:
     # An error with no such headers answers None rather than raising — every other status.
     bare = RegistryError(404, "module_not_found")
     assert bare.retry_after is None and bare.bucket is None and bare.headers == {}
+
+
+async def test_the_cli_client_explains_a_429_on_the_way_out(tmp_path, capsys) -> None:
+    """The renderer half: `registry-client` explains a `429` from `_CliClient.__exit__`, once, for
+    every command — so a `typer.Exit(1)` replaces the `RegistryError` while it is propagating, and
+    what reaches the terminal names the bucket and the wait rather than `HTTP 429: rate_limited`."""
+    from just_dna_registry.api.app import create_app
+    from just_dna_registry.config import Settings
+
+    settings = Settings(
+        db_path=tmp_path / "m.db", local_storage_dir=tmp_path / "a", rate_search_per_min=1
+    )
+    tc = TestClient(create_app(settings))
+
+    def run() -> None:
+        with client_cli._CliClient(
+            "http://testserver", None, transport=tc._transport, check_version=False
+        ) as c:
+            c.list_modules()
+            c.list_modules()
+
+    with pytest.raises(typer.Exit) as caught:
+        await asyncio.to_thread(run)
+    assert caught.value.exit_code == 1
+    assert isinstance(caught.value.__cause__, RegistryError)
+    out = capsys.readouterr().out
+    assert "rate limited" in out and "`search` bucket" in out
+    assert f"{math.ceil(60 / settings.rate_search_per_min)}s" in out
 
 
 async def test_check_threads_pgx_and_declared_use(sdk, tmp_path) -> None:

@@ -97,7 +97,7 @@ def _walk_routes(routes):
 
 @pytest.mark.parametrize("mode", ["prod", "test"])
 def test_every_route_bucket_is_registered(tmp_path: Path, mode: str) -> None:
-    """`RateLimiter.allow` returns True for a category nobody registered, so a route asking for a
+    """`RateLimiter.take` answers *allowed* for a category nobody registered, so a route asking for a
     bucket that `default_limiter` does not build is *silently unlimited*.
 
     Through 0.25.2 this compared `CATEGORIES` to `default_limiter`'s keys — two hand-kept sets that

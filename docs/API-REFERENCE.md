@@ -3,7 +3,11 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.25.x**, API `v1` (0.15 added no route; it wrapped an
+- **Normative for:** registry **0.14.x–0.26.x**, API `v1` (**0.26 adds no route**: a `429
+  rate_limited` gains a computed `Retry-After` and an `X-RateLimit-Bucket` header, the body unchanged,
+  and a `503 enrichment_busy` no longer spends the `enrich` token; the `hint` bucket every `/hint/*`
+  route names is registered, where through 0.25.2 it was not and those routes were unlimited.
+  0.15 added no route; it wrapped an
   existing one in the CLI. 0.16 added no route either: one response field on the dry runs, and a
   verdict that stopped disagreeing with the publish gate. **0.17 adds no route** — it adopts format
   0.6, which adds five query parameters to `GET /modules`, three blocks to the module detail, and
