@@ -6,6 +6,27 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased]
+
+**The `hint` rate bucket was asked for by six routes and registered by none, so the hint proxy
+shipped unlimited.** `rate_hint_per_hour` (600) has been in `Settings` and `.env.template` since 0.25,
+every `/hint/*` route carries `rate_limit("hint")`, and API-REFERENCE promises anonymous callers
+"the `hint` request bucket" — but `RateLimiter.allow` answers `True` for a category nobody put in
+`default_limiter`, and `hint` was in neither that dict nor `CATEGORIES`. The bucket is registered
+now, at the documented default. The per-upstream pace ledger was always the bound on egress, so
+nothing reached an upstream faster than it should have; what was missing was the burst control one
+caller gets before the ledger starts charging.
+
+**The guard that should have caught it compared two hand-kept sets to each other.**
+`test_every_route_bucket_is_registered` asserted `CATEGORIES == default_limiter().limits`, and both
+lacked `hint` in perfect agreement. It now reads the route side off the app — every
+`rate_limit(...)` dependency tags itself with its category, and the test walks the routes in both
+modes — with a denominator floor, which is what caught the walk itself returning empty on the first
+run: FastAPI 0.141 includes a router lazily as one entry rather than flattening it, so a flat scan of
+`app.routes` sees seven routes and none of the API. A second test trips the bucket on a real route.
+Found while reproducing S23, not reported by anyone; it is in this release because the S23 fix
+touches the same function.
+
 ## [0.25.2] — 2026-09-12
 
 **`REGISTRY_ACMG_SNAPSHOT_DIR` was made mandatory by mistake.** The fetch read

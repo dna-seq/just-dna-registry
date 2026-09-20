@@ -198,4 +198,8 @@ def rate_limit(category: str):
                 headers={"Retry-After": "60"},
             )
 
+    # Read by `tests/test_ratelimit.py`, which walks the app's routes to learn which buckets are
+    # actually asked for — so a route naming a bucket nobody registered fails a test instead of
+    # running unlimited.
+    _dep.rate_category = category  # type: ignore[attr-defined]
     return _dep

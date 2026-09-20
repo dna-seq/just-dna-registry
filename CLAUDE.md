@@ -640,7 +640,11 @@ what it is for.
   operator to run a pull that is going to decline.
 - **An unregistered rate-limit category is silently unlimited.** `RateLimiter.allow` returns `True`
   for a category nobody put in `CATEGORIES`, so a route that egresses must land its bucket in the same
-  commit as the route. `hint` and `draft` are there; the next one has to be.
+  commit as the route. This line said "`hint` and `draft` are there" from 0.25.0 to 0.25.2, and `hint`
+  was not: six routes asked for it, `rate_hint_per_hour` sat unread, and the guard compared
+  `CATEGORIES` to `default_limiter`'s keys — two hand-kept sets that agreed with each other. The guard
+  now reads the route side off the app (each `rate_limit(...)` dependency carries `rate_category`),
+  so the next unregistered bucket fails a test rather than a sentence here.
 - **`client_cli` may import nothing from `services/`.** Those modules import `just_dna_compiler` at
   module level and that tier is an optional extra, so one such import turns `registry-client` into an
   `ImportError` on every base install. Shared names live in `specfiles`. A guard walks the

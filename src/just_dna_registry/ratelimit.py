@@ -47,7 +47,7 @@ class RateLimiter:
 #: Every bucket the service defines. Named here (rather than only inside `default_limiter`) so a
 #: test can assert the set matches what the routes actually ask for.
 CATEGORIES: frozenset[str] = frozenset(
-    {"publish", "download", "search", "social", "validate", "enrich", "draft"}
+    {"publish", "download", "search", "social", "validate", "enrich", "draft", "hint"}
 )
 
 
@@ -55,7 +55,7 @@ def default_limiter(settings) -> RateLimiter:
     """Build a limiter from settings.
 
     Defaults: publish 10/h, download 1000/h, search 60/min, social 30/min, validate 60/h, enrich 5/h,
-    draft 10/h.
+    draft 10/h, hint 600/h.
 
     The two pre-flight buckets are sized by who pays. `validate` costs server CPU — cheaper than a
     publish, since nothing is stored, but not free: it runs the real compiler over uploaded CSVs.
@@ -76,6 +76,12 @@ def default_limiter(settings) -> RateLimiter:
             # its own declared use. Tighter than `validate` for the first reason and authenticated
             # for the second.
             "draft": (settings.rate_draft_per_hour, settings.rate_draft_per_hour / 3600.0),
+            # Burst control only: the bound on hint *egress* is the per-upstream pace ledger. Absent
+            # from this dict through 0.25.2 while six routes asked for it and `rate_hint_per_hour`
+            # sat unread in settings — so the hint proxy shipped unlimited. `CATEGORIES` matched
+            # this dict exactly, which is why the guard that pinned the two to each other never
+            # noticed; it now reads the route side off the app.
+            "hint": (settings.rate_hint_per_hour, settings.rate_hint_per_hour / 3600.0),
         },
         enabled=settings.rate_limit_enabled,
     )

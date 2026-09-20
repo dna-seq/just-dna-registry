@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from just_dna_registry.api.app import create_app
@@ -63,10 +64,44 @@ def test_rate_limit_can_be_disabled(tmp_path: Path) -> None:
 # ── 0.11: the pre-flight buckets, and the guard against forgetting one ────────
 
 
-def test_every_route_bucket_is_registered() -> None:
+def _buckets_routes_ask_for(tmp_path: Path, mode: str) -> set[str]:
+    """Every category some route's `rate_limit(...)` dependency names, read off the app itself."""
+    app = _app(tmp_path, mode=mode)
+    asked: set[str] = set()
+    for route in _walk_routes(app.routes):
+        dependant = getattr(route, "dependant", None)
+        for dep in getattr(dependant, "dependencies", []):
+            category = getattr(dep.call, "rate_category", None)
+            if category is not None:
+                asked.add(category)
+    return asked
+
+
+def _walk_routes(routes):
+    """FastAPI ≥ 0.141 includes a router lazily as one `_IncludedRouter` entry rather than
+    flattening its routes onto the app, so a flat scan of `app.routes` sees seven `APIRoute`s and
+    none of the API — which is what the floor in the test below caught on the first run."""
+    for route in routes:
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            yield from _walk_routes(inner.routes)
+        else:
+            yield route
+
+
+@pytest.mark.parametrize("mode", ["prod", "test"])
+def test_every_route_bucket_is_registered(tmp_path: Path, mode: str) -> None:
     """`RateLimiter.allow` returns True for a category nobody registered, so a route asking for a
-    bucket that `default_limiter` does not build is *silently unlimited*. Pinning the exact set turns
-    that failure mode from invisible into a red test."""
+    bucket that `default_limiter` does not build is *silently unlimited*.
+
+    Through 0.25.2 this compared `CATEGORIES` to `default_limiter`'s keys — two hand-kept sets that
+    agreed with each other while `hints.py` asked for a `hint` bucket neither of them had, so the
+    whole hint proxy shipped unlimited. The route side now comes from the app, which is the only
+    place the question is actually asked. The floor keeps the walk honest: an attribute rename would
+    otherwise empty `asked` and pass."""
+    asked = _buckets_routes_ask_for(tmp_path, mode)
+    assert len(asked) >= 5
+    assert asked == CATEGORIES
     assert set(default_limiter(Settings()).limits) == CATEGORIES
 
 
@@ -100,3 +135,17 @@ def test_the_concurrency_gate_rejects_a_second_run(tmp_path: Path) -> None:
     assert r.json()["detail"] == "enrichment_busy"
     assert r.headers["Retry-After"] == "60"
     gate.release()
+
+
+def test_hint_rate_limit_trips(tmp_path: Path) -> None:
+    """The bucket every hint route names has to exist, or the proxy is unlimited (it was, through
+    0.25.2). Anonymous online is refused before any lookup runs, so nothing here reaches the
+    network; the bucket dependency resolves ahead of that refusal, which is what makes the third
+    call a `429` whatever the first two answered."""
+    client = TestClient(_app(tmp_path, rate_hint_per_hour=2))
+    url = "/api/v1/hint/gene"
+    first = client.get(url, params={"symbol": "CYP2C19"})
+    second = client.get(url, params={"symbol": "CYP2C19"})
+    assert first.status_code == second.status_code != 429
+    r = client.get(url, params={"symbol": "CYP2C19"})
+    assert r.status_code == 429 and r.json()["detail"] == "rate_limited"
