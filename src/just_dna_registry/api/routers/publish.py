@@ -34,6 +34,7 @@ from just_dna_registry.api.deps import (
     get_repo,
     get_storage,
     rate_limit,
+    refund_rate_charge,
     require_account,
     require_capability,
     settings_dep,
@@ -557,6 +558,10 @@ async def check_spec(
         # exhaust the threadpool; released by the worker's own `finally`, because a run that blows
         # the timeout below keeps its thread (Python cannot kill one) and must keep counting.
         if not gate.try_acquire():
+            # The gate refused before anything ran, so the `enrich` token the route dependency
+            # spent priced nothing — hand it back. `Retry-After` stays a flat 60: the gate has no
+            # refill to compute from, only a run in flight of unknown length.
+            refund_rate_charge(request)
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="enrichment_busy",
@@ -641,6 +646,10 @@ async def derived_tables(
     try:
         uploads = await _preflight_uploads(files, archive, settings)
         if not gate.try_acquire():
+            # The gate refused before anything ran, so the `enrich` token the route dependency
+            # spent priced nothing — hand it back. `Retry-After` stays a flat 60: the gate has no
+            # refill to compute from, only a run in flight of unknown length.
+            refund_rate_charge(request)
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="enrichment_busy",

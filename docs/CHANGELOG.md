@@ -6,7 +6,38 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased]
+## [0.26.0] — 2026-09-20
+
+**A `429` now says which bucket and how long, and a busy gate no longer spends the token (S23).**
+`just-module-creator` fired eleven `POST /check` in a batch at the polygon and got one answer, four
+`503 enrichment_busy` and six `429 rate_limited`; a retry at five and at ten minutes was `429`
+again. Three things were wrong, and only one of them was the one reported.
+
+- **`Retry-After` was sent, and it was wrong.** Every `429` carried `Retry-After: 60` whatever the
+  bucket — and the 5/h `enrich` bucket refills one token per 720s, so the header sent the caller
+  back twice inside the wait it described. It is now computed from the bucket's own refill
+  (`ceil((1 - tokens) / refill)`), the way `429 hint_pace_decayed` already did. The reporter saw
+  *no* header because **`RegistryError` dropped it**: the SDK kept the status and body only, so a
+  header the server sent and the console proxy forwarded reached no Python caller.
+- **The bucket name is a header, `X-RateLimit-Bucket`, not a change to the body.** The report asked
+  for `rate_limited: enrich` in `detail`; that string has been compared with `==` since 0.4.4 (our own
+  tests do it), so a colon in it is a rename, and a rename is a major release for a field nobody
+  asked to move. The body is byte-identical to what it was.
+- **Found while reproducing, not reported: a `503 enrichment_busy` was costing an `enrich` token.**
+  The bucket is a route dependency and resolves before the handler reaches the concurrency gate, so
+  a refusal that ran nothing spent the token that prices a run. The reporter's numbers are the
+  arithmetic — one run plus four busy refusals is five tokens, the whole hour, and the six `429`s
+  followed. Both busy sites (`/check`, `/derived`) now refund through `refund_rate_charge`; a
+  `504 enrichment_timeout` does not (it ran), and neither does `503 enrichment_unavailable` (that
+  box cannot run the tier at all, so no token is saved by giving one back).
+
+The renderers carry it: `registry-client` explains a `429` once, for every command, from the
+client's `__exit__` — the bucket, the wait, and for `enrich` that `validate` is the pre-flight for a
+batch — and the console's `ApiError` reads both headers (the standalone proxy's whitelist gained the
+new one). `RateLimiter.allow` is gone; `take` returns a `RateVerdict` and `refund` is beside it.
+
+**Client surface: unchanged.** No `RegistryClient` method moved. `RegistryError` gained `headers`,
+`retry_after` and `bucket`, all additive; its two positional arguments are as they were.
 
 **The `hint` rate bucket was asked for by six routes and registered by none, so the hint proxy
 shipped unlimited.** `rate_hint_per_hour` (600) has been in `Settings` and `.env.template` since 0.25,

@@ -1,5 +1,6 @@
 """Rate limiting — token buckets per caller × category (SPEC §7)."""
 
+import math
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,11 @@ def test_search_rate_limit_trips(tmp_path: Path) -> None:
     assert client.get("/api/v1/modules").status_code == 200
     r = client.get("/api/v1/modules")
     assert r.status_code == 429 and r.json()["detail"] == "rate_limited"
+    # The wait is the bucket's own: one token back at 2/min is 30s, not the flat 60 every `429`
+    # said through 0.25.2. Computed from the settings the app was built with, never a literal.
+    settings = client.app.state.settings
+    assert r.headers["Retry-After"] == str(math.ceil(60 / settings.rate_search_per_min))
+    assert r.headers["X-RateLimit-Bucket"] == "search"
 
 
 def test_rate_limit_can_be_disabled(tmp_path: Path) -> None:
@@ -149,3 +155,72 @@ def test_hint_rate_limit_trips(tmp_path: Path) -> None:
     assert first.status_code == second.status_code != 429
     r = client.get(url, params={"symbol": "CYP2C19"})
     assert r.status_code == 429 and r.json()["detail"] == "rate_limited"
+
+
+# ── S23: a refusal says which bucket and how long, and a busy gate spends nothing ────────────
+
+
+def test_an_enrich_refusal_names_its_bucket_and_the_real_wait(tmp_path: Path) -> None:
+    """S23's reporter retried `/check` at five and ten minutes on a `Retry-After: 60` and got `429`
+    both times: the 5/h bucket refills one token per 720s. The header now carries that number, and
+    the bucket name says which of the server's budgets it was — the body stays the bare string a
+    client already compares against."""
+    client, parts, auth = _preflight_client(tmp_path, rate_enrich_per_hour=2)
+    url = "/api/v1/modules/just-dna-seq/coronary/check"
+    for _ in range(2):
+        assert client.post(url, params={"offline": True}, files=parts, headers=auth).status_code == 200
+    r = client.post(url, params={"offline": True}, files=parts, headers=auth)
+    assert r.status_code == 429 and r.json()["detail"] == "rate_limited"
+    assert r.headers["X-RateLimit-Bucket"] == "enrich"
+    settings = client.app.state.settings
+    expected = math.ceil(3600 / settings.rate_enrich_per_hour)
+    assert expected > 60  # the flat value would have been wrong here, which is the point
+    assert int(r.headers["Retry-After"]) == expected
+
+
+def test_a_busy_gate_refunds_the_enrich_token(tmp_path: Path) -> None:
+    """The bucket is a route dependency, so it resolves before the handler reaches the gate; through
+    0.25.2 a `503 enrichment_busy` therefore cost a token for a run that never happened. S23's
+    batch was one run plus four busy refusals — five tokens, the whole hour. With capacity 1 the
+    caller must still get through after the gate opens, and only *then* be out."""
+    client, parts, auth = _preflight_client(tmp_path, rate_enrich_per_hour=1, enrich_max_concurrency=1)
+    gate = client.app.state.enrichment_gate
+    url = "/api/v1/modules/just-dna-seq/coronary/check"
+    assert gate.try_acquire()
+    busy = client.post(url, params={"offline": True}, files=parts, headers=auth)
+    assert busy.status_code == 503 and busy.json()["detail"] == "enrichment_busy"
+    gate.release()
+    ran = client.post(url, params={"offline": True}, files=parts, headers=auth)
+    assert ran.status_code == 200
+    out = client.post(url, params={"offline": True}, files=parts, headers=auth)
+    assert out.status_code == 429 and out.headers["X-RateLimit-Bucket"] == "enrich"
+
+
+def test_a_refund_never_mints_credit(tmp_path: Path) -> None:
+    """Refunding a bucket that was never charged, or one already full, leaves it at capacity."""
+    from just_dna_registry.ratelimit import RateLimiter
+
+    limiter = RateLimiter({"x": (2.0, 1e-9)})  # refills, but not within this test
+    limiter.refund("who", "x")  # nothing charged yet: no entry, nothing to do
+    assert limiter.take("who", "x").allowed and limiter.take("who", "x").allowed
+    assert not limiter.take("who", "x").allowed
+    limiter.refund("who", "x")
+    limiter.refund("who", "x")
+    limiter.refund("who", "x")  # bounded at capacity 2, not 3
+    assert limiter.take("who", "x").allowed and limiter.take("who", "x").allowed
+    assert not limiter.take("who", "x").allowed
+
+
+def test_a_bucket_that_never_refills_sends_no_retry_after(tmp_path: Path) -> None:
+    """`rate_search_per_min=0` is a bucket with no capacity and no refill — "closed", which an
+    operator may well configure. The verdict says `inf` rather than dividing by zero (found by the
+    unit test above, on its first version), and the route sends the bucket name with no
+    `Retry-After`, because there is no honest number to put in one."""
+    from just_dna_registry.ratelimit import RateLimiter
+
+    verdict = RateLimiter({"x": (0.0, 0.0)}).take("who", "x")
+    assert not verdict.allowed and verdict.retry_after == math.inf
+    client = TestClient(_app(tmp_path, rate_search_per_min=0))
+    r = client.get("/api/v1/modules")
+    assert r.status_code == 429 and r.headers["X-RateLimit-Bucket"] == "search"
+    assert "Retry-After" not in r.headers

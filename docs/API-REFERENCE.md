@@ -108,7 +108,7 @@ use an object.
 | `422` | `invalid_install_id` / `invalid_account` | bad proof-of-work / account name at registration |
 | `422` | `lookup_needs_one_key` | `/modules/lookup` got neither or both of `digest`/`signature` |
 | `422` | `{ "error": "<code>", "errors": [...], "warnings": [...], "info": [...] }` | spec/import failure (see below) |
-| `429` | `rate_limited` | token bucket exhausted; `Retry-After` header |
+| `429` | `rate_limited` | token bucket exhausted. `Retry-After` is the bucket's own refill — seconds until one token is back, so ~720 on the 5/h `enrich` bucket and ~60 on the 60/h `validate` one — and `X-RateLimit-Bucket` names the bucket (both 0.26; through 0.25.2 every `429` said `Retry-After: 60`). The body stays the bare string, so `detail == "rate_limited"` keeps working |
 | `501` | `jwt_disabled` | `POST /auth/tokens` on a server with no `jwt_secret` |
 | `403` | `self_register_disabled` | `POST /auth/register` when the server has it off |
 | `404` | `signing_not_configured` | `GET /pubkey` on a server that does not sign |
@@ -435,7 +435,10 @@ by IP against a published 10-per-60s budget — there is no API key to raise it 
 `?frequencies=true` can take minutes. Rate bucket `enrich` (5/h) *plus* a process-wide concurrency
 gate (`enrich_max_concurrency`, default 1) — the bucket bounds one caller, the gate bounds the
 server. An invalid spec short-circuits before any of it is spent (`skipped_reason: "invalid_spec"`),
-and a module over `enrich_max_variants` is refused with `422 too_many_variants`.
+and a module over `enrich_max_variants` is refused with `422 too_many_variants`. A
+`503 enrichment_busy` hands the `enrich` token back (0.26): the bucket prices a run, and none
+happened. **For a batch, `validate` is the pre-flight** — its bucket is an order of magnitude larger
+and it runs no network tier — and `check` is for one module at a time.
 
 **That ceiling bounds pacing, so since 0.13 it applies to online runs only.** `?offline=true` issues
 no outbound request for it to bound, and measured with the suite's socket tripwire armed an offline

@@ -10,6 +10,7 @@ import ast
 import asyncio
 import inspect
 import io
+import math
 import re
 from pathlib import Path
 
@@ -362,6 +363,35 @@ async def test_issue_jwt_token_is_wrapped(sdk, api_key) -> None:
     with pytest.raises(RegistryError) as caught:
         await asyncio.to_thread(lambda: sdk.issue_jwt_token(api_key))
     assert caught.value.status_code == 501
+
+
+async def test_a_429_reaches_the_sdk_with_its_bucket_and_wait(tmp_path) -> None:
+    """S23: the server sent `Retry-After` on every `429` and `RegistryError` dropped it, so from
+    Python the refusal was the word `rate_limited` and nothing else. Driven through a real `429`
+    rather than a constructed error, so the header names are the ones the server actually sends."""
+    from just_dna_registry.api.app import create_app
+    from just_dna_registry.client import RegistryError
+    from just_dna_registry.config import Settings
+
+    settings = Settings(
+        db_path=tmp_path / "m.db", local_storage_dir=tmp_path / "a", rate_search_per_min=1
+    )
+    tc = TestClient(create_app(settings))
+    client = RegistryClient("http://testserver", transport=tc._transport, check_version=False)
+    try:
+        await asyncio.to_thread(client.list_modules)
+        with pytest.raises(RegistryError) as caught:
+            await asyncio.to_thread(client.list_modules)
+    finally:
+        client.close()
+    err = caught.value
+    assert err.status_code == 429 and err.detail == "rate_limited"
+    assert err.bucket == "search"
+    assert err.retry_after == math.ceil(60 / settings.rate_search_per_min)
+    assert "search bucket" in str(err) and f"{err.retry_after}s" in str(err)
+    # An error with no such headers answers None rather than raising — every other status.
+    bare = RegistryError(404, "module_not_found")
+    assert bare.retry_after is None and bare.bucket is None and bare.headers == {}
 
 
 async def test_check_threads_pgx_and_declared_use(sdk, tmp_path) -> None:

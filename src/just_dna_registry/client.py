@@ -6,7 +6,7 @@ tests. Depends only on `httpx` + the `just-dna-format` contract (for verify-then
 import io
 import logging
 import tarfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -155,12 +155,42 @@ def split_derived(module_dir: Path) -> list[str]:
 
 
 class RegistryError(RuntimeError):
-    """A non-2xx response from the registry API."""
+    """A non-2xx response from the registry API.
 
-    def __init__(self, status_code: int, detail: Any) -> None:
-        super().__init__(f"HTTP {status_code}: {detail}")
+    `headers` is the response's, lower-cased, because through 0.25.2 this carried the status and
+    body only — so a `429`'s `Retry-After`, sent by the server and forwarded by the console proxy,
+    reached no Python caller (S23). `retry_after` and `bucket` read the two headers a `429
+    rate_limited` carries; both are `None` where the server sent neither.
+    """
+
+    def __init__(
+        self, status_code: int, detail: Any, *, headers: Mapping[str, str] | None = None
+    ) -> None:
         self.status_code = status_code
         self.detail = detail
+        self.headers: dict[str, str] = {k.lower(): v for k, v in (headers or {}).items()}
+        message = f"HTTP {status_code}: {detail}"
+        if self.bucket is not None:
+            message += f" ({self.bucket} bucket"
+            if self.retry_after is not None:
+                message += f", retry after {self.retry_after}s"
+            message += ")"
+        elif self.retry_after is not None:
+            message += f" (retry after {self.retry_after}s)"
+        super().__init__(message)
+
+    @property
+    def retry_after(self) -> int | None:
+        """Seconds from `Retry-After`, or `None` when absent (or not an integer count of seconds)."""
+        value = self.headers.get("retry-after")
+        if value is None or not value.strip().isdigit():
+            return None
+        return int(value)
+
+    @property
+    def bucket(self) -> str | None:
+        """Which token bucket refused, from `X-RateLimit-Bucket` on a `429 rate_limited`."""
+        return self.headers.get("x-ratelimit-bucket")
 
 
 class VersionMismatchError(RegistryError):
@@ -299,7 +329,7 @@ class RegistryClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise RegistryError(resp.status_code, detail)
+            raise RegistryError(resp.status_code, detail, headers=resp.headers)
         return resp.json()
 
     def _raise_for_status(self, resp: httpx.Response) -> None:
@@ -314,7 +344,7 @@ class RegistryClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise RegistryError(resp.status_code, detail)
+            raise RegistryError(resp.status_code, detail, headers=resp.headers)
 
     # ── Reads ─────────────────────────────────────────────────────────────────
 
@@ -439,7 +469,7 @@ class RegistryClient:
     def _fetch_file(self, namespace: str, name: str, version: str, rel: str) -> bytes:
         resp = self._http.get(f"/modules/{namespace}/{name}/versions/{version}/files/{rel}")
         if resp.status_code >= 400:
-            raise RegistryError(resp.status_code, resp.text)
+            raise RegistryError(resp.status_code, resp.text, headers=resp.headers)
         return resp.content
 
     def pubkey(self) -> str | None:
@@ -1048,7 +1078,7 @@ class RegistryClient:
             f"/modules/{namespace}/{name}/versions/{version}/download", params={"format": "tarball"}
         )
         if resp.status_code >= 400:
-            raise RegistryError(resp.status_code, resp.text)
+            raise RegistryError(resp.status_code, resp.text, headers=resp.headers)
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(resp.content)

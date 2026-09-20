@@ -73,10 +73,17 @@ export function qs(params: Record<string, QueryValue>): string {
 export class ApiError extends Error {
   readonly status: number;
   readonly detail: unknown;
-  constructor(status: number, detail: unknown) {
+  /** `Retry-After` in whole seconds, when the server sent one: a `429`, or a `503 enrichment_busy`. */
+  readonly retryAfter: number | null;
+  /** Which token bucket refused, from `X-RateLimit-Bucket` on a `429 rate_limited` (0.26). */
+  readonly bucket: string | null;
+  constructor(status: number, detail: unknown, headers?: Headers) {
     super(typeof detail === "string" ? detail : `HTTP ${status}`);
     this.status = status;
     this.detail = detail;
+    const retry = headers?.get("retry-after") ?? null;
+    this.retryAfter = retry !== null && /^\d+$/.test(retry.trim()) ? Number(retry) : null;
+    this.bucket = headers?.get("x-ratelimit-bucket") ?? null;
   }
   /** The structured body, when the server sent one. */
   get structured(): ErrorDetail | null {
@@ -113,7 +120,7 @@ export async function api<T>(method: string, url: string, opts: RequestOptions =
   }
   if (!resp.ok) {
     const detail = data !== null && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : data;
-    throw new ApiError(resp.status, detail);
+    throw new ApiError(resp.status, detail, resp.headers);
   }
   return data as T;
 }
@@ -125,6 +132,14 @@ export function errorText(err: unknown): string {
     if (d) {
       const lines = [...(d.errors ?? []), ...(typeof d["message"] === "string" ? [d["message"]] : [])];
       return `${err.status} ${err.code}${lines.length ? ": " + lines.join("; ") : ""}`;
+    }
+    // A refusal that says which bucket and how long is the whole difference between "wait" and
+    // "wait twelve minutes, and use validate for the batch" — the two headers reach the page only
+    // if the renderer reads them, so it does.
+    if (err.status === 429 && (err.bucket || err.retryAfter !== null)) {
+      const parts = [err.bucket ? `${err.bucket} bucket` : null, err.retryAfter !== null ? `retry in ${err.retryAfter}s` : null]
+        .filter((x): x is string => x !== null);
+      return `${err.status} ${err.detail ?? ""} (${parts.join(", ")})`;
     }
     return `${err.status} ${err.detail ?? ""}`;
   }

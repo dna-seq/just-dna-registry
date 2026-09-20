@@ -43,6 +43,49 @@ _UNREACHABLE_PASSES: tuple[str, ...] = (
 )
 
 
+class _CliClient(RegistryClient):
+    """The CLI's client: a `429` that escapes any command is explained here, once, for all of them.
+
+    Every command runs inside `with _client(...) as c:`, so this `__exit__` is the one place a
+    refusal from any of them passes through. Through 0.25.2 a rate limit printed `HTTP 429:
+    rate_limited` and nothing else — the bucket and the wait were on the wire and reached nobody
+    (S23). This is the renderer half of that fix; the fields are on `RegistryError`.
+    """
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        super().__exit__(exc_type, exc, tb)
+        if isinstance(exc, RegistryError) and exc.status_code == 429:
+            _explain_rate_limit(exc)
+            raise typer.Exit(code=1) from exc
+
+
+def _explain_rate_limit(exc: RegistryError) -> None:
+    bucket = exc.bucket
+    wait = exc.retry_after
+    where = f" on the server's `{bucket}` bucket" if bucket else ""
+    when = f"; it refills in about {wait}s" if wait is not None else ""
+    typer.secho(f"✗ rate limited{where}{when}.", fg=typer.colors.RED)
+    if bucket == "enrich":
+        typer.secho(
+            "  `check` draws on the bucket that prices the network tier, the tightest one the "
+            "server has. For a batch, `validate` is the pre-flight: a separate, larger bucket and "
+            "no enrichment. Then `check` one module at a time.",
+            fg=typer.colors.YELLOW,
+        )
+    elif bucket == "publish":
+        typer.secho(
+            "  Nothing was published or lost; re-run this command after the wait. The bucket "
+            "counts publishes per hour per account.",
+            fg=typer.colors.YELLOW,
+        )
+    elif wait is None:
+        typer.secho(
+            "  The server sent no `Retry-After` (a registry older than 0.26?); wait a minute and "
+            "re-run.",
+            fg=typer.colors.YELLOW,
+        )
+
+
 def _client(url: str | None, token: str | None, *, need_token: bool = False) -> RegistryClient:
     base = url or os.getenv(_URL_ENV) or "http://127.0.0.1:8000"
     tok = token or os.getenv(_TOKEN_ENV)
@@ -51,7 +94,7 @@ def _client(url: str | None, token: str | None, *, need_token: bool = False) -> 
     timeout = float(os.getenv("REGISTRY_TIMEOUT", "600"))  # big modules recompile for minutes
     # Escape hatch: set REGISTRY_SKIP_VERSION_CHECK=1 to bypass the contract guard knowingly.
     check_version = os.getenv(_SKIP_VERSION_ENV, "").strip().lower() not in ("1", "true", "yes")
-    return RegistryClient(base, tok, timeout=timeout, check_version=check_version)
+    return _CliClient(base, tok, timeout=timeout, check_version=check_version)
 
 
 UrlOpt = typer.Option(None, "--url", help=f"Registry base URL (or ${_URL_ENV})")

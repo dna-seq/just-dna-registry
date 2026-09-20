@@ -41,6 +41,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S20** a 0.7 client cannot write to a 0.6.1 box — deploy before publish
 - **S21** `field_first_seen` unblocks S18 — roadmap corrected, after S20
 - **S22** `expression_effects.csv` dropped by a rebuild — in FACT_CSVS, 0.25.0
+- **S23** `429` named no bucket, wrong `Retry-After` — both fixed, 0.26.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2386,3 +2387,65 @@ CSVs are machine-written*; a test asserting `DERIVED_TABLE_MODELS.keys() - {lice
 spellings} <= RECOGNIZED_SPEC_FILES` would have failed the hour RM194 landed instead of on a
 consumer's install. That is your own `@registry-completeness` rule — assert an equality over a
 walked set — applied across the tree boundary rather than inside one.
+
+# Field notes from just-module-creator — 2026-09-20
+
+## S23 — a `429` from `/check` and `/publish` says `rate_limited` and nothing else: no bucket, no `Retry-After`
+
+**Reported by** just-module-creator, 2026-09-20, publishing thirteen rehearsal modules to the polygon
+(registry 0.25.2 on both instances, client 0.25.2).
+
+Eleven `POST /check` calls fired in one batch: one answered, four `503 enrichment_busy`, six
+`429 rate_limited`. A single `/check` retried twice over the next ten minutes: `429 rate_limited`
+both times. Then the twelfth `POST /publish` of the hour: `429 rate_limited`. All three are correct
+refusals — `ratelimit.py` says `/check` draws on the `enrich` bucket at 5/h behind a concurrency
+gate, `/publish` on `publish` at 10/h — and none of that reaches the caller. The response body is
+the word `rate_limited`, the same for a 5/h bucket and a 60/h one, with no `Retry-After` header and
+no bucket name, so a client cannot tell whether to wait twelve seconds or twelve minutes, or that
+`/validate` (60/h, no gate) is the pre-flight to use for a batch. The consumer side has been told
+(module-creator finding F-series, 2026-09-20) to state the budgets in its docs; what only the
+server can supply is the two fields:
+
+- the bucket name in `detail` (`rate_limited: enrich`), so the two refusals are distinguishable;
+- `Retry-After` computed from the bucket's refill (`(1 - tokens) / refill_per_sec`, rounded up),
+  which `RateLimiter.allow` has the numbers for and currently discards.
+
+Both are additive. `503 enrichment_busy` already names its lane and is the model to copy.
+
+**Status — accepted and shipped in 0.26.0, with one correction to the report and one defect you did
+not report.** Reproduced with `TestClient` cases in `tests/test_ratelimit.py` and a real `429` driven
+through `RegistryClient` in `tests/test_client_sdk.py`. Three findings, and the fix covers all three.
+
+*The header was there, and it was wrong.* `deps.rate_limit` has sent `Retry-After` on every `429`
+since rate limiting landed in 0.4.4, and the standalone console proxy forwards it — but the value was a
+flat `60` whatever the bucket. The 5/h `enrich` bucket refills one token per 720s, so your two
+retries at five and ten minutes were both inside the wait the header claimed was over. What you saw
+as *no header* is the SDK: `RegistryError` kept `status_code` and `detail` and dropped the response
+headers, so from Python the refusal really was the one word. Both halves are fixed: `Retry-After` is
+now `ceil((1 - tokens) / refill)` from the bucket that refused (the way `429 hint_pace_decayed`
+already computed it), and `RegistryError` carries `headers`, `retry_after` and `bucket`.
+
+*The bucket name is a header, not a change to `detail`.* You asked for `rate_limited: enrich` in the
+body. That string has been compared with `==` since 0.4.4 — our own tests do it — so a colon in it is a
+rename of the one field a client branches on, and a rename is a major release under the runbook's
+table. It is `X-RateLimit-Bucket: enrich` instead, the body is byte-identical, and `503 enrichment_busy`
+keeps its flat `Retry-After: 60` — the gate has no refill to compute from, only a run in flight.
+
+*Found while reproducing your numbers: a `503 enrichment_busy` was spending an `enrich` token.* The
+bucket is a route dependency and resolves before the handler reaches the concurrency gate, so a
+refusal that ran nothing cost the token that prices a run. One answered call plus four busy refusals
+is five tokens — the whole hour at 5/h — and your six `429`s are exactly what follows. Both busy
+sites (`/check` and `/derived`) now refund the token; a `504 enrichment_timeout` does not, because
+that run happened.
+
+What to do now: pin `just-dna-registry>=0.26.0` on the consumer side and read `err.bucket` and
+`err.retry_after` off the `RegistryError` (`str(err)` names both). `registry-client` explains a `429`
+itself, for every command, including that `validate` is the pre-flight for a batch — its bucket is
+an order of magnitude larger and it runs no network tier — and `check` is for one module at a time.
+That advice is now in API-REFERENCE beside the `/check` budget, which is where it should have been.
+`RateLimiter.allow` is gone in favour of `take`/`refund`; nothing outside this repo called it.
+
+One more thing this turned up, in the same function but a separate commit: the `hint` bucket every
+`/hint/*` route asks for was registered nowhere, so the hint proxy shipped unlimited through 0.25.2.
+Not your report and not your problem, but if you noticed hints never hitting a budget, that is why.
+<!-- triaged: 0.26.0 · sha f6eedc173370 -->

@@ -5,6 +5,7 @@ Auth is MVP-simple (SPEC decision): a pre-issued API key in `Authorization: Bear
 resolves to an account; publishing under a namespace requires that account to own it.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -187,19 +188,54 @@ def _rate_identity(request: Request) -> str:
     return "ip:" + (request.client.host if request.client else "unknown")
 
 
+#: Names the bucket that refused, on a `429 rate_limited`. A header rather than a change to the
+#: body: `detail` has been the bare string `"rate_limited"` since 0.4.4 and clients compare it with
+#: `==` (our own tests do), so `"rate_limited: enrich"` would be a rename wearing a colon.
+RATE_BUCKET_HEADER = "X-RateLimit-Bucket"
+
+
 def rate_limit(category: str):
-    """Dependency factory: enforce the token bucket for `category` (429 on exhaustion)."""
+    """Dependency factory: enforce the token bucket for `category` (429 on exhaustion).
+
+    The refusal says which bucket (`X-RateLimit-Bucket`) and how long (`Retry-After`, from the
+    bucket's own refill — `ceil((1 - tokens) / refill)`, so ~720 on the 5/h `enrich` bucket and
+    ~60 on the 60/h `validate` one). Both were missing through 0.25.2, when every `429` said
+    `Retry-After: 60` whatever the bucket, which is a number that is right for exactly one of them
+    (S23). A caller that got through has its charge stashed on `request.state`, so a handler that
+    refuses before doing the priced work can `refund_rate_charge`.
+    """
 
     def _dep(request: Request) -> None:
         limiter = request.app.state.rate_limiter
-        if not limiter.allow(_rate_identity(request), category):
+        identity = _rate_identity(request)
+        verdict = limiter.take(identity, category)
+        if not verdict.allowed:
+            headers = {RATE_BUCKET_HEADER: category}
+            if math.isfinite(verdict.retry_after):  # a bucket that never refills has no answer
+                headers["Retry-After"] = str(max(1, math.ceil(verdict.retry_after)))
             raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS, detail="rate_limited",
-                headers={"Retry-After": "60"},
+                status.HTTP_429_TOO_MANY_REQUESTS, detail="rate_limited", headers=headers
             )
+        request.state.rate_charge = (identity, category)
 
     # Read by `tests/test_ratelimit.py`, which walks the app's routes to learn which buckets are
     # actually asked for — so a route naming a bucket nobody registered fails a test instead of
     # running unlimited.
     _dep.rate_category = category  # type: ignore[attr-defined]
     return _dep
+
+
+def refund_rate_charge(request: Request) -> None:
+    """Give back the token this request's `rate_limit` dependency spent.
+
+    For a handler that refuses *before* the work the bucket prices — today the two
+    `503 enrichment_busy` sites, where the gate was full and no enrichment ran. Not for a
+    `504 enrichment_timeout` (it ran) and not for `503 enrichment_unavailable`: that box cannot run
+    the tier at all, so a token there is neither spent nor saved — retrying does not help until an
+    operator changes the deployment, and the bucket refills long before one does.
+    """
+    charge = getattr(request.state, "rate_charge", None)
+    if charge is None:
+        return
+    request.app.state.rate_limiter.refund(*charge)
+    request.state.rate_charge = None

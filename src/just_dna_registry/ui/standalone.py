@@ -42,6 +42,9 @@ FORWARDED_RESPONSE_HEADERS: frozenset[str] = frozenset(
     {
         "content-type", "content-disposition", "location", "retry-after", "cache-control",
         "x-registry-version", "x-format-version", "x-api-version",
+        # Which bucket a `429 rate_limited` came from (0.26). Added with the header, because a
+        # whitelist that lags the API by one field is a page saying "rate limited" and nothing else.
+        "x-ratelimit-bucket",
     }
 )
 _CHUNK = 64 * 1024

@@ -13,8 +13,26 @@ replacing it. Both are process-local, so with two replicas each limit is 2×;
 horizontal scaling needs a shared store for the gate as much as for the buckets.
 """
 
+import math
 import threading
 import time
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class RateVerdict:
+    """What `RateLimiter.take` decided, and — for a refusal — how long until it would not.
+
+    `retry_after` is the seconds until one whole token is back, `(1 - tokens) / refill_per_sec`.
+    It is what a `Retry-After` header should carry: through 0.25.2 every `429` said `60`, which on
+    the 5/h `enrich` bucket (one token per 720s) sent a caller back twice inside the wait it
+    described (S23). An unmetered category answers `allowed=True` with zeros.
+    """
+
+    allowed: bool
+    retry_after: float
+    capacity: float
+    refill_per_sec: float
 
 
 class RateLimiter:
@@ -26,12 +44,14 @@ class RateLimiter:
         self._buckets: dict[tuple[str, str], tuple[float, float]] = {}
         self._lock = threading.Lock()
 
-    def allow(self, identity: str, category: str) -> bool:
+    def take(self, identity: str, category: str) -> RateVerdict:
+        """Spend one token, or say how long until one is there to spend."""
         # NB: an unknown category is allowed unconditionally, so a route that asks for a bucket
-        # nobody registered in `default_limiter` is silently unlimited. `test_ratelimit.py` pins the
-        # exact bucket set for that reason — a typo here fails loudly instead of opening a door.
+        # nobody registered in `default_limiter` is silently unlimited. `test_ratelimit.py` reads
+        # the buckets routes ask for off the app for that reason — a typo here fails loudly
+        # instead of opening a door.
         if not self.enabled or category not in self.limits:
-            return True
+            return RateVerdict(allowed=True, retry_after=0.0, capacity=0.0, refill_per_sec=0.0)
         capacity, refill = self.limits[category]
         now = time.monotonic()
         with self._lock:
@@ -39,9 +59,33 @@ class RateLimiter:
             tokens = min(capacity, tokens + (now - updated) * refill)
             if tokens < 1.0:
                 self._buckets[(identity, category)] = (tokens, now)
-                return False
+                # A bucket configured with no refill (`rate_x_per_hour=0`) refuses forever; say
+                # `inf` rather than divide by it, and let the route send no `Retry-After` at all.
+                wait = (1.0 - tokens) / refill if refill > 0 else math.inf
+                return RateVerdict(
+                    allowed=False, retry_after=wait, capacity=capacity, refill_per_sec=refill,
+                )
             self._buckets[(identity, category)] = (tokens - 1.0, now)
-            return True
+            return RateVerdict(allowed=True, retry_after=0.0, capacity=capacity, refill_per_sec=refill)
+
+    def refund(self, identity: str, category: str) -> None:
+        """Hand back the token `take` spent, for a request refused before it did the work the
+        bucket prices.
+
+        The bucket is a route *dependency*, so it resolves before the handler reaches the
+        concurrency gate — and a `503 enrichment_busy` was spending an `enrich` token for a run that
+        never happened. S23's batch was the arithmetic: one run, four busy refusals, and the caller's
+        whole hour was gone. Bounded by `capacity`, so a refund never mints credit.
+        """
+        if not self.enabled or category not in self.limits:
+            return
+        capacity, _ = self.limits[category]
+        with self._lock:
+            entry = self._buckets.get((identity, category))
+            if entry is None:
+                return
+            tokens, updated = entry
+            self._buckets[(identity, category)] = (min(capacity, tokens + 1.0), updated)
 
 
 #: Every bucket the service defines. Named here (rather than only inside `default_limiter`) so a

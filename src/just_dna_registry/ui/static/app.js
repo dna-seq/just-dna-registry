@@ -84,10 +84,17 @@
   var ApiError = class extends Error {
     status;
     detail;
-    constructor(status, detail) {
+    /** `Retry-After` in whole seconds, when the server sent one: a `429`, or a `503 enrichment_busy`. */
+    retryAfter;
+    /** Which token bucket refused, from `X-RateLimit-Bucket` on a `429 rate_limited` (0.26). */
+    bucket;
+    constructor(status, detail, headers) {
       super(typeof detail === "string" ? detail : `HTTP ${status}`);
       this.status = status;
       this.detail = detail;
+      const retry = headers?.get("retry-after") ?? null;
+      this.retryAfter = retry !== null && /^\d+$/.test(retry.trim()) ? Number(retry) : null;
+      this.bucket = headers?.get("x-ratelimit-bucket") ?? null;
     }
     /** The structured body, when the server sent one. */
     get structured() {
@@ -120,7 +127,7 @@
     }
     if (!resp.ok) {
       const detail = data !== null && typeof data === "object" && "detail" in data ? data.detail : data;
-      throw new ApiError(resp.status, detail);
+      throw new ApiError(resp.status, detail, resp.headers);
     }
     return data;
   }
@@ -130,6 +137,10 @@
       if (d) {
         const lines = [...d.errors ?? [], ...typeof d["message"] === "string" ? [d["message"]] : []];
         return `${err.status} ${err.code}${lines.length ? ": " + lines.join("; ") : ""}`;
+      }
+      if (err.status === 429 && (err.bucket || err.retryAfter !== null)) {
+        const parts = [err.bucket ? `${err.bucket} bucket` : null, err.retryAfter !== null ? `retry in ${err.retryAfter}s` : null].filter((x) => x !== null);
+        return `${err.status} ${err.detail ?? ""} (${parts.join(", ")})`;
       }
       return `${err.status} ${err.detail ?? ""}`;
     }

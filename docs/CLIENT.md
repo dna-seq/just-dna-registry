@@ -87,7 +87,10 @@ with RegistryClient("https://module-registry.just-dna.life", token="mk_live_…"
 
 **`RegistryClient(base_url, token=None, timeout=120.0, transport=None)`** — a context manager
 (closes the underlying `httpx.Client`). `transport` is for tests (e.g. an ASGI transport).
-Non-2xx responses raise **`RegistryError(status_code, detail)`**.
+Non-2xx responses raise **`RegistryError(status_code, detail)`**, carrying the response `headers`
+(lower-cased) and, for a `429 rate_limited`, `retry_after` (seconds, from `Retry-After`) and
+`bucket` (from `X-RateLimit-Bucket`) — both `None` where the server sent neither, which is every
+other status and any registry before 0.26. `str(err)` names both when present.
 
 ### Reads (no token)
 
