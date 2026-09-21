@@ -1337,8 +1337,9 @@ def test_an_acmg_report_that_was_read_reaches_the_response_as_a_bool(
     against upstream's real `AcmgReport` only in production. Enricher 0.7.1 (RM234) retyped
     `AcmgReport.clean` from `bool` to a `Verdict` dataclass, and `clean=report.clean` into a pydantic
     `bool` field is a `ValidationError` inside the handler: `/check?acmg=true` was a `500` on every
-    module whose list *was* read, and green everywhere the list was not. The stub returns what
-    `check_acmg_sf` builds, so `clean` is the real property; only the list read is replaced.
+    module whose list *was* read, and green everywhere the list was not. The stub hand-builds the
+    `AcmgReport`/`AcmgVerdict` dataclasses upstream's `check_acmg_sf` would, so `clean` is the real
+    property; only the list read is replaced.
 
     `AcmgCheck.clean` keeps its published meaning — *no mismatch was found*, vacuity signalled by
     `checked`/`unreachable` beside it — so it reads the `mismatched_assertions` member of the closed

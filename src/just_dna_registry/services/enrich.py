@@ -1690,7 +1690,7 @@ def _acmg_check(spec_dir: Path, settings: Settings, offline: bool) -> AcmgCheck:
         #
         # Read the member, not `bool(verdict)`. Upstream's verdict is a *gate*: it answers `no` on the
         # `offline` arm (no list obtained) as well as on a mismatch, and its reasons travel beside it.
-        # Our `clean` has a published meaning since 0.14 — *no mismatch was found*, with vacuity said
+        # Our `clean` has a published meaning since 0.11 — *no mismatch was found*, with vacuity said
         # by `checked`, `list_version` and `unreachable` beside it — and the `AcmgListUnavailable` arm
         # above answers `clean: true` + `unreachable` for exactly the fact upstream's `offline` code
         # names, so `bool(verdict)` would make the two paths disagree about one thing. This is not the
