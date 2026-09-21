@@ -13,8 +13,12 @@ Requires a write-capable token (validated at startup by `startup.validate_hf_acc
 import contextlib
 from collections.abc import Mapping
 
-from huggingface_hub import HfApi, HfFileSystem
-from huggingface_hub.hf_api import CommitOperationAdd
+# `CommitOperationAdd` from the package root, never `huggingface_hub.hf_api`: 1.32.0 stopped
+# re-exporting it there (it lives in `_commit_api`), and the root export has been stable since
+# long before the `>=0.34.0` floor. The private module path was an implementation detail we
+# happened to import, and a relock that swept 1.31 → 1.32 turned every server import into an
+# `ImportError` at collection time.
+from huggingface_hub import CommitOperationAdd, HfApi, HfFileSystem
 
 
 class HfStorage:

@@ -994,6 +994,10 @@ for remote_path in fs.ls("datasets/org/repo/data", detail=False):
         fs.get(remote_path, str(local_path))
 ```
 
+Import `CommitOperationAdd` (and every other public name) from the **package root**, never from
+`huggingface_hub.hf_api`: 1.32.0 stopped re-exporting it there, and a relock turned that private path
+into an `ImportError` on every server-tier import. The root export predates our `>=0.34.0` floor.
+
 Never hardcode HF repo IDs or the Ensembl reference repo in Python — thread them through config
 (Pydantic settings / env), mirroring the `modules.yaml` conventions the pipelines use.
 
