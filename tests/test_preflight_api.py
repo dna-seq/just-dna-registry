@@ -1324,6 +1324,54 @@ def test_an_acmg_list_that_was_read_is_never_an_outage(
     assert any("could not complete" in w for w in check["warnings"])
 
 
+@pytest.mark.parametrize(
+    ("verdict", "authored", "expect_clean"),
+    [("agree", True, True), ("not_listed", True, False), ("denied", False, False)],
+)
+def test_an_acmg_report_that_was_read_reaches_the_response_as_a_bool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict: str, authored: bool, expect_clean: bool
+) -> None:
+    """The success path, driven with the real report type — which no other ACMG test does.
+
+    Every other test here stubs `verify_acmg_sf` to *raise*, so the adapter's return statement ran
+    against upstream's real `AcmgReport` only in production. Enricher 0.7.1 (RM234) retyped
+    `AcmgReport.clean` from `bool` to a `Verdict` dataclass, and `clean=report.clean` into a pydantic
+    `bool` field is a `ValidationError` inside the handler: `/check?acmg=true` was a `500` on every
+    module whose list *was* read, and green everywhere the list was not. The stub returns what
+    `check_acmg_sf` builds, so `clean` is the real property; only the list read is replaced.
+
+    `AcmgCheck.clean` keeps its published meaning — *no mismatch was found*, vacuity signalled by
+    `checked`/`unreachable` beside it — so it reads the `mismatched_assertions` member of the closed
+    `VALID_VERDICT_CODES` vocabulary rather than `bool(verdict)`, which would answer `false` on
+    upstream's `offline` arm beside an empty `mismatches` list.
+    """
+    import just_dna_enricher.acmg as acmg
+
+    def read_list(**_k):
+        return acmg.AcmgReport(
+            version="3.3",
+            verdicts=[
+                acmg.AcmgVerdict(
+                    row=1, gene="CYP2C19", authored=authored, verdict=verdict,
+                    message="" if verdict == "agree" else f"CYP2C19: acmg_sf={authored} disagrees with ACMG SF v3.3",
+                )
+            ],
+        )
+
+    monkeypatch.setattr(acmg, "verify_acmg_sf", read_list)
+    code, body = _check(_no_live_lookups(tmp_path), offline=False, acmg=True)
+    assert code == 200, body
+
+    check = body["enrichment"]["acmg"]
+    assert check["list_version"] == "3.3"
+    assert check["checked"] == 1
+    assert check["unreachable"] == []
+    assert check["clean"] is expect_clean
+    assert (len(check["mismatches"]) == 1) is (not expect_clean)
+    if not expect_clean:
+        assert "CYP2C19" in check["mismatches"][0]
+
+
 def test_an_ontology_outage_says_nothing_was_checked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

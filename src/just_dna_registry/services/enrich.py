@@ -1682,7 +1682,21 @@ def _acmg_check(spec_dir: Path, settings: Settings, offline: bool) -> AcmgCheck:
             f"{message} ({_rows_note(rows)})"
             for _gene, rows, message in AcmgReport.by_gene(report.unverifiable)
         ],
-        clean=report.clean,
+        # **`report.clean` is a `Verdict` since enricher 0.7.1 (RM234), not a `bool`** — a frozen
+        # dataclass that is falsy when it carries a code from the closed `VALID_VERDICT_CODES`
+        # vocabulary. Passing it straight into this `bool` field was a `ValidationError` inside the
+        # handler, so `/check?acmg=true` 500'd on every module whose list *was* read and stayed green
+        # wherever it was not, because every test stubbed the pass to raise and none returned a report.
+        #
+        # Read the member, not `bool(verdict)`. Upstream's verdict is a *gate*: it answers `no` on the
+        # `offline` arm (no list obtained) as well as on a mismatch, and its reasons travel beside it.
+        # Our `clean` has a published meaning since 0.14 — *no mismatch was found*, with vacuity said
+        # by `checked`, `list_version` and `unreachable` beside it — and the `AcmgListUnavailable` arm
+        # above answers `clean: true` + `unreachable` for exactly the fact upstream's `offline` code
+        # names, so `bool(verdict)` would make the two paths disagree about one thing. This is not the
+        # tautology RM234 fixed (`not mismatches` with nothing saying whether anything was compared):
+        # the sibling fields are what carry that here, and they always have.
+        clean="mismatched_assertions" not in report.clean,
         warnings=list(report.warnings),
     )
 

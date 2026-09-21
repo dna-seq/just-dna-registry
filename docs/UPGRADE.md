@@ -1,5 +1,19 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.26.1 compiler + enricher 0.7.1 (operator note — no sweep)
+
+**A partial cut: `just-dna-format` stays at 0.7.0, the other two tiers move to 0.7.1.** Nothing
+recompiles and no signature or digest moves — a compiler patch is deliberately not a gap, so
+`registry upgrade --dry-run` reports nothing to do and `--force` is not the answer either. Upgrade by
+`uv sync` from the tag and stop. The one thing that changed on the wire is that `POST /check?acmg=true`
+answers again where 0.26.0 on 0.7.1 was a `500` (see the changelog); no client moves.
+
+**If you are doing the 0.7 sweep below for the first time, check out `v0.26.1` rather than `v0.25.0`
+and do it once.** The recompile then runs under compiler 0.7.1 and stamps `compilation.compiler_version`
+accordingly; a box that already swept under 0.7.0 needs no second pass, because the patch interval
+declares no correction. After `uv sync`, `/api/v1/version` should read `"format":"0.7.0",
+"compiler":"0.7.1"`.
+
 ## 0.24 format 0.7 adoption (operator note — a coordinated cut)
 
 **Runnable as of 2026-09-12: `just-dna-format` 0.7.0 is published.** The gate that used to open this

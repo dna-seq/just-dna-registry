@@ -419,6 +419,16 @@ Four rules that each cost a bug to learn:
   fix**: `registry-client check` prints per-pass *findings*, so three passes that print no summary
   rendered an outage as `✓ would publish` with the reason sitting unread in the JSON. Anything that
   distinguishes "unchecked" from "clean" has to reach the renderer too.
+- **Stub the network, never the report.** Every ACMG test through 0.26.0 stubbed `verify_acmg_sf` to
+  *raise*, and none returned an `AcmgReport`, so the adapter's success path met upstream's real type
+  only in production — and enricher 0.7.1 (RM234) retyped `AcmgReport.clean` from `bool` to a
+  `Verdict` dataclass, which pydantic refuses in a `bool` field: `/check?acmg=true` was a `500` on
+  every module whose list was read, with a green suite beside it. When a pass adapter is tested, at
+  least one test returns what the pass really builds (`check_acmg_sf`'s dataclass, a real
+  `IdentifierReport`), so a property that changes type fails a test rather than a handler. And read a
+  `Verdict` by its **member** (`"mismatched_assertions" in verdict`), never by `bool()`: upstream's is
+  a gate that answers `no` on the `offline` arm too, and our `clean` fields say *no mismatch found*
+  with vacuity carried by their siblings, so `bool()` would make one fact read two ways.
 - **Cache lanes: read the registry, never a list (0.24 / RM176).** `caches.CACHE_LANES` carries every
   snapshot lane with its three stages (`resolve`, `rebuild`, `ensure`), its `env_var`, its licence
   terms and — for each stage it lacks — the **reason** as a field. `pullable_lanes`, `gated_lanes` and

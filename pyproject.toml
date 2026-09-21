@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.26.0"
+version = "0.26.1"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -100,8 +100,14 @@ dependencies = [
 # `specfiles.SIGNATURE_INPUTS` mirrors and a test asserts equal, and `ARTIFACT_PARQUETS` goes 19 → 22.
 # Both are derived from the constant rather than restated, which is what makes them a floor and not a
 # rewrite.
+#
+# **0.7.1 is the soft kind here, and the hard kind on the `server` extra below.** Nothing this extra
+# reads moved between the two — the compiler was cut only because the enricher's `resolver` imports
+# `just_dna_compiler.resolution_findings`, a module added after `v0.7.0` was tagged — so a client
+# install left on 0.7.0 loses nothing. It is the floor because the lock resolved it and the 0.26.1
+# suite ran on `0.7.0 / 0.7.1 / 0.7.1`; a floor left behind would permit a pair nobody tested.
 compiler = [
-    "just-dna-compiler>=0.7.0",
+    "just-dna-compiler>=0.7.1",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -251,8 +257,25 @@ server = [
     # ships no `resolution.csv` sees an error where 0.6.6 gave none, because that endpoint does not
     # enrich. `/check` grades after enrichment (0.24) and is the endpoint that answers "would this
     # publish".
-    "just-dna-compiler>=0.7.0",
-    "just-dna-enricher>=0.7.0",
+    #
+    # **0.7.1 is a partial cut — `just-dna-format` stays at 0.7.0 — and on the enricher the floor is
+    # hard in *both* directions, which no floor in this file has been before.** RM234 retyped
+    # `AcmgReport.clean` from `bool` to a `Verdict` dataclass (falsy when it carries a code from the
+    # closed `VALID_VERDICT_CODES` vocabulary), because `not self.mismatches` answered `True` for a run
+    # that had consulted no list. `services/enrich._acmg_check` used to pass it straight into the
+    # `bool` field on `AcmgCheck`, so on 0.7.1 that was a `ValidationError` inside the handler —
+    # `/check?acmg=true` a `500` on every module whose list was actually read. It now reads the
+    # `mismatched_assertions` member, and `"…" in True` is a `TypeError` on 0.7.0. The same release
+    # retyped `IdentifierReport.clean` the same way (RM235); that adapter never read the property,
+    # and RM235's new `tables_unreadable` arm cannot arrive through `/check`, whose modeless validate
+    # gate answers `invalid_spec` before any pass runs over a table that will not parse.
+    #
+    # The compiler moves with it because the enricher's own pyproject floors `just-dna-compiler>=0.7.1`
+    # (`resolver` imports `resolution_findings`, added after the `v0.7.0` tag — a clean-venv install of
+    # the 0.7.0 enricher wheel raised `ModuleNotFoundError`). No read of ours needs it; the floor is the
+    # 0.6.4 kind on this tier. RM244 moved four resolution-finding sentences; none is matched here.
+    "just-dna-compiler>=0.7.1",
+    "just-dna-enricher>=0.7.1",
 ]
 
 [build-system]

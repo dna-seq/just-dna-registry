@@ -6,6 +6,72 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.26.1] — 2026-09-21
+
+**Client surface: unchanged.** No endpoint and no `RegistryClient` method moves; no response field
+is added or retyped.
+
+**Adopts `just-dna-compiler` and `just-dna-enricher` 0.7.1.** A partial cut — `just-dna-format` stays
+at **0.7.0** — so `uv sync` now installs `0.7.0 / 0.7.1 / 0.7.1`. **No sweep follows this release**:
+nothing recompiles, no signature or digest moves, and `registry upgrade` detects no gap, because a
+compiler patch is deliberately not one. An operator upgrades by `uv sync` and stops.
+
+### The one item that reaches this service, and it was a `500`
+
+Upstream's theme for 0.7.1 is *a check that could not run answered as a check that passed* — the
+rule this file states as "a pass that could not run reports why, and never reports clean", found in
+their own tier. **RM234** is the ACMG half: `AcmgReport.clean` was `not self.mismatches`, and a run
+that obtained no list gave every row `unchecked`, left `mismatches` empty and answered `True`. The
+repair retypes the property from `bool` to a **`Verdict`** dataclass — falsy when it carries a code
+from the closed `VALID_VERDICT_CODES` vocabulary, with the reason (`offline`, `mismatched_assertions`)
+travelling beside the answer instead of inside it. RM235 does the same to `IdentifierReport.clean`.
+
+`services/enrich._acmg_check` passed that property straight into the `bool` field on `AcmgCheck`.
+Pydantic refuses a dataclass where it wants a bool, so on 0.7.1 `POST /check?acmg=true` was a
+**`500` on every module whose list was actually read**, and green everywhere it was not — the
+outage arms return before the line that broke. The suite was green too, for the same reason: every
+ACMG test stubbed `verify_acmg_sf` to *raise*, none returned a report, so the adapter's success path
+had only ever run against the real type in production. A test now drives it with a real
+`AcmgReport` across `agree`, `not_listed` and `denied`.
+
+**`AcmgCheck.clean` keeps its published meaning and reads the vocabulary member, not
+`bool(verdict)`.** The field has said *no mismatch was found* since 0.14, with vacuity carried by
+`checked`, `list_version` and `unreachable` beside it, and the `AcmgListUnavailable` arm already
+answers `clean: true` + `unreachable` for the very fact upstream's `offline` code names. `bool()`
+would answer `false` there with `mismatches: []`, so one fact would read two ways depending on which
+path reported it. The adapter reads `"mismatched_assertions" in report.clean` — a pinned catalogue,
+not a sentence — and the response is byte-for-byte what 0.26.0 produced.
+
+The identifiers adapter never read `IdentifierReport.clean` (it scopes its own verdict to the traits
+and genes it asked about, since 0.16) and is unaffected. RM235's new `tables_unreadable` arm — a
+gene-bearing table that will not parse leaving its ids unchecked — cannot arrive through `/check`,
+whose modeless validate gate answers `invalid_spec` before any pass runs; verified by uploading one.
+
+### What else moved upstream, and why none of it lands here
+
+- **The compiler is cut only because the enricher needs it**: `resolver` imports
+  `just_dna_compiler.resolution_findings`, a module RM244 added after `v0.7.0` was tagged, so a
+  0.7.0 compiler wheel beside a 0.7.1 enricher is a `ModuleNotFoundError`. The `compiler` extra's
+  floor moves for the reason 0.6.4's did — the lock resolved it and this release's suite ran on it —
+  and the `pyproject.toml` comment says which kind each floor is.
+- **RM244 reworded four resolution-finding sentences** (the compiler's `rsid_unresolved`,
+  `rsid_without_resolution_label` and positional cross-build skip; the enricher's
+  `resolution_not_injected` remedy). Nothing here matches any of them; the one warning fragment this
+  registry does read (`db/facets.positionally_joinable`, pre-0.6 versions only) is not among them.
+- **RM242's `alphagenome check` fix** and **RM247's Atlas bindings pin** are on passes this service
+  does not run. RM246 (the mode ladder) and RM245 (the scenario corpus) change no behaviour.
+- **RM249–RM253 are *not* in 0.7.1** — upstream's changelog files them inside the uncut line past it.
+  In particular RM251, which changes what `enrich` writes into `resolution.csv` for a row authoring
+  both an rsID and a coordinate, is not on either box after this release.
+
+### Found by the relock, not by the cut
+
+`uv lock` swept `huggingface-hub` 1.31.0 → 1.32.0, which stopped re-exporting `CommitOperationAdd`
+from `huggingface_hub.hf_api`. `storage/hf.py` imported it from there — a private module path that
+happened to work — so every server-tier import failed at collection and the suite could not start.
+It now imports from the package root, where the symbol has been exported since before the
+`>=0.34.0` floor. No floor moves.
+
 ## [0.26.0] — 2026-09-20
 
 **A `429` now says which bucket and how long, and a busy gate no longer spends the token (S23).**
