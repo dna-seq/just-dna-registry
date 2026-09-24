@@ -1096,8 +1096,11 @@ directory. They were `.sh` until 2026-08-16.
   of it to their history file and left the rest orphaned in the live inbox, reporting every fingerprint
   intact and being right to, because both halves hashed the same truncated span. **S19 then carried one
   too** — 55 of its 112 lines would have moved — which is what finally bought the fix rather than
-  another restatement of the advice. `fence_mask` / `boundary_at` in both scripts now mask fenced lines
-  out of every boundary test; see the runbook's §5 entry, which is owed to the gist.
+  another restatement of the advice. Every boundary test in both scripts now skips fenced lines. The
+  scan is the gist's `fenced_lines` / `boundary_after`, which the archiver loads from the ledger, and
+  an unclosed fence makes the archiver refuse. **The gist had published that fix three weeks before we
+  wrote our own**, which we found out on 2026-09-24 when ours was replaced by it. Read the gist before
+  building something the loop needs.
   **Two things this does not license.** A reporter's prose is still never edited, which is *why* the fix
   had to be in the tool — the advice to indent the comment cannot be given retroactively to a report
   already filed. And it stays good advice for writing: `grep '^# '` is still fence-blind, and so is

@@ -28,6 +28,7 @@ Usage:
     .claude/triage-archive.py S8 S10 [--dry-run]
 """
 
+import importlib.util
 import os
 import pathlib
 import re
@@ -46,46 +47,17 @@ LEDGER = HERE / "triage-state.py"
 
 SECTION_RE = re.compile(rf"^## +{re.escape(PREFIX)}(\d+)\b")
 GROUP_RE = re.compile(r"^# +\S")
-BOUNDARY_RE = re.compile(r"^#{1,2} ")
 
-
-# A fenced code block. `BOUNDARY_RE` knows nothing about fences, so a flush-left `#` inside one — an
-# ordinary Python comment in a reporter's snippet — used to end the section there. That is not
-# hypothetical: our S62 carried one and upstream's archiver moved half the item to the history file
-# and left the rest orphaned in the live inbox, reporting every fingerprint intact and being right
-# to, because both halves hashed the same truncated span. The writing-side advice ("indent the
-# comment") cannot be given retroactively to prose already filed, and a reporter's prose is never
-# edited, so the fix belongs here.
-FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
-
-
-def fence_mask(lines: list[str]) -> list[bool]:
-    """True for every line inside a fenced code block (the fence lines themselves included).
-
-    Closing rule follows CommonMark: same character, at least as long as the opener, and no info
-    string. An unclosed fence runs to the end of the document, which is what a reader sees too.
-    """
-    mask = [False] * len(lines)
-    char: str | None = None
-    width = 0
-    for i, line in enumerate(lines):
-        m = FENCE_RE.match(line)
-        if char is None:
-            if m:
-                char, width = m.group(1)[0], len(m.group(1))
-                mask[i] = True
-            continue
-        mask[i] = True
-        if m and m.group(1)[0] == char and len(m.group(1)) >= width and not m.group(2).strip():
-            char, width = None, 0
-    return mask
-
-
-def boundary_at(lines: list[str], i: int, mask: list[bool] | None = None) -> bool:
-    """Whether line `i` starts a new section or group — a heading, not a comment in a snippet."""
-    if mask is None:
-        mask = fence_mask(lines)
-    return bool(BOUNDARY_RE.match(lines[i])) and not mask[i]
+# The span logic is DERIVED from the ledger rather than restated beside it. The two tools disagreeing
+# about where a section ends is exactly how a report gets cut in half: each carried its own copy of
+# the boundary scan, so fixing one left the other cutting at the wrong line. The ledger is already
+# the authority for fingerprints; it is the authority for spans too. importlib because of the hyphen.
+_spec = importlib.util.spec_from_file_location("triage_state", LEDGER)
+_ledger = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_ledger)
+fenced_lines = _ledger.fenced_lines
+boundary_after = _ledger.boundary_after
+fence_findings = _ledger.fence_findings
 
 
 def section_span(lines: list[str], ident: str) -> tuple[int, int]:
@@ -94,12 +66,7 @@ def section_span(lines: list[str], ident: str) -> tuple[int, int]:
         found = SECTION_RE.match(line)
         if not found or PREFIX + found.group(1) != ident:
             continue
-        end = len(lines)
-        for j in range(i + 1, len(lines)):
-            if boundary_at(lines, j):
-                end = j
-                break
-        return i, end
+        return i, boundary_after(lines, i)
     raise SystemExit(f"{ident}: no such section in {INBOX.name}")
 
 
@@ -107,40 +74,40 @@ def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
     """(start, end) of the `# ` group heading and dateline preceding index `before`.
 
     **A document's own title is not a group heading**, and conflating the two was a real bug that hit
-    twice here before anyone read the output. A section filed under no group — the normal shape once the
-    split keeps the inbox empty, since someone appending a single report writes no group heading — took
-    the inbox's `# Consumer suggestions` title *and its whole preamble* into the history file as that
-    item's heading, because the last `# ` before the section is the document title and its span runs to
-    the next `##`. That is how S5/S6 landed under a second status block.
+    twice before anyone noticed. A section filed under no group — the normal shape once the split keeps
+    the inbox empty, since someone appending a single report writes no group heading — took the inbox's
+    `# <title>` *and its whole preamble* into the history file as that item's heading, because the last
+    `# ` before the section is the document title and its span runs to the next `##`.
 
     **The fingerprint check cannot catch this**, which is why it survived: fingerprints cover the
     reporter's prose alone, so the move verifies clean while the history file grows duplicate front
-    matter. It does *not* disturb the section above the injection — the heading is separated by one
-    blank line and `fingerprint()` ends in `.strip()`.
+    matter.
+
+    It does **not** disturb the section above the injection, and an earlier version of this docstring
+    said it did — the heading is separated by one blank line and `fingerprint()` ends in `.strip()`, so
+    the preceding hash is unaffected. TRIAGE_LOOP.md § 5 had the correction; this docstring kept the
+    tempting story, which is the same "establish it, then write it" failure one layer down.
 
     The first `# ` heading in a document is its title by convention, so a group heading is any *later*
     one. A section with no group returns None and the caller says so out loud rather than inventing a
-    name — naming a group (who reported it, and when) is editorial, the same reason the contents line is
+    name — naming a group (who reported it, when) is editorial, the same reason the contents line is
     not generated either.
     """
-    headings = [i for i, line in enumerate(lines) if GROUP_RE.match(line)]
+    fenced, _ = fenced_lines(lines)
+    headings = [i for i, line in enumerate(lines) if i not in fenced and GROUP_RE.match(line)]
     start = None
     for i in headings[1:]:  # [0] is the document title
         if i < before:
             start = i
     if start is None:
         return None
-    end = len(lines)
-    for j in range(start + 1, len(lines)):
-        if boundary_at(lines, j):
-            end = j
-            break
-    return start, end
+    return start, boundary_after(lines, start, fenced)
 
 
 def current_group(lines: list[str]) -> str | None:
     """Text of the last `# ` heading in a file, or None."""
-    found = [line for line in lines if GROUP_RE.match(line)]
+    fenced, _ = fenced_lines(lines)
+    found = [line for i, line in enumerate(lines) if i not in fenced and GROUP_RE.match(line)]
     return found[-1] if found else None
 
 
@@ -168,8 +135,20 @@ def main() -> int:
     if not idents:
         raise SystemExit(__doc__)
     if not HISTORY.is_file():
+        raise SystemExit(f"no history file at {HISTORY} — create it first (see docs/CONSUMER_TRIAGE_LOOP.md)")
+
+    # Refuse before touching anything. A fence problem means a span does not end where it looks like
+    # it ends, and the move's own verification cannot catch that: fingerprints cover the reporter's
+    # prose, so a truncated span hashes identically on both sides of a cut that lost half a report.
+    complaints = [f"{doc.name}:{c}" for doc in (INBOX, HISTORY)
+                  for c in fence_findings(doc.read_text().splitlines())]
+    if complaints:
         raise SystemExit(
-            f"no history file at {HISTORY} — create it first (see docs/CONSUMER_TRIAGE_LOOP.md)"
+            "refusing to archive — a fenced block breaks the section boundaries:\n  "
+            + "\n  ".join(complaints)
+            + "\n\nA span that ends at the wrong line moves the wrong bytes, and the fingerprint\n"
+              "check cannot see it. Repair the document first; do NOT edit the reporter's prose to\n"
+              "suit the tool — a missing fence usually means an earlier pass already split a report."
         )
 
     before = fingerprints(INBOX)
@@ -238,3 +217,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

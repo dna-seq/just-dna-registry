@@ -13,7 +13,27 @@ one-way and by hand.** If you change the *pattern* (the algorithm, a script's co
 running it), it belongs in the gist too; if you change something only true of this repo — the release
 table below, the routing destinations, a path — it does not.
 
-**The most recent trip was 2026-08-21, and it ran in both directions**, which is the first time it has.
+**The most recent trip was 2026-09-24, and it repeated the lesson of the one before it.** The fence fix
+this repo landed on 2026-09-11 (§5) and recorded as *owed to the gist* had been in the gist since
+2026-08-22, found upstream on the same S62 and written independently of ours. Nobody here had read the
+gist in the meantime, so the fix was built twice. The gist's version was the better one, and both
+scripts are now that copy again with only the paths changed. It gave us three things ours did not have:
+the archiver **derives** its spans from the ledger (`importlib`) instead of keeping a second copy of the
+boundary scan, which is the drift that cut S19 in half in the first place; an unclosed fence or a
+`## Sn` heading inside a fence prints a `STRUCTURE` line and makes the archiver **refuse before
+writing**, where ours ran the fence to EOF without a word; and `corpus()` finds a split-off history
+file by glob, so `--next` cannot hand out an id that sits in one. The ledger's output over both of our
+documents was the same before and after the swap. The gist's §5 entry on one id under two headings came
+back with it.
+
+**Not adopted, and why.** `item-next.py` allocates tracked-item ids for route (a), and this repo's
+roadmap has no id series (Step 2's table says so). The `RM` ids we cite belong to upstream, which
+allocates them. The gist's *do not commit* hygiene rule is overridden here by repo policy (Step 5).
+**Outbound**: the gist's `STATUS_RE`/`MARKER_RE` are fence-blind and its runbook does not mention it,
+while ours records it on notice (§5). That note is committed in a local clone of the gist and has not
+been pushed.
+
+**The trip before it was 2026-08-21, and it ran in both directions**, which is the first time it had.
 Outbound went the two findings owed since 2026-08-20: the archived-footer one, which the gist did not
 have in any form, and the `--backfill` stamping hazard, which it half had and half had **wrong** — its
 Step 3 warns you off the value the ledger prints while telling you `--backfill` writes the safe one, and
@@ -93,8 +113,8 @@ Three scripts, all in `.claude/`, none packaged, no dependencies beyond Python 3
 | | |
 |---|---|
 | `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing |
-| `.claude/triage-state.py` | the ledger: which sections are new, revised or already answered; `--next` |
-| `.claude/triage-archive.py` | moves answered sections to the history file and **verifies** the move |
+| `.claude/triage-state.py` | the ledger: which sections are new, revised or already answered; `--next`. Also prints `STRUCTURE` lines (stderr) when a fenced block breaks the section boundaries |
+| `.claude/triage-archive.py` | moves answered sections to the history file and **verifies** the move. **Refuses outright** on a `STRUCTURE` finding, before writing |
 
 **Two of the three are Python and are named `.py` for it** — run them, or hand them to `python3`, never
 to `bash`. They were `.sh` until 2026-08-16, on the reasoning that one glob arms all three; §5 has what
@@ -108,18 +128,21 @@ the agent:
 Monitor({
   command: '/data/sources/just-dna-registry/.claude/watch-suggestions.sh',
   description: 'CONSUMER_SUGGESTIONS.md settling',
-  persistent: true,
+  timeout_ms: 1800000,
 })
 ```
 
-`persistent: true` keeps it alive for the session; `TaskStop` cancels it. It reacts only while the session
+**As of 2026-09-24 the Monitor tool has no `persistent` option, and a watch expires after at most 30
+minutes.** Asked for 3600000 ms, it answered *expires in 30m*. The expiry arrives as a single notice,
+and the answer to it is to arm again. What follows about `/clear` was tested under the older
+`persistent: true` and has not been re-tested under the cap. `TaskStop` cancels it. It reacts only while the session
 is open and the REPL is idle. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and python
 `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
 
 **A `/clear` does not stop it** (tested). So the ordinary case is an event arriving at an agent with no
 memory of having armed anything, which is exactly why the event line names this file — and why you should
-read a settling notification as the intended trigger rather than as a stale process. Arm it once and clear
-freely; only ending the session or `TaskStop` needs the arming repeated. Run the ledger yourself after a
+read a settling notification as the intended trigger rather than as a stale process. Under the old option it was
+armed once and survived clears; now expect to re-arm on each expiry as well. Run the ledger yourself after a
 clear, though: the watcher never fires for a change that predates it, so a standing backlog stays quiet.
 
 **The watch pauses while the tree is off `main`** (`BRANCH`, adopted from the gist on 2026-08-21). This
@@ -424,7 +447,7 @@ the write is rejected if one changed.
 ## 5. Gotchas found by running it
 
 Each of these was a bug in the loop, not a hypothetical, and the scripts here carry the fixes — some
-found upstream, some here, and as of 2026-08-21 all of them are in both copies:
+found upstream, some here, and as of 2026-09-24 all of them are in both copies:
 
 - **A reply ends at its marker, not at the first blank line.** Skipping the `**Status` *paragraph* leaked
   paragraphs two onward into the fingerprint, so writing a multi-paragraph reply reported the section
@@ -477,10 +500,16 @@ found upstream, some here, and as of 2026-08-21 all of them are in both copies:
   group and document-footer entries above are the identical shape at the two ends of a file. *Ask what
   your check is blind to* is now the single most load-bearing sentence in §5.
 
-  Fixed in both scripts with `fence_mask` / `boundary_at`: a CommonMark-ish fence scan (same character,
-  at least as long as the opener, no info string on the closer; an unclosed fence runs to EOF, which is
-  what a reader sees too), consulted by every boundary test in `sections`, `block_replies`,
-  `section_span`, `group_span` and `backfill`. **Re-stamping is expected and is not a re-triage**: a
+  Fixed here on 2026-09-11 with `fence_mask` / `boundary_at`, and replaced on 2026-09-24 by the
+  gist's `fenced_lines` / `boundary_after`, which had been published since 2026-08-22. Both use the
+  same CommonMark-ish scan: the same character, at least as long as the opener, no info string on the
+  closer. The gist's version is consulted by every boundary test in both scripts, and it answers the
+  two cases ours got wrong. **An unclosed fence is a refusal, not a span to EOF.** Ours ran the fence to
+  the end of the file on the grounds that a reader sees the same, but that swallows every heading
+  below it without a word. `fence_findings` reports it, and a `## Sn` heading inside a fence as well,
+  as `STRUCTURE` lines, and the archiver refuses before it writes. **And the archiver has no boundary
+  scan of its own**: it loads the ledger's through `importlib`. Two copies of the scan are how the
+  tools came to disagree about where S19 ended in the first place. **Re-stamping is expected and is not a re-triage**: a
   section that was being measured short gets a new fingerprint the moment the span is right, with the
   prose byte-identical — S19 went `fdf6d180940a` → `68d1c403938d` that way, and all 18 already-archived
   items stayed `current`, which is the check that the fix disturbs nothing else. Run the ledger over
@@ -490,10 +519,12 @@ found upstream, some here, and as of 2026-08-21 all of them are in both copies:
   a `**Status` line or a `<!-- triaged: … -->` marker inside a code block would read as an answered
   section. Neither file contains one today (21 of 21 archived items read `current` after the fix), and
   the boundary case is the one that loses data, so this is recorded rather than fixed. If it ever
-  fires, the same `fence_mask` is already there to consult.
+  fires, the same `fenced_lines` is already there to consult. The gist does not record this (outbound,
+  2026-09-24).
 
-  **Owed to the gist**, with the S62 cross-reference — this is a change to the pattern, not to this
-  repo's routing. The writing-side advice ("indent the comment") stays worth giving for the tools that
+  **This paragraph used to say *owed to the gist*, and the gist already had it.** It was the second
+  time in a month that we built something the gist had already published, the BRANCH guard being the
+  first. The top of this file has the trip. The writing-side advice ("indent the comment") stays worth giving for the tools that
   are still fence-blind, `grep '^# '` included, but it is no longer what stands between a report and
   being cut in half.
 - **A Python script named `.sh` gets run as bash sooner or later, and `import` is an ImageMagick
@@ -567,6 +598,17 @@ found upstream, some here, and as of 2026-08-21 all of them are in both copies:
   alike and behave identically for every value except the empty one, which is the only one that matters
   and the one nobody tests. Verified here on adoption — `BRANCH=` stays quiet, `BRANCH=nonexistent`
   pauses, `BRANCH` unset watches `main`.
+- **One id under two top-level headings archives as one section, and the verification reports it as a
+  mutation *after* writing** (from the gist, 2026-09-24). A reporter
+  withdrew an item by adding a withdrawal section above the original, both headed `## S76`.
+  `section_span` resolves an id to the **first** matching heading, so the archiver moved the withdrawal
+  and left the evidence in the inbox. The before/after check then compared two different sections and
+  refused with *the prose was not moved verbatim*. That refusal is the guard working: it cannot tell a
+  duplicate id from a mutated section, and refusing is the safe way to be wrong. **The fix is on the
+  writing side and is one heading**: give the second section a distinguishing title, such as
+  `## S76 (original text) — …`, move it by hand after the tool run, and verify it against the
+  committed copy. It is deliberately not fixed in the tools, because a `section_span` returning every
+  match would make one argument move two sections, which is a worse surprise than a refusal.
 - **Splitting a wrapped paragraph is a substantive change** and correctly reports as `revised`. Only
   trailing whitespace, blank-run length and a trailing rule are normalized away.
 - **An id can appear twice as a heading** (a top-level item and a `###` follow-up nested elsewhere). Key on
