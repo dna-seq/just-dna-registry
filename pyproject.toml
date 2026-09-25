@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.26.1"
+version = "0.26.2"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -274,8 +274,18 @@ server = [
     # (`resolver` imports `resolution_findings`, added after the `v0.7.0` tag — a clean-venv install of
     # the 0.7.0 enricher wheel raised `ModuleNotFoundError`). No read of ours needs it; the floor is the
     # 0.6.4 kind on this tier. RM244 moved four resolution-finding sentences; none is matched here.
+    #
+    # **0.7.2 moves the enricher alone, and the floor is the 0.6.4 kind: not load-bearing.** RM254
+    # guards the `[atlas]` imports against protobuf's gencode `VersionError`; we install no `[atlas]`
+    # extra, so nothing here imported the code it fixes. RM255 does reach `/hint/variant`: on 0.7.1 a
+    # multi-allelic locus asked gnomAD nothing and returned empty `populations` in silence, and on
+    # 0.7.2 it asks per allele and each row carries `allele`/`variant_id`/`vrs_id`. That payload is
+    # `list[dict]` on our side, so it passes through unchanged, and the one gnomAD unit
+    # `variant_charges` commits was an overcharge on 0.7.1 for those loci and is now accurate. A box
+    # left on 0.7.1 is not broken; it answers less. The floor is here because the lock resolved it
+    # and the release's suite ran on that trio.
     "just-dna-compiler>=0.7.1",
-    "just-dna-enricher>=0.7.1",
+    "just-dna-enricher>=0.7.2",
 ]
 
 [build-system]

@@ -1,5 +1,14 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.26.2 enricher 0.7.2 (operator note — no sweep)
+
+**The enricher moves alone; format stays 0.7.0 and the compiler 0.7.1.** The enricher runs before
+the compile and changes nothing compiled, so there is no gap for `registry upgrade` to find. Upgrade
+by `uv sync` from the tag and stop. The one visible change is that `/hint/variant?frequencies=true`
+now answers for multi-allelic loci (see the changelog). `/api/v1/version` should read
+`"registry":"0.26.2"` with format and compiler unchanged; it does not report the enricher, so the
+registry version is the witness.
+
 ## 0.26.1 compiler + enricher 0.7.1 (operator note — no sweep)
 
 **A partial cut: `just-dna-format` stays at 0.7.0, the other two tiers move to 0.7.1.** Nothing

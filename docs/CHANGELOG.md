@@ -6,6 +6,46 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.26.2] — 2026-09-25
+
+**Client surface: unchanged.** No endpoint and no `RegistryClient` method moves. One response field
+gains a description (`VariantHintReport.vrs_id`); none is added or retyped.
+
+**Adopts `just-dna-enricher` 0.7.2.** The enricher moves alone: `just-dna-format` stays at **0.7.0**
+and `just-dna-compiler` at **0.7.1**, so `uv sync` installs `0.7.0 / 0.7.1 / 0.7.2`. **No sweep
+follows**: the enricher runs before the compile and touches no model, parquet or manifest field, so
+nothing recompiles and `registry upgrade` has nothing to detect. Upgrade by `uv sync` and stop.
+
+### RM255 reaches `/hint/variant`, and it is a silence that now answers
+
+On 0.7.1, `GET /hint/variant?frequencies=true` for a multi-allelic locus asked gnomAD nothing and
+returned `populations: []` with no finding beside it, so *gnomAD has no data* and *nobody asked* read
+the same. A common GWAS lead SNP like `rs3752246` (`19:1056493 G>C,T`) was that case. On 0.7.2 every
+allele of every resolved locus is asked in one batched call, `alts=` filters that set, and the ways
+the question cannot be put each come back as a finding.
+
+What that changes on our side:
+
+- **Each `populations` row now carries `allele`, `variant_id` and `vrs_id`**, because a multi-allelic
+  locus answers with one row per ancestry group per allele. The field is `list[dict]` here and passes
+  through untouched; `registry-client hint variant` prints the row as it arrives.
+- **`vrs_id` at the top level is filled only when exactly one allele answered.** That is upstream's
+  rule, and the field now says so in the schema, because a null there has two histories (no answer,
+  or several).
+- **The meter did not move and is now right.** `variant_charges` commits one gnomAD unit per online
+  frequency lookup. On 0.7.1 that unit was an overcharge for exactly these loci, since no request was
+  made; on 0.7.2 the request is made. Upstream's docstring says it batches twenty variant ids per
+  request, so a locus with more than twenty alleles would spend more than the one we charge. Not
+  observed here.
+
+### RM254 does not reach this service
+
+RM254 widens the enricher's `[atlas]` import guards to catch protobuf's gencode `VersionError`, which
+killed every enricher command at import beside dagster's `protobuf<7` (just-dna-lite, their S107).
+This registry installs no `[atlas]` extra and imports none of the guarded modules, so there was
+nothing here to die. The floor moves because the lock resolved 0.7.2 and this release's suite ran on
+it; the `pyproject.toml` comment records it as a floor that is not load-bearing.
+
 ## [0.26.1] — 2026-09-21
 
 **Client surface: unchanged.** No endpoint and no `RegistryClient` method moves; no response field

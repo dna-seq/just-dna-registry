@@ -1293,7 +1293,13 @@ class VariantHintReport(BaseModel):
             "that lane and a run without the snapshot names nothing."
         ),
     )
-    vrs_id: str | None = None
+    vrs_id: str | None = Field(
+        default=None,
+        description=(
+            "Filled only when exactly one allele answered. A multi-allelic locus leaves it null and "
+            "puts a `vrs_id` on each `populations` row instead"
+        ),
+    )
     ambiguous: bool = Field(
         default=False, description="More than one locus or rsID candidate — the author must choose"
     )
