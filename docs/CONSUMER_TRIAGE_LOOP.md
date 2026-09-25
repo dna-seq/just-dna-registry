@@ -140,7 +140,12 @@ Bash({
 
 It skips `nothing pending` settles, which covers the loop firing on its own replies (§3), and it skips
 the branch-pause lines. Once the batch is handled, arm it again. That is one re-arm per real event,
-and none while the inbox is quiet. Check for a live watcher with `pgrep -af watch-suggestions`. That
+and none while the inbox is quiet. **Arm it on every run, and don't check first.** The watcher is a newest-wins
+singleton per watched file (2026-09-25): a new start records itself in a pidfile under
+`$XDG_RUNTIME_DIR` and stops the previous owner, so arming twice leaves one watcher. Checking first used
+to go wrong: `TaskList` cannot see a watcher from an earlier run, so re-arming on "no tasks found"
+reported every settle twice. The replaced watcher's wrapper ends with no output, which is one silent
+completion notice to whoever armed it. Check for a live watcher with `pgrep -af watch-suggestions`. That
 also lists just-dna-format's watcher, which has a different path. `TaskStop` cancels it. It reacts only while the session
 is open and the REPL is idle. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and python
 `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.

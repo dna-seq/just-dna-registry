@@ -27,6 +27,15 @@
 # rather than lost. Set BRANCH to your own name for it, or to the empty string to switch the whole
 # behaviour off; outside a git work tree there is no branch to speak of and it never pauses.
 #
+# One watcher per watched file, and the newest wins. Arming it again replaces the running one instead
+# of adding a second: the older watcher belongs to an earlier run of the agent, so it notifies nobody who
+# is listening, and two live watchers report every settle twice. The key is the watched file's resolved
+# path, so a sibling repo's watcher is a different key and is never touched. A pidfile names the owner.
+# On start the watcher records itself there and stops the previous owner, but only after checking that
+# pid's command line, because a recycled pid could belong to anything. Every poll it checks the pidfile
+# and exits if it no longer owns it. That exit is what settles two watchers started in the same second,
+# and it also covers an old watcher whose kill was refused. No flock is used, because macOS has none.
+#
 # This is the only one of the three that is really bash. The ledger is Python and is invoked through
 # $PYTHON below rather than as a bare path, so neither its exec bit nor its shebang is load-bearing
 # (docs/CONSUMER_TRIAGE_LOOP.md §5 — the extension gotcha).
@@ -57,6 +66,23 @@ else
     watch_branch=0
 fi
 
+# The singleton. Keyed on the resolved path of the watched file, not on this script.
+FILE_ABS=$(cd "$(dirname "$FILE")" 2>/dev/null && echo "$PWD/${FILE##*/}" || echo "$FILE")
+PIDFILE=${PIDFILE:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/watch-inbox-$(printf %s "$FILE_ABS" | cksum | cut -d' ' -f1).pid}
+old=$(cat "$PIDFILE" 2>/dev/null || true)
+echo $$ >"$PIDFILE"
+if [ -n "$old" ] && [ "$old" != $$ ] && kill -0 "$old" 2>/dev/null &&
+   ps -o args= -p "$old" 2>/dev/null | grep -q "${BASH_SOURCE[0]##*/}"; then
+    kill "$old" 2>/dev/null && echo "replaced watcher pid $old on ${FILE##*/}" >&2
+fi
+owner() { [ "$(cat "$PIDFILE" 2>/dev/null)" = $$ ]; }
+# Leave the pidfile behind only if it names somebody else. A replaced watcher must not delete its successor's.
+trap 'owner && rm -f "$PIDFILE"' EXIT
+trap 'exit 0' TERM INT
+# Bash runs a trap only after its foreground child returns, so a plain `sleep 900` during a branch pause
+# would keep a replaced watcher alive for fifteen minutes. `wait` is interruptible.
+nap() { sleep "$1" & wait $!; }
+
 mtime() { stat -c %Y "$FILE" 2>/dev/null || stat -f %m "$FILE" 2>/dev/null || echo 0; }
 # A detached HEAD has no symbolic ref, and is no more a place to commit unattended than a branch is.
 current_branch() { git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached HEAD)"; }
@@ -66,6 +92,7 @@ dirty=0
 paused=""
 
 while true; do
+    owner || exit 0                 # replaced by a newer arming
     if [ "$watch_branch" = 1 ]; then
         on=$(current_branch)
         if [ "$on" != "$BRANCH" ]; then
@@ -75,7 +102,7 @@ while true; do
                 paused=$on
                 echo "${FILE##*/} watch paused: tree is on $on, not $BRANCH — a branch is the human's own work"
             fi
-            sleep "$BRANCH_PAUSE"
+            nap "$BRANCH_PAUSE"
             continue
         fi
         if [ -n "$paused" ]; then
@@ -84,7 +111,8 @@ while true; do
         fi
     fi
 
-    sleep "$POLL"
+    nap "$POLL"
+    owner || exit 0
     now=$(mtime)
 
     if [ "$now" != "$last" ]; then
