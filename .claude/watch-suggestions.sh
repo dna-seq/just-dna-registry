@@ -3,8 +3,8 @@
 #
 # Emits one line on stdout when the watched file has stopped changing for COOLDOWN seconds.
 # Consecutive saves inside the cooldown collapse into a single event, because each mtime bump restarts
-# the timer. Meant to be driven by whatever turns a line of stdout into a notification — the Monitor
-# tool here, but it works piped to anything.
+# the timer. Meant to be driven by whatever turns a line of stdout into a notification — a background
+# task here, but it works piped to anything.
 #
 # It never fires for a change that predates it: `last` is seeded from the current mtime and `dirty`
 # starts clear, so an already-settled edit stays quiet. Run the ledger once at startup to pick up
@@ -35,6 +35,12 @@
 # pid's command line, because a recycled pid could belong to anything. Every poll it checks the pidfile
 # and exits if it no longer owns it. That exit is what settles two watchers started in the same second,
 # and it also covers an old watcher whose kill was refused. No flock is used, because macOS has none.
+#
+# A replaced watcher exits with SUPERSEDED (3), whether it noticed at a poll or was sent TERM by its
+# successor. It is the one exit that is neither an event nor a fault, and whoever armed it should be able
+# to tell it apart from both without reading anything: a wrapper that ends in `wait` on this process
+# reports 3 as the task's status. A TERM or INT while this watcher still owns the pidfile is somebody
+# stopping it on purpose, and exits 0. Any other non-zero status is a real failure.
 #
 # This is the only one of the three that is really bash. The ledger is Python and is invoked through
 # $PYTHON below rather than as a bare path, so neither its exec bit nor its shebang is load-bearing
@@ -76,9 +82,11 @@ if [ -n "$old" ] && [ "$old" != $$ ] && kill -0 "$old" 2>/dev/null &&
     kill "$old" 2>/dev/null && echo "replaced watcher pid $old on ${FILE##*/}" >&2
 fi
 owner() { [ "$(cat "$PIDFILE" 2>/dev/null)" = $$ ]; }
+SUPERSEDED=3
 # Leave the pidfile behind only if it names somebody else. A replaced watcher must not delete its successor's.
 trap 'owner && rm -f "$PIDFILE"' EXIT
-trap 'exit 0' TERM INT
+# The successor writes the pidfile before it signals, so a TERM arriving here already reads as not-owner.
+trap 'owner && exit 0; exit "$SUPERSEDED"' TERM INT
 # Bash runs a trap only after its foreground child returns, so a plain `sleep 900` during a branch pause
 # would keep a replaced watcher alive for fifteen minutes. `wait` is interruptible.
 nap() { sleep "$1" & wait $!; }
@@ -92,7 +100,7 @@ dirty=0
 paused=""
 
 while true; do
-    owner || exit 0                 # replaced by a newer arming
+    owner || exit "$SUPERSEDED"     # replaced by a newer arming
     if [ "$watch_branch" = 1 ]; then
         on=$(current_branch)
         if [ "$on" != "$BRANCH" ]; then
@@ -112,7 +120,7 @@ while true; do
     fi
 
     nap "$POLL"
-    owner || exit 0
+    owner || exit "$SUPERSEDED"
     now=$(mtime)
 
     if [ "$now" != "$last" ]; then

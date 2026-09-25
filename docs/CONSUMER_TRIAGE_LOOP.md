@@ -133,7 +133,7 @@ prints that line and exits, which is the one wakeup:
 
 ```
 Bash({
-  command: 'cd /data/sources/just-dna-registry && coproc W { exec .claude/watch-suggestions.sh; }; while IFS= read -r line <&"${W[0]}"; do case "$line" in *"nothing pending"*|*paus*|*resum*) continue;; esac; echo "$line"; break; done; kill "$W_PID" 2>/dev/null',
+  command: 'cd /data/sources/just-dna-registry && coproc W { exec .claude/watch-suggestions.sh; }; p=$W_PID; while IFS= read -r line <&"${W[0]}"; do case "$line" in *"nothing pending"*|*paus*|*resum*) continue;; esac; echo "$line"; break; done; kill "$p" 2>/dev/null; wait "$p"',
   run_in_background: true,
 })
 ```
@@ -144,17 +144,34 @@ and none while the inbox is quiet. **Arm it on every run, and don't check first.
 singleton per watched file (2026-09-25): a new start records itself in a pidfile under
 `$XDG_RUNTIME_DIR` and stops the previous owner, so arming twice leaves one watcher. Checking first used
 to go wrong: `TaskList` cannot see a watcher from an earlier run, so re-arming on "no tasks found"
-reported every settle twice. The replaced watcher's wrapper ends with no output, which is one silent
-completion notice to whoever armed it. Check for a live watcher with `pgrep -af watch-suggestions`. That
+reported every settle twice.
+
+**The task's exit status says how it ended**, because the wrapper ends in `wait` on the watcher:
+
+| status | meaning | action |
+|---|---|---|
+| 0, with a line | an event | triage, then arm again |
+| 3, no output | **superseded**: a newer arming took over | none, the newer watcher is live |
+| 0, no output | stopped on purpose (`TaskStop`, or a TERM while it still owned the pidfile) | arm again if you still want it |
+| anything else | the watcher failed | read the output, fix, arm again |
+
+A replaced watcher's task shows up as *failed* with exit code 3. That is expected. Until 2026-09-25
+the wrapper ended in a bare `kill` of a process that had already gone, so a replacement came back as
+exit 1, which looks the same as a real fault. `SUPERSEDED` in the script is the value. Save `$W_PID`
+before the loop, because bash may unset it once the coprocess exits. Check for a live watcher with
+`pgrep -af watch-suggestions`. That
 also lists just-dna-format's watcher, which has a different path. `TaskStop` cancels it. It reacts only while the session
 is open and the REPL is idle. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and python
 `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
 
-**A `/clear` did not stop the old persistent `Monitor`** (tested). This has not been tested for the background task. So the ordinary case is an event arriving at an agent with no
-memory of having armed anything, which is exactly why the event line names this file — and why you should
-read a settling notification as the intended trigger rather than as a stale process. The old `Monitor` was armed once and
-survived clears. The background task is re-armed after each event it reports. Run the ledger yourself after a
-clear, though: the watcher never fires for a change that predates it, so a standing backlog stays quiet.
+**A `/clear` stops neither the background task nor the old persistent `Monitor`** (both tested; the
+task on 2026-09-25, when a watcher armed before a clear was still running afterwards and its completion
+notice reached the cleared session). So the ordinary case is an event arriving at an agent with no
+memory of having armed anything. That is why the event line names this file, and why you should read a
+settling notification as the intended trigger rather than as a stale process. The same goes for an
+exit-3 notice after a clear: it is the pre-clear watcher being replaced by your own arming. Run the
+ledger yourself after a clear, though: the watcher never fires for a change that predates it, so a
+standing backlog stays quiet.
 
 **The watch pauses while the tree is off `main`** (`BRANCH`, adopted from the gist on 2026-08-21). This
 loop commits as it goes, and that permit is scoped to `main`: a feature branch — or a detached HEAD — is

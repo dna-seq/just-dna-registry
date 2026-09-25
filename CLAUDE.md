@@ -1060,7 +1060,7 @@ read it before answering one. Three dependency-free scripts run it:
 ```
 .claude/triage-state.py [--pending] [--next]    # the ledger; --next claims the next id
 .claude/triage-archive.py S3 [--dry-run]        # move answered items, verifying the prose moved verbatim
-.claude/watch-suggestions.sh                    # debounced watcher, armed with the Monitor tool
+.claude/watch-suggestions.sh                    # debounced watcher, armed as a background Bash task
 ```
 
 Two of the three are Python and carry `.py` for it — run them or hand them to `python3`, **never to
