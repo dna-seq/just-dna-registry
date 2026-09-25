@@ -121,28 +121,32 @@ to `bash`. They were `.sh` until 2026-08-16, on the reasoning that one glob arms
 that cost. The watcher calls the ledger through `$PYTHON`, so neither the exec bit nor the shebang is
 load-bearing anywhere.
 
-Arm the watcher with the `Monitor` tool, which turns each stdout line into a notification that re-invokes
-the agent:
+**Arm the watcher as a one-shot background `Bash` task, not with `Monitor`** (changed 2026-09-25, on
+the maintainer's instruction). Since 2026-09-24 a `Monitor` expires after at most 30 minutes and wakes
+the agent to say so. That turned the watch into a half-hourly timer that woke the agent and spent
+tokens on an empty inbox, the opposite of what it is for. The maintainer's rule is that **the agent
+wakes on a change and on nothing else**. If they wanted a clock, they would have set up `/loop`. A
+background `Bash` task has no expiry. This one waits until the inbox settles with something pending,
+prints that line and exits, which is the one wakeup:
 
 ```
-Monitor({
-  command: '/data/sources/just-dna-registry/.claude/watch-suggestions.sh',
-  description: 'CONSUMER_SUGGESTIONS.md settling',
-  timeout_ms: 1800000,
+Bash({
+  command: 'cd /data/sources/just-dna-registry && coproc W { exec .claude/watch-suggestions.sh; }; while IFS= read -r line <&"${W[0]}"; do case "$line" in *"nothing pending"*|*paus*|*resum*) continue;; esac; echo "$line"; break; done; kill "$W_PID" 2>/dev/null',
+  run_in_background: true,
 })
 ```
 
-**As of 2026-09-24 the Monitor tool has no `persistent` option, and a watch expires after at most 30
-minutes.** Asked for 3600000 ms, it answered *expires in 30m*. The expiry arrives as a single notice,
-and the answer to it is to arm again. What follows about `/clear` was tested under the older
-`persistent: true` and has not been re-tested under the cap. `TaskStop` cancels it. It reacts only while the session
+It skips `nothing pending` settles, which covers the loop firing on its own replies (§3), and it skips
+the branch-pause lines. Once the batch is handled, arm it again. That is one re-arm per real event,
+and none while the inbox is quiet. Check for a live watcher with `pgrep -af watch-suggestions`. That
+also lists just-dna-format's watcher, which has a different path. `TaskStop` cancels it. It reacts only while the session
 is open and the REPL is idle. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and python
 `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
 
-**A `/clear` does not stop it** (tested). So the ordinary case is an event arriving at an agent with no
+**A `/clear` did not stop the old persistent `Monitor`** (tested). This has not been tested for the background task. So the ordinary case is an event arriving at an agent with no
 memory of having armed anything, which is exactly why the event line names this file — and why you should
-read a settling notification as the intended trigger rather than as a stale process. Under the old option it was
-armed once and survived clears; now expect to re-arm on each expiry as well. Run the ledger yourself after a
+read a settling notification as the intended trigger rather than as a stale process. The old `Monitor` was armed once and
+survived clears. The background task is re-armed after each event it reports. Run the ledger yourself after a
 clear, though: the watcher never fires for a change that predates it, so a standing backlog stays quiet.
 
 **The watch pauses while the tree is off `main`** (`BRANCH`, adopted from the gist on 2026-08-21). This
