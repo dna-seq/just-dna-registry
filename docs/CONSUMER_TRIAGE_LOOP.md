@@ -29,9 +29,16 @@ back with it.
 **Not adopted, and why.** `item-next.py` allocates tracked-item ids for route (a), and this repo's
 roadmap has no id series (Step 2's table says so). The `RM` ids we cite belong to upstream, which
 allocates them. The gist's *do not commit* hygiene rule is overridden here by repo policy (Step 5).
-**Outbound**: the gist's `STATUS_RE`/`MARKER_RE` are fence-blind and its runbook does not mention it,
-while ours records it on notice (§5). That note is committed in a local clone of the gist and has not
-been pushed.
+**Outbound**: the gist's `STATUS_RE`/`MARKER_RE` are fence-blind and its runbook did not mention it,
+while ours records it on notice (§5). That note sat in a local clone of the gist until the next trip
+carried it.
+
+**Outbound on 2026-09-25**: the newest-wins singleton (`0ce1009`) and the `SUPERSEDED` exit code went
+to the gist in one revision (`b063b65`), together with the one-shot arming wrapper and its exit-status
+table, and the fence-blind note above. The gist's §2 used to say *arm it once and clear freely*; it now
+says to arm on every run. That trip went through the gist API (`gh api -X PATCH gists/<id>`), because
+`git push` to `gist.github.com` over HTTPS gets no credentials from `gh` here and SSH fails host-key
+verification from the sandbox.
 
 **The trip before it was 2026-08-21, and it ran in both directions**, which is the first time it had.
 Outbound went the two findings owed since 2026-08-20: the archived-footer one, which the gist did not
@@ -547,8 +554,8 @@ found upstream, some here, and as of 2026-09-24 all of them are in both copies:
   a `**Status` line or a `<!-- triaged: … -->` marker inside a code block would read as an answered
   section. Neither file contains one today (21 of 21 archived items read `current` after the fix), and
   the boundary case is the one that loses data, so this is recorded rather than fixed. If it ever
-  fires, the same `fenced_lines` is already there to consult. The gist does not record this (outbound,
-  2026-09-24).
+  fires, the same `fenced_lines` is already there to consult. The gist records it too since
+  2026-09-25.
 
   **This paragraph used to say *owed to the gist*, and the gist already had it.** It was the second
   time in a month that we built something the gist had already published, the BRANCH guard being the
