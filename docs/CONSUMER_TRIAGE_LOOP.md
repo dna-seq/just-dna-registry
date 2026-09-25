@@ -122,8 +122,10 @@ that cost. The watcher calls the ledger through `$PYTHON`, so neither the exec b
 load-bearing anywhere.
 
 **Arm the watcher as a one-shot background `Bash` task, not with `Monitor`** (changed 2026-09-25, on
-the maintainer's instruction). Since 2026-09-24 a `Monitor` expires after at most 30 minutes and wakes
-the agent to say so. That turned the watch into a half-hourly timer that woke the agent and spent
+the maintainer's instruction). Since Claude Code 2.1.271 a `Monitor` expires after at most 30 minutes and wakes
+the agent to say so. The release note reads *"Changed Monitor watches to always have a deadline (at
+most 30 minutes; 10 in single-prompt `-p` runs) and notify Claude to re-arm, replacing the no-timeout
+`persistent` option"*. The last `persistent` watch here was under 2.1.270 on 2026-09-12. That turned the watch into a half-hourly timer that woke the agent and spent
 tokens on an empty inbox, the opposite of what it is for. The maintainer's rule is that **the agent
 wakes on a change and on nothing else**. If they wanted a clock, they would have set up `/loop`. A
 background `Bash` task has no expiry. This one waits until the inbox settles with something pending,
