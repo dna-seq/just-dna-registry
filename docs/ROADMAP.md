@@ -596,6 +596,65 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ## Next registry version (post-0.11)
 
+- **Tell a catalog reader that a module's source has published since it was drafted** (**severity
+  medium, open — not scheduled**; motivated by **S24**, relayed from just-dna-format's RM85). Enricher
+  0.7's `currency.check_dataset_currency` compares each `sources.csv` `dataset` label against the
+  release its source publishes now, but it runs at enrich time and tells the **author**. The reader
+  who needs it is browsing the catalog months later, and RM85 left the catalog side to us on purpose.
+  Sizing when built: **minor** (a new response field, no status or verdict moves).
+
+  **What already reaches a reader, and why it is not the answer.** When a publish enriches, a
+  `dataset_currency` record lands in `manifest.verification` and the detail view carries it verbatim
+  through `VerificationInfo.checks` (`source`, `release`, `skipped`, `checked_at`). That is the
+  enrich-time answer: frozen at publish, so it goes stale by construction, and it is in the
+  unverifiable-claim block that is deliberately never a facet. The ask is for a comparison made at
+  *read* time, which nothing here does.
+
+  **Candidates, and what is wrong with the ones that are wrong.**
+
+  - *Probe the source on the request path.* Out. The listing and detail routes are anonymous reads on
+    the 60/min search budget. A ClinVar probe streams up to 256 KB of the VCF, and the caching-proxy
+    rule is that a request path never reaches a remote source to answer a read. Caching the answer
+    per source does not fix this, because the first reader after expiry still pays the egress.
+  - *An operator-side refresh.* A `registry` command, run on a schedule, asks each member of
+    `currency.PROBE_SOURCES` once and stores `(source, current label, checked_at)` in the index. The
+    detail view then compares each version's recorded labels against the stored ones. There is no
+    egress on a request path and the table is a rebuildable projection. **This is the likely shape.**
+    It needs `checked_at` shown beside the verdict, because "current as of the last refresh" is the
+    only claim it can make.
+  - *The box's own snapshot as a one-way witness.* `lane_status()` already reads each lane's
+    `release_label`, so a held ClinVar snapshot names a release at zero cost. A snapshot *newer* than
+    a module's recorded label proves `behind`. An *equal* one proves nothing, since the box may be
+    stale itself. Usable as a supplement to the refresh, never as its replacement.
+
+  **Rules the build has to keep.**
+
+  - **Reuse the check, never re-derive it.** Call `check_dataset_currency(rows, probes=…)` with
+    injected probes that return the stored label. Comparability lives there: `_label_kind` refuses to
+    compare a `clinvar_<date>` label against a `clinvar_sha256:…` one, and that answer is
+    `no_reference`, not a mismatch. The enricher is the optional tier, so import it lazily in
+    `services/`, as the other passes do.
+  - **Read `PROBE_SOURCES`, never a list.** The enricher installed here probes ClinVar **and** the PGS
+    Catalog (RM163), so S24's "only ClinVar" was already out of date when it arrived. A hand-kept list
+    would go stale the same way.
+  - **Tri-state, with the reason beside it.** `DatasetCurrency.behind` is `True` / `False` / `None`,
+    and every `None` carries `unchecked` ∈ `offline` / `unreachable` / `no_reference` /
+    `unsupported`. `None` renders as unknown and never as current, on the page as well as in the
+    JSON. The console's check renderer rule applies unchanged.
+  - **"Recorded" comes from the stored sidecar, not the manifest.** `manifest.sources` summarizes the
+    licensing table without its `dataset` column, so the labels have to be read from the stored
+    `licensing.csv` / `sources.csv`. `services/rebuild.py` does the same kind of read for its probes.
+    A version stored without the sidecar has no claim to compare, which makes it
+    `nothing_to_check`, not current.
+  - **A different trust class from `VerificationInfo`.** This verdict is computed here, from our own
+    probe, so whether it may filter or sort is a decision in its own right. It must not inherit the
+    publisher-claim block's "never a facet" rule by accident, and it must not be merged into that
+    block either.
+  - **A fourth witness, not a rebuild trigger.** `needs_upgrade` and `rebuild.RebuildVerdict` are
+    about the *compiler* moving; this is about the *world* moving. A module behind its source is
+    fixed by the author re-drafting from a fresh spec directory (a re-draft appends beside the
+    superseded rows, so an in-place one makes things worse), never by `registry upgrade`.
+
 - **Name the format release a rejected column arrived in** (**severity medium, open — unblocked since
   0.25, scheduled behind the deployment in the next bullet**; motivated by **S18**, reopened and
   corrected by **S21**). 0.22.0 ships the half this service can compute on its
