@@ -1120,7 +1120,7 @@ too; a change to this repo's release table or routing does not. Sync is one-way 
 ## Related repos
 
 Part of a multi-root ecosystem: `just-dna-lite` (main app + webui), `just-dna-pipelines`
-(compiler/discovery — this service's dependency), `just-prs`, `prepare-annotations`, `dna-seq`.
+(compiler/discovery — a sibling consumer, not this service's dependency; see the note above), `just-prs`, `prepare-annotations`, `dna-seq`.
 Treat sibling repos as **read-only** unless the task explicitly targets them — the one exception is
 `../just-dna-format/docs/CONSUMER_SUGGESTIONS.md`, which we append upstream items to (see above). This
 registry plugs into the existing `Source` discovery model as *just another source* (`registry://`), so
