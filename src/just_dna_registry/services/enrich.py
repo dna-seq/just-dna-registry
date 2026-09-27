@@ -21,6 +21,7 @@ being checkable. `tests/test_enrich_service.py` asserts it.
 """
 
 import asyncio
+import json
 import logging
 import os
 import tempfile
@@ -33,6 +34,7 @@ from typing import Any, Optional
 
 from just_dna_compiler.compiler import content_signature, validate_spec
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
+from just_dna_format.release_records import parse_version
 
 from just_dna_registry.config import Settings
 from just_dna_registry.models.api import (
@@ -54,7 +56,7 @@ from just_dna_registry.models.api import (
     VersionRef,
     VrsCoverage,
 )
-from just_dna_registry.version import VersionInfo, schema_gap_advisory
+from just_dna_registry.version import VersionInfo, installed_enricher, schema_gap_advisory
 
 logger = logging.getLogger("registry.enrich")
 
@@ -442,6 +444,97 @@ def lane_presence(settings: Settings) -> dict[str, Path | None]:
         return dict.fromkeys(provisionable_lanes())
     configured = lane_destinations(settings)
     return {name: lane.resolve(configured.get(name)) for name, lane in lanes.items()}
+
+
+@dataclass(frozen=True)
+class LaneAge:
+    """Which enricher built a present **derived** lane, against the one installed now.
+
+    **A bandaid, and scoped as one.** `prepare_lane` leaves a present cache alone by design, so a
+    derivation upstream corrects in a patch (RM293: MITOMAP's `:` deletions, 47 → 8 unmintable) never
+    reaches a box that already built the lane. For a derived lane — one with `parents`, joined
+    locally from snapshots already on disk, seconds and no network — rebuilding whenever the builder
+    predates the installed enricher is cheap enough to do without asking which patch moved what.
+    Lanes that build from a download, a personal key, a pinned release or a workbook are not
+    covered: a rebuild there costs somebody's bandwidth or credential on every enricher patch.
+
+    **Versions are compared, never dates.** `release.json` carries `builder_version`, and
+    `built_at` would answer a different question (how old the bytes are, not which code made them).
+    `stale` is tri-state: an unrecorded or unparseable stamp is *cannot say*, never "current", and
+    `warm-caches` names it rather than rebuilding on a guess. A rebuild stamps the installed
+    version, so the check converges after one run.
+    """
+
+    lane: str
+    path: Path
+    built_by: str | None
+    installed: str | None
+
+    @property
+    def stale(self) -> bool | None:
+        if self.built_by is None or self.installed is None:
+            return None
+        try:
+            return parse_version(self.built_by) < parse_version(self.installed)
+        except ValueError:
+            return None
+
+
+def _builder_version(path: Path) -> str | None:
+    """The `builder_version` a snapshot's `release.json` records, or None if it records none."""
+    stamp = (path if path.is_dir() else path.parent) / "release.json"
+    if not stamp.is_file():
+        return None
+    try:
+        data = json.loads(stamp.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    value = data.get("builder_version") if isinstance(data, dict) else None
+    return value if isinstance(value, str) else None
+
+
+def derived_lane_ages(settings: Settings) -> list[LaneAge]:
+    """Every **present** lane with parents, and which enricher built it."""
+    present = lane_presence(settings)
+    installed = installed_enricher()
+    return [
+        LaneAge(name, Path(where), _builder_version(Path(where)), installed)
+        for name, lane in cache_lanes().items()
+        if lane.parents and (where := present.get(name)) is not None
+    ]
+
+
+def rebuild_derived_lane(settings: Settings, age: LaneAge) -> tuple[bool | None, str]:
+    """Rebuild a derived lane beside itself, then swap it in. The previous build is **kept**.
+
+    Built into a sibling staging directory and moved across only once finished, because resolvers
+    read the target by globbing and a half-written parquet is still a parquet. The old directory is
+    renamed to `<name>.pre-<installed>` rather than removed: provisioning never deletes. Parents are
+    passed as this deployment resolves them, so a box configuring them only as `REGISTRY_*` paths
+    needs no `JUST_DNA_*` export for the build to find them.
+    """
+    from just_dna_enricher.caches import RebuildRequest, rebuild_lane
+
+    target = age.path
+    if not target.is_dir():
+        return None, f"{target} is not a directory; rebuild it with `just-dna-enricher cache rebuild`"
+    lane = cache_lanes()[age.lane]
+    present = lane_presence(settings)
+    parents = {name: Path(where) for name in lane.parents if (where := present.get(name)) is not None}
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.rebuild-", dir=target.parent))
+    outcome = rebuild_lane(lane, RebuildRequest(out_dir=staging, parents=parents))
+    if outcome.built is not True:
+        return outcome.built, f"{outcome.detail} (staging left at {staging}; the live lane is untouched)"
+    # `mkdtemp` makes the directory 0700, and a server running as another user must still read it.
+    staging.chmod(target.stat().st_mode & 0o7777)
+    backup = target.with_name(f"{target.name}.pre-{age.installed}")
+    suffix = 1
+    while backup.exists():
+        suffix += 1
+        backup = target.with_name(f"{target.name}.pre-{age.installed}.{suffix}")
+    target.rename(backup)
+    staging.rename(target)
+    return True, f"{outcome.detail}; the {age.built_by} build is kept at {backup}"
 
 
 #: Which group of passes here reads each lane, for the one field `REFERENCE_NAMES` cannot carry: a

@@ -877,7 +877,10 @@ def warm_caches(
     on MANE — and building locally is the only route there will ever be. `cache pull` stopped at the
     first kind, which is how a deployment came to run with buildable caches permanently absent and
     the checks that read them skipping themselves. A present cache is left alone, so re-running is
-    cheap and safe.
+    cheap and safe — **with one exception**: a present *derived* lane (built locally from parents
+    already on disk) whose `release.json` names an older enricher than the installed one is rebuilt
+    beside itself and swapped in, the previous build kept as `<lane>.pre-<version>`. Without it an
+    upstream correction to a derivation (RM293) never reaches a box that built the lane once.
 
     Groups, because they gate different things. **Resolution** (ensembl, clinvar) decides whether a
     publish works. **PGx** (cpic, clinpgx, pharmvar — `--pgx`) is what makes a *hosted* `?pgx=` check
@@ -902,6 +905,7 @@ def warm_caches(
         PGX_REFERENCES,
         RESOLUTION_REFERENCES,
         cache_lanes,
+        derived_lane_ages,
         enricher_available,
         export_lane_locations,
         gated_lanes,
@@ -909,6 +913,7 @@ def warm_caches(
         lane_presence,
         provisionable_lanes,
         pullable_lanes,
+        rebuild_derived_lane,
     )
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
@@ -977,15 +982,33 @@ def warm_caches(
     # under `--all` it rendered as missing and was queued for a download of bytes already on disk.
     present = lane_presence(settings)
     pullable, gated = pullable_lanes(), gated_lanes()
+    # A present derived lane built by an older enricher is rebuilt whether or not it was selected:
+    # it is already here, so the operator chose to have it, and `prepare_lane` alone would keep the
+    # old derivation forever. See `LaneAge` for why only derived lanes.
+    ages = {age.lane: age for age in derived_lane_ages(settings)}
 
     typer.secho("lanes:", bold=True)
     missing: list[str] = []
+    stale: list[str] = []
     for name in known:
         lane_obj = lanes[name]
         where = present.get(name)
         read_here = grouped.get(name)
         tag = f"[{read_here}]" if read_here else "[not read here]"
-        if where is not None:
+        age = ages.get(name)
+        if where is not None and age is not None and age.stale:
+            typer.secho(
+                f"  ⟳ {name} {tag}: {where} — built by enricher {age.built_by}, {age.installed} is "
+                f"installed; rebuild",
+                fg=typer.colors.YELLOW,
+            )
+            stale.append(name)
+        elif where is not None and age is not None and age.stale is None:
+            typer.echo(
+                f"  ✓ {name} {tag}: {where} (builder version unrecorded, so staleness cannot be "
+                f"judged; `just-dna-enricher cache rebuild --only {name}` to be sure)"
+            )
+        elif where is not None:
             typer.echo(f"  ✓ {name} {tag}: {where}")
         elif name not in selected:
             typer.echo(f"  – {name} {tag}: not selected")
@@ -1015,14 +1038,20 @@ def warm_caches(
                 fg=typer.colors.YELLOW,
             )
 
-    if not missing:
+    if not missing and not stale:
         typer.secho("\nEvery selected lane is present.", fg=typer.colors.GREEN)
         return
     if not apply:
-        typer.echo(
-            f"\n{len(missing)} lane(s) to provision: {', '.join(missing)}. "
-            f"Re-run with --apply (this takes a while and a lot of disk)."
-        )
+        if missing:
+            typer.echo(
+                f"\n{len(missing)} lane(s) to provision: {', '.join(missing)}. "
+                f"Re-run with --apply (this takes a while and a lot of disk)."
+            )
+        if stale:
+            typer.echo(
+                f"\n{len(stale)} derived lane(s) to rebuild: {', '.join(stale)}. Re-run with --apply "
+                f"(local, no network; the previous build is kept beside it)."
+            )
         raise typer.Exit(code=1)
 
     # **After the report, before the provisioning.** The report answers "what would the running
@@ -1032,11 +1061,22 @@ def warm_caches(
     for var, value in sorted(export_lane_locations(settings).items()):
         typer.echo(f"  · {var}={value}")
 
+    rebuild_failures = 0
+    for name in stale:
+        built, detail = rebuild_derived_lane(settings, ages[name])
+        if built is True:
+            typer.secho(f"✓ {name}: rebuilt — {detail}", fg=typer.colors.GREEN)
+        elif built is None:
+            typer.secho(f"– {name}: {detail}", fg=typer.colors.YELLOW)
+        else:
+            typer.secho(f"✗ {name}: rebuild FAILED — {detail}", fg=typer.colors.RED, err=True)
+            rebuild_failures += 1
+
     # **ACMG before the enricher gets a say, because the enricher has no route for it here.** Its
     # only build path needs `openpyxl` (a `[dev]` extra upstream, in no extra of ours), so
     # `prepare_caches` can only report the lane as unbuildable. Fetching the built list is the route,
     # and `--source acmg=<workbook>` still wins for an operator who does have the build extra.
-    fetch_failures = 0
+    fetch_failures = rebuild_failures
     if "acmg" in missing and "acmg" not in sources:
         # `lane_destinations` returns None to mean *the lane's own default*, not "unresolved" — and
         # by here `export_lane_locations` has already published any configured path into

@@ -7,23 +7,18 @@ axis between compiler 0.7.1 and 0.7.2, and a compiler patch is not a gap, so `re
 nothing to find. Upgrade with `uv sync` from the tag.
 
 **One box-side step, and only if the deployment serves `POST /drafts?source=mitomap-miss`.** RM293
-corrects the derived `mitomap_miss` lane, and `registry warm-caches --apply` will not refresh it,
-because provisioning leaves a present cache alone by design. Rebuild it beside the live one with
-upstream's command, then point `REGISTRY_MITOMAP_MISS_CACHE` at the new directory or copy it across.
-Run this from the repo root:
+corrects the derived `mitomap_miss` lane. Run the dry run first, then apply:
 
 ```
-uv run just-dna-enricher cache rebuild --only mitomap_miss --out data/caches-0.7.3
+uv run registry warm-caches
+uv run registry warm-caches --apply
 ```
 
-This was run on the dev box (2026-09-27). It reported `unmintable 8, rated_miss 2` and wrote
-`data/` plus `release.json`. The build finds its parents (`mitomap`, `clinvar`) through
-`JUST_DNA_MITOMAP_CACHE` / `JUST_DNA_CLINVAR_CACHE` or the shared base. On a box that configures
-those lanes only as `REGISTRY_*` paths, export the two `JUST_DNA_*` variables first, or the build
-reports its parents missing. That variant is **unrun**.
-
-To confirm it landed, the dry run `uv run registry warm-caches` should list `mitomap_miss` at the
-new path.
+The dry run marks the lane `⟳ … built by enricher 0.7.2, 0.7.3 is installed; rebuild`. `--apply`
+rebuilds it and keeps the old build as `mitomap_miss.pre-0.7.3` beside it, and a second dry run
+lists it as `✓`. Both were run on the dev box on 2026-09-27, against a copy of the lane: the rebuild
+reported `unmintable 8, rated_miss 2`. `--apply` also provisions any *selected* lane that is missing,
+so read the dry run's `to provision` line before applying.
 
 ## 0.26.2 enricher 0.7.2 (operator note — no sweep)
 

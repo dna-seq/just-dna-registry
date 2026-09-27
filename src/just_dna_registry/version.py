@@ -28,6 +28,7 @@ API_VERSION: str = "v1"
 _REGISTRY_PKG = "just-dna-registry"
 _FORMAT_PKG = "just-dna-format"
 _COMPILER_PKG = "just-dna-compiler"
+_ENRICHER_PKG = "just-dna-enricher"
 
 
 def _installed(pkg: str) -> str | None:
@@ -76,6 +77,15 @@ def installed_compiler() -> str | None:
     — a client install has no compiler tier at all — and must never be read as "up to date".
     """
     return _installed(_COMPILER_PKG)
+
+
+def installed_enricher() -> str | None:
+    """The `just-dna-enricher` version that would build a snapshot here, or None if not installed.
+
+    `warm-caches` compares a derived lane's `release.json` `builder_version` against it. `None` means
+    *cannot say*, exactly as for `installed_compiler`, and is never read as "current".
+    """
+    return _installed(_ENRICHER_PKG)
 
 
 def contract_compatible(server_format: str | None, client_format: str | None) -> bool:

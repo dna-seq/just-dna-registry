@@ -444,6 +444,16 @@ Four rules that each cost a bug to learn:
   only the operator holds has not failed. And **`export_lane_locations` before provisioning**, because
   `prepare_lane` resolves with no argument and follows the lane's own variable — without it a pull
   lands where the running server never looks.
+  **One bandaid over "a present cache is left alone"** (after upstream v0.7.3): `warm-caches`
+  rebuilds a present **derived** lane (`lane.parents`) whose `release.json` `builder_version`
+  predates the installed enricher (`services/enrich.LaneAge`), because RM293 corrected
+  `mitomap_miss` and nothing else would ever re-derive it. Versions compared, never `built_at`; an
+  unrecorded stamp is *cannot say*; the old build is renamed aside, never deleted. It is scoped to
+  derived lanes on purpose: they join local parents in seconds, while the other build-only lanes
+  spend a download, a key or a pin on every enricher patch. It retires when `prepare_lane` itself
+  answers staleness — check with
+  `uv run python -c "import inspect,just_dna_enricher.caches as c; print('builder_version' in inspect.getsource(c.prepare_lane))"`
+  (run 2026-09-27: `False`, nothing upstream reads the stamp; a `True` is a prompt to read `prepare_lane`, not proof).
 - **Nice values are one-way.** Raising a thread's nice is unprivileged, lowering it back is not, and
   anyio reuses its workers — so anything niced runs on a thread we create and discard
   (`lowpriority.py`). A `finally: restore()` here does not work and cannot be made to.

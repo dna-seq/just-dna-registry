@@ -36,8 +36,20 @@ already passes its result through unchanged:
   `pubmind` warns that its indels are not left-normalized (RM273). Both reach the caller in the
   draft's `warnings`.
 - **`mitomap-miss` (RM293)** joins MITOMAP's `:` deletions, which it used to report as unmintable
-  (47 → 8). That lane is derived and never published, so a box picks it up only by rebuilding it;
-  `warm-caches` leaves a present cache alone. See UPGRADE.md.
+  (47 → 8). That lane is derived and never published, so a box picks it up only by rebuilding it,
+  which `registry warm-caches --apply` now does (below).
+
+### `warm-caches` rebuilds a derived lane an older enricher built
+
+`prepare_lane` leaves a present cache alone by design, so an upstream fix to a *derived* lane never
+reached a box that had built the lane once. `registry warm-caches` now reads each present derived lane's
+`release.json` `builder_version`. If that is older than the installed enricher, the dry run marks
+the lane `⟳ … rebuild`, and `--apply` rebuilds it beside itself and swaps it in. The previous build
+is kept as `<lane>.pre-<version>`, never deleted. Parents are passed as this deployment resolves
+them, so no `JUST_DNA_*` export is needed. Versions are compared, not dates, and a missing stamp is
+reported as *cannot judge* rather than rebuilt on a guess. This is scoped to derived lanes (today
+only `mitomap_miss`): they join snapshots already on disk in seconds, while the other build-only
+lanes would spend a download, a key or a pin on every enricher patch.
 
 RM264 rewrites the manifest's `Literature.quotes_found`/`quotes_unchecked` descriptions: an
 abstract-only miss is unsettled, not missing. Our `/check` literature pass reads the enricher's run
