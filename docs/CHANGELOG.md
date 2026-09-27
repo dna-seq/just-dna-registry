@@ -60,6 +60,24 @@ candidate for 0.27.
 Upstream's *after upgrading* advice (`enrich --rederive`, the literature pass online) is for module
 authors. Nothing on this server re-drafts or re-enriches a published module.
 
+### A publish that finishes second no longer overwrites the version that finished first
+
+The route asks `version_exists` before any work, and a publish then spends minutes enriching and
+compiling. A second request for the same version, arriving in that window, passed the same check.
+Both runs then stored under one key, so the second **overwrote the bytes of a version the first had
+already indexed**, then failed its own insert on `UNIQUE(module_id, version)` as a `500`. The stored
+`manifest.json` and parquets no longer matched the indexed manifest, and every download of that
+version would have failed verification. The ordinary trigger is a retry after a proxy drops a large
+publish's response (S26).
+
+`_finalize` now re-checks under a process-wide lock held across *check → store → index*, and the late
+refusal is the same bare `409 version_exists` the route's early check returns, so a client cannot tell
+the two apart by timing. Found by probing S26's "naive retry" case, not reported. The regression test
+was run against the unfixed code first and failed with the `IntegrityError`.
+
+The lock is process-wide only. The deployment is one process over one SQLite file; a second replica
+would need the same exclusion from the database.
+
 ## [0.26.2] — 2026-09-25
 
 **Client surface: unchanged.** No endpoint and no `RegistryClient` method moves. One response field

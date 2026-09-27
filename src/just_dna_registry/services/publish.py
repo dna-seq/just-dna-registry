@@ -24,6 +24,7 @@ import io
 import shutil
 import tarfile
 import tempfile
+import threading
 import zipfile
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -147,6 +148,23 @@ def normalize_module_block(spec_dir: Path) -> list[str]:
     if changes:
         spec_file.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     return changes
+
+
+#: Held across *is this version taken → store its bytes → index it* in `_finalize`, so the three are one
+#: step. The route asks `version_exists` before any work, but a publish then spends minutes enriching
+#: and compiling, and a second request for the same version arriving in that window passes the same
+#: question. Before this lock both runs reached `storage.store_module` under one key: the second
+#: overwrote the bytes of a version the first had already indexed, then failed its own insert on
+#: `UNIQUE(module_id, version)` as a 500. A published version whose stored `manifest.json` and
+#: parquets no longer match the indexed manifest is the immutability breach SPEC §6 forbids, and a
+#: downloader's verification is what finds it. The trigger is the ordinary one (S26): a large import
+#: loses its response at the proxy, and the caller retries while the first compile is still running.
+#:
+#: Process-wide rather than per key, because it guards milliseconds-to-seconds of storage and one
+#: SQLite insert, and publishes run at single digits per hour. It is also only process-wide: the
+#: deployment is one process over one SQLite file, and a second replica would need the same
+#: exclusion from the database rather than from here.
+_COMMIT_LOCK = threading.Lock()
 
 
 class PublishError(Exception):
@@ -735,7 +753,6 @@ def _finalize(
                 if p.is_file()
             }
             key = version_key(namespace, name, version)
-            storage.store_module(key, stored)
             # The card's prose (S5). Read from what was actually stored rather than from the upload,
             # so the projection and the bytes a downloader gets cannot disagree. Absent → `None`,
             # which leaves an earlier version's readme in place instead of blanking the card.
@@ -748,13 +765,21 @@ def _finalize(
             # follows it rather than silently projecting nothing.
             readme_name = manifest.readme.name if manifest.readme is not None else README_FILE
             readme_bytes = stored.get(readme_name)
-            ingest_manifest(
-                repo,
-                manifest,
-                changelog=changelog,
-                published_by=published_by,
-                readme=readme_bytes.decode("utf-8", errors="replace") if readme_bytes else None,
-            )
+            with _COMMIT_LOCK:
+                # Re-asked here, not only at the route: see `_COMMIT_LOCK`.
+                if repo.version_exists(namespace, name, version):
+                    raise PublishError(
+                        "version_exists",
+                        errors=[f"{namespace}/{name}@{version} was published while this run compiled"],
+                    )
+                storage.store_module(key, stored)
+                ingest_manifest(
+                    repo,
+                    manifest,
+                    changelog=changelog,
+                    published_by=published_by,
+                    readme=readme_bytes.decode("utf-8", errors="replace") if readme_bytes else None,
+                )
             action.add_success_fields(
                 digest=manifest.artifact.digest,
                 content_signature=manifest.content_signature,

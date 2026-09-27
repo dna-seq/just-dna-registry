@@ -1,10 +1,16 @@
 """Auth, publish (server-side recompile), and yank contract tests (SPEC §8.6–§8.9, §13)."""
 
 from collections.abc import Callable
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import ModuleManifest
+
+from just_dna_registry.api.routers.publish import _publish_http_error
+from just_dna_registry.services.publish import PublishError, publish_version
+from just_dna_registry.storage.base import version_key
 
 # A self-contained spec: variants carry positions, so publish compiles with resolve_with_ensembl
 # off (the app fixture's default) — no Ensembl reference needed.
@@ -229,6 +235,48 @@ def test_publish_compiles_indexes_and_serves(client: TestClient, api_key: str, t
 def test_publish_immutability_second_time_409(client: TestClient, api_key: str) -> None:
     assert _publish(client, api_key, "just-dna-seq", "coronary", "1.0.0").status_code == 201
     assert _publish(client, api_key, "just-dna-seq", "coronary", "1.0.0").status_code == 409
+
+
+def test_a_publish_that_finishes_second_cannot_overwrite_the_version_that_finished_first(
+    app, client: TestClient, api_key: str, tmp_path: Path
+) -> None:
+    """The route asks `version_exists` before minutes of compiling, so two requests for one version
+    can both pass it (S26: a retry after a proxy dropped the first response). Before `_COMMIT_LOCK`
+    the second one stored its bytes over the first's indexed version and then 500'd on the insert.
+
+    Driven at the service, because that is exactly what the second request is once it has passed the
+    route's check: a `publish_version` call for a version indexed while it ran. The second upload
+    differs (a readme and a logo), so an overwrite is visible in the bytes, not only in the status.
+    """
+    assert _publish(client, api_key, "just-dna-seq", "coronary", "1.0.0").status_code == 201
+    base = "/api/v1/modules/just-dna-seq/coronary/versions/1.0.0"
+    indexed = ModuleManifest.model_validate(client.get(f"{base}/manifest").json())
+
+    late = {name: data for _, (name, data, _) in _spec_files("coronary")}
+    late |= {"README.md": b"# the late writer\n", "logo.png": b"\x89PNG late"}
+    with pytest.raises(PublishError) as refused:
+        publish_version(
+            repo=app.state.repo, storage=app.state.storage, settings=app.state.settings,
+            namespace="just-dna-seq", name="coronary", version="1.0.0", changelog="late",
+            owner="antonkulaga", files=late,
+        )
+    assert refused.value.detail == "version_exists"
+    # Same wire shape as the route's early check, so a client cannot tell the two apart by timing.
+    http = _publish_http_error(refused.value)
+    assert (http.status_code, http.detail) == (409, "version_exists")
+
+    key = version_key("just-dna-seq", "coronary", "1.0.0")
+    storage = app.state.storage
+    assert not storage.exists(key, "README.md") and not storage.exists(key, "logo.png")
+    module_dir = tmp_path / "install"
+    module_dir.mkdir()
+    for f in indexed.artifact.files:
+        (module_dir / f.name).write_bytes(storage.read_file(key, f.name))
+    assert indexed.artifact.files, "an empty file list would verify vacuously"
+    verify_manifest(module_dir, indexed)
+    stored = ModuleManifest.model_validate_json(storage.read_file(key, "manifest.json"))
+    assert stored.artifact.digest == indexed.artifact.digest
+
 
 
 # ── Yank ──────────────────────────────────────────────────────────────────────

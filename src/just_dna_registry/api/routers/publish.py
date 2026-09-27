@@ -102,6 +102,11 @@ def _publish_http_error(
     pydantic rewords itself. The dry-run reports carry the same note unconditionally; publish is
     where the author actually loses, so the refusal has to say it too.
     """
+    if exc.detail == "version_exists":
+        # The late half of the route's own check (`_COMMIT_LOCK`), so it answers in the route's exact
+        # shape: a bare-string `detail`, which clients have compared with `==` since 0.1. The
+        # structured body below would be the same refusal spelled differently depending on timing.
+        return HTTPException(status.HTTP_409_CONFLICT, detail="version_exists")
     code = _PUBLISH_ERROR_STATUS.get(exc.detail, status.HTTP_422_UNPROCESSABLE_CONTENT)
     advisory = (
         schema_gap_advisory(VersionInfo.local().format, client_format)
