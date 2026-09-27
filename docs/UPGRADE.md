@@ -1,6 +1,6 @@
 # Contract upgrades & the stale-module procedure
 
-## Unreleased — upstream v0.7.3: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (operator note — no sweep)
+## 0.27.0 — upstream v0.7.3: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (operator note — no sweep)
 
 **All three tiers move by a patch, and the catalog needs nothing.** Upstream's sweep gate moved no
 axis between compiler 0.7.1 and 0.7.2, and a compiler patch is not a gap, so `registry upgrade` has

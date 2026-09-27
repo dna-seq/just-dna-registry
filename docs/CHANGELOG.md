@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased]
+## [0.27.0] — 2026-09-27
 
 **Client surface:** `RegistryClient.publish` gains `pack=` and accepts an archive path in place of
 `spec_dir` (S25). Nothing else moves: no endpoint is added, `POST /versions` gains an optional
