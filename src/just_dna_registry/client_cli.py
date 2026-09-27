@@ -14,7 +14,7 @@ import tarfile
 from pathlib import Path
 
 import typer
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from just_dna_format.identity import parse_version
 from just_dna_format.manifest import read_manifest, write_manifest
 
@@ -24,7 +24,12 @@ from just_dna_registry.specfiles import DERIVED_NOTE_FILE, DRAFT_REPORT_FILE
 from just_dna_registry.ui import standalone
 from just_dna_registry.version import compatibility_error
 
-load_dotenv()  # pick up REGISTRY_URL / REGISTRY_TOKEN from a local .env
+# Pick up REGISTRY_URL / REGISTRY_TOKEN from the `.env` where the command runs. `usecwd=True` is the
+# whole point: a bare `load_dotenv()` walks up from *this file*, so through 0.27.0 it found the `.env`
+# above the installed package (in a checkout, this repo's own, with the production URL and an owner
+# token) and ignored the one in the caller's project (S27). The SDK never imports this module, so a
+# library consumer's `os.environ` is untouched either way.
+load_dotenv(find_dotenv(usecwd=True))
 
 app = typer.Typer(help="Registry test client", no_args_is_help=True)
 
@@ -363,6 +368,56 @@ def claim_namespace(
         result = c.claim_namespace(namespace)
     note = " (already yours)" if result.get("already_owned") else ""
     typer.echo(f"✓ {result['namespace']} → owner {result['owner']}{note}")
+
+
+#: What each refusal of `merge_accounts` means to the person at the terminal. Keyed on the server's
+#: `detail` code, which is the API, never on its wording.
+_MERGE_REFUSALS: dict[str, str] = {
+    "site_admin_required": "this token is not a site admin (`registry site-admin <acct> --grant` on the server)",
+    "account_not_found": "one of the two accounts does not exist",
+    "same_account": "the two names are the same account",
+    "not_a_user_account": "org accounts do not merge; move their members instead",
+}
+
+
+def _echo_merge(report: dict) -> None:
+    for field, value in report.items():
+        if field not in ("source", "into", "applied", "snapshot"):
+            typer.echo(f"  {field:<24} {value}")
+
+
+@app.command("merge-accounts")
+def merge_accounts(
+    source: str = typer.Argument(..., help="The account whose key was lost"),
+    into: str = typer.Argument(..., help="The account its owner carried on with"),
+    apply: bool = typer.Option(False, "--apply", help="Act; without it, report only"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Fold SOURCE into INTO: namespaces, roles, authored versions, stars and reviews move, and
+    SOURCE's API keys are revoked (site-admin token). Reports only unless --apply."""
+    with _client(url, token, need_token=True) as c:
+        try:
+            plan = c.merge_accounts(source, into)
+        except RegistryError as exc:
+            reason = _MERGE_REFUSALS.get(exc.detail) if isinstance(exc.detail, str) else None
+            if reason is None:
+                raise
+            typer.secho(f"✗ cannot merge {source} into {into}: {reason}", fg=typer.colors.RED)
+            raise typer.Exit(code=1) from exc
+        _echo_merge(plan)
+        if not apply:
+            typer.echo("dry run: nothing changed (pass --apply to act)")
+            return
+        if not yes:
+            typer.confirm(f"Merge {source} into {into} and revoke {source}'s keys?", abort=True)
+        done = c.merge_accounts(source, into, apply=True)
+    if done.get("snapshot"):
+        typer.echo(f"server snapshot: {done['snapshot']}")
+    else:
+        typer.secho("! the server took no snapshot (auto-backup disabled there)", fg=typer.colors.YELLOW)
+    typer.echo(f"✓ merged {source} into {into}")
 
 
 @app.command("find-by-hash")

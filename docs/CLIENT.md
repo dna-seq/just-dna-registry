@@ -25,7 +25,11 @@ pip install just-dna-registry[server]    # + the server (FastAPI app, compiler, 
 ## Configuration
 
 Both the Python client and the CLI take the base URL and (for writes) an API key. The CLI reads
-them from flags, then environment, then a local `.env`:
+them from flags, then environment, then a `.env` found from the **working directory** upward. Before
+0.27.1 it searched from where the package was installed instead, so in a checkout it read that
+checkout's `.env` whatever directory you ran it from. **The Python client reads no `.env` at all**:
+importing `RegistryClient` leaves `os.environ` alone, and it reads neither variable, so pass the URL
+and token to the constructor.
 
 | Setting | Env var | CLI flag | Default |
 |---|---|---|---|
@@ -75,7 +79,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Amend logo | `amend_logo(ns, name, v, logo_path)` | `amend-logo` | bearer |
 | Amend readme (card prose) | `amend_readme(ns, name, v, path_or_text)` | `amend-readme` | bearer |
 | Set card subtitle (module-wide) | `set_short_description(ns, name, text_or_None)` | `set-short-description` | bearer |
-| Merge a lost-key account into its owner's new one | `merge_accounts(source, into, apply=False)` | *(programmatic; server-side `registry merge-accounts`)* | site admin |
+| Merge a lost-key account into its owner's new one | `merge_accounts(source, into, apply=False)` | `merge-accounts` | site admin |
 | Browser console over any registry | *(a page, not a method — see [UI.md](UI.md))* | `ui` | optional bearer |
 
 ---
@@ -326,6 +330,7 @@ install-id, and API key. Save both; put the key in `REGISTRY_TOKEN`.
 ```bash
 registry-client namespace-available alice-mods
 registry-client claim-namespace alice-mods        # (token)
+registry-client merge-accounts nam1 name2 [--apply]  # (site-admin token) fold a lost-key account
 ```
 
 ### `find-by-hash`

@@ -40,8 +40,8 @@ What it does not do:
 
 ### Merge a lost-key account into the new one
 
-`POST /admin/accounts/{account}/merge` (`RegistryClient.merge_accounts`, `registry
-merge-accounts <lost> <into>`) is the permanent version of the member grant above, and it is for
+`POST /admin/accounts/{account}/merge` (`RegistryClient.merge_accounts`, `registry-client
+merge-accounts <lost> <into>` with a site-admin token, or `registry merge-accounts` on the box) is the permanent version of the member grant above, and it is for
 site admins only. It moves namespace ownership, roles (keeping the higher one), `published_by`,
 stars and reviews to the new account, and revokes the lost account's keys. Nothing is deleted
 apart from those keys. A star both accounts gave collapses to one, and a review both wrote on one
@@ -53,6 +53,23 @@ The flag is read from the account row on every request, never from a JWT claim, 
 binds sessions that were already issued. Every elevated answer logs a WARNING on
 `registry.auth`. `export-keys` / `import-keys` carry the flag, and an export taken before it
 existed imports as not-admin.
+
+### `registry-client` reads the `.env` where it runs, not the one beside its install (S27)
+
+The CLI called a bare `load_dotenv()` at import, and python-dotenv walks up from the *calling file*,
+so it found the `.env` above the installed package rather than the one in the directory the command
+ran from. In a checkout that is the checkout's own `.env`: run from a project whose `.env` named the
+polygon, `registry-client` read the production URL and an owner token and talked to production. It
+now loads `find_dotenv(usecwd=True)`. The regression test drives a script file in a subprocess, not
+`python -c`, because python-dotenv treats `-c` as interactive and searches from the working directory
+anyway, so a `-c` probe passes on the broken code. The Python client was never involved: importing
+`RegistryClient` loads no dotenv, and CLIENT.md now says so.
+
+S27's own trigger was not ours. The consumer's `os.environ` was filled by `just_dna_enricher`'s
+`EutilsSettings` and `CrossrefClient` constructors, which load the working directory's `.env` under
+upstream's RM100 and offer no opt-out. That is filed upstream as their S124. The server's `config.py`
+has the same package-relative walk and is left unchanged, because changing it changes which file a
+running deployment loads. The roadmap carries it with the operator step it needs.
 
 ## [0.27.0] — 2026-09-27
 

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sdk_transport import sdk_transport
 from typer.testing import CliRunner
 
+from just_dna_registry import client_cli
 from just_dna_registry.api.app import create_app
 from just_dna_registry.cli import app as cli
 from just_dna_registry.client import RegistryClient, RegistryError
@@ -308,3 +309,47 @@ def test_cli_grants_the_flag_and_merges_after_a_dry_run(tmp_path: Path, monkeypa
         assert missing.exit_code == 1 and "account not found: nobody" in missing.stdout
     finally:
         get_settings.cache_clear()
+
+
+def test_registry_client_merges_over_http_after_a_dry_run(
+    client: TestClient, repo: Repository, monkeypatch
+) -> None:
+    """`registry-client merge-accounts` is the no-shell path: a site admin's token, nothing on the box."""
+    _account(repo, "old-handle", namespace="nam1")
+    _account(repo, "name2")
+    plain = _account(repo, "plain")
+    admin = _account(repo, "ops", admin=True)
+    token: dict[str, str] = {}
+    monkeypatch.setattr(
+        client_cli, "_client",
+        lambda *a, **k: client_cli._CliClient(
+            "http://testserver", token["value"], transport=sdk_transport(client), check_version=False
+        ),
+    )
+    runner = CliRunner()
+    old_owner = int(repo.account_by_name("old-handle")["id"])
+
+    token["value"] = plain
+    refused = runner.invoke(client_cli.app, ["merge-accounts", "old-handle", "name2", "--token", plain])
+    assert refused.exit_code == 1 and "not a site admin" in refused.stdout, refused.output
+
+    token["value"] = admin
+    dry = runner.invoke(client_cli.app, ["merge-accounts", "old-handle", "name2", "--token", admin])
+    assert dry.exit_code == 0 and "dry run" in dry.stdout and "keys_revoked" in dry.stdout, dry.output
+    assert int(repo.namespace_owner("nam1")["account_id"]) == old_owner
+
+    declined = runner.invoke(
+        client_cli.app, ["merge-accounts", "old-handle", "name2", "--apply", "--token", admin], input="n\n"
+    )
+    assert declined.exit_code != 0
+    assert int(repo.namespace_owner("nam1")["account_id"]) == old_owner
+
+    done = runner.invoke(
+        client_cli.app, ["merge-accounts", "old-handle", "name2", "--apply", "--yes", "--token", admin]
+    )
+    assert done.exit_code == 0 and "merged old-handle into name2" in done.stdout, done.output
+    assert int(repo.namespace_owner("nam1")["account_id"]) == int(repo.account_by_name("name2")["id"])
+    assert repo.account_for_key("mk_live_old-handle") is None
+
+    missing = runner.invoke(client_cli.app, ["merge-accounts", "nobody", "name2", "--token", admin])
+    assert missing.exit_code == 1 and "does not exist" in missing.stdout
