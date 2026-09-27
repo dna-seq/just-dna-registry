@@ -6,6 +6,48 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased]
+
+**Client surface: unchanged** (so far). No endpoint, no `RegistryClient` method and no response
+field moves in the adoption below.
+
+**Adopts upstream `v0.7.3`: `just-dna-format` 0.7.1, `just-dna-compiler` 0.7.2,
+`just-dna-enricher` 0.7.3.** All three move by a patch and every floor is the not-load-bearing
+kind: upstream adds no field, table, parameter, public function or warning code, and no symbol we
+import moved. **No sweep follows.** Upstream's gate compiled its 16 reference modules under
+compiler 0.7.1 and 0.7.2 and moved nothing on any axis, a compiler patch is not a gap for
+`registry upgrade`, and there is no `RELEASE_RECORDS` entry past 0.7.0 for `declared_movement` to
+read, so the version comparison answers, and it answers *no gap*.
+
+### What reaches our routes
+
+The corrections are all in what the enricher *derives*, and each arrives through a route that
+already passes its result through unchanged:
+
+- **Ensembl resolution (RM268, RM271)**, on publish, `/check` and `/hint/variant`. A one-sided REST
+  indel is anchored on the preceding base (`rs8176719` now resolves to `9:133257521 T>TC`), and a
+  non-base allele (`dbSNP_novariation`, `<.>`, an `N` run) is withheld instead of served as a locus.
+  When every allele is withheld, `/hint/variant` now carries a warning finding saying so, where it
+  used to report no position with no reason.
+- **Same-size indels (RM274)** are settled against the GRCh38 reference rather than kept as
+  undecided.
+- **`POST /drafts`**: `strchive` names a drafted locus STRchive itself grades Refuted or Disputed,
+  and counts Provisional ones apart (RM276). `civic` left-aligns a ClinGen-anchored indel and
+  `pubmind` warns that its indels are not left-normalized (RM273). Both reach the caller in the
+  draft's `warnings`.
+- **`mitomap-miss` (RM293)** joins MITOMAP's `:` deletions, which it used to report as unmintable
+  (47 → 8). That lane is derived and never published, so a box picks it up only by rebuilding it;
+  `warm-caches` leaves a present cache alone. See UPGRADE.md.
+
+RM264 rewrites the manifest's `Literature.quotes_found`/`quotes_unchecked` descriptions: an
+abstract-only miss is unsettled, not missing. Our `/check` literature pass reads the enricher's run
+result rather than that block, so nothing here renders the old reading. Giving `LiteratureCheck` an
+abstract-only sibling would be a new response field, which is a minor, so it is left as a
+candidate for 0.27.
+
+Upstream's *after upgrading* advice (`enrich --rederive`, the literature pass online) is for module
+authors. Nothing on this server re-drafts or re-enriches a published module.
+
 ## [0.26.2] — 2026-09-25
 
 **Client surface: unchanged.** No endpoint and no `RegistryClient` method moves. One response field

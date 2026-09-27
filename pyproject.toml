@@ -64,7 +64,12 @@ dependencies = [
     # does. The general form is the one to build against: **a vocabulary is additive for the writer
     # and closed for the reader**, so validating a manifest against your own copy of one makes every
     # future member a break. Nothing here keeps a copy of any of them, deliberately.
-    "just-dna-format>=0.7.0",
+    #
+    # **0.7.1 is the 0.6.4 kind: not load-bearing.** RM264 rewrites two field descriptions
+    # (`Literature.quotes_found`/`quotes_unchecked` now send the reader to `abstract_only_count`) and
+    # adds, removes or retypes nothing, so a client left on 0.7.0 parses every manifest 0.7.1 does.
+    # It is the floor because the compiler 0.7.2 below floors it and the suite adopting it ran on that trio.
+    "just-dna-format>=0.7.1",
 ]
 
 [project.optional-dependencies]
@@ -106,8 +111,12 @@ dependencies = [
 # `just_dna_compiler.resolution_findings`, a module added after `v0.7.0` was tagged — so a client
 # install left on 0.7.0 loses nothing. It is the floor because the lock resolved it and the 0.26.1
 # suite ran on `0.7.0 / 0.7.1 / 0.7.1`; a floor left behind would permit a pair nobody tested.
+#
+# **0.7.2 is the same soft kind.** Its only changes are a docstring and the remedy sentence of
+# `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
+# no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.7.1",
+    "just-dna-compiler>=0.7.2",
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -284,8 +293,20 @@ server = [
     # `variant_charges` commits was an overcharge on 0.7.1 for those loci and is now accurate. A box
     # left on 0.7.1 is not broken; it answers less. The floor is here because the lock resolved it
     # and the release's suite ran on that trio.
-    "just-dna-compiler>=0.7.1",
-    "just-dna-enricher>=0.7.2",
+    #
+    # **0.7.3 (upstream `v0.7.3`, all three tiers by a patch) is the 0.6.4 kind on every tier.** No
+    # field, table, parameter, public function or warning code is added, and no symbol we import
+    # moved. What changes is what the enricher *derives*, and it reaches us through routes that
+    # already pass results through: RM268/RM271 anchor a one-sided REST indel and withhold a
+    # non-base allele on both Ensembl rungs (publish, `/check`, `/hint/variant` — which gains a
+    # finding for the withheld case), RM274 settles a same-size indel against the reference, RM273
+    # left-aligns CIViC and flags PubMind indels, RM276 names a STRchive locus graded
+    # Refuted/Disputed in `POST /drafts?source=strchive`'s warnings, and RM293 makes MITOMAP's `:`
+    # deletions joinable in the derived `mitomap_miss` lane. That last one needs the lane rebuilt,
+    # which `warm-caches` will not do over a present cache — see UPGRADE.md. A box left on 0.7.2 is
+    # not broken; it derives less well.
+    "just-dna-compiler>=0.7.2",
+    "just-dna-enricher>=0.7.3",
 ]
 
 [build-system]
