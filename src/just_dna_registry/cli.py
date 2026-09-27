@@ -198,8 +198,17 @@ def issue_key(
         help="Grant a test-prefixed namespace on production deliberately (0.14). Off by default so "
              "a typo is still refused.",
     ),
+    site_admin: bool = typer.Option(
+        False,
+        "--site-admin",
+        help="Make the account a registry-wide admin: owner on every existing namespace and org "
+             "(yank, amend, publish, grant members). Hard delete stays this CLI's.",
+    ),
 ) -> None:
-    """Create an account (if needed), grant it namespaces, and print a fresh API key."""
+    """Create an account (if needed), grant it namespaces, and print a fresh API key.
+
+    On an existing account this mints an *additional* key and leaves the old ones working — which
+    is also the whole remedy for a user who lost theirs."""
     if account_type not in VALID_ACCOUNT_TYPES:
         raise typer.BadParameter(f"--type must be one of {sorted(VALID_ACCOUNT_TYPES)}")
     settings = get_settings()
@@ -224,10 +233,33 @@ def issue_key(
         typer.secho(accepted_anyway(refusal), fg=typer.colors.YELLOW)
     for ns in namespace:
         repo.add_namespace(ns, account_id)
+    if site_admin:
+        repo.set_site_admin(account_id, True)
     key = "mk_live_" + secrets.token_urlsafe(24)
     repo.add_api_key(key, account_id)
-    typer.echo(f"account={account} type={account_type} namespaces={namespace}")
+    admin_note = " site_admin=yes" if repo.is_site_admin(account_id) else ""
+    typer.echo(f"account={account} type={account_type} namespaces={namespace}{admin_note}")
     typer.echo(f"API key: {key}")
+
+
+@app.command("site-admin")
+def site_admin_command(
+    account: str,
+    grant: bool = typer.Option(
+        None, "--grant/--revoke", help="Set or clear the flag; omit to show it"
+    ),
+) -> None:
+    """Show, grant or revoke registry-wide admin on an account. Takes effect on the next request,
+    including for JWT sessions already issued."""
+    settings = get_settings()
+    repo = _open_existing_db(settings)
+    row = repo.account_by_name(account)
+    if row is None:
+        typer.echo(f"account not found: {account}")
+        raise typer.Exit(code=1)
+    if grant is not None:
+        repo.set_site_admin(int(row["id"]), grant)
+    typer.echo(f"{account}: site_admin={'yes' if repo.is_site_admin(int(row['id'])) else 'no'}")
 
 
 @app.command("export-keys")

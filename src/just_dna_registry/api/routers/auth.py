@@ -48,6 +48,7 @@ def _whoami(repo: Repository, account: Account) -> WhoAmI:
         avatar_url=row["avatar_url"] if row else None,
         funding_url=row["funding_url"] if row else None,
         email=row["email"] if row else None,
+        site_admin=account.site_admin,
     )
 
 

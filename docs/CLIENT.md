@@ -218,7 +218,7 @@ for a member, any for admin+).
 
 ### Identity & profile (token)
 
-- **`whoami() -> dict`** — `{account, namespaces, type, display_name, avatar_url, email}` (`email`
+- **`whoami() -> dict`** — `{account, namespaces, type, display_name, avatar_url, email, site_admin}` (`email`
   only ever returned to the account itself).
 - **`update_profile(*, email=None, display_name=None, avatar_url=None, funding_url=None) -> dict`** — edit your own
   profile; only the fields passed are sent, `""` clears one. `type` is not self-editable.
@@ -414,6 +414,8 @@ registry remove-version <ns> <name> <v> [--yes]      # hard-delete ONE version (
 registry remove-module <ns> <name> [--yes]           # hard-delete a whole module (all versions)
 registry remove-namespace <ns> [--yes]               # purge + free the namespace
 registry add-member <ns> <acct> --role owner|admin|member    # namespace membership
+registry issue-key <acct> --site-admin               # registry-wide admin (owner on every namespace)
+registry site-admin <acct> [--grant|--revoke]        # show / set / clear that flag
 registry create-org <name>                           # create an org account
 registry add-org-member <org> <acct> --role owner|admin|member
 registry remove-org-member <org> <acct> / list-org-members <org>

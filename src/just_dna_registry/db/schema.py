@@ -174,6 +174,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # Donation/funding link (0.9.0), public http(s). Used for both an author's and an org's
         # link (same column, different account rows). Surfaced on module cards.
         conn.execute("ALTER TABLE accounts ADD COLUMN funding_url TEXT")
+    if "site_admin" not in acct_cols:
+        # Registry-wide admin (0.28): acts as `owner` on every *existing* namespace and org, so an
+        # operator can yank, amend, publish and grant members over HTTP without the owner's key —
+        # the lost-key case. Hard delete is not in it: that stays the ops CLI on production.
+        conn.execute("ALTER TABLE accounts ADD COLUMN site_admin INTEGER NOT NULL DEFAULT 0")
     # One account per install-id / per email (NULLs are exempt — admin-made or profile-less accounts).
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_install_id "

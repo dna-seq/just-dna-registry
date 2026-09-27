@@ -1171,7 +1171,7 @@ All org gate failures return `403 insufficient_capability`; unknown org → `404
 
 ### 13. `GET` / `PATCH /api/v1/auth/whoami`  *(bearer)*
 `GET 200 → {"account": "antonkulaga", "namespaces": [...], "type": "user", "display_name": null,
-"avatar_url": null, "funding_url": null, "email": null}` — `namespaces` is every namespace the caller
+"avatar_url": null, "funding_url": null, "email": null, "site_admin": false}` — `namespaces` is every namespace the caller
 is a member of; `type` is the `user`|`org` discriminator; `avatar_url`/`funding_url` are public
 (userpic + donation link); `email` is **private** (only ever returned here). `401` on invalid token.
 
@@ -1323,7 +1323,8 @@ someone else's unverifiable pass would be lending it our credibility.
 `account: string` (handle), `namespaces: string[]` (every namespace the account is a member of),
 `type: "user"|"org"`, `display_name: string|null`, `avatar_url: string|null` (public userpic),
 `funding_url: string|null` (public donation link), `email: string|null` (private — only returned to
-the account itself).
+the account itself). `site_admin: bool` (unreleased): whether the account holds the registry-wide
+admin flag.
 
 ### MemberList / OrgMemberList
 `{namespace|org: string, members: [{account: string, role: "owner"|"admin"|"member"}]}`. Roles are
@@ -1335,6 +1336,10 @@ when the namespace is org-owned — their `org_members` role (cascade). Capabili
 publish + amend/yank *own* versions; **admin** = + amend/yank *any* + manage namespaces/members +
 curate reviews; **owner** = + assign roles + edit settings (incl. funding). `*_own` vs `*_any` is
 resolved by `versions.published_by`; a 403 carries `detail: "insufficient_capability"`.
+
+A **site admin** (unreleased; an account flag set by the operator CLI) is `owner` on every namespace
+and org that **exists**. An unclaimed namespace still answers `403`. The flag adds no route, so on
+production it reaches no hard delete, because those routes are mounted on the polygon only.
 
 ### StarStatus
 `namespace: string, name: string, stars: int, starred_by_me: bool`.

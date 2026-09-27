@@ -5,6 +5,7 @@ Auth is MVP-simple (SPEC decision): a pre-issued API key in `Authorization: Bear
 resolves to an account; publishing under a namespace requires that account to own it.
 """
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Annotated
@@ -16,6 +17,8 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.jwtauth import decode_jwt
 from just_dna_registry.permissions import OWN_FALLBACK, Capability, higher_role, role_has
 from just_dna_registry.storage.base import StorageBackend
+
+logger = logging.getLogger("registry.auth")
 
 
 def get_repo(request: Request) -> Repository:
@@ -37,6 +40,8 @@ class Account:
     id: int
     name: str
     namespaces: list[str]
+    #: Registry-wide admin (0.28). See `effective_role` for what it grants and what it does not.
+    site_admin: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,14 @@ def pagination(
     """Clamp `per_page` to the configured maximum; default when unset."""
     resolved = per_page or settings.default_per_page
     return Pagination(page=page, per_page=min(resolved, settings.max_per_page))
+
+
+def _account(repo: Repository, account_id: int, name: str) -> Account:
+    """The one place a credential becomes an `Account`. `site_admin` is read from the row on every
+    request, for a static key and a JWT alike, so revoking it does not wait for a session to expire."""
+    return Account(
+        account_id, name, repo.namespaces_for_account(account_id), repo.is_site_admin(account_id)
+    )
 
 
 def require_account(
@@ -75,13 +88,11 @@ def require_account(
 
     row = repo.account_for_key(token)  # static API key
     if row is not None:
-        account_id = int(row["id"])
-        return Account(account_id, row["name"], repo.namespaces_for_account(account_id))
+        return _account(repo, int(row["id"]), row["name"])
 
     claims = decode_jwt(settings, token)  # optional JWT session
     if claims is not None:
-        account_id = int(claims["account_id"])
-        return Account(account_id, claims["sub"], repo.namespaces_for_account(account_id))
+        return _account(repo, int(claims["account_id"]), claims["sub"])
 
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
 
@@ -101,12 +112,10 @@ def optional_account(
     token = authorization.split(" ", 1)[1].strip()
     row = repo.account_for_key(token)
     if row is not None:
-        account_id = int(row["id"])
-        return Account(account_id, row["name"], repo.namespaces_for_account(account_id))
+        return _account(repo, int(row["id"]), row["name"])
     claims = decode_jwt(settings, token)
     if claims is not None:
-        account_id = int(claims["account_id"])
-        return Account(account_id, claims["sub"], repo.namespaces_for_account(account_id))
+        return _account(repo, int(claims["account_id"]), claims["sub"])
     return None
 
 
@@ -122,15 +131,31 @@ def optional_account(
 def effective_role(repo: Repository, account: Account, namespace: str) -> str | None:
     """The caller's effective role on a namespace: the highest of their explicit per-namespace grant
     and — when the namespace is owned by an **org** they belong to — their org role (the cascade).
-    This is the single place the two ownership sources are reconciled."""
+    This is the single place the two ownership sources are reconciled.
+
+    A **site admin** is `owner` on every namespace that exists — the lost-key case, where the
+    person's new account cannot reach their old namespace and the old key is gone. Two limits.
+    A namespace nobody has claimed stays out of reach, so the flag cannot publish into a name
+    it never had to claim. And nothing here reaches hard delete on production: that route is
+    not mounted there, so there is nothing for the elevated role to authorize. Every elevated
+    answer is logged, because an override that works and says nothing is invisible."""
     per_ns = repo.namespace_role(namespace, account.id)
     org_role: str | None = None
     owner_row = repo.namespace_owner(namespace)
+    if account.site_admin and owner_row is not None:
+        _log_site_admin(account, f"namespace {namespace}")
+        return "owner"
     if owner_row is not None:
         owning_id = int(owner_row["account_id"])
         if repo.account_type(owning_id) == "org":
             org_role = repo.org_role(owning_id, account.id)
     return higher_role(per_ns, org_role)
+
+
+def _log_site_admin(account: Account, scope: str) -> None:
+    # Logged on every elevated answer, own role or not — cheap, and "was the flag in play?" is the
+    # question an audit asks, not "did it change the outcome?".
+    logger.warning("site admin %s acting as owner on %s", account.name, scope)
 
 
 def require_capability(
@@ -160,7 +185,11 @@ def require_capability(
 def require_org_capability(
     repo: Repository, account: Account, org_id: int, cap: Capability
 ) -> None:
-    """Raise 403 unless `account` has `cap` in the org (`org_members` role; no cascade at org level)."""
+    """Raise 403 unless `account` has `cap` in the org (`org_members` role; no cascade at org level).
+    A site admin passes, as on a namespace (see `effective_role`)."""
+    if account.site_admin:
+        _log_site_admin(account, f"org id {org_id}")
+        return
     if not role_has(repo.org_role(org_id, account.id), cap):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="insufficient_capability")
 

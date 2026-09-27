@@ -435,6 +435,7 @@ class WhoAmI(BaseModel):
     avatar_url: str | None = None  # userpic (public http(s) URL)
     funding_url: str | None = None  # donation/sponsor link (public http(s) URL)
     email: str | None = None
+    site_admin: bool = False  # registry-wide admin (0.28): owner on every existing namespace/org
 
 
 # Account identity vocab + light checks (regex-based, to avoid an email-validator / URL dep).

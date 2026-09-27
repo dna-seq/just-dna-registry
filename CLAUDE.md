@@ -772,6 +772,13 @@ running server, and one direction arms a delete endpoint on production data.
   flipping the field would be the same contradiction rewritten backwards.
 - **Anything destructive snapshots first** (`backup._guard` in the CLI). The rolling index only counts
   up and never overwrites — it is not a ring buffer, and taking a backup must be the one safe act here.
+- **A site admin is an elevated *role*, never an extra *route*.** `accounts.site_admin` makes
+  `deps.effective_role` answer `owner` on every namespace that exists, and it does that in one place
+  so no router learns about it. Keep both limits. An unclaimed namespace stays `403`, or the flag
+  becomes a way to publish under a name nobody claimed. And production still mounts no delete, so a
+  leaked admin key can yank but cannot destroy: hard delete stays the ops CLI with its backup guard.
+  The flag is read from the row per request, never from a JWT claim, so a revocation binds live
+  sessions.
 - **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
   guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
 

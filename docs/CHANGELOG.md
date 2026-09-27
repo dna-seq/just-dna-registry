@@ -6,6 +6,34 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased]
+
+**Client surface:** unchanged. `whoami()` gains a `site_admin` field; no method moves.
+
+### Site admin: repair a namespace whose owner lost their key
+
+An account can now carry a **registry-wide admin** flag (`registry issue-key <acct> --site-admin`,
+or `registry site-admin <acct> --grant|--revoke`). A site admin acts as `owner` on every namespace
+and org that exists, over HTTP: yank and un-yank, amend, publish, and grant members. The common use
+is the lost-key case. `nam1` is stuck because its key is gone, and the person has published on as
+`name2`. The admin grants `name2` ownership of `nam1` (`POST /namespaces/nam1/members`), and from
+then on the person manages both without the admin.
+
+What it does not do:
+
+- **It reaches no namespace nobody claimed.** An unclaimed name still answers `403`, so the flag
+  cannot publish into a name it never had to claim.
+- **It adds no hard delete on production.** The delete routes are still mounted on the polygon
+  only, and production deletion stays `registry remove-version` / `remove-module` on the box, with
+  their backup guard. If `name2` holds the *same data* you want back under `nam1`, that copy's
+  `content_hash` claim still blocks the republish with `409 duplicate_content` until an operator
+  purges it. Yanking does not free the claim.
+
+The flag is read from the account row on every request, never from a JWT claim, so a revocation
+binds sessions that were already issued. Every elevated answer logs a WARNING on
+`registry.auth`. `export-keys` / `import-keys` carry the flag, and an export taken before it
+existed imports as not-admin.
+
 ## [0.27.0] — 2026-09-27
 
 **Client surface:** `RegistryClient.publish` gains `pack=` and accepts an archive path in place of

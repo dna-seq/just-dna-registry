@@ -171,6 +171,7 @@ export interface WhoAmI {
   avatar_url: string | null;
   funding_url: string | null;
   email: string | null;
+  site_admin: boolean;
 }
 
 export interface ProfileUpdate {

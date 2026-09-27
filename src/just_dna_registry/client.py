@@ -1090,7 +1090,7 @@ class RegistryClient:
 
     def whoami(self) -> dict:
         """The caller's identity + profile (`account`, `namespaces`, `type`, `display_name`,
-        `avatar_url`, `email`). `email` is only ever returned to the account itself."""
+        `avatar_url`, `email`, `site_admin`). `email` is only ever returned to the account itself."""
         return self._json(self._http.get("/auth/whoami"))
 
     def update_profile(

@@ -111,6 +111,20 @@ class Repository:
             (account_id,),
         ).fetchone()
 
+    def is_site_admin(self, account_id: int) -> bool:
+        """Whether the account holds the registry-wide admin flag. Read per request, never from a
+        JWT claim, so a revocation takes effect on sessions minted before it."""
+        row = self.conn.execute(
+            "SELECT site_admin FROM accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+        return bool(row and row["site_admin"])
+
+    def set_site_admin(self, account_id: int, value: bool) -> None:
+        self.conn.execute(
+            "UPDATE accounts SET site_admin = ? WHERE id = ?", (int(value), account_id)
+        )
+        self.conn.commit()
+
     def account_type(self, account_id: int) -> str | None:
         """The account's `user`/`org` discriminator (drives the org-role cascade)."""
         row = self.conn.execute(
@@ -312,8 +326,8 @@ class Repository:
 
         return {
             "accounts": rows(
-                "SELECT id, name, email, display_name, avatar_url, funding_url, type, install_id "
-                "FROM accounts"
+                "SELECT id, name, email, display_name, avatar_url, funding_url, type, install_id, "
+                "site_admin FROM accounts"
             ),
             "api_keys": rows("SELECT key, account_id FROM api_keys"),
             "namespaces": rows("SELECT name, account_id, featured, blacklisted FROM namespaces"),
@@ -328,9 +342,10 @@ class Repository:
         for a in data.get("accounts", []):
             self.conn.execute(
                 "INSERT OR REPLACE INTO accounts(id, name, email, display_name, avatar_url, "
-                "funding_url, type, install_id) VALUES (:id, :name, :email, :display_name, "
-                ":avatar_url, :funding_url, :type, :install_id)",
-                {"funding_url": None, **a},  # tolerate exports made before funding_url existed
+                "funding_url, type, install_id, site_admin) VALUES (:id, :name, :email, "
+                ":display_name, :avatar_url, :funding_url, :type, :install_id, :site_admin)",
+                # tolerate exports made before funding_url / site_admin existed
+                {"funding_url": None, "site_admin": 0, **a},
             )
         for k in data.get("api_keys", []):
             self.conn.execute(
