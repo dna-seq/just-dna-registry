@@ -26,6 +26,7 @@ from just_dna_registry.client import (
     RegistryClient,
     RegistryError,
     gather_spec_files,
+    pack_spec,
     split_derived,
 )
 from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES, plan_layout
@@ -924,6 +925,31 @@ async def test_a_derived_subfolder_publishes_as_the_flat_spec(sdk, tmp_path) -> 
         "module_spec.yaml", "variants.csv", "studies.csv"
     }, "the hoisted table has to reach the root the manifest names"
 
+
+
+async def test_publish_packed_or_from_an_archive_is_the_module_the_loose_form_publishes(
+    sdk, tmp_path
+) -> None:
+    """`pack=True` and an archive path reach `/versions`' archive form (0.27, S25) with every file.
+
+    Three versions of one module from one directory: loose, packed by the client, and from a
+    `.tar.gz` the caller made. The logo is the file a spec-only packer would lose, which is how the
+    reporter's three panels published without one; `content_signature` is the identity check.
+    """
+    spec = _write_spec(tmp_path)
+    (spec / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n sdk logo")
+    archive = tmp_path / "spec.tar.gz"
+    archive.write_bytes(pack_spec(spec))
+
+    loose = await asyncio.to_thread(lambda: sdk.publish(_NS, _NAME, "1.0.0", spec))
+    packed = await asyncio.to_thread(lambda: sdk.publish(_NS, _NAME, "1.0.1", spec, pack=True))
+    from_file = await asyncio.to_thread(lambda: sdk.publish(_NS, _NAME, "1.0.2", archive))
+
+    assert loose.logo is not None
+    for other in (packed, from_file):
+        assert other.logo == loose.logo
+        assert other.content_signature == loose.content_signature
+        assert [e.name for e in other.inputs] == [e.name for e in loose.inputs]
 
 async def test_download_split_separates_the_machine_written_tables(sdk, tmp_path) -> None:
     """`layout="split"` is applied after verification, never before.

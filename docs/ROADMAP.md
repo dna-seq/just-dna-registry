@@ -596,6 +596,39 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ## Next registry version (post-0.11)
 
+- **Decouple a large publish from its connection** (**severity medium, open — not scheduled**;
+  motivated by **S26**, and **restored**: the 0.4.4 changelog said "Decoupling publish (`202` +
+  background compile + poll) is tracked in ROADMAP 0.5", and no roadmap since has carried it). A
+  publish holds one HTTP connection across the whole enrich and compile, and a genome-wide ClinVar
+  panel takes long enough that a proxy closes it first. The server finishes and indexes the version;
+  the client sees `RemoteProtocolError` for a publish that landed. 0.27 makes the retry *safe* (the
+  late `409 version_exists`, which also closed an overwrite of the stored bytes) and documents
+  *verify before retrying*. Neither stops the false failure, and the panels grow with every ClinVar
+  release.
+
+  **Candidates, and what is wrong with the ones that are wrong.**
+
+  - *A job route* (`202` + a job id + polling), which is what the reporter asked for first. It is the
+    real fix and a whole subsystem: a jobs table, a runner that outlives a restart, a TTL, an SDK
+    method that polls, and a decision on what an abandoned job holds. The `/check` queue bullet below
+    is the same subsystem, and the two should be built once.
+  - *Make an identical re-publish a `200`*, the reporter's second option. It changes the status a
+    client already sees on this route from `409` to `200`, which the legality table sizes as
+    **major**, and "identical" needs a definition: `artifact.digest` is not one (it moves between two
+    compiles of one spec), so it would have to be `content_signature` plus every non-signature file.
+    Out.
+  - *Recover in the client.* On a dropped connection, `publish()` asks the server for the version and
+    compares `manifest.inputs[].sha256` with the bytes it sent, which needs no compiler tier because
+    those hashes are over raw input bytes. A match returns the manifest as though the response had
+    arrived. It is additive (a call that raised now succeeds) and works against any server. It cannot
+    tell *still compiling* from *never arrived*, so it needs a bounded wait with a stated deadline
+    and has to say which one it gave up on. **The cheapest real improvement**; the job route
+    supersedes it rather than competing with it.
+  - *Raise `max_upload_bytes`*, from the reporter's closing note. Out, for the standing reason: it
+    mirrors the HAProxy body cap, and raising it past the proxy only turns a structured `413` into a
+    severed connection. `pathogenic` at 20 of 25 MiB packed is a real warning, and it goes to the
+    operator who owns the proxy, not into this setting.
+
 - **Tell a catalog reader that a module's source has published since it was drafted** (**severity
   medium, open — not scheduled**; motivated by **S24**, relayed from just-dna-format's RM85). Enricher
   0.7's `currency.check_dataset_currency` compares each `sources.csv` `dataset` label against the

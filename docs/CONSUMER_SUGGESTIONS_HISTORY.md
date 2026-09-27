@@ -43,6 +43,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S22** `expression_effects.csv` dropped by a rebuild — in FACT_CSVS, 0.25.0
 - **S23** `429` named no bucket, wrong `Retry-After` — both fixed, 0.26.0
 - **S24** catalog signal that a module's source has published since — tracked
+- **S25** archive publish lost the logo — `/versions` takes archives, 0.27.0
+- **S26** large publish lands but drops the response — race fixed, 0.27.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2513,3 +2515,131 @@ The sender offered to spell out the field-level contract (the exact models) on r
 since, False = still current, None = unknown). An unsettled leg carries `unchecked` set to one of
 `offline` / `unreachable` / `no_reference` / `unsupported` (`enricher/src/just_dna_enricher/currency.py`).
 Everything with `behind is None` should render as unknown.
+
+# Field notes from just-dna-lite
+
+_2026-09-27 — publishing the ten `just-dna-seq` modules (0.7 rebuild) to prod._
+
+## S25 — `import-module` publishes with no logo when the archive has none, while `publish` carries `logo.png` from the spec dir — silently, and a real logo existed
+
+**Status — accepted. The archive already carried a logo, but nothing said so. The real gap was that
+`publish` had no compressed form, and 0.27.0 closes it.** Reproduced and not reproduced, in that order.
+An archive with `logo.png` in it publishes the logo through `import-module` today:
+`tests/test_import.py::test_a_real_agent_zip_keeps_its_prose_its_log_and_its_logo` runs it and
+passes. The import route unpacks every member of a spec archive without filtering, so your three panels
+lost their logos because the tar you built held only `module_spec.yaml`, the CSVs and the logs. You were
+right that no contract said a logo could go in there. API-REFERENCE §11 and CLIENT.md now say it, and
+they also say that `--icon`/`--color` set no logo.
+
+The defect underneath is ours. `POST /versions` was the one spec route with no `archive=` form, which
+breaks a rule this repo holds itself to. So a spec over the 25 MiB transfer bound could only be
+published through `/versions/import`, a different path with a different packing step, and that is where
+the two transports parted. **0.27.0 gives `/versions` the archive form**: `registry-client publish
+--pack`, `RegistryClient.publish(..., pack=True)`, or an archive path in place of the directory. Every
+file in the directory travels, logo and logs included. Two tests pin that a packed publish and a loose
+one produce the same logo and the same `content_signature`:
+`tests/test_publish_auth.py::test_publish_takes_an_archive_and_carries_the_logo_the_loose_form_carries`
+and `tests/test_client_sdk.py::test_publish_packed_or_from_an_archive_is_the_module_the_loose_form_publishes`.
+The dry runs keep their spec-only filter, since nothing they read is branding.
+
+**Not taken: a warning when a version lands with no logo.** A logo-less module is legal and common, and a
+warning on every such publish is noise that teaches people to skip warnings. The parity fix removes the
+reason you would have needed it.
+
+**What to do now:** `amend-logo` on the three panels, as you planned. It is metadata-only and outside the
+digest. From 0.27.0 on, publish the large panels with `publish --pack` from the same spec directory
+you use for the others. Until your server runs 0.27, put `logo.png` in the tar you hand to
+`import-module`.
+<!-- triaged: 0.27.0 · sha 4f05d3ab3e62 -->
+
+**What I ran.** Seven curated modules via `registry publish <spec_dir>`; three ClinVar panels (cardio,
+cancer, pathogenic) via `registry import-module <tar.gz>` because their spec dirs exceed the 25 MiB
+multipart limit.
+
+**Observed.** The three panels published with `logo_url: null`; the seven `publish`ed modules all carry a
+logo (`/api/v1/modules/.../files/logo.png`). A real `logo.png` (76–92 KB) exists locally for each panel.
+`publish` picks `logo.png` up out of the spec directory; the archive I sent `import-module` packed
+`module_spec.yaml + *.csv + *.log` (the spec files the server recompiles from), and there is no documented
+way to carry a logo image *in the archive* — only the `--icon`/`--color` flags, which set the glyph, not a
+logo. Nothing on either endpoint warned that a version was publishing with no logo, so the gap is invisible
+until you read the module record back.
+
+**Why it is a registry-side note.** The two publish transports produce different metadata completeness for
+the same module, silently; even a caller who wanted to include the logo in the tar has no contract saying
+the archive endpoint would read it.
+
+**Ask / candidate fixes.** (1) Let `import-module` read a `logo.(png|jpg)` from the archive when present
+(parity with `publish`); or (2) warn on either endpoint when a version lands with no logo. Meanwhile
+`amend-logo` fixes the three already-published panels (metadata-only, out of the digest, no bump) — but it
+is a second manual step a caller only learns they need by reading the record back.
+
+## S26 — a large `import-module` upload commits the module but disconnects before the response, so the CLI reports failure on an operation that succeeded
+
+**Status — accepted. Your retry would have been worse than the error: a retry sent in the wrong window
+could damage the published version, and 0.27.0 fixes that. The false failure itself is tracked on the
+roadmap.** Your diagnosis is right. The server keeps compiling after the proxy drops the connection, and
+it indexes the version when it finishes. This is not new: the 0.4.4 changelog recorded the same
+`RemoteProtocolError` on this same panel and said decoupling was "tracked in ROADMAP 0.5". No roadmap
+since has carried it, so that item was lost, and it is now restored in
+[ROADMAP.md](ROADMAP.md#next-registry-version-post-011).
+
+**The adjacent defect, found by probing your "naive retry" case.** The route asks `version_exists` before
+it does any work, and a publish then spends minutes compiling. A retry that arrives in that window
+passes the same check. Driving that sequence at the service showed the second run storing its bytes
+over the version the first had already indexed, then failing its own database insert as a `500`. After
+that, the stored `manifest.json` and `sources.parquet` no longer matched the indexed manifest, so every
+later download of that version would have failed verification. Your retry came after the commit and got
+the clean `409`. **0.27.0 re-checks under a lock just before storing**, and a late second run gets the
+same bare `409 version_exists` the early check gives. The test is
+`tests/test_publish_auth.py::test_a_publish_that_finishes_second_cannot_overwrite_the_version_that_finished_first`,
+and it was run against the unfixed code first, where it failed with the `IntegrityError`.
+
+On your three asks:
+
+1. **A job route (`202` + poll)**: accepted as the real fix and tracked, not built. It is a whole
+   subsystem (jobs table, a runner that survives a restart, TTL, SDK polling), and the `/check` queue
+   already on the roadmap is the same subsystem, so it should be built once. The roadmap entry also
+   carries a cheaper step that could come first: the client, on a dropped connection, fetches the
+   version and compares `manifest.inputs[].sha256` with the bytes it sent. That needs no compiler tier
+   and no server change.
+2. **An identical re-publish as a no-op success**: not taken. It turns a `409` clients already branch on
+   into a `200`, which our legality table sizes as a major release. "Identical" would also need a
+   definition, because `artifact.digest` moves between two compiles of one spec. The lock gets the
+   safety half of what you wanted.
+3. **Document it**: done. API-REFERENCE §10 and CLIENT.md's `publish` entry now say that a dropped
+   connection is not a failed publish, and that you should check with `list --namespace`,
+   `GET .../versions/{v}/manifest`, or `is_published(spec_dir, namespace=, name=)` before retrying.
+
+**Raising `upload_too_large`: no.** It deliberately mirrors the deployment's HAProxy body cap, so raising
+it past the proxy only turns a structured `413` into a severed connection. `pathogenic` at 20 of 25 MiB
+packed is a real early warning, and it is noted on the roadmap for whoever owns the proxy.
+
+**What to do now:** nothing for `pathogenic@2.0.0`. It landed, and your `download` verified it. In the
+publish script, treat a `RemoteProtocolError` as *unknown, go and look* rather than as failure, and run
+the HuggingFace mirror step off what `list` reports rather than off the exit status.
+<!-- triaged: 0.27.0 · sha 903e7c21272b -->
+
+**What I ran.** `registry import-module just-dna-seq pathogenic 2.0.0 <20 MiB tar.gz>` — the genome-wide
+ClinVar panel: `variants.csv` 617k rows, `studies.csv` 626k rows, so the archive is 20 MiB (of the 25 MiB
+`upload_too_large` ceiling) and the server recompiles ~618k rows on receipt.
+
+**Observed.** The client raised `httpx.RemoteProtocolError: Server disconnected without sending a response`
+mid-POST to `/modules/just-dna-seq/pathogenic/versions/import`. But immediately afterward `registry list
+--namespace just-dna-seq` shows `pathogenic@2.0.0` with the right stats (308990 variants, 626088 studies,
+4793 genes), and `registry download … pathogenic latest` **verifies** (`✓ downloaded + verified`, digest
+`sha256:540a5961…`). So the server committed the module fully and disconnected before returning the
+response — the write succeeded, only the response was lost. Most likely a proxy/gateway idle-timeout across
+the upload-plus-recompile window.
+
+**The footgun.** Under a `set -e` publish script this error halts the run on an operation that actually
+succeeded; a naive retry hits an immutable-version rejection; the operator can only tell the module is up
+by querying the registry. It also silently skipped the rest of my publish batch (the HuggingFace mirror
+step never ran).
+
+**Ask / candidate fixes.** (1) Acknowledge the upload and run the recompile asynchronously (return a job id
+to poll), so the connection is not held open for the whole server-side compile — the large-panel import
+class only grows with each ClinVar release. (2) Make an `import-module` of an already-committed identical
+digest a no-op success rather than version-exists, so a retry after a lost response is safe. (3) Failing
+those, document that a disconnect on a large import means *verify with `list`/`find-by-hash`, do not retry*.
+(`pathogenic` at 20/25 MiB is also near the size ceiling — worth raising `upload_too_large` before a future
+ClinVar release pushes it over, with no third transport.)

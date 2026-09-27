@@ -3,7 +3,10 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.26.x**, API `v1` (**0.26 adds no route**: a `429
+- **Normative for:** registry **0.14.x–0.27.x**, API `v1` (**0.27 adds no route**: `POST
+  /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
+  member, logo included, and a second publish of a version that was indexed while it compiled now
+  gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
   rate_limited` gains a computed `Retry-After` and an `X-RateLimit-Bucket` header, the body unchanged,
   and a `503 enrichment_busy` no longer spends the `enrich` token; the `hint` bucket every `/hint/*`
   route names is registered, where through 0.25.2 it was not and those routes were unlimited.
@@ -152,7 +155,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 7 | GET | `/api/v1/modules/{ns}/{name}/versions/{v}/logs` | — | Provenance/run logs listing |
 | 8 | GET | `/api/v1/modules/{ns}/{name}/versions/{v}/files/{path}` | — | Fetch one file (parquet/log/input) |
 | 9 | GET | `/api/v1/modules/{ns}/{name}/versions/{v}/download` | — | Per-file descriptors or tar.gz |
-| 10 | POST | `/api/v1/modules/{ns}/{name}/versions` | bearer | Publish (multipart spec) |
+| 10 | POST | `/api/v1/modules/{ns}/{name}/versions` | bearer | Publish (multipart spec, loose or archive) |
 | 11 | POST | `/api/v1/modules/{ns}/{name}/versions/import` | bearer | Publish from zip/tar.gz archive |
 | 12 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/yank` | bearer | Yank / un-yank a version |
 | 13 | GET/PATCH | `/api/v1/auth/whoami` | bearer | Identity + owned namespaces; edit own profile |
@@ -897,6 +900,11 @@ Publish a new version. `multipart/form-data`:
 - `files` (one or more file parts) — the **spec**: `module_spec.yaml` + `variants.csv` +
   `studies.csv` required; `README.md`, `logo.*`, and logs (`*.log`, `logs/*.log`) optional. Nested
   names are honored (`logs/reviewer.log`).
+- **or** `archive` (one file part, 0.27) — the same spec as a `.tar.gz` / `.zip`. Every member is
+  carried, exactly as the loose parts are, so `logo.png` and the logs travel either way. Sending both
+  forms is `422 ambiguous_upload`. This is the form for a spec over the transfer bound
+  (`413 upload_too_large`): the ClinVar panels are 34–180 MiB raw and 2–10 MB packed. Until 0.27 this
+  route took only loose parts, so a large spec had to go through endpoint 11 (S25).
 
 Flow: ownership → version format → immutability → `validate_spec` → `enrich` → `compile_module`
 (`compiled_by="marketplace-server"`) → fill registry fields → store (version-scoped) → index.
@@ -904,7 +912,19 @@ The spec's `module.name` must equal the path `{name}` (`422 name_mismatch`).
 
 `201 →` the full `ModuleManifest`. Errors: `401`, `403 not_namespace_member`,
 `422 invalid_version`, `409 version_exists`,
-`422 {error: missing_spec_files|invalid_spec|compile_failed|name_mismatch|ambiguous_spec_layout}`.
+`422 {error: missing_spec_files|invalid_spec|compile_failed|name_mismatch|ambiguous_spec_layout|ambiguous_upload}`.
+
+**`409 version_exists` can arrive at the end as well as the start.** The version is checked before any
+work and again just before storing, under a lock. A second request for a version that another request
+indexed while this one compiled gets the same bare `409 version_exists`. Through 0.26 it overwrote the
+stored bytes of the version already indexed and then failed with a `500`.
+
+**If the connection drops on a large publish, the publish may still have landed.** The server keeps
+compiling after a proxy closes the connection, and indexes the version when it finishes. Before
+retrying, ask: `GET /modules/{ns}/{name}/versions/{v}/manifest` returns `200` once it is in, and
+`GET /modules/lookup?signature=…` finds it by data (`RegistryClient.is_published`). A retry after it lands is a harmless
+`409 version_exists`. A retry while the first run is still compiling is refused the same way, though
+only after spending a compile of its own (S26). Endpoint 11 behaves identically.
 
 #### Spec layout (0.17) — what may arrive, and from where
 
@@ -993,7 +1013,10 @@ Publish from a **zip or tar.gz** archive (in-house packaging / legacy import). `
 - `genome_build` (form, optional) — **not display metadata**, and the one importable value that is
   inside `artifact.digest`. See below.
 
-A spec archive (contains `module_spec.yaml`) is recompiled directly; a legacy archive (only
+A spec archive (contains `module_spec.yaml`) is recompiled directly, with every member carried, so
+a `logo.png` or `README.md` in the archive reaches the card exactly as it does through endpoint 10.
+The `title`/`icon`/`color` fields do not set a logo; they fill display metadata for a legacy archive
+only. For a spec, endpoint 10's `archive` form (0.27) is the same publish and the one to prefer. A legacy archive (only
 `weights.parquet`, no spec) is reverse-engineered via `reverse_module` then recompiled. Extraction
 is path-traversal-safe. Same guards/response as endpoint 10, plus `422 {error: unsafe_archive|bad_archive|no_module_content}`.
 The *Spec layout* rules under endpoint 10 apply here too, and this is where they matter most: a zip is

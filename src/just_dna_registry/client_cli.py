@@ -59,6 +59,12 @@ class _CliClient(RegistryClient):
             raise typer.Exit(code=1) from exc
 
 
+_PACK_HELP: str = (
+    "Compress the spec client-side and send one archive. Needed for a spec whose raw parts exceed "
+    "the server's transfer bound (the ClinVar panels: 34-180 MiB raw, 2-10 MB packed)."
+)
+
+
 def _explain_rate_limit(exc: RegistryError) -> None:
     bucket = exc.bucket
     wait = exc.retry_after
@@ -296,19 +302,26 @@ def publish(
     namespace: str,
     name: str,
     version: str,
-    spec_dir: Path = typer.Argument(..., help="Spec directory (module_spec.yaml + CSVs [+ logs])"),
+    spec_dir: Path = typer.Argument(
+        ..., help="Spec directory (module_spec.yaml + CSVs [+ logo, logs]) or a .tar.gz/.zip of one"
+    ),
     changelog: str = typer.Option("", "--changelog"),
+    pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
     url: str | None = UrlOpt,
     token: str | None = TokenOpt,
 ) -> None:
-    """Publish a spec as a new module version (server-side recompile)."""
+    """Publish a spec as a new module version (server-side recompile).
+
+    Every file in the directory travels, packed or not, so the logo reaches the card either way.
+    """
     with _client(url, token, need_token=True) as c:
-        manifest = c.publish(namespace, name, version, spec_dir, changelog)
-    # Stamp the published identity into the local spec dir so it's discernible as "published-by-me".
-    write_manifest(manifest, Path(spec_dir) / "manifest.json")
+        manifest = c.publish(namespace, name, version, spec_dir, changelog, pack=pack)
     typer.echo(f"✓ published {manifest.identity.canonical_id}")
     typer.echo(f"  digest {manifest.artifact.digest}  compile_success={manifest.compilation.compile_success}")
-    typer.echo(f"  stamped {spec_dir}/manifest.json (identity + published_at)")
+    if spec_dir.is_dir():
+        # Stamp the published identity into the local spec dir so it's discernible as "published-by-me".
+        write_manifest(manifest, spec_dir / "manifest.json")
+        typer.echo(f"  stamped {spec_dir}/manifest.json (identity + published_at)")
 
 
 @app.command()
@@ -560,12 +573,6 @@ if __name__ == "__main__":
 
 
 # ── Pre-flight (0.11) ─────────────────────────────────────────────────────────
-
-
-_PACK_HELP: str = (
-    "Compress the spec client-side and send one archive. Needed for a spec whose raw parts exceed "
-    "the server's transfer bound (the ClinVar panels: 34-180 MiB raw, 2-10 MB packed)."
-)
 
 
 def _echo_findings(report) -> None:

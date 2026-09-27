@@ -8,8 +8,10 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-**Client surface: unchanged** (so far). No endpoint, no `RegistryClient` method and no response
-field moves in the adoption below.
+**Client surface:** `RegistryClient.publish` gains `pack=` and accepts an archive path in place of
+`spec_dir` (S25). Nothing else moves: no endpoint is added, `POST /versions` gains an optional
+`archive` part beside `files`, and no response field changes. A 0.27 client's `pack=True` needs a
+0.27 server; against an older one the route refuses the archive part.
 
 **Adopts upstream `v0.7.3`: `just-dna-format` 0.7.1, `just-dna-compiler` 0.7.2,
 `just-dna-enricher` 0.7.3.** All three move by a patch and every floor is the not-load-bearing
@@ -77,6 +79,28 @@ was run against the unfixed code first and failed with the `IntegrityError`.
 
 The lock is process-wide only. The deployment is one process over one SQLite file; a second replica
 would need the same exclusion from the database.
+
+### `POST /versions` takes a compressed spec (S25)
+
+`/versions` was the one spec route with only loose `files=` parts, against this repo's own rule that
+every spec route takes both wire forms. So a spec over the 25 MiB transfer bound could be published
+only through `/versions/import`, which packs differently, and a caller published three ClinVar panels
+with no logo that way while the same spec directories carried one through `publish`. The import route
+was never at fault: it carries every archive member, and a logo in the tar would have landed.
+
+- **`POST /modules/{ns}/{name}/versions` accepts one `archive` part** (`.tar.gz`/`.zip`) in place of
+  `files`. Every member is carried, logo and logs included, exactly as the loose parts are; sending
+  both is `422 ambiguous_upload`. The dry runs keep their spec-only filter.
+- **`RegistryClient.publish(..., pack=True)`** compresses the directory client-side, and `spec_dir`
+  may be an archive path. `registry-client publish --pack` is the CLI form; an archive path is not
+  stamped with the returned manifest, since there is no directory to stamp.
+- API-REFERENCE §10/§11 and CLIENT.md now say what an archive may carry, that `--icon`/`--color` set no
+  logo, and that a dropped connection on a large publish is not a failed publish (S26): verify with
+  `list`, the version's manifest, or `is_published` before retrying.
+
+S26's decoupling (a `202` job route) was recorded in 0.4.4 as "tracked in ROADMAP 0.5" and no roadmap
+since carried it. It is restored under *Next registry version* with the candidates and why two of
+them are wrong.
 
 ## [0.26.2] — 2026-09-25
 

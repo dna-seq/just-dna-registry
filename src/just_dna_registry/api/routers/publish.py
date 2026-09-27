@@ -202,11 +202,18 @@ async def publish(
     namespace: str,
     name: str,
     version: Annotated[str, Form()],
-    files: Annotated[list[UploadFile], File()],
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI default, never mutated
+    archive: Annotated[UploadFile | None, File()] = None,
     changelog: Annotated[str, Form()] = "",
     allow_test_data: Annotated[bool, Form()] = False,
 ) -> dict:
     """Publish a new version: validate + server-side recompile the uploaded spec, then index it.
+
+    **Both wire forms since 0.27**: loose `files` parts, or one `archive` (`.tar.gz` / `.zip`). Every
+    member of the archive is carried, logo and logs included, exactly as the loose parts are. Until
+    0.27 this was the one spec route with only the raw form, so a spec over the transfer bound had to
+    go through `/versions/import`, which is how a caller came to publish three panels without the
+    logo their spec directory held (S25).
 
     **Publishing runs as the low-priority lane, and has no deadline.** On a deployment that enriches
     online it queues for the same process-wide permit `/check` uses, waits as long as it takes, and
@@ -225,7 +232,7 @@ async def publish(
         raise HTTPException(status.HTTP_409_CONFLICT, detail="version_exists")
 
     try:
-        uploads = await publish_service.collect_uploads(files, settings)
+        uploads = await _preflight_uploads(files, archive, settings, spec_only=False)
         # Awaited in the coroutine so a queue of publishes cannot exhaust the threadpool that
         # `/check` needs; released by the worker's own `finally` inside `publish_version`.
         gate = await _queue_for_enrichment(request, settings, f"publish {namespace}/{name}@{version}")
@@ -359,7 +366,7 @@ async def import_archive(
 
 
 async def _preflight_uploads(
-    files: list[UploadFile], archive: UploadFile | None, settings: Settings
+    files: list[UploadFile], archive: UploadFile | None, settings: Settings, *, spec_only: bool = True
 ) -> dict[str, bytes]:
     """Accept a spec as loose multipart parts **or** as one compressed archive, and return the same
     `{name: bytes}` either way.
@@ -368,6 +375,9 @@ async def _preflight_uploads(
     could be published as a 10 MiB `.tar.gz` — but the dry runs took only raw parts, which the
     transfer bound refuses at that size. The rehearsal has to accept whatever the publish accepts or
     it is not a rehearsal.
+
+    Publish itself takes it since 0.27, with `spec_only=False`, because a publish stores what it is
+    sent and the dry runs only read the spec (see `collect_archive`).
     """
     named = [f for f in files if f.filename]
     if archive is not None and archive.filename and named:
@@ -376,7 +386,7 @@ async def _preflight_uploads(
             errors=["send either `files` or `archive`, not both"],
         )
     if archive is not None and archive.filename:
-        uploads = await publish_service.collect_archive(archive, settings)
+        uploads = await publish_service.collect_archive(archive, settings, spec_only=spec_only)
     else:
         uploads = await publish_service.collect_uploads(files, settings)
     if not any(f in uploads for f in REQUIRED_SPEC_FILES):

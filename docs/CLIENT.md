@@ -5,8 +5,9 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.26.x** against a server speaking API `v1` (0.25 added nine methods
-and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`).
+**Normative for:** client **0.14.x–0.27.x** against a server speaking API `v1` (0.25 added nine methods
+and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`;
+0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server).
 Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
@@ -67,7 +68,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Claim namespace | `claim_namespace(ns)` | `claim-namespace` | bearer |
 | Download + verify | `download(ns, name, v, dest)` | `download` | — |
 | Download tarball | `get_tarball(ns, name, v, dest)` | `download … --tarball` | — |
-| Publish (spec dir) | `publish(ns, name, v, spec_dir)` | `publish` | bearer |
+| Publish (spec dir or archive) | `publish(ns, name, v, spec_dir, pack=)` | `publish [--pack]` | bearer |
 | Publish (archive) | `import_module(ns, name, v, archive)` | `import-module` | bearer |
 | Bump a version | *(`get_module` + `publish`)* | `update-module-version` | bearer |
 | Amend changelog | `amend_changelog(ns, name, v, text, append=)` | `amend-changelog` | bearer |
@@ -178,9 +179,13 @@ other status and any registry before 0.26. `str(err)` names both when present.
 
 ### Writes (token required)
 
-- **`publish(namespace, name, version, spec_dir, changelog="") -> ModuleManifest`** — uploads the
-  spec directory (`gather_spec_files` collects yaml/csv/md/logo/logs, skipping parquets +
-  `manifest.json`) and returns the compiled manifest. A `derived/` subfolder, a legacy `MODULE.md`
+- **`publish(namespace, name, version, spec_dir, changelog="", *, allow_test_data=False, pack=False) -> ModuleManifest`**
+  — uploads the spec directory (`gather_spec_files` collects yaml/csv/md/logo/logs, skipping parquets +
+  `manifest.json`) and returns the compiled manifest. **`spec_dir` may be a `.tar.gz`/`.zip`, and
+  `pack=True` compresses a directory client-side** (0.27, needs a 0.27 server): the same files travel
+  in one archive part, logo included, so it publishes the same module. Use it for a spec over the
+  transfer bound, which is refused `413 upload_too_large` raw. Before 0.27 such a spec had to go
+  through `import_module`. A `derived/` subfolder, a legacy `MODULE.md`
   and a format-0.6 `licensing.csv` are all normalised server-side — see *Spec layout* in
   [API-REFERENCE.md](API-REFERENCE.md). Nothing to do on your side: send the spec as your tooling
   wrote it.
@@ -328,11 +333,20 @@ Exit code `1` (and "not published") if there are no matches.
 
 ### `publish`  *(token)*
 ```bash
-registry-client publish NS NAME VERSION SPEC_DIR [--changelog "…"]
+registry-client publish NS NAME VERSION SPEC_DIR [--changelog "…"] [--pack]
 ```
 Uploads a spec directory (must contain `module_spec.yaml` + `variants.csv` + `studies.csv`). On
 success it **stamps** the returned manifest into `SPEC_DIR/manifest.json`, so the local module is
-afterwards discernible as published-by-you (identity + `published_at`).
+afterwards discernible as published-by-you (identity + `published_at`). `--pack` sends the directory
+as one compressed archive, and `SPEC_DIR` may also be a `.tar.gz`/`.zip` (not stamped, since there is
+no directory to stamp). Every file travels either way, `logo.png` included (0.27).
+
+**A dropped connection is not a failed publish.** On a large spec the server may still be compiling
+when a proxy closes the connection (`httpx.RemoteProtocolError: Server disconnected`), and it indexes
+the version when it finishes. Do not retry blind: check with `registry-client list --namespace NS`,
+or `is_published(spec_dir, namespace=NS, name=NAME)` from Python. A retry is safe in the sense that it
+cannot damage the published version (it gets `409 version_exists`), but it costs a second compile
+and a script under `set -e` stops on the 409 instead.
 
 ### `import-module`  *(token)*
 ```bash
@@ -340,7 +354,9 @@ registry-client import-module NS NAME VERSION ARCHIVE.zip \
     [--changelog "…"] [--title …] [--description …] [--report-title …] [--icon …] [--color …] \
     [--genome-build GRCh37]
 ```
-Publishes from a zip/tar.gz. Display flags apply only to legacy parquet-only archives.
+Publishes from a zip/tar.gz. Every member of a spec archive is carried, so put `logo.png` (and
+`README.md`) in the archive to get them on the card. `--icon`/`--color` set no logo. Display flags
+apply only to legacy parquet-only archives. For a spec, `publish --pack` (0.27) is the same publish.
 `--genome-build` is not one of them: it decides the identity key, and a bare parquet archive that
 carries no `manifest.json` and is not GRCh38 needs it declared.
 

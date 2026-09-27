@@ -1,5 +1,7 @@
 """Auth, publish (server-side recompile), and yank contract tests (SPEC §8.6–§8.9, §13)."""
 
+import io
+import tarfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -278,6 +280,72 @@ def test_a_publish_that_finishes_second_cannot_overwrite_the_version_that_finish
     assert stored.artifact.digest == indexed.artifact.digest
 
 
+
+def _spec_archive(name: str, *extra: tuple[str, bytes]) -> bytes:
+    """The same three files `_spec_files` sends loose, packed as one `.tar.gz`, plus extras."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for _, (member, data, _) in _spec_files(name):
+            info = tarfile.TarInfo(member)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+        for member, data in extra:
+            info = tarfile.TarInfo(member)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+_LOGO = b"\x89PNG\r\n\x1a\n a logo"
+
+
+def test_publish_takes_an_archive_and_carries_the_logo_the_loose_form_carries(
+    client: TestClient, api_key: str
+) -> None:
+    """S25: the compressed form of `/versions` publishes the same module the loose form does.
+
+    Until 0.27 `/versions` took only loose parts, so a spec over the transfer bound went through
+    `/versions/import` and three panels published with no logo. The logo is the assertion because it
+    is the file a spec-only filter would drop, and the one the reporter lost. Same module, two
+    versions, so `409 duplicate_content` does not intervene and the identities can be compared.
+    """
+    base = "/api/v1/modules/just-dna-seq/coronary/versions"
+    loose = client.post(
+        base,
+        data={"version": "1.0.0", "changelog": "loose"},
+        files=[*_spec_files("coronary"), ("files", ("logo.png", _LOGO, "image/png"))],
+        headers=_auth(api_key),
+    )
+    assert loose.status_code == 201, loose.text
+    packed = client.post(
+        base,
+        data={"version": "1.0.1", "changelog": "packed"},
+        files={"archive": ("spec.tar.gz", _spec_archive("coronary", ("logo.png", _LOGO)),
+                           "application/gzip")},
+        headers=_auth(api_key),
+    )
+    assert packed.status_code == 201, packed.text
+
+    a, b = loose.json(), packed.json()
+    assert a["logo"] is not None and b["logo"] is not None
+    assert (b["logo"]["name"], b["logo"]["sha256"]) == (a["logo"]["name"], a["logo"]["sha256"])
+    assert b["content_signature"] == a["content_signature"]
+    assert {e["name"] for e in b["inputs"]} == {e["name"] for e in a["inputs"]} != set()
+    assert client.get(f"{base}/1.0.1/files/logo.png").content == _LOGO
+
+
+def test_publish_refuses_loose_parts_and_an_archive_together(client: TestClient, api_key: str) -> None:
+    """Which of two specs to publish is the author's call, never a guess; nothing is spent on it."""
+    resp = client.post(
+        "/api/v1/modules/just-dna-seq/coronary/versions",
+        data={"version": "1.0.0"},
+        files=[*_spec_files("coronary"),
+               ("archive", ("spec.tar.gz", _spec_archive("coronary"), "application/gzip"))],
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "ambiguous_upload"
+    assert client.get("/api/v1/modules/just-dna-seq/coronary/versions/1.0.0/manifest").status_code == 404
 
 # ── Yank ──────────────────────────────────────────────────────────────────────
 

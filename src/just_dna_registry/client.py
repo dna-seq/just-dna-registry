@@ -947,11 +947,17 @@ class RegistryClient:
         changelog: str = "",
         *,
         allow_test_data: bool = False,
+        pack: bool = False,
     ) -> ModuleManifest:
         """Upload a spec directory and publish it as a new version (server-side recompile).
 
         A `README.md` in `spec_dir` becomes the module's card prose; `amend_readme()` fixes it later
-        without a version bump.
+        without a version bump. A `logo.png` / `logo.jpg` beside it becomes the card's logo.
+
+        `spec_dir` may be a directory or a `.tar.gz`/`.zip` archive, and `pack=True` compresses a
+        directory client-side (0.27). Either way every file travels, logo and logs included, so the
+        two forms publish the same module. A spec over the server's transfer bound needs one of them:
+        the raw parts are refused `413 upload_too_large` at that size.
 
         `allow_test_data=True` publishes a `test-`prefixed namespace or `test_`prefixed module name
         onto production, which is refused by default. Deliberate rather than convenient: what it
@@ -960,17 +966,13 @@ class RegistryClient:
         purpose is data a routine cleanup would remove.
         """
         self.assert_compatible()
-        files = [
-            ("files", (rel, data, "application/octet-stream"))
-            for rel, data in gather_spec_files(spec_dir)
-        ]
         resp = self._http.post(
             f"/modules/{namespace}/{name}/versions",
             data={
                 "version": version, "changelog": changelog,
                 "allow_test_data": str(allow_test_data).lower(),
             },
-            files=files,
+            files=spec_upload(spec_dir, pack=pack),
         )
         return ModuleManifest.model_validate(self._json(resp))
 

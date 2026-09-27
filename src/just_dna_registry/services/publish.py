@@ -229,7 +229,7 @@ async def collect_uploads(files: list[Any], settings: Settings) -> dict[str, byt
     return {f.filename: await f.read() for f in named}
 
 
-async def collect_archive(archive: Any, settings: Settings) -> dict[str, bytes]:
+async def collect_archive(archive: Any, settings: Settings, *, spec_only: bool = True) -> dict[str, bytes]:
     """Read a spec archive upload into the same `{relative-name: bytes}` shape `collect_uploads`
     returns, so a pre-flight route can accept either form and know nothing about which it got.
 
@@ -239,9 +239,14 @@ async def collect_archive(archive: Any, settings: Settings) -> dict[str, bytes]:
     route takes had no counterpart on the dry-run routes. A dry run that cannot accept what the
     publish accepts predicts nothing.
 
-    Only recognized spec files are returned. A legacy parquet-only archive is *not* reversed here —
-    that is a publish concern (`import_archive`), and reverse-engineering an artifact to validate it
-    would report on a spec the caller never wrote.
+    `spec_only=True` (the dry runs) returns recognized spec files only. `spec_only=False` (publish,
+    0.27) returns every member, because that is what the loose form carries: `gather_spec_files`
+    sends the logo, the logs and anything else in the directory, and a compressed publish that
+    dropped the logo would be S25 moved from `/versions/import` onto `/versions`. A dry run can afford
+    the filter because nothing it reads is branding.
+
+    A legacy parquet-only archive is *not* reversed here — that is `import_archive`'s job, and
+    reverse-engineering an artifact to validate it would report on a spec the caller never wrote.
     """
     size = archive.size or 0
     if size > settings.max_upload_bytes:
@@ -261,7 +266,7 @@ async def collect_archive(archive: Any, settings: Settings) -> dict[str, bytes]:
         if not (root / SPEC_YAML).is_file():
             raise PublishError(
                 "no_module_content",
-                errors=[f"archive contains no {SPEC_YAML}; a dry run needs an authored spec"],
+                errors=[f"archive contains no {SPEC_YAML}; this route needs an authored spec"],
             )
         uploads: dict[str, bytes] = {}
         for path in sorted(root.rglob("*")):
@@ -270,7 +275,7 @@ async def collect_archive(archive: Any, settings: Settings) -> dict[str, bytes]:
             rel = path.relative_to(root).as_posix()
             # Basename-aware, not name-exact: `derived/resolution.csv` and a legacy `MODULE.md` both
             # have to survive this filter to reach `normalize_spec_layout` in `_preflight_spec_dir`.
-            if carries_spec_content(rel):
+            if not spec_only or carries_spec_content(rel):
                 uploads[rel] = path.read_bytes()
         if len(uploads) > settings.max_spec_files:
             raise PublishError(
