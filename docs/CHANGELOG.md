@@ -11,6 +11,14 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 **Client surface:** unchanged. `whoami()` gains a `site_admin` field and `merge_accounts()` is
 new; no existing method moves.
 
+### A card subtitle may be 240 characters
+
+`PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,
+which is about four card rows. The card clamps at four lines to match, and the console's input
+allows the same length. The bound is now ours rather than imported from
+`just_dna_format.normalize`. Upstream's comment leaves enforcement to the storing authority, and
+the value lives only in this registry's `modules` table, never in a manifest.
+
 ### Site admin: repair a namespace whose owner lost their key
 
 An account can now carry a **registry-wide admin** flag (`registry issue-key <acct> --site-admin`,

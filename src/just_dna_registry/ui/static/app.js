@@ -1205,7 +1205,7 @@
     ));
     const subtitle = h("input", {
       type: "text",
-      maxlength: "120",
+      maxlength: "240",
       placeholder: "Overrides the authored module.description on cards. Leave empty to show it instead."
     });
     subtitle.value = m.short_description ?? "";

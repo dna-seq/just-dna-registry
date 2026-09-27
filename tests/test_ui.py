@@ -35,6 +35,7 @@ from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
 from just_dna_registry.groups import GroupInfo
 from just_dna_registry.models import api as api_models
+from just_dna_registry.services.publish import SHORT_DESCRIPTION_MAX_CHARS
 from just_dna_registry.ui import standalone
 from just_dna_registry.ui.assets import ASSET_NAMES, STATIC_DIR, index_html
 
@@ -233,6 +234,15 @@ def test_the_page_types_name_the_same_fields_as_the_response_models() -> None:
         checked += 1
     # Every model the page reads is here; a loop over zero interfaces would pass vacuously.
     assert checked >= 30, checked
+
+
+def test_the_subtitle_input_allows_what_the_server_accepts() -> None:
+    """The console restates the server's bound as an HTML `maxlength`. A smaller one silently truncates
+    what a publisher types; a larger one lets them type into a `422`. Both are the page disagreeing
+    with the route it calls, so the two numbers are held equal here."""
+    lengths = re.findall(r'maxlength: "(\d+)"', _source("manage.ts"))
+    assert lengths, "the subtitle input lost its maxlength, or the pattern no longer finds it"
+    assert [int(n) for n in lengths] == [SHORT_DESCRIPTION_MAX_CHARS]
 
 
 # ── the committed bundle is built from the sources ────────────────────────────────────────────────

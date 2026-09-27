@@ -40,7 +40,7 @@ export function managePanel(m: ModuleDetail, ns: string, name: string, version: 
   // picker above, and the note says so — a control that ignores the picker beside three that obey it
   // is a control whose scope has to be written down.
   const subtitle = h("input", {
-    type: "text", maxlength: "120",
+    type: "text", maxlength: "240",
     placeholder: "Overrides the authored module.description on cards. Leave empty to show it instead.",
   });
   subtitle.value = m.short_description ?? "";

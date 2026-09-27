@@ -50,7 +50,6 @@ from just_dna_format.manifest import (
 from just_dna_format.normalize import (
     IDENTITY_AUTHORITY_KEYS,
     PRESENTATION_AUTHORITY_KEYS,
-    SHORT_DESCRIPTION_MAX_CHARS,
 )
 from just_dna_format.signing import sign_digest
 from pydantic import BaseModel, Field
@@ -101,6 +100,16 @@ _REGISTRY_OWNED_MODULE_KEYS: tuple[str, ...] = tuple(
     sorted(IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS)
 )
 
+
+
+#: The card subtitle's bound, in characters: about four card rows (0.28). Ours, not upstream's.
+#: `just_dna_format.normalize.SHORT_DESCRIPTION_MAX_CHARS` is 120, and its own comment leaves
+#: enforcement to "the storing authority", which is this service: the value lives only in our
+#: `modules` table and never reaches a manifest, so no other reader can disagree with it. 0.24
+#: imported upstream's number, and a 120-character card read as two rows with a clamp of three.
+#: The console's `maxlength` and the card's `line-clamp` follow it, and `tests/test_ui.py` holds
+#: the first equal to this.
+SHORT_DESCRIPTION_MAX_CHARS: int = 240
 
 def normalize_module_block(spec_dir: Path) -> list[str]:
     """Normalize `module_spec.yaml`'s `module:` block in place. Returns a description of each change.
@@ -344,9 +353,8 @@ def set_short_description(*, repo: Any, namespace: str, name: str, text: str | N
     bytes — and therefore `manifest.inputs`, `content_signature`, and the `409 duplicate_content`
     claim that only a purge frees — untouched. Rewording a subtitle must never cost a version number.
 
-    Bounded by `normalize.SHORT_DESCRIPTION_MAX_CHARS`, imported rather than restated: upstream owns
-    what "short" means, and a second copy of that number here is how two halves of one agreement
-    drift. Refused rather than truncated — silently cutting a publisher's sentence mid-word is a
+    Bounded by `SHORT_DESCRIPTION_MAX_CHARS` (see its note for why the number is ours). Refused
+    rather than truncated — silently cutting a publisher's sentence mid-word is a
     worse answer than telling them the limit.
 
     `None` clears the override; `""` sets a deliberately blank one. Two different requests, and the

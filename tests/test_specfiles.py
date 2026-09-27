@@ -24,6 +24,7 @@ from just_dna_format.verification import VerificationDoc
 from just_dna_registry import specfiles
 from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
+from just_dna_registry.services.publish import SHORT_DESCRIPTION_MAX_CHARS
 from just_dna_registry.specfiles import (
     CORE_CSVS,
     DERIVED_DIR,
@@ -258,10 +259,19 @@ def test_the_card_subtitle_is_held_beside_the_module_and_not_inside_it(
 
     over = client.patch(
         "/api/v1/modules/just-dna-seq/coronary/short-description",
-        json={"short_description": "x" * 121}, headers=auth,
+        json={"short_description": "x" * (SHORT_DESCRIPTION_MAX_CHARS + 1)}, headers=auth,
     )
     assert over.status_code == 422
     assert over.json()["detail"]["error"] == "short_description_too_long"
+    at_limit = client.patch(
+        "/api/v1/modules/just-dna-seq/coronary/short-description",
+        json={"short_description": "x" * SHORT_DESCRIPTION_MAX_CHARS}, headers=auth,
+    )
+    assert at_limit.status_code == 200, at_limit.text
+    client.patch(
+        "/api/v1/modules/just-dna-seq/coronary/short-description",
+        json={"short_description": None}, headers=auth,
+    )
 
     # Authored: dropped with a note, never adopted and never a 422.
     authored = client.post(

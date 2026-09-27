@@ -215,7 +215,7 @@ for a member, any for admin+).
   renders — the authored subtitle stays `module.description` in `module_spec.yaml`, so amending this
   moves no `content_signature`, no `artifact.digest` and no `manifest.inputs`, and spends no version
   number. `None` clears the override and falls back to the authored subtitle; `""` sets a deliberately
-  blank one. At most 120 characters and one line, refused rather than truncated.
+  blank one. At most 240 characters (0.28; was 120) and one line, refused rather than truncated.
 
 ### Identity & profile (token)
 
