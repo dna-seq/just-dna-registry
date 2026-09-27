@@ -779,6 +779,10 @@ running server, and one direction arms a delete endpoint on production data.
   leaked admin key can yank but cannot destroy: hard delete stays the ops CLI with its backup guard.
   The flag is read from the row per request, never from a JWT claim, so a revocation binds live
   sessions.
+  The one act no role can answer, **merging accounts**, is the one site-admin route
+  (`api/routers/admin.py`, logic in `services/accounts.py`, shared with `registry merge-accounts`).
+  It moves and deletes nothing except the lost account's keys, and its dry run is the same statements
+  rolled back, so a report can never disagree with the apply it predicts.
 - **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
   guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
 

@@ -569,6 +569,7 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("POST", "/api/v1/auth/tokens"): ("issue_jwt_token",),
     ("GET", "/api/v1/auth/whoami"): ("whoami",),
     ("PATCH", "/api/v1/auth/whoami"): ("update_profile",),
+    ("POST", "/api/v1/admin/accounts/{account}/merge"): ("merge_accounts",),
     # `list_modules` alone — `catalog_stats` merely pages it, and listing a roll-up here would let
     # its own `namespace=`/`group=` arguments stand in for filters the real wrapper had dropped.
     ("GET", "/api/v1/modules"): ("list_modules",),

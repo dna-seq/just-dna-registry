@@ -182,6 +182,13 @@ def require_capability(
     raise HTTPException(status.HTTP_403_FORBIDDEN, detail="insufficient_capability")
 
 
+def require_site_admin(account: Account) -> None:
+    """Raise 403 unless the caller is a site admin. For routes that act across accounts, where no
+    namespace or org role could answer the question."""
+    if not account.site_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="site_admin_required")
+
+
 def require_org_capability(
     repo: Repository, account: Account, org_id: int, cap: Capability
 ) -> None:

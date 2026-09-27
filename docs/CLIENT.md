@@ -75,6 +75,7 @@ export REGISTRY_TOKEN=mk_live_…
 | Amend logo | `amend_logo(ns, name, v, logo_path)` | `amend-logo` | bearer |
 | Amend readme (card prose) | `amend_readme(ns, name, v, path_or_text)` | `amend-readme` | bearer |
 | Set card subtitle (module-wide) | `set_short_description(ns, name, text_or_None)` | `set-short-description` | bearer |
+| Merge a lost-key account into its owner's new one | `merge_accounts(source, into, apply=False)` | *(programmatic; server-side `registry merge-accounts`)* | site admin |
 | Browser console over any registry | *(a page, not a method — see [UI.md](UI.md))* | `ui` | optional bearer |
 
 ---
@@ -238,6 +239,9 @@ for a member, any for admin+).
 - **`members(ns) -> list[dict]`**, **`add_member(ns, account, role="member")`**,
   **`remove_member(ns, account) -> dict`** — namespace membership (`owner|admin|member`; adding a
   member needs admin+, granting admin/owner needs owner).
+- **`merge_accounts(source, into, *, apply=False) -> dict`** — **site admins only.** Fold a
+  lost-key account into its owner's new one: namespaces, roles, authored versions, stars and
+  reviews move, and `source`'s keys are revoked. Reports only unless `apply=True`.
 
 ### Orgs & funding (token)
 
@@ -416,6 +420,7 @@ registry remove-namespace <ns> [--yes]               # purge + free the namespac
 registry add-member <ns> <acct> --role owner|admin|member    # namespace membership
 registry issue-key <acct> --site-admin               # registry-wide admin (owner on every namespace)
 registry site-admin <acct> [--grant|--revoke]        # show / set / clear that flag
+registry merge-accounts <lost> <into> [--apply] [--yes]  # fold a lost-key account into the new one
 registry create-org <name>                           # create an org account
 registry add-org-member <org> <acct> --role owner|admin|member
 registry remove-org-member <org> <acct> / list-org-members <org>

@@ -10,6 +10,7 @@ from just_dna_format.identity import latest as latest_version
 from just_dna_format.manifest import ModuleManifest
 
 from just_dna_registry.db.facets import version_facets
+from just_dna_registry.permissions import higher_role
 
 _SORT_SQL: dict[str, str] = {
     "downloads": "m.downloads DESC, m.name ASC",
@@ -1138,6 +1139,100 @@ class Repository:
         cur = self.conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
         self.conn.commit()
         return cur.rowcount > 0
+
+    def merge_accounts(self, source_id: int, into_id: int, *, apply: bool) -> dict[str, Any]:
+        """Fold everything `source` holds into `into`, for a person who lost the key to `source` and
+        carried on as `into`. With `apply=False` the same statements run and are rolled back, so a
+        dry run reports exactly what the apply would do rather than a second derivation of it.
+
+        Moves, never deletes, with one exception. Namespace ownership, namespace and org roles (the
+        higher of the two where both hold one), `published_by`, stars and reviews move to `into`. A
+        star both accounts gave collapses to one. A review both wrote on the same version stays on
+        `source`, which is kept as a row, so neither review is lost. The exception is `source`'s API
+        keys, which are revoked: the premise is a key nobody controls any more, which is exactly the
+        key that should stop working. `site_admin` does not travel, so a merge cannot escalate, and the
+`source` row loses its install id and admin flag.
+
+Run it on a connection of its own: the dry run rolls back the whole connection's transaction.
+        """
+        self.conn.commit()  # a dry run rolls back to here, so start from a clean transaction
+        report: dict[str, Any] = {}
+        c = self.conn
+
+        report["namespaces"] = [
+            r["name"] for r in c.execute(
+                "SELECT name FROM namespaces WHERE account_id = ? ORDER BY name", (source_id,)
+            ).fetchall()
+        ]
+        c.execute("UPDATE namespaces SET account_id = ? WHERE account_id = ?", (into_id, source_id))
+
+        def fold_roles(table: str, scope: str) -> int:
+            rows = c.execute(
+                f"SELECT {scope}, role FROM {table} WHERE account_id = ?", (source_id,)
+            ).fetchall()
+            for row in rows:
+                held = c.execute(
+                    f"SELECT role FROM {table} WHERE {scope} = ? AND account_id = ?",
+                    (row[scope], into_id),
+                ).fetchone()
+                role = higher_role(row["role"], held["role"] if held else None)
+                c.execute(
+                    f"INSERT OR REPLACE INTO {table}({scope}, account_id, role) VALUES (?, ?, ?)",
+                    (row[scope], into_id, role),
+                )
+            c.execute(f"DELETE FROM {table} WHERE account_id = ?", (source_id,))
+            return len(rows)
+
+        report["namespace_memberships"] = fold_roles("namespace_members", "namespace")
+        report["org_memberships"] = fold_roles("org_members", "org_id")
+
+        report["versions"] = c.execute(
+            "UPDATE versions SET published_by = ? WHERE published_by = ?", (into_id, source_id)
+        ).rowcount
+
+        shared = [
+            r["module_id"] for r in c.execute(
+                "SELECT module_id FROM module_stars WHERE account_id = ? AND module_id IN "
+                "(SELECT module_id FROM module_stars WHERE account_id = ?)",
+                (source_id, into_id),
+            ).fetchall()
+        ]
+        for module_id in shared:
+            c.execute(
+                "DELETE FROM module_stars WHERE module_id = ? AND account_id = ?",
+                (module_id, source_id),
+            )
+            c.execute("UPDATE modules SET stars = stars - 1 WHERE id = ?", (module_id,))
+        report["stars_collapsed"] = len(shared)
+        report["stars_moved"] = c.execute(
+            "UPDATE module_stars SET account_id = ? WHERE account_id = ?", (into_id, source_id)
+        ).rowcount
+
+        report["reviews_moved"] = c.execute(
+            "UPDATE reviews SET account_id = ? WHERE account_id = ? AND NOT EXISTS ("
+            "SELECT 1 FROM reviews r2 WHERE r2.account_id = ? "
+            "AND r2.module_id = reviews.module_id AND r2.version = reviews.version)",
+            (into_id, source_id, into_id),
+        ).rowcount
+        report["reviews_kept_on_source"] = c.execute(
+            "SELECT COUNT(*) FROM reviews WHERE account_id = ?", (source_id,)
+        ).fetchone()[0]
+
+        report["keys_revoked"] = c.execute(
+            "DELETE FROM api_keys WHERE account_id = ?", (source_id,)
+        ).rowcount
+        # The husk keeps its name (the reviews that could not move are still signed with it) and
+        # nothing else: no install id, so `/auth/register` from the old install cannot mint a key
+        # for an empty account, and no admin flag, so a merged-away admin is not one any more.
+        c.execute(
+            "UPDATE accounts SET install_id = NULL, site_admin = 0 WHERE id = ?", (source_id,)
+        )
+
+        if apply:
+            c.commit()
+        else:
+            c.rollback()
+        return report
 
     def revoke_api_keys_for_account(self, name: str) -> int:
         row = self.account_by_name(name)

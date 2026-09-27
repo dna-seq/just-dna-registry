@@ -8,7 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-**Client surface:** unchanged. `whoami()` gains a `site_admin` field; no method moves.
+**Client surface:** unchanged. `whoami()` gains a `site_admin` field and `merge_accounts()` is
+new; no existing method moves.
 
 ### Site admin: repair a namespace whose owner lost their key
 
@@ -28,6 +29,17 @@ What it does not do:
   their backup guard. If `name2` holds the *same data* you want back under `nam1`, that copy's
   `content_hash` claim still blocks the republish with `409 duplicate_content` until an operator
   purges it. Yanking does not free the claim.
+
+### Merge a lost-key account into the new one
+
+`POST /admin/accounts/{account}/merge` (`RegistryClient.merge_accounts`, `registry
+merge-accounts <lost> <into>`) is the permanent version of the member grant above, and it is for
+site admins only. It moves namespace ownership, roles (keeping the higher one), `published_by`,
+stars and reviews to the new account, and revokes the lost account's keys. Nothing is deleted
+apart from those keys. A star both accounts gave collapses to one, and a review both wrote on one
+version stays under the old handle. The request is a dry run unless `apply` is true. The dry run
+runs the same statements and rolls them back. An applied merge snapshots the DB first. Org
+accounts do not merge, and `site_admin` never moves.
 
 The flag is read from the account row on every request, never from a JWT claim, so a revocation
 binds sessions that were already issued. Every elevated answer logs a WARNING on

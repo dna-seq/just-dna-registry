@@ -493,6 +493,36 @@ class OrgMemberList(BaseModel):
     members: list[MemberEntry]
 
 
+class MergeAccountsRequest(BaseModel):
+    """Body for `POST /admin/accounts/{account}/merge`. `apply` defaults to false, so a request that
+    forgets it reports instead of acting — the listing is the moment to notice a wrong name."""
+
+    into: str
+    apply: bool = False
+
+
+class AccountMerge(BaseModel):
+    """What folding one account into another moved (or, on a dry run, would move)."""
+
+    source: str
+    into: str
+    applied: bool
+    namespaces: list[str] = Field(description="Namespaces whose ownership moved to `into`")
+    namespace_memberships: int
+    org_memberships: int
+    versions: int = Field(description="Versions whose `published_by` now names `into`")
+    stars_moved: int
+    stars_collapsed: int = Field(description="Stars both accounts gave: one is kept")
+    reviews_moved: int
+    reviews_kept_on_source: int = Field(
+        description="Reviews both accounts wrote on one version: `source`'s stays under its name"
+    )
+    keys_revoked: int
+    snapshot: str | None = Field(
+        default=None, description="Backup file name taken before an applied merge (name only)"
+    )
+
+
 class CreateOrgRequest(BaseModel):
     """Body for `POST /orgs` — create an org account and seed the caller as its owner."""
 

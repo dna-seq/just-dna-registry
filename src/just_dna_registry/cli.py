@@ -21,6 +21,7 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
+from just_dna_registry.services.accounts import merge_accounts
 from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
 from just_dna_registry.services.rebuild import UNPROBED_SURFACES
@@ -260,6 +261,40 @@ def site_admin_command(
     if grant is not None:
         repo.set_site_admin(int(row["id"]), grant)
     typer.echo(f"{account}: site_admin={'yes' if repo.is_site_admin(int(row['id'])) else 'no'}")
+
+
+@app.command("merge-accounts")
+def merge_accounts_command(
+    source: str = typer.Argument(..., help="The account whose key was lost"),
+    into: str = typer.Argument(..., help="The account its owner carried on with"),
+    apply: bool = typer.Option(False, "--apply", help="Act; without it, report only"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Fold SOURCE into INTO: namespaces, roles, authored versions, stars and reviews move, and
+    SOURCE's API keys are revoked. Reports only unless --apply; snapshots the DB before applying."""
+    settings = get_settings()
+    repo = _open_existing_db(settings)
+    try:
+        plan = merge_accounts(repo, settings, source, into, apply=False)
+    except LookupError as exc:
+        typer.echo(f"account not found: {exc}")
+        raise typer.Exit(code=1) from exc
+    except ValueError as exc:
+        typer.echo(f"cannot merge {source} into {into}: {exc}")
+        raise typer.Exit(code=1) from exc
+    for field, value in plan.model_dump(exclude={"source", "into", "applied", "snapshot"}).items():
+        typer.echo(f"  {field:<24} {value}")
+    if not apply:
+        typer.echo("dry run: nothing changed (pass --apply to act)")
+        return
+    if not yes:
+        typer.confirm(f"Merge {source} into {into} and revoke {source}'s keys?", abort=True)
+    done = merge_accounts(repo, settings, source, into, apply=True)
+    if done.snapshot is None:
+        typer.secho("! no pre-flight snapshot taken (auto-backup disabled)", fg=typer.colors.YELLOW)
+    else:
+        typer.secho(f"snapshot: {done.snapshot}", fg=typer.colors.GREEN)
+    typer.echo(f"merged {source} into {into}")
 
 
 @app.command("export-keys")

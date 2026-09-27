@@ -183,6 +183,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 35 | DELETE | `/api/v1/modules/{ns}/{name}/versions/{v}` | bearer | Hard-delete a version — **test instance only**, `405` on prod (0.12) |
 | 36 | DELETE | `/api/v1/modules/{ns}/{name}` | bearer | Hard-delete every version — **test instance only** (0.12) |
 | 37 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/readme` | bearer | Replace the card's readme prose (metadata, out of digest) (0.14) |
+| 38 | POST | `/api/v1/admin/accounts/{account}/merge` | site admin | Fold a lost-key account into its owner's new one (unreleased) |
 
 ---
 
@@ -1218,6 +1219,24 @@ Batch of endpoint 3. Body `{"digests": ["sha256:…", …]}` (capped at `lookup_
 256). `200 → {"results": [{"digest": "sha256:…", "matches": [{namespace,name,version,yanked}]}]}`.
 Lets a consumer classify many local modules (provenance / "already published?") in one request —
 digests are already in each module's `manifest.json`, so no client-side hashing.
+
+### 38. `POST /api/v1/admin/accounts/{account}/merge`  *(site admin)*
+Fold `{account}`, whose key was lost, into the account its owner carried on with. Body
+`{"into": "name2", "apply": false}`. **`apply` defaults to false**, so a request that omits it
+reports and changes nothing. The dry run executes the same statements and rolls them back, so it
+predicts the apply exactly.
+
+What moves to `into`: namespace ownership, namespace and org roles (the higher one wins where both
+accounts hold a role), `published_by` on authored versions, stars, and reviews. A star both accounts
+gave collapses into one. A review both wrote on the same version stays under `{account}`, so neither
+is lost. `{account}`'s API keys are **revoked**, and its row is kept. `site_admin` never moves, so a
+merge cannot escalate. An applied merge takes a DB snapshot first, and `snapshot` carries its file
+name.
+
+`200 → {"source", "into", "applied", "namespaces": [...], "namespace_memberships",
+"org_memberships", "versions", "stars_moved", "stars_collapsed", "reviews_moved",
+"reviews_kept_on_source", "keys_revoked", "snapshot"}`. Errors: `401`, `403 site_admin_required`,
+`404 account_not_found`, `422 same_account`, `422 not_a_user_account` (org accounts do not merge).
 
 ---
 

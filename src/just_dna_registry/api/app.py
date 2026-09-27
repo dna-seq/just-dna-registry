@@ -16,6 +16,7 @@ from just_dna_format.signing import public_key_b64_from_pem
 
 from just_dna_registry import __version__
 from just_dna_registry.api.routers import (
+    admin,
     auth,
     caches,
     drafts,
@@ -154,6 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(namespaces.router, prefix=API_PREFIX)
     app.include_router(orgs.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
+    app.include_router(admin.router, prefix=API_PREFIX)
     # The console (0.23): pages, not routes — nothing here enters the OpenAPI schema.
     mount_ui(app, settings)
 

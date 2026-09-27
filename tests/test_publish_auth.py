@@ -71,7 +71,7 @@ def test_whoami_ok(client: TestClient, api_key: str) -> None:
     assert body == {
         "account": "antonkulaga", "namespaces": ["just-dna-seq"],
         "type": "user", "display_name": None, "avatar_url": None,
-        "funding_url": None, "email": None,
+        "funding_url": None, "email": None, "site_admin": False,
     }
 
 

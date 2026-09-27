@@ -1130,6 +1130,14 @@ class RegistryClient:
         """Revoke a member's namespace access (admin+; removing an owner needs owner)."""
         return self._json(self._http.delete(f"/namespaces/{namespace}/members/{account}"))
 
+    def merge_accounts(self, source: str, into: str, *, apply: bool = False) -> dict:
+        """**Site admins only.** Fold `source` into `into`: namespaces, roles, authored versions,
+        stars and reviews move, and `source`'s API keys are revoked. For a person who lost the key
+        to `source` and carried on as `into`. Reports what it would do unless `apply=True`."""
+        return self._json(
+            self._http.post(f"/admin/accounts/{source}/merge", json={"into": into, "apply": apply})
+        )
+
     # ── Orgs (0.9.0) ────────────────────────────────────────────────────────────
 
     def create_org(self, name: str) -> dict:
