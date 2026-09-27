@@ -596,6 +596,25 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ## Next registry version (post-0.11)
 
+- **`config.py` loads the `.env` above the installed package, not the one where the server runs**
+  (**severity low, open — needs an operator step, not scheduled**; motivated by **S27**). The module
+  calls a bare `load_dotenv()` at import, and python-dotenv walks up from the calling *file*, so it
+  finds whatever `.env` sits above `site-packages/just_dna_registry/`. The 0.18.1 entry above already
+  measured the consequence: in a checkout the walk and the working directory agree, and in a container
+  they do not, so the enricher (which uses the working directory) and our own settings can read two
+  different files. 0.27.1 fixed the same shape in `registry-client`, where it was sending a project's
+  commands to whatever server the checkout's `.env` named. The server was left alone on purpose.
+
+  **Why not the same one-line fix here.** `usecwd=True` changes which file a *running deployment*
+  loads, and nothing from this repo can see how either box is launched (its working directory, a
+  unit file's `EnvironmentFile`, a compose `env_file`). If a box relies on the walk finding the
+  checkout's `.env` while it runs from elsewhere, the change silently drops its configuration at the
+  next restart, and a server that boots with defaults does not look broken until a rule fires. The
+  right fix is `usecwd=True`, or moving the load out of import into `registry serve` and the admin
+  CLI's root callback. It lands together with an UPGRADE.md step that checks each box's launch
+  directory first. Moving it out of import also stops every `Settings()` in the test suite reading a
+  developer's `.env`, which is its own small win.
+
 - **Decouple a large publish from its connection** (**severity medium, open — not scheduled**;
   motivated by **S26**, and **restored**: the 0.4.4 changelog said "Decoupling publish (`202` +
   background compile + poll) is tracked in ROADMAP 0.5", and no roadmap since has carried it). A

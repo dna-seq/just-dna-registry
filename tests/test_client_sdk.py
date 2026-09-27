@@ -11,7 +11,10 @@ import asyncio
 import inspect
 import io
 import math
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1107,3 +1110,30 @@ async def test_the_fact_table_filters_are_reachable_from_the_sdk(sdk, client, ap
     assert detail["weighting"]["scale"] == "0-1, curator-set"
     assert detail["facts"]["weighting_declared"] is True
     assert detail["verification"] is not None and detail["verification"]["closed"] is False
+
+
+def test_the_cli_reads_the_working_directorys_env_not_the_one_beside_its_install(tmp_path) -> None:
+    """`registry-client` loads `.env` from where it is run (S27's adjacent finding, 0.27.1).
+
+    Through 0.27.0 the module called a bare `load_dotenv()`, which walks up from the file that calls
+    it, so it found whatever `.env` sat above the *installed package*. In this checkout that is the
+    repo's own `.env`, with the production URL and an owner token. A `.env` in the directory the
+    command ran from was ignored, so pointing a project at the polygon there published to production.
+
+    Driven as a script file in a subprocess, never `python -c`: python-dotenv treats a `-c` run as
+    interactive and uses the working directory anyway, so a `-c` probe passes on the broken code.
+    """
+    (tmp_path / ".env").write_text("REGISTRY_URL=http://from-the-working-directory.invalid\n")
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import os\n"
+        "import just_dna_registry.client_cli\n"
+        "print(os.environ.get('REGISTRY_URL'))\n"
+        "print(bool(os.environ.get('REGISTRY_TOKEN')))\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k not in ("REGISTRY_URL", "REGISTRY_TOKEN")}
+    out = subprocess.run(
+        [sys.executable, str(probe)], cwd=tmp_path, env=env, capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+    assert out == ["http://from-the-working-directory.invalid", "False"]
+

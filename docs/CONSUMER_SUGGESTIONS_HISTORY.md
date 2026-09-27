@@ -45,6 +45,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S24** catalog signal that a module's source has published since — tracked
 - **S25** archive publish lost the logo — `/versions` takes archives, 0.27.0
 - **S26** large publish lands but drops the response — race fixed, 0.27.0
+- **S27** `.env` loaded at import — enricher's (upstream S124); CLI fixed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2643,3 +2644,77 @@ digest a no-op success rather than version-exists, so a retry after a lost respo
 those, document that a disconnect on a large import means *verify with `list`/`find-by-hash`, do not retry*.
 (`pathogenic` at 20/25 MiB is also near the size ceiling — worth raising `upload_too_large` before a future
 ClinVar release pushes it over, with no third transport.)
+
+# Field notes from just-module-creator
+
+## S27 — importing `just_dna_registry.config` loads a `.env` found from the package's own file
+
+**Status — your repro does not reach our `config`: the loader is the enricher, and that is filed
+upstream as their S124. Probing it turned up a real defect of the same shape in our CLI, fixed for
+0.27.1. `config.py` is tracked, not changed.**
+
+What we ran: your exact command in your checkout, with `dotenv.main.load_dotenv` wrapped to record each
+call and which call set `JMC_USER_EMAIL`. `just_dna_registry.config` is never imported on that path
+(`sys.modules` holds `client`, `models`, `specfiles`, `version`, `installid` and nothing else of ours),
+and `import just_dna_registry.client` loads no dotenv at all. The two loads both come from
+`just_dna_enricher.locations.load_env()`, called by `EutilsSettings.__post_init__` (`eutils.py:84`, the
+one that set your variable) and `CrossrefClient.__post_init__` (`literature.py:449`). Your own
+`net.build_services` constructs both. One correction to the mechanism as well: `load_env` is
+`find_dotenv(usecwd=True)`, so it reads the **working directory's** `.env`. Under a plugin install it
+does not reach a file above the cached copy; it reads whatever `.env` the process was started beside.
+
+**Upstream, S124** in `../just-dna-format/docs/CONSUMER_SUGGESTIONS.md`, restated in their terms: those
+constructors copy every key of that `.env` into `os.environ`, with no way to decline it. We argued
+against dropping the load, because it exists to fix RM100: credentials had reached `os.environ` only
+as a side effect of cache resolution, so NCBI pacing depended on call order. We asked for
+`dotenv_values` (read the one key, export nothing) or, failing that, an opt-out. Until then, the one
+thing that keeps your layer attribution a record rather than a guess is to resolve your own settings
+**before** `build_services` constructs any enricher client.
+
+**Ours, found by the probe.** Your principle is right for our `registry-client`, which had the
+package-relative shape you describe. `client_cli.py` called a bare `load_dotenv()`, which walks up from
+its own file. Run as the installed command from another directory whose `.env` named a different
+server, it read **this checkout's** `.env` instead: the production URL and an owner token.
+`registry-client version` answered from production. It is now `load_dotenv(find_dotenv(usecwd=True))`,
+and `tests/test_client_sdk.py::test_the_cli_reads_the_working_directorys_env_not_the_one_beside_its_install`
+fails on the old code and passes on the new. It runs a script file, not `python -c`, because python-dotenv
+treats `-c` as interactive and searches from the working directory anyway, which is also why your
+`-c` repro would have looked the same whichever module loaded the file. CLIENT.md now says the CLI
+searches from the working directory and that the Python client reads no `.env` at all.
+
+**`config.py` does do what you describe**, but only for the server and the admin CLI. The server tier
+imports it and the client does not. The one-line fix is correct there too, but it changes which file a
+*running deployment* loads, and nothing here can see how either box is launched. It is on the roadmap
+with that reason, to land with an operator step rather than in passing.
+<!-- triaged: 0.27.1 · sha 16cdb8e1ea9b -->
+
+*2026-09-27, just-module-creator 0.46.1, just-dna-registry 0.27.0.*
+
+**What we ran.** `just_dna_registry/config.py:25` calls a bare `load_dotenv()` at import. With no path,
+python-dotenv walks up from the **calling file's directory**, which is the installed
+`site-packages/just_dna_registry/`. So what a client library loads depends on where its venv sits, not on
+anything the caller chose:
+
+```
+cd /data/sources/just-module-creator
+env -u JMC_USER_EMAIL uv run --no-dev python -c "
+import os; print('JMC_USER_EMAIL' in os.environ)      # False
+import just_module_creator.server                     # imports RegistryClient -> config
+print('JMC_USER_EMAIL' in os.environ)"                # True
+```
+
+The venv is inside the checkout here, so the walk reaches the checkout's `.env`. Under a plugin install
+the venv is inside the plugin's cached copy, and the walk reaches whatever `.env` is above *that*, up to
+`$HOME`.
+
+**Why it cost us something.** We load our own configuration in a fixed order (process environment, the
+working directory's `.env`, a per-user config file) and report which layer each value came from, so an
+agent can tell an author *why* a saved token is not the one in force. Your import runs first and
+populates `os.environ`, so every value it brought in reads as an exported shell variable. We now decide
+the label by comparing values against the files, which works but is a guess where it used to be a record.
+A token loaded silently at import is also the shape `F35` / format-tree `S39` was, for the enricher.
+
+**Candidate fix.** Load nothing at import. `Settings.model_config` has no `env_file`, so the import-time
+call is what gives a deployment its `.env` today; moving it into the entry points (`registry serve`, the
+CLI) as `load_dotenv(find_dotenv(usecwd=True))` keeps that, and reads the working directory's file rather
+than one found from the package. A library a consumer imports should leave `os.environ` alone.

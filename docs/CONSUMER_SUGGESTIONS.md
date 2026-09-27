@@ -15,7 +15,7 @@ wherever the *fix* would land.
 than a current one, and refer to the project as `just-dna-registry` throughout.)
 
 S1–S4 were answered in 0.13.0, S5–S7 in 0.14.0, S8–S9 in 0.15.0, S10–S12 in 0.16.0,
-S19–S22 in 0.25.0, S23 in 0.26.0, S24 (tracked on the roadmap) and S25–S26 in 0.27.0, all moved to
+S19–S22 in 0.25.0, S23 in 0.26.0, S24 (tracked on the roadmap), S25–S26 in 0.27.0 and S27 (0.27.1), all moved to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md).
 
 ---
@@ -27,7 +27,7 @@ reply moves to [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md
 the one-line summary of every one; the runbook for answering them is
 [CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md).
 
-### The next item is S27
+### The next item is S28
 
 **Claim ids from the ledger, never from what this file shows** — once answered items move out, an empty
 inbox says nothing about how many ids are taken, and the next report would be a second S1:
