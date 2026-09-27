@@ -1,6 +1,7 @@
 """Rate limiting — token buckets per caller × category (SPEC §7)."""
 
 import math
+import time
 from pathlib import Path
 
 import pytest
@@ -167,15 +168,19 @@ def test_an_enrich_refusal_names_its_bucket_and_the_real_wait(tmp_path: Path) ->
     client already compares against."""
     client, parts, auth = _preflight_client(tmp_path, rate_enrich_per_hour=2)
     url = "/api/v1/modules/just-dna-seq/coronary/check"
+    started = time.monotonic()
     for _ in range(2):
         assert client.post(url, params={"offline": True}, files=parts, headers=auth).status_code == 200
     r = client.post(url, params={"offline": True}, files=parts, headers=auth)
+    elapsed = time.monotonic() - started
     assert r.status_code == 429 and r.json()["detail"] == "rate_limited"
     assert r.headers["X-RateLimit-Bucket"] == "enrich"
     settings = client.app.state.settings
     expected = math.ceil(3600 / settings.rate_enrich_per_hour)
     assert expected > 60  # the flat value would have been wrong here, which is the point
-    assert int(r.headers["Retry-After"]) == expected
+    # The bucket keeps refilling while the two runs above execute, so the honest wait is the full
+    # refill minus that time: `== expected` failed whenever they took over a second (1799 vs 1800).
+    assert expected - math.ceil(elapsed) - 1 <= int(r.headers["Retry-After"]) <= expected
 
 
 def test_a_busy_gate_refunds_the_enrich_token(tmp_path: Path) -> None:
