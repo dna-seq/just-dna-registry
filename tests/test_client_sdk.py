@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import typer
 from fastapi.testclient import TestClient
+from sdk_transport import sdk_transport
 from test_import import _bare_parquet_zip
 
 from just_dna_registry import client_cli
@@ -37,7 +38,7 @@ def sdk(app, api_key):
     """A real RegistryClient bound to the in-process app; token = the namespace-owner account."""
     tc = TestClient(app)
     client = RegistryClient(
-        "http://testserver", token=api_key, transport=tc._transport, check_version=False
+        "http://testserver", token=api_key, transport=sdk_transport(tc), check_version=False
     )
     try:
         yield client
@@ -319,7 +320,7 @@ async def test_expect_mode_refuses_the_wrong_deployment(app, api_key, tmp_path) 
     spec = _write_spec(tmp_path)
 
     aiming_at_the_polygon = RegistryClient(
-        "http://testserver", token=api_key, transport=tc._transport, expect_mode="test"
+        "http://testserver", token=api_key, transport=sdk_transport(tc), expect_mode="test"
     )
     # Up front, and again on a call that would have spent something — the guard is worth nothing if
     # it only answers when asked directly.
@@ -331,7 +332,7 @@ async def test_expect_mode_refuses_the_wrong_deployment(app, api_key, tmp_path) 
     aiming_at_the_polygon.close()
 
     correct = RegistryClient(
-        "http://testserver", token=api_key, transport=tc._transport, expect_mode="prod"
+        "http://testserver", token=api_key, transport=sdk_transport(tc), expect_mode="prod"
     )
     assert (await asyncio.to_thread(lambda: correct.validate(_NS, _NAME, spec))).valid is True
     correct.close()
@@ -348,7 +349,7 @@ async def test_expect_mode_survives_check_version_being_off(app, api_key) -> Non
     client = RegistryClient(
         "http://testserver",
         token=api_key,
-        transport=tc._transport,
+        transport=sdk_transport(tc),
         check_version=False,
         expect_mode="test",
     )
@@ -378,7 +379,7 @@ async def test_a_429_reaches_the_sdk_with_its_bucket_and_wait(tmp_path) -> None:
         db_path=tmp_path / "m.db", local_storage_dir=tmp_path / "a", rate_search_per_min=1
     )
     tc = TestClient(create_app(settings))
-    client = RegistryClient("http://testserver", transport=tc._transport, check_version=False)
+    client = RegistryClient("http://testserver", transport=sdk_transport(tc), check_version=False)
     try:
         await asyncio.to_thread(client.list_modules)
         with pytest.raises(RegistryError) as caught:
@@ -409,7 +410,7 @@ async def test_the_cli_client_explains_a_429_on_the_way_out(tmp_path, capsys) ->
 
     def run() -> None:
         with client_cli._CliClient(
-            "http://testserver", None, transport=tc._transport, check_version=False
+            "http://testserver", None, transport=sdk_transport(tc), check_version=False
         ) as c:
             c.list_modules()
             c.list_modules()
@@ -766,7 +767,7 @@ def test_every_amend_is_reachable_from_the_cli() -> None:
 
 def _cli_bound_to(app, api_key: str, monkeypatch) -> None:
     """Point `registry-client`'s client factory at an in-process app, ignoring --url/--token."""
-    transport = TestClient(app)._transport
+    transport = sdk_transport(TestClient(app))
     monkeypatch.setattr(
         client_cli,
         "_client",
@@ -862,7 +863,7 @@ def test_delete_round_trips_against_a_polygon(tmp_path) -> None:
 
     tc = TestClient(polygon)
     with RegistryClient(
-        "http://testserver", token="mk_live_testkey", transport=tc._transport, check_version=False
+        "http://testserver", token="mk_live_testkey", transport=sdk_transport(tc), check_version=False
     ) as sdk:
         def _spec(module_name: str) -> Path:
             """A spec dir whose module name differs but whose authored rows are byte-identical.

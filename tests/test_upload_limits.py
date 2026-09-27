@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sdk_transport import sdk_transport
 
 from just_dna_registry.api.app import create_app
 from just_dna_registry.client import RegistryClient, RegistryError, pack_spec
@@ -310,7 +311,7 @@ def test_sdk_pack_is_the_way_through_the_transfer_bound(tmp_path: Path) -> None:
     spec = _spec_on_disk(tmp_path, ("notes.csv", b"n" * 8192))
     sdk = RegistryClient(
         "http://testserver", token="mk_live_testkey",
-        transport=client._transport, check_version=False,
+        transport=sdk_transport(client), check_version=False,
     )
     try:
         with pytest.raises(RegistryError) as refused:
@@ -330,7 +331,7 @@ def test_sdk_sends_an_archive_path_as_an_archive(tmp_path: Path) -> None:
     packed.write_bytes(_spec_tar(("notes.csv", b"n" * 8192)))
     sdk = RegistryClient(
         "http://testserver", token="mk_live_testkey",
-        transport=client._transport, check_version=False,
+        transport=sdk_transport(client), check_version=False,
     )
     try:
         assert sdk.validate("just-dna-seq", "coronary", packed).stats.variant_count == 1
