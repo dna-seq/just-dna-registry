@@ -6,14 +6,27 @@ watcher notices when a consumer has finished writing, an agent triages what is n
 the state — there is no queue, no database and no external ledger.
 
 The pattern is published as a generalized gist —
-<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254> — and the three scripts here are
-that copy with two lines changed each: the `INBOX` default points at this repo's docs, and the watcher
-keeps this repo's name for it (`watch-suggestions.sh`, the gist calls it `watch-inbox.sh`). **The sync is
+<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254> — and the five scripts here are
+that copy with the paths changed: the `INBOX` default points at this repo's docs, and the watcher and
+its wake wrapper keep this ecosystem's names (`watch-suggestions.sh` and `wake-on-suggestions.sh`; the
+gist calls them `watch-inbox.sh` and `wake-on-inbox.sh`). The gist's `item-next.py` is not adopted
+(below). **The sync is
 one-way and by hand.** If you change the *pattern* (the algorithm, a script's contract, a gotcha found by
 running it), it belongs in the gist too; if you change something only true of this repo — the release
 table below, the routing destinations, a path — it does not.
 
-**The most recent trip was 2026-09-24, and it repeated the lesson of the one before it.** The fence fix
+**The most recent trip was 2026-09-30, inbound only.** The gist's revision `96b6953` (2026-09-29)
+added the Claude Code arming that `just-dna-format` built first: `wake-on-inbox.sh`, a wrapper that
+runs the watcher outside the harness and wakes the session through its inbox socket, and
+`arm-on-prompt.py`, the `UserPromptSubmit` hook that starts it. They are here as
+`.claude/wake-on-suggestions.sh` (the sibling's name, matching our watcher's) and
+`.claude/arm-on-prompt.py`, with only the watcher name and paths changed. The three existing scripts
+diffed as paths-only against the gist, so nothing was owed outbound. §2 has the arming and what it
+replaces. **The hook is not yet registered**: this session's auto-mode classifier refused to write
+`.claude/settings.json` as self-modification, which is the gist's own first lesson, so the entry below
+is for the maintainer to add by hand. **The `armed` canary has not been observed here** (unrun).
+
+**The trip before it was 2026-09-24, and it repeated the lesson of the one before it.** The fence fix
 this repo landed on 2026-09-11 (§5) and recorded as *owed to the gist* had been in the gist since
 2026-08-22, found upstream on the same S62 and written independently of ours. Nobody here had read the
 gist in the meantime, so the fix was built twice. The gist's version was the better one, and both
@@ -115,18 +128,80 @@ empty the obvious next id is `S1`, which already exists and already has a reply.
 
 ## 2. Setup
 
-Three scripts, all in `.claude/`, none packaged, no dependencies beyond Python 3.11+ and coreutils:
+Five scripts, all in `.claude/`, none packaged, no dependencies beyond Python 3.11+ and coreutils:
 
 | | |
 |---|---|
 | `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing |
 | `.claude/triage-state.py` | the ledger: which sections are new, revised or already answered; `--next`. Also prints `STRUCTURE` lines (stderr) when a fenced block breaks the section boundaries |
 | `.claude/triage-archive.py` | moves answered sections to the history file and **verifies** the move. **Refuses outright** on a `STRUCTURE` finding, before writing |
+| `.claude/wake-on-suggestions.sh` | Claude Code only: runs the watcher detached, with no harness deadline, and posts each event to the session's inbox socket; posts an `armed` canary first |
+| `.claude/arm-on-prompt.py` | Claude Code only: `UserPromptSubmit` hook that starts the wrapper when a prompt cites this runbook |
 
-**Two of the three are Python and are named `.py` for it** — run them, or hand them to `python3`, never
-to `bash`. They were `.sh` until 2026-08-16, on the reasoning that one glob arms all three; §5 has what
-that cost. The watcher calls the ledger through `$PYTHON`, so neither the exec bit nor the shebang is
-load-bearing anywhere.
+**The two ledger tools are Python and are named `.py` for it** — run them, or hand them to `python3`,
+never to `bash`. They were `.sh` until 2026-08-16, on the reasoning that one glob arms all three; §5 has
+what that cost. The watcher calls the ledger through `$PYTHON`. **The exec bit is load-bearing on
+exactly one file**: the hook starts `wake-on-suggestions.sh` by path with no interpreter, and the
+wrapper `exec`s the watcher the same way, so both keep `+x`.
+
+### Arming under Claude Code: a hook, a socket, no deadline (2026-09-30)
+
+**Since Claude Code 2.1.285 every background task the harness owns has a deadline** — 30 minutes by
+default, 2 hours at most (this session's own `Bash` tool schema: `run_in_background` timeout default
+1800000 ms, max 7200000 ms), and 30 minutes for `Monitor`. So the one-shot arming further down, which
+this section used to call expiry-free, now dies on a timer. `wake-on-suggestions.sh` runs the watcher
+detached, outside the harness, and wakes the session by posting a user message to its inbox socket
+(`$CLAUDE_CODE_MESSAGING_SOCKET`). An idle session starts a turn when one arrives. It keeps watching
+after each event, so nothing needs re-arming, and it exits when superseded (a newer arming, the same
+newest-wins singleton) or when the socket goes. A `/clear` keeps both.
+
+`arm-on-prompt.py` starts it whenever a prompt cites `docs/CONSUMER_TRIAGE_LOOP.md`, in any wording
+(`@docs/CONSUMER_TRIAGE_LOOP.md` included). Register it in the **committed** `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=\"$CLAUDE_PROJECT_DIR/docs/CONSUMER_SUGGESTIONS.md\" RUNBOOK=docs/CONSUMER_TRIAGE_LOOP.md python3 \"$CLAUDE_PROJECT_DIR/.claude/arm-on-prompt.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`RUNBOOK` does two jobs and is set once: it is the hook's trigger and, passed through the wrapper, the
+file the watcher's event line names. It is a substring test, so a prompt here citing
+`../just-dna-format/docs/CONSUMER_TRIAGE_LOOP.md` arms *our* watcher too. Recorded, not fixed: the
+sibling's watcher belongs to the session standing in that repo.
+
+The gist's five lessons, all of which apply here:
+
+- **A hook arms it, never the agent.** Auto mode's classifier refuses to let a session write or launch
+  something that wakes itself, and a hook is not classified. Confirmed on adoption: writing the
+  `settings.json` entry above was refused as *Self-Modification*, so it is the maintainer's to add.
+  Hooks are read at session start, so the first arming is the session after it lands.
+- **Stay out of bypass mode.** A bypassing session holds every socket message until a human approves
+  it. `crossSessionInbound: "accept"` lifts the hold but is ignored in repo and local settings, and
+  opens the inbox to every session on the machine. Never forge the sender-mode field.
+- **Check the canary on every arming.** The socket and its auth line are documented; the message line
+  is not. The wrapper's first post is an `armed` line and it has to arrive in the arming turn. If it
+  does not, the format changed: say so, and fall back to the one-shot arming below.
+- **The watcher's own posts never arm it.** Its event line names the runbook and would match the
+  trigger, so the hook ignores any prompt carrying the `[watcher ` prefix.
+- **Read `read`'s own status.** `if ! read -t …; then [ $? -gt 128 ]` sees the negation's 0; the wrapper
+  captures `rc=$?` straight after `read`.
+
+### The one-shot arming (fallback)
+
+Use it when the canary does not arrive, when the session exports no socket (the hook says `NOT armed`),
+or outside Claude Code. It now lives at most two hours; re-arm when it ends.
 
 **Arm the watcher as a one-shot background `Bash` task, not with `Monitor`** (changed 2026-09-25, on
 the maintainer's instruction). Since Claude Code 2.1.271 a `Monitor` expires after at most 30 minutes and wakes
@@ -135,7 +210,8 @@ most 30 minutes; 10 in single-prompt `-p` runs) and notify Claude to re-arm, rep
 `persistent` option"*. The last `persistent` watch here was under 2.1.270 on 2026-09-12. That turned the watch into a half-hourly timer that woke the agent and spent
 tokens on an empty inbox, the opposite of what it is for. The maintainer's rule is that **the agent
 wakes on a change and on nothing else**. If they wanted a clock, they would have set up `/loop`. A
-background `Bash` task has no expiry. This one waits until the inbox settles with something pending,
+background `Bash` task had no expiry when this was written; since 2.1.285 it has one (above), which is
+why this is now the fallback. This one waits until the inbox settles with something pending,
 prints that line and exits, which is the one wakeup:
 
 ```
@@ -171,7 +247,8 @@ also lists just-dna-format's watcher, which has a different path. `TaskStop` can
 is open and the REPL is idle. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and python
 `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
 
-**A `/clear` stops neither the background task nor the old persistent `Monitor`** (both tested; the
+**A `/clear` stops neither the socket wrapper, the background task nor the old persistent `Monitor`**
+(the wrapper per the gist; the other two tested here; the
 task on 2026-09-25, when a watcher armed before a clear was still running afterwards and its completion
 notice reached the cleared session). So the ordinary case is an event arriving at an agent with no
 memory of having armed anything. That is why the event line names this file, and why you should read a
@@ -190,9 +267,11 @@ paused, so an edit written during the pause is still picked up on the way back r
 off entirely. **A pause is not a dead watcher**, and it prints the branch it saw so you can tell them
 apart.
 
-**Hooks cannot do this job.** Claude Code hooks fire on the agent's own lifecycle (`PreToolUse`,
-`PostToolUse`, `SessionStart`, `Stop`); a consumer editing a file triggers none of them. The trigger has to
-be a process watching the file.
+**A hook cannot *detect* the edit, only launch what does.** Claude Code hooks fire on the agent's own
+lifecycle (`UserPromptSubmit`, `PreToolUse`, `Stop`, …); a consumer editing a file triggers none of
+them, so the trigger has to be a process watching the file. What a hook *can* do is start that process,
+which is exactly `arm-on-prompt.py`'s job. This paragraph said "hooks cannot do this job" until
+2026-09-30, which was true of detection and is now false of arming.
 
 ### The cooldown is sized for an agent author
 

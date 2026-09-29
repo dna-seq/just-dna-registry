@@ -1076,13 +1076,19 @@ row/unique counts derived from inspecting data is not.
 
 `docs/CONSUMER_SUGGESTIONS.md` is an **inbox**, and every item in it gets a maintainer reply written back
 into the document beside the report. The runbook is **[docs/CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md)** —
-read it before answering one. Three dependency-free scripts run it:
+read it before answering one. Five dependency-free scripts run it:
 
 ```
 .claude/triage-state.py [--pending] [--next]    # the ledger; --next claims the next id
 .claude/triage-archive.py S3 [--dry-run]        # move answered items, verifying the prose moved verbatim
-.claude/watch-suggestions.sh                    # debounced watcher, armed as a background Bash task
+.claude/watch-suggestions.sh                    # debounced watcher
+.claude/wake-on-suggestions.sh                  # runs the watcher detached, wakes the session via its inbox socket
+.claude/arm-on-prompt.py                        # UserPromptSubmit hook: a prompt citing the runbook arms the wrapper
 ```
+
+The hook arms the watcher, never the agent — auto mode refuses a session that launches its own
+wake-up, and a hook is not classified. The one-shot background-Bash arming is the fallback when the
+`armed` canary does not arrive; since Claude Code 2.1.285 it dies after two hours at most.
 
 Two of the three are Python and carry `.py` for it — run them or hand them to `python3`, **never to
 `bash`**: bash ignores the shebang, executes the module docstring, and `import hashlib` reaches
