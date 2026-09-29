@@ -1090,7 +1090,7 @@ The hook arms the watcher, never the agent — auto mode refuses a session that 
 wake-up, and a hook is not classified. The one-shot background-Bash arming is the fallback when the
 `armed` canary does not arrive; since Claude Code 2.1.285 it dies after two hours at most.
 
-Two of the three are Python and carry `.py` for it — run them or hand them to `python3`, **never to
+The three Python scripts carry `.py` for it — run them or hand them to `python3`, **never to
 `bash`**: bash ignores the shebang, executes the module docstring, and `import hashlib` reaches
 ImageMagick's `import`, which silently writes 0-byte files named after each import into the working
 directory. They were `.sh` until 2026-08-16.
