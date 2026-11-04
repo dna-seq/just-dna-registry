@@ -53,8 +53,18 @@ breaks something here, and lifts the cap when the lead has integrated support. A
 The person's grant for the compiler's seats, 2026-11-03, taken for this repository on 2026-11-04 (quoted whole in
 `docs/seats/LEAD.md`). Commit and push `main`, as a fast-forward: its ledgers and its notes, and a dependency cap
 with its `uv lock`. A tag the kit's tools need. Appending an item to the compiler's consumer inbox, uncommitted.
-Nothing else: no other code, no branch or merge, no release, no deploy. A post upstream outside the person's own
-repositories (an issue, a comment, a reaction) is drafted and shown whole, and posted only on the person's word.
+
+**The dependency bump** (the kit's liaison role, "The dependency bump"; said due weekly by
+`[seat.liaison.watch.nightly]`), added on the person's word of 2026-11-04, relayed by the kit's seat-builder: the
+dependency bump is "genuine liaisons fully automateable regular routine unattended task". So this seat lands
+`uv lock --upgrade`'s lock, and with it a mechanical fix (a renamed keyword or import, a raised floor, a guard test
+refusing the old spelling), as a patch on `main`, once the full suite is green. A major upstream shift is built
+on a branch of its own with the lock and handed to the lead: "lands it in a branch, gives lead, lead verifies and
+merges". Agreed: nothing checks it.
+
+Nothing else: no other code, no other branch, no merge, no release, no deploy. A post upstream outside the
+person's own repositories (an issue, a comment, a reaction) is drafted and shown whole, and posted only on the
+person's word.
 
 ## Before a reset
 
