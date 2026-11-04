@@ -25,8 +25,28 @@ Rejected:
   Operator cost still bounds what is built (the upstream budgets in `CLAUDE.md` are real), but it decides
   *how* a guarantee is delivered, not *whether*.
 
+## What it will not become
+
+The maintainer, 2026-11-04, picking three lines as written and rewording the fourth.
+
+- **Not an annotation service.** It never takes a person's VCF or genome and runs the join for them. That
+  stays in just-dna-lite, on the person's own machine.
+- **Not a judge of the science.** It attests bytes, the compile it ran and the checks it ran itself. It never
+  grades a module's evidence or states a gene–disease claim as a registry verdict, and a publisher's claim
+  stays labelled as a claim (the `VerificationInfo` block is the standing example).
+- **Not an authoring tool.** It drafts nothing of its own and keeps no work in progress between calls. It may
+  rent out the drafters, statelessly (`POST /drafts`); authoring lives in just-module-creator.
+- **Not an annotation-time dependency, though it may be a run-time witness.** An installed module annotates
+  with nothing fetched from the registry: the compiled parquets carry what the join needs. The registry *may*
+  be asked at run time as a witness, for example to confirm that a local module's digest is the one that was
+  published before it runs. The maintainer's words: "it may, as digest witness for example, to validate local
+  module sha before run. It is not a runtime dependency annotation-time". The caching proxy (`/hint`,
+  `/drafts`, `/caches`) stays an authoring and publish-time surface.
+
 ## Open
 
 Questions still to settle with the maintainer, one at a time:
 
-- What the registry will not become.
+- When the run-time witness cannot be reached, or disagrees, what does the installer do: run and label the
+  result unverified, or refuse? "Installers first" points both ways, so this is the maintainer's call. It
+  matters once just-dna-lite builds the witness, not before.
