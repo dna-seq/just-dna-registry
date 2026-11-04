@@ -27,6 +27,7 @@ Avatar set (the admin's bowerbird).
 2. C2, let `LookupClients.ensure` fill the shared bundle (roadmap, unattended, after C1, patch).
 3. Name the format release of a refused column (the older roadmap entry; C3 folded in): unattended, its
    deployment gate met 2026-11-04.
+5. After 0.28: the variant-level catalog with a gene facet (roadmap, minor, decided 2026-11-04); design first.
 4. The next minor holds the format-0.8 adoption; the liaison's first map is in `docs/UPSTREAM_COMPILER.md`
    (ced93e1), the pm sizes it. Floors not writable yet (only format 0.8.0 on upstream's branch).
 

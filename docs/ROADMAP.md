@@ -651,6 +651,26 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
 
 ## Next registry version (post-0.11)
 
+- **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's
+  triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
+  after 0.28**; owner: lead; filed by the pm). Sizing: **minor**, a few weeks. Its design is the lead's
+  first step: surveyed, put to a critic, and only the questions that shape it taken to the person.
+
+  **The shape it starts from** (the dream's Opus idea 1). A rebuildable projection of every published
+  version's rows (`variant_key`, allele, direction, weight, `clin_sig`, evidence), filled at ingest from
+  the stored parquets, so the manifest stays the source of truth and a reindex rebuilds the table.
+  `GET /variants/{key}` answers which modules say anything about, say, rs429358, and what they say. Both
+  cards carry a cross-module conflict marker where two modules give one allele opposite directions. The
+  gene level is the same view per gene: symbols normalised, and position-keyed rows attached to their
+  gene through the enricher (HGNC currency, gene loci), snapshot-only on the request path as every proxy
+  route is. A `pgs_id` facet comes with it, since modules already carry `pgs.csv`.
+
+  **Limits it keeps.** It reports what modules say and never ranks one claim over another
+  (`docs/STRATEGY.md`: not a judge of the science). A disagreement shown is a fact about two modules,
+  not a verdict on either. Every new route gets a `RegistryClient` method and a parity row in the same
+  patch. A gene facet built on `stats.genes` asks "over what?" first (CLAUDE.md, "A manifest flag scoped
+  to one file").
+
 - **Rename an account's handle** (**decided by the person 2026-11-04, "load up lead with user rename
   feature if we don't have yet one"; unattended**; owner: lead; filed by the pm). **Who may rename**, the
   person, 2026-11-04: "User themselves" "AND admin": an account renames its own handle, and a site admin
