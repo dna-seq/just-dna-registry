@@ -36,6 +36,14 @@ reset").
   patch on main, suite green; a major shift on a branch for the lead) through change-priming. v0.1.126 does
   not carry it.
 
+- **At the 0.8 cut, check three items the compiler's pm named that the map has no row for** (via our pm,
+  2026-11-04): RM342's `verify` reporting `toolchain_differs`, against our client's `verify_manifest` path with
+  polars-1 consumers in the field; RM304's per-row VRS version and manifest pin; RM347/RM353's publisher
+  (uploads the logs the manifest names, guards exactly the declared files). Tell the pm if the re-map moves a
+  row of registry 0.28's scope (ROADMAP "0.28").
+- **Push held**: my commits sit on local main behind the pm's 5c3ee04, which the pm holds until kit #264;
+  pushing main would carry it. Push once origin has it, or once the pm says go.
+
 ## Backlog, in order
 
 1. The compiler's 0.7.0 cut read for levers (only C1 to C3 so far).
