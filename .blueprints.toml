@@ -1,0 +1,72 @@
+[repo]
+# The repo's channel takes this name too; the seats talk there, in agent-chat and in announcements (D104).
+id = "just-dna-registry"
+
+[seat.lead]
+# The person's own coding sessions here (docs/seats/LEAD.md): the plan, the build, the releases. Triage hands
+# it a fix past a patch; the liaison, an adoption map for a new compiler minor or an upstream major; the pm, a
+# proposal. The compiler's lead may ask it about a change the registry must follow.
+wake_from = "just-dna-registry/triage just-dna-registry/liaison just-dna-registry/pm just-dna-compiler/lead */secretary"
+
+# The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
+# questions under repo:just-dna-registry.
+[seat.lead.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry lead"
+
+[seat.lead.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.pm]
+# The steer above the code (docs/seats/PM.md): who the registry serves, licensing, the name, the research
+# list; it sizes each minor and major and writes its plan. It proposes to the lead and writes no code.
+wake_from = "just-dna-registry/lead just-dna-registry/triage just-dna-registry/liaison just-dna-compiler/pm */secretary"
+
+[seat.pm.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry pm"
+
+[seat.pm.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+# The triage scripts' documents (kit v0.1.118, #242), so every seat runs them bare: the inbox and its history,
+# ids S<n> across both. The registry tracks work by version sections of docs/ROADMAP.md, with no RM index, so
+# no index keys.
+[triage]
+inbox = "docs/CONSUMER_SUGGESTIONS.md"
+history = "docs/CONSUMER_SUGGESTIONS_HISTORY.md"
+prefix = "S"
+
+[seat.triage]
+# Answers the consumers (docs/seats/TRIAGE.md): their notes in docs/CONSUMER_SUGGESTIONS.md, a reply in the
+# document, a patch on main, a roadmap entry for the rest. The compiler's triage relays an item that belongs here.
+wake_from = "just-dna-registry/lead just-dna-registry/liaison just-dna-registry/pm just-dna-compiler/triage */secretary"
+
+# One line when docs/CONSUMER_SUGGESTIONS.md differs from HEAD and has settled, said once per state; paused
+# off the remote's default branch. A consumer writes its item there uncommitted, from its own session.
+[seat.triage.watch.inbox]
+cmd = "sh kit:drivers/git/watch-file.sh docs/CONSUMER_SUGGESTIONS.md"
+
+# One line when a commit to the inbox lands on origin's main that this clone's main does not hold: an item
+# pushed from elsewhere, which the file watcher cannot see.
+[seat.triage.watch.inbox-commits]
+cmd = "sh kit:drivers/git/watch-remote.sh --path docs/CONSUMER_SUGGESTIONS.md"
+
+[seat.triage.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry triage"
+
+[seat.triage.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.liaison]
+# What the registry stands on and does not own (docs/seats/LIAISON.md): the compiler's three packages first,
+# read release by release and talked through with the compiler's seats; then the libraries under the server.
+# The compiler's liaison, lead and triage reach it directly.
+wake_from = "just-dna-registry/lead just-dna-registry/triage just-dna-registry/pm just-dna-compiler/liaison just-dna-compiler/lead just-dna-compiler/triage */liaison */upstream-liaison */secretary"
+
+[seat.liaison.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry liaison"
+
+# The upstreams' watchers (kit classes/liaison/watch-upstream.sh, one line each in the liaison state file) are
+# added by the seat itself once their clones exist (its first work); the compiler's comes first.
+
+[seat.liaison.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
