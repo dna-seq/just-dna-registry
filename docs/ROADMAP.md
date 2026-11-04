@@ -594,6 +594,59 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ---
 
+## 0.28 — format 0.8 adoption, with the rename and the client fixes (scope; sized by the pm)
+
+Sized 2026-11-04 with the maintainer, from the liaison's adoption map (`docs/UPSTREAM_COMPILER.md`, "The
+coming minor", rows M1–M7) and the open entries under *Next registry version*. The lead builds it; each
+entry's detail stays where it is filed, and this section says only what the minor holds and why.
+
+**One minor, and it waits for 0.8.** The maintainer chose to bundle: 0.28 ships when upstream cuts format
+0.8 and carries everything below together. Rejected: shipping the non-0.8 items now as 0.28 and giving the
+adoption its own minor later, as 0.17 and 0.24 had. What that costs, said once: the rename and the client
+fixes wait for a date nobody has yet (on 2026-11-04 the `0.8` branch carried format 0.8.0 with compiler
+and enricher still at 0.7.2/0.7.3, nothing installable, and `just-dna-compiler/pm` had not answered on a
+cut). The items that need no 0.8 may be **built** on the minor's branch ahead of the cut; only the release
+waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
+
+**Holds, hardest first.**
+
+1. **The 0.8 lockstep cut** (M1): floors for all three tiers, `uv.lock`, the operator procedure in
+   `docs/UPGRADE.md`, CLAUDE.md's floor reasons. Required. Written only once upstream's floors exist.
+2. **Six new spec tables** (M2), with the liaison's C4 folded in (derive the row-model roster from
+   upstream). Required: an unrecognized `meta.csv` is dropped by the rebuild and moves the signature.
+3. **The catalog-wide recompile** (M3): one PATCH per variants module under plain `--apply`, `--dry-run`
+   first. Required. Waits on upstream writing the 0.8.0 release record.
+4. **The `/check` report shows 0.8's withheld placements and states** (M4), in the API model, the console
+   types and both renderers. Required.
+5. **Publish recovery in the client** (*Decouple a large publish from its connection*, the client-side
+   candidate): on a dropped connection, compare the server's stored `inputs[].sha256` with what was sent,
+   with a stated deadline. Additive; the job route stays the later, real fix.
+6. **The server reads the `.env` where it runs** (*`config.py` loads the `.env` above the installed
+   package*): lands only with its `docs/UPGRADE.md` step checking each box's launch directory first.
+7. **Rename an account's handle**, as filed (self-service and site admin).
+8. **Verification records name their witness** (M5): carry `independence`, and say beside each check
+   whether its agreement counts as evidence. Fits the strategy's "not a judge of the science".
+9. **A ClinVar-tier facet** (M7, `stats.clin_sig_counts`): a new card filter. Needs its own short design
+   before building: what an empty count means (upstream: *not counted*), and that a facet over a
+   compile-time count must say over what it quantifies (CLAUDE.md, "A manifest flag scoped to one file").
+10. **Name the format release a refused column arrived in**, client-side, as already shaped in its entry
+    (one entry: the liaison's C3 duplicates it). Unblocked: both boxes serve format 0.7.1 since before
+    2026-11-04.
+11. **A real `GET /api/v1/stats`**, with `catalog_stats()` rewired and its signature kept.
+12. **The toolchain as the reason a digest moved** (M7): shown where a digest moved with the content
+    unchanged.
+13. **Strict findings live in `errors` only** (M6): checked by the liaison (20536fe), nothing here reads
+    an escalated finding from `warnings`. Kept on the list so the release notes say it was looked at.
+
+**Not in 0.28**: dataset currency on the card (needs the operator refresh designed first), the `/check` job
+queue and the online-tier paging (one subsystem, built once), Redis for the limiter and gate, the
+`short_description` and `amend_display` items (wait on format), `httpx2`.
+
+**Client surface**: moves (the rename, `catalog_stats` keeps its signature, publish recovery changes when
+`publish()` raises). The release's `Client surface:` line names them.
+
+---
+
 ## Next registry version (post-0.11)
 
 - **Rename an account's handle** (**decided by the person 2026-11-04, "load up lead with user rename
