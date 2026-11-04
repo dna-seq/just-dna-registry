@@ -36,17 +36,10 @@ The maintainer, 2026-11-04, picking three lines as written and rewording the fou
   stays labelled as a claim (the `VerificationInfo` block is the standing example).
 - **Not an authoring tool.** It drafts nothing of its own and keeps no work in progress between calls. It may
   rent out the drafters, statelessly (`POST /drafts`); authoring lives in just-module-creator.
-- **Not an annotation-time dependency, though it may be a run-time witness.** An installed module annotates
-  with nothing fetched from the registry: the compiled parquets carry what the join needs. The registry *may*
-  be asked at run time as a witness, for example to confirm that a local module's digest is the one that was
-  published before it runs. The maintainer's words: "it may, as digest witness for example, to validate local
-  module sha before run. It is not a runtime dependency annotation-time". The caching proxy (`/hint`,
-  `/drafts`, `/caches`) stays an authoring and publish-time surface.
-
-## Open
-
-Questions still to settle with the maintainer, one at a time:
-
-- When the run-time witness cannot be reached, or disagrees, what does the installer do: run and label the
-  result unverified, or refuse? "Installers first" points both ways, so this is the maintainer's call. It
-  matters once just-dna-lite builds the witness, not before.
+- **Not an annotation-time dependency.** An installed module annotates with nothing fetched from the
+  registry: the compiled parquets carry what the join needs. The caching proxy (`/hint`, `/drafts`,
+  `/caches`) stays an authoring and publish-time surface. This does not rule out a run-time call: the
+  maintainer's words were "it may, as digest witness for example, to validate local module sha before run.
+  It is not a runtime dependency annotation-time". Such a witness is an idea, not a plan, and whether to
+  build it, and what it does when it cannot be reached, is downstream's to decide (the maintainer,
+  2026-11-04).

@@ -10,9 +10,9 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   adoption map (`#just-dna-registry>format-0.8`) and `just-dna-compiler/pm` for 0.8's scope and cut
   (`#agent-chat>format-0.8`). Compiler's `0.8` branch head when asked: 0a5293b2. Once both answer: one list for
   the maintainer, hardest first, what fits and what defers with the reason each.
-- **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled.
-  Open: what the installer does when the run-time digest witness is unreachable or disagrees. Not urgent;
-  matters once just-dna-lite builds the witness.
+- **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled;
+  nothing open. The run-time digest witness is an idea for downstream to decide, not a registry
+  question.
 - **DREAMS.md** committed (daeab95) on the maintainer's word; no idea has a verdict yet.
 - **Avatar** asked of `agents-kit/admin` (`#agent-chat>avatars`); set it with `watchdog.py avatar pm --from ID`
   from the reply.
