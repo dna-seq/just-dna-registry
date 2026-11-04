@@ -2,6 +2,23 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now
+## Now (2026-11-04)
 
-Seated 2026-11-04. Nothing sized yet: the first work is the seat-builder's handout, shown at the first punch-in.
+First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
+
+- **Next minor, sizing waits on two answers.** The format-0.8 adoption is its core. Asked the liaison for its
+  adoption map (`#just-dna-registry>format-0.8`) and `just-dna-compiler/pm` for 0.8's scope and cut
+  (`#agent-chat>format-0.8`). Compiler's `0.8` branch head when asked: 0a5293b2. Once both answer: one list for
+  the maintainer, hardest first, what fits and what defers with the reason each.
+- **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled.
+  Open: what the installer does when the run-time digest witness is unreachable or disagrees. Not urgent;
+  matters once just-dna-lite builds the witness.
+- **DREAMS.md** committed (daeab95) on the maintainer's word; no idea has a verdict yet.
+- **Avatar** asked of `agents-kit/admin` (`#agent-chat>avatars`); set it with `watchdog.py avatar pm --from ID`
+  from the reply.
+- **Not pushed**: main also carries the liaison's b6a2762, which is not this seat's to push.
+
+## Tools
+
+Nothing the repo ran before the kit belongs to this seat: the triage scripts and wakers are triage's. Kept
+none, retired none, moved none.
