@@ -7,15 +7,12 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.141.1`**, what `uv.lock` installs (floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.7.0
-under it. No release of fastapi has been read whole by this seat yet: the mark is the installed version, not a
-reading.
+**`0.162.0`** read (2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.141.1`
+(`uv.lock`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.7.0 under it.
 
 ## Backlog
 
-`0.142.0` to `0.162.0` (latest on 2026-11-04), unread. FastAPI's `0.x` minors carry its breaking changes, so the
-backlog is read minor by minor against the list below, oldest first, while the seat is idle. Next slice starts
-at `0.142.0`.
+None: read through `0.162.0`.
 
 ## What the registry uses
 
@@ -36,7 +33,20 @@ From the imports under `src/` (an AST walk, 2026-11-04).
 
 ## Verdicts
 
-None yet.
+- **F1 — 0.147 to 0.162 rework how omitted and empty form values default, and the registry takes form fields on
+  every upload route. *To measure at the first dependency bump, not a finding.*** The changes: an omitted boolean
+  form field was made `False` (0.147) and its default handling restored (0.162); request-parameter defaults
+  fixed (0.148); empty scalars in form *models* treated as missing (0.149); an unselected browser file input
+  treated as missing (0.150); JSON `null` told apart from an omitted body value (0.151). Ours: individual
+  `Form()` parameters, not form models, at `api/routers/publish.py:204-208` and `:277-286` (`allow_test_data:
+  bool = False`, so an omitted one is `False` either way; `changelog: str = ""`; six `str | None = None`), and a
+  body model whose `null` clears an override (`ShortDescriptionRequest`, `:772`), which pydantic parses the same
+  either way. Reading finds no break. What reading cannot settle is whether an *empty* `title=` now arrives as
+  `None` rather than `""`; the upload and publish tests answer that on the first `uv lock --upgrade`, which is
+  the weekly bump's job.
+- Read, nothing for us: 0.143 OpenTelemetry exporter opt-in (we set none up), 0.145 `openapi_prefix` and 0.146
+  `root_path` on `FastAPI(...)` (neither used), 0.155 `**extra` on request parameters (none passed), 0.160 a
+  parameter model's `extra` (no parameter models here); the features and fixes of 0.152 to 0.161.
 
 ## Our pieces the upstream may come to do
 

@@ -9,8 +9,8 @@ reset").
   `huggingface-hub` (tags), plus `desk`. Clones outside the repo: `/data/sources/just-dna-compiler`,
   `/data/sources/fastapi`, `/data/sources/huggingface_hub`, each a line (`repo=just-dna-registry`) in the
   liaison state file. When the compiler cuts 0.8 and opens 0.9, move `just-dna-compiler-next`'s `branch=`.
-- **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.7.3`), `docs/UPSTREAM_FASTAPI.md` (`0.141.1`, backlog
-  to 0.162.0 unread), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (installed `v2.0.0`,
+- **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.7.3`), `docs/UPSTREAM_FASTAPI.md` (installed `0.141.1`,
+  read through 0.162.0 on 2026-11-05: F1, for the first bump), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (installed `v2.0.0`,
   read through v2.4.0 on 2026-11-05: H2 to H4).
 - **0.8 adoption map**: first pass in `docs/UPSTREAM_COMPILER.md`, sent to the lead and the pm; M6 checked
   since (nothing to change). The 0.8 rows wait on the pm's sizing and the cut. The 49 entries were read
@@ -48,5 +48,4 @@ reset").
 ## Backlog, in order
 
 1. The compiler's 0.7.1 to 0.7.3 read for levers (0.7.0 done: C1-C3, C5-C15).
-3. fastapi 0.142 to 0.162.
 4. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.
