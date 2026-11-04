@@ -155,6 +155,7 @@ re-checked against the code and the installed packages before it was written.
   only; upstream's strict validate adds an aggregate finding of its own. The verdict holds, because
   `_would_publish` also requires `validation.valid`. Open for the lead: whether a strict refusal over a recorded
   wrong-build finding should leave `would_publish_module_level` true, as it does. Twenty minutes for the text.
+  The lead decided 2026-11-04: it should flip it, once a code says which finding it is; filed upstream as S129.
 - **C12 — RM132: `PharmVariantRow.pmid`, and `compiler.load_citing_rows` / `table_citations` walk every citing
   table. *A piece of ours the upstream now does.*** `services/revalidate.py:133` `gather_pmids` reads
   `studies.csv` only, so `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning
@@ -173,6 +174,10 @@ the helper's report of 2026-11-04 (RM70 to RM235).
 The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answering the registry's own filings
 (S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
 unstamped compiler; S91-S95 on 2026-09-11, giving C5 and C6). The rest of 0.7.0 is unread for this purpose.
+
+State of C5 to C15, 2026-11-04 (lead, b7cc45b): all filed; C7, C4, C9 (setting, default off) and C8's patch half
+lead the 0.27.x patches; C8's fields wait for 0.28; C6 no reconcile from `spent`, the text only; C14 canceled,
+both boxes already gzip at the proxy.
 
 State, 2026-11-04: the lead filed C4, C1 and C2 on `docs/ROADMAP.md` (fcd2589, cd4c511; "Next registry version",
 unattended patches in that order), with the 0.8 map's M2 folded into C4's derivation. C3 was folded into the
@@ -230,6 +235,11 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
-Upstream's inbox (`docs/CONSUMER_SUGGESTIONS.md` on `main`) holds nothing open; its next id is S128. The
+- **S129** (filed 2026-11-04, appended to the compiler checkout's inbox, uncommitted; its triage told): a strict
+  refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the
+  unresolved aggregate (per-row) without reading wording; asks for coded errors / an `errors_summary`, or a
+  narrower field. From C11, on the lead's decision. Last checked: 2026-11-04.
+
+Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
 shipped in 0.7.0. The rest of the registry's past filings are not yet audited here.
