@@ -239,7 +239,7 @@ lock (1.44.2, 1.5.5, 2.3.3).
   refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the
   unresolved aggregate (per-row) without reading wording; asks for coded errors / an `errors_summary`, or a
   narrower field. From C11, on the lead's decision. **Answered 2026-11-04** (their 549321a6, on their `main`,
-  unpushed): (a) filed as RM378, a minor proposed for 0.8; (b) not taken. Meanwhile RM377 publishes the two
+  unpushed): (a) filed as RM378, placed in 0.9 by their pm (0.8 is near its cut, and a code vocabulary is permanent); (b) not taken. Meanwhile RM377 publishes the two
   strict-only refusals' phrases in their `docs/COMPILER.md` ("The refusals only strict adds"), pinned by a test
   there: both open with `strict compile: `; `genome_build_disagreement` = "whose coordinates the enricher
   diagnosed as another assembly's", `unresolved_positions` = "have unresolved genomic positions after
