@@ -597,7 +597,7 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 ## 0.28 — format 0.8 adoption, with the rename and the client fixes (scope; sized by the pm)
 
 Sized 2026-11-04 with the maintainer, from the liaison's adoption map (`docs/UPSTREAM_COMPILER.md`, "The
-coming minor", rows M1–M7) and the open entries under *Next registry version*. The lead builds it; each
+coming minor", rows M1–M7, and M8–M11 added the same day from the branch at `503730c`) and the open entries under *Next registry version*. The lead builds it; each
 entry's detail stays where it is filed, and this section says only what the minor holds and why.
 
 **One minor, and it waits for 0.8.** The maintainer chose to bundle: 0.28 ships when upstream cuts format
@@ -614,6 +614,11 @@ waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
 
 1. **The 0.8 lockstep cut** (M1): floors for all three tiers, `uv.lock`, the operator procedure in
    `docs/UPGRADE.md`, CLAUDE.md's floor reasons. Required. Written only once upstream's floors exist.
+   **The Ensembl snapshot's move goes with it** (M8, upstream RM372): `config.py`'s `ensembl_reference`
+   default names `just-dna-seq/ensembl_variations`, and 0.8 pulls `just-dna-seq/ensembl_variations_split`;
+   a cache mixing the two releases resolves to nothing. The default moves, and the operator procedure gains
+   a 14.5 GB pull on both boxes **before** the 0.8 deploy. Required. About an hour of work plus the pull,
+   which is the step most likely to set the deploy's date.
 2. **Six new spec tables** (M2). Required: an unrecognized `meta.csv` is dropped by the rebuild and moves
    the signature. The liaison's C4 (derive the row-model roster from upstream) ships earlier, as a 0.27.x
    patch with C1 and C2, because the roster already misses four tables on 0.7 (the lead's call,
@@ -621,7 +626,14 @@ waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
 3. **The catalog-wide recompile** (M3): one PATCH per variants module under plain `--apply`, `--dry-run`
    first. Required. Waits on upstream writing the 0.8.0 release record.
 4. **The `/check` report shows 0.8's withheld placements and states** (M4), in the API model, the console
-   types and both renderers. Required.
+   types and both renderers. Required. **With it, a retired source says `retired`** (M10, RM361): never
+   `unreachable`, in the ACMG list, both renderers and `unresolved_hint`, whose remedy is upgrading the
+   enricher rather than re-running; this is "a pass that could not run reports why" with a new reason.
+   Required. Two hours, built with M4.
+   **And `validate` takes the compile's switches** (M9, RM367): the three `validate_spec` calls pass what the
+   compile gets, so the dry run and the publish reach one verdict. Required by the parity rule. Under an
+   hour. **Header-only sidecars are gone** (M11, RM370): checked when the recompile runs, likely nothing
+   to change here.
 5. **Publish recovery in the client** (*Decouple a large publish from its connection*, the client-side
    candidate): on a dropped connection, compare the server's stored `inputs[].sha256` with what was sent,
    with a stated deadline. Additive; the job route stays the later, real fix.
