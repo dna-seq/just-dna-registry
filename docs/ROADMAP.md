@@ -596,6 +596,27 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ## Next registry version (post-0.11)
 
+- **Rename an account's handle** (**decided by the person 2026-11-04, "load up lead with user rename
+  feature if we don't have yet one"; blocked on one design question asked in chat 2026-11-04: self-service
+  or site-admin only**; owner: lead; filed by the pm). Nothing changes `accounts.name` today: `PATCH
+  /auth/whoami` edits the display name, email, avatar and funding links, and `merge-accounts` folds one
+  account into another. Sizing: **minor** (a new route, a `RegistryClient` method, a parity row; no
+  status moves), so it is built on the next minor's branch.
+
+  **Facts that shape it.** A published manifest stamps `owner = account.name`
+  (`api/routers/publish.py`) and is immutable, so old versions keep the old handle for good. The index
+  projects `modules.owner` from `manifest.owner` (`db/repository.py`) and `?owner=` matches that column,
+  so rewriting the column would be undone by the next reindex: the filter has to resolve a handle to its
+  account, old spellings included. `identity.namespace` and `canonical_id` are baked into manifests too,
+  so a personal namespace claimed under the handle **does not** rename with it, and the response says so.
+  Keys and `versions.published_by` are by account id, so auth and RBAC survive the rename.
+
+  **Decided defaults, each reversible, listed for review.** The old handle stays reserved to the same
+  account as an alias, so nobody else can claim it and inherit the look of old manifests (the strategy's
+  installers-first rule: an old `owner` must never point at a different person); rejected: releasing it.
+  Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
+  (already the rule at every door, CLAUDE.md "Deployment modes").
+
 - **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
   motivated by the liaison's **C1** in `docs/UPSTREAM_COMPILER.md`, upstream S90 / RM201, shipped in format
   0.7.0). `DeclaredChange` gained `requires`: the manifest paths a module must carry for the change to reach
