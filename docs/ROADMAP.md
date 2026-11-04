@@ -597,8 +597,10 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 ## Next registry version (post-0.11)
 
 - **Rename an account's handle** (**decided by the person 2026-11-04, "load up lead with user rename
-  feature if we don't have yet one"; blocked on one design question asked in chat 2026-11-04: self-service
-  or site-admin only**; owner: lead; filed by the pm). Nothing changes `accounts.name` today: `PATCH
+  feature if we don't have yet one"; unattended**; owner: lead; filed by the pm). **Who may rename**, the
+  person, 2026-11-04: "User themselves" "AND admin": an account renames its own handle, and a site admin
+  may rename any account (the one site-admin act beside `merge-accounts`, so it belongs with it in
+  `api/routers/admin.py` and `services/accounts.py`); rejected: site-admin only. Nothing changes `accounts.name` today: `PATCH
   /auth/whoami` edits the display name, email, avatar and funding links, and `merge-accounts` folds one
   account into another. Sizing: **minor** (a new route, a `RegistryClient` method, a parity row; no
   status moves), so it is built on the next minor's branch.

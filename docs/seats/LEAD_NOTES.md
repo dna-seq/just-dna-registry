@@ -19,8 +19,9 @@ Avatar set (the admin's bowerbird).
 
 ## Plan, in order
 
-0. Account handle rename (roadmap, minor, the pm's proposal on the person's word): blocked on self-service vs
-   site-admin only, asked in chat 2026-11-04.
+0. Account handle rename (roadmap, minor, unattended): self-service and site admin, the person's answer
+   2026-11-04. Built on the next minor's branch (main's [Unreleased] already holds minor material,
+   `merge_accounts`), in its own worktree.
 1. C1, declared correction filtered by `requires` (roadmap, unattended, patch).
 2. C2, let `LookupClients.ensure` fill the shared bundle (roadmap, unattended, after C1, patch).
 3. C3, name the release of a refused column: a new capability, asked of the person 2026-11-04; open.
