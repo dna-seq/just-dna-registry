@@ -47,5 +47,4 @@ reset").
 
 ## Backlog, in order
 
-1. The compiler's 0.7.1 to 0.7.3 read for levers (0.7.0 done: C1-C3, C5-C15).
-2. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.
+1. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.

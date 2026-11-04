@@ -18,8 +18,8 @@ in `pyproject.toml` with their reasons). Upstream has cut nothing since.
 
 - **The 0.7.0 cut, read for levers.** 0.7 was adopted for what broke us (CLAUDE.md records each), not read for
   what it fixed of ours. C1 to C3, C5 and C6 come from the entries answering the registry's own filings; the
-  rest gave C7 to C15 (second slice, 2026-11-04). 0.7.0 is read; 0.7.1 to 0.7.3 were adopted as patches and
-  are not yet read for levers.
+  rest gave C7 to C15 (second slice, 2026-11-04); 0.7.1 to 0.7.3 gave C16 to C19 (2026-11-05). Everything up
+  to the read mark is read.
 - **`main` past `v0.7.3`** (168 commits on 2026-11-04): patch entries marked "patch, on `main`" (RM339, RM340,
   RM338, RM347, RM353, RM355, RM354 at the top). A `v0.7.4` would carry them. Read when it is tagged, or earlier
   if one touches a symbol below.
@@ -170,6 +170,32 @@ re-checked against the code and the installed packages before it was written.
 
 Read, nothing for us, or already adopted (CLAUDE.md records it): the other 46 entries, listed by RM number in
 the helper's report of 2026-11-04 (RM70 to RM235).
+
+The third slice (2026-11-05): 0.7.1 to 0.7.3, 38 entries, read by a helper; each item re-checked.
+
+- **C16 — RM268 (v0.7.3): an online REST indel whose reference base could not be read gets no position, and the
+  enricher names it only in a log line. *Breaks us, quietly.*** Installed `enrich.py:1080` keeps
+  `unanchored_rsids` local; they land in `unresolved` (`:1493`) and a log warning ending "Re-run with the
+  sequence service reachable" (`:2082`), never on `EnrichmentResult` (RM272 puts them there in 0.8, M4). Our
+  `unresolved_hint` (`services/enrich.py:979`) checks only `unreachable_rsids`, so this case falls through to
+  "provision a fuller snapshot … or author chrom/start", sending a publisher after an outage; the server keeps
+  no enricher log. `pyproject.toml:300` says 0.7.3 reaches us "through routes that already pass results through",
+  false for this case. Fix now: the third branch's text says a withheld indel is possible and to re-run first
+  (twenty minutes); the structural fix waits for RM272.
+- **C17 — RM252 / S105 (0.7.1): with no `declared_use`, the PGx legs read the module's own recorded declaration,
+  and `PgxResult.recorded_use` says where each came from. *A lever.*** `/check` inherits the behaviour
+  (`config.py:208` defaults to `"unstated"`) but reports none of it: `client_cli.py:1226` prints
+  `declared_use=unstated` beside a CPIC leg that ran, upstream's own S105 symptom in our renderer, and
+  `recorded_use` is never read. Fix: the field in `models/api.py` and `console/src/types.ts`, both renderers. An
+  hour.
+- **C18 — RM268/RM271's remedy is `enrich --rederive`; an uploaded pre-0.7.3 `resolution.csv` keeps its old rows.
+  *A lever to weigh.*** Neither `enrich()` call passes `rederive`, and `EnrichmentResult.rederived` is never read,
+  so `/check` cannot show that drift. Rederiving re-asks every subject, which spends egress on an unprovisioned
+  box. Two hours; weigh first.
+- **C19 — RM299 (unreleased, on their `main`): the `stats` ClinVar counts gain descriptions.** Our
+  `models/api.py:21` `pathogenic_count` (and `clinvar_count`, `benign_count`) carry none in the OpenAPI schema,
+  S123's misreading. Fifteen minutes once the patch is tagged. RM274 also makes C10 (`allele_mismatches`) fire
+  more often.
 
 The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answering the registry's own filings
 (S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
