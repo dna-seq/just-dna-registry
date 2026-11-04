@@ -6,11 +6,7 @@ The lead seat's working state, rewritten to the present before a reset (`docs/se
 
 Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
 
-1. **Retire the old triage waker** — `after triage's first fire`: waiting for triage's message that its kit
-   watcher fired. Then one commit: `git rm` `.claude/arm-on-prompt.py`, `.claude/wake-on-suggestions.sh`,
-   `.claude/watch-suggestions.sh`; rewrite the arming paragraph in `CLAUDE.md` ("Consumer feedback is a
-   conversation") and the arming/waker sections of `docs/CONSUMER_TRIAGE_LOOP.md`; a changelog line. No prompt
-   hook is wired (checked 2026-11-04: `.claude/settings.local.json` and `~/.claude/settings*.json` name none).
+1. **Retire the old triage waker**: done, 7ff1398, after triage reported its watcher fired.
 2. **Id scripts stay** (`.claude/triage-state.py`, `.claude/triage-archive.py`); moving to the kit's
    `classes/triage/` is a later roadmap call, not filed yet.
 3. **Seats pointer in CLAUDE.md**: done, ad1b570.
@@ -20,7 +16,13 @@ Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
    book; open.
 6. **Kit pin**: this seat moves it; nothing waiting.
 
-Avatar asked of `agents-kit/admin` in `#agent-chat>avatars`; set it with `watchdog.py avatar lead --from ID` once
-the reply comes.
+Avatar set (the admin's bowerbird).
+
+## Plan, in order
+
+1. C1, declared correction filtered by `requires` (roadmap, unattended, patch).
+2. C2, let `LookupClients.ensure` fill the shared bundle (roadmap, unattended, after C1, patch).
+3. C3, name the release of a refused column: a new capability, asked of the person 2026-11-04; open.
+4. The next minor holds the format-0.8 adoption; the pm sizes it, the liaison maps it. Nothing to build yet.
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
