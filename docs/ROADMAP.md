@@ -795,7 +795,13 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     not a row), `would_publish_module_level` goes `false`, read from the finding's **code**, never its
     sentence; if upstream gives it no code to read, the field stays as it is, the text is corrected, and the
     gap is filed upstream. Rejected: leaving it `true`, which tells an author the module is fine and only rows
-    need work. Twenty minutes for the text, an hour if the code exists.
+    need work. **Upstream's answer (their S129, relayed by the liaison 2026-11-05):** coded errors are their
+    RM378, proposed for 0.8; until then the two strict-only refusals carry published, test-pinned fragments
+    (their RM377, `docs/COMPILER.md` "The refusals only strict adds"), already in the installed 0.7.2. So the
+    flip **matches the frozen fragment now**, as `UNJOINABLE_PHRASE` does: only the build disagreement
+    (`whose coordinates the enricher diagnosed as another assembly's`) is module-level; the per-row aggregate
+    (`have unresolved genomic positions after resolution`) is not and leaves the field alone. Never widen the
+    match past the fragment, and move to the code when RM378 ships. About an hour.
   - *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
     `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
     `compiler.load_citing_rows` / `table_citations`. About an hour.
