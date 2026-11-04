@@ -745,8 +745,8 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   rewrite the CLAUDE.md paragraph that describes an upstream which no longer exists. Sizing: **patch**.
   About an hour.
 
-- **The enricher gets the configured PubMind and CIViC caches** (**severity high, unattended, first of the
-  0.27.x patches**, owner: lead; the liaison's **C7**, upstream RM134 §B / RM170, checked against the code
+- ✅ **The enricher gets the configured PubMind and CIViC caches** (**done 2026-11-04, 1beb158, in 0.27.1**;
+  **severity high**, owner: lead; the liaison's **C7**, upstream RM134 §B / RM170, checked against the code
   2026-11-04). Both `enrich()` calls in `services/enrich.py` pass `ensembl_cache` and `clinvar_cache` only,
   though `configured_caches()` holds `pubmind` and `civic` and the installed `enrich()` takes both. The server
   never runs `export_lane_locations` outside `warm-caches`, so `None` licenses the ambient discovery CLAUDE.md's

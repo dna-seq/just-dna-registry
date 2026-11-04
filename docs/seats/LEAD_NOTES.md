@@ -24,7 +24,9 @@ Avatar set (the admin's bowerbird).
 The 0.27.x patches, all unattended, each in its own worktree, on a maintenance branch from `v0.27.0`
 (main's [Unreleased] already holds minor material, `merge_accounts`), in this order:
 
-1. C7, pass the configured PubMind and CIViC caches to `enrich()` (breaks us; half an hour).
+1. C7: **done**, 1beb158 on `release-0.27.x` (from `v0.27.0`), merged into main 8a04cb1. How patches land:
+   on `release-0.27.x` first, then that branch merged into main; changelog `## [0.27.1] — unreleased` under
+   main's [Unreleased].
 2. C4, derive `_ROW_MODELS` from upstream (breaks us quietly).
 3. C9, `enrich_verify_datasets`, default off (unmetered egress).
 4. C8's patch half: no early return in the identifier check, `write=False`, `check_pgs=False`, skips into `warnings`.
