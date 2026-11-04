@@ -18,8 +18,8 @@ in `pyproject.toml` with their reasons). Upstream has cut nothing since.
 
 - **The 0.7.0 cut, read for levers.** 0.7 was adopted for what broke us (CLAUDE.md records each), not read for
   what it fixed of ours. C1 to C3, C5 and C6 come from the entries answering the registry's own filings; the
-  rest of the 0.7.0 changelog is unread for this purpose. Next slice: the 0.7.0 entries that do not name the
-  registry, in `docs/CHANGELOG.md` on `main`, newest first.
+  rest gave C7 to C15 (second slice, 2026-11-04). 0.7.0 is read; 0.7.1 to 0.7.3 were adopted as patches and
+  are not yet read for levers.
 - **`main` past `v0.7.3`** (168 commits on 2026-11-04): patch entries marked "patch, on `main`" (RM339, RM340,
   RM338, RM347, RM353, RM355, RM354 at the top). A `v0.7.4` would carry them. Read when it is tagged, or earlier
   if one touches a symbol below.
@@ -124,6 +124,51 @@ Each open item is the lead's to build; its state is said beside it.
   spent (filed upstream as S92)", which is no longer true and names the wrong filing (S95). The design under it,
   charging before the call so the meter can refuse, stands on its own reasons. Fix: correct the docstring; whether
   to reconcile the meter from `spent` is the lead's call. Minutes for the text. Sent to the lead 2026-11-04.
+
+The second slice (2026-11-04): the 57 entries of 0.7.0 read by a helper against the use list; each item below
+re-checked against the code and the installed packages before it was written.
+
+- **C7 — RM134 §B, RM170: `enrich()` takes `pubmind_cache=` and `civic_cache=`, and we pass neither. *Breaks
+  us.*** Both `enrich()` calls (`services/enrich.py:893`, `:1334`) pass `ensembl_cache` and `clinvar_cache` only,
+  though `configured_caches` holds both lanes (`:350`, `:354`). The server never runs `export_lane_locations`
+  (only `cli.py:1128`, inside `warm-caches`), so `None` licenses ambient discovery, which CLAUDE.md's "always pass
+  the configured cache path" forbids, and what it finds feeds `published_refutation` and the
+  `evidence_status_currency` check into `verification.json`. Fix: pass both, one test. Half an hour.
+- **C8 — RM155, RM156, RM163: `check_identifiers` reads every table that carries the columns, and checks PGS
+  accessions. *Breaks us.*** `services/enrich.py:1627` returns "no variants.csv … nothing to check" before
+  calling it, so a PGx-only module gets that answer from `/check`. `IdentifierReport` gained
+  `trait_tables_not_read`, `gene_tables_not_read`, `pgs`, `pgs_not_checked` (and their `*_read` siblings), which
+  the adapter does not carry ("a pass that could not run reports why"). The PGS leg (`check_pgs=True` by default)
+  builds its own `PgsCatalogClient`, outside the shared bundle and `pacing.UPSTREAMS`; and `write=True` by
+  default merges licence rows into the scratch spec. Fix: drop the early return, carry the fields, decide
+  `check_pgs` (off, or a paced client) and `write=False`. Two to three hours with the models and renderers.
+- **C9 — RM85: `verify_datasets=True` is `enrich()`'s default, and we never set it.** It probes ClinVar's live
+  VCF header and the PGS Catalog's `/rest/info` at the end of every run, through clients outside the shared bundle
+  and the pace ledger; offline it records the check unchecked. `config.py` has `enrich_verify_clinsig` (`:124`)
+  and nothing for this. Fix: a setting, passed through (and `release_probes=`). About an hour.
+- **C10 — RM154: `EnrichmentResult.allele_mismatches` (the source answered, the allele did not match, typically
+  a strand flip). *A lever.*** Nothing here reads it, and `unresolved_hint` (`services/enrich.py:954`) offers
+  three remedies that are all wrong for that case; CLAUDE.md says to check that hint before adding a fourth
+  remedy. One to two hours with the models and the console.
+- **C11 — RM218 (with RM141, RM143): a premise in our comments no longer holds.** `services/enrich.py:1253`
+  and `:1292` (and CLAUDE.md, "the dry run grades where the publish grades") say strictness changes severity
+  only; upstream's strict validate adds an aggregate finding of its own. The verdict holds, because
+  `_would_publish` also requires `validation.valid`. Open for the lead: whether a strict refusal over a recorded
+  wrong-build finding should leave `would_publish_module_level` true, as it does. Twenty minutes for the text.
+- **C12 — RM132: `PharmVariantRow.pmid`, and `compiler.load_citing_rows` / `table_citations` walk every citing
+  table. *A piece of ours the upstream now does.*** `services/revalidate.py:133` `gather_pmids` reads
+  `studies.csv` only, so `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning
+  kinds. About an hour.
+- **C13 — RM158: `enrich.collect_subjects` is public.** `services/enrich.py:720` mirrors its table list "rather
+  than imported because it is private there". The three tables still match. An hour; low.
+- **C14 — RM138: upstream recommends serving manifests compressed** (`carried` makes them 1.84× raw, 1.06×
+  gzipped). `api/app.py` adds no GZip middleware; the deployment's proxy may compress already, which this repo
+  cannot show. Fifteen minutes once that is known; low confidence.
+- **C15 — RM229: `CacheLane.approx_mb` and `provisioning_closure(lane)` say what a pull costs.** `GET /caches`
+  names a lane's parents, not its cost (`services/enrich.py:653`). An hour; folds into C5.
+
+Read, nothing for us, or already adopted (CLAUDE.md records it): the other 46 entries, listed by RM number in
+the helper's report of 2026-11-04 (RM70 to RM235).
 
 The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answering the registry's own filings
 (S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
