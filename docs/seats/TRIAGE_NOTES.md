@@ -32,5 +32,7 @@ reports; this file holds the seat's own decisions and the items it owns.
    `docs/CONSUMER_SUGGESTIONS.md` and leave it uncommitted (they commit it as it arrived, then reply), message
    them naming the id. They message this seat when they move an item back. Their `main` is patch scope only: a fix
    needing a new field or warning code lands on their 0.8 branch, and they say which release carries it.
+   Their triage's `wake_from` now names `just-dna-registry/triage` (their lead, 2026-11-04, on the person's word),
+   so a message from this seat wakes it.
 4. First pass: nothing pending.
 5. Avatar: set (a red squirrel clerk, from `agents-kit/admin`).
