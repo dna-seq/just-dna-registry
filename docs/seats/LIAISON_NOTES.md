@@ -30,12 +30,9 @@ reset").
   `compiler` watcher says `tag v0.8.0`, re-read the map against the finished `INTEGRATION_0_8.md` and the record.
 - **Avatar** set (a giraffe lookout, from admin's 637614492).
 
-- **Waits until the kit pin carries 621966f** (the person, 2026-11-04: the dependency bump is this seat's
-  unattended routine): then add `[seat.liaison.watch.nightly]` `cmd = "sh kit:bin/py.sh
-  kit:classes/base/nightly.py deps"`, and land the grant's new lines (the lock and a mechanical fix as a
-  patch on main, suite green; a major shift on a branch for the lead) through change-priming. v0.1.126 does
-  not carry it.
-
+- **Dependency bump** set up 2026-11-04 on kit v0.1.127: `[seat.liaison.watch.nightly]` (nightly `deps`, weekly on
+  this seat's day, while the person is away) and the grant in `LIAISON.md`. Run it as the kit's role says; the
+  full suite takes ~25 min, so run it detached. Not yet run.
 - **At the 0.8 cut, check three items the compiler's pm named that the map has no row for** (via our pm,
   2026-11-04): RM342's `verify` reporting `toolchain_differs`, against our client's `verify_manifest` path with
   polars-1 consumers in the field; RM304's per-row VRS version and manifest pin; RM347/RM353's publisher
