@@ -238,7 +238,14 @@ lock (1.44.2, 1.5.5, 2.3.3).
 - **S129** (filed 2026-11-04, appended to the compiler checkout's inbox, uncommitted; its triage told): a strict
   refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the
   unresolved aggregate (per-row) without reading wording; asks for coded errors / an `errors_summary`, or a
-  narrower field. From C11, on the lead's decision. Last checked: 2026-11-04.
+  narrower field. From C11, on the lead's decision. **Answered 2026-11-04** (their 549321a6, on their `main`,
+  unpushed): (a) filed as RM378, a minor proposed for 0.8; (b) not taken. Meanwhile RM377 publishes the two
+  strict-only refusals' phrases in their `docs/COMPILER.md` ("The refusals only strict adds"), pinned by a test
+  there: both open with `strict compile: `; `genome_build_disagreement` = "whose coordinates the enricher
+  diagnosed as another assembly's", `unresolved_positions` = "have unresolved genomic positions after
+  resolution". A frozen fragment, like `UNJOINABLE_PHRASE`, so matching it is the documented interim. Both
+  phrases are already in the installed 0.7.2 compiler. Closes when RM378 ships and our pin reaches it.
+  Last checked: 2026-11-04.
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
