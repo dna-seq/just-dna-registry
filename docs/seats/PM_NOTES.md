@@ -27,8 +27,8 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **Waiting**: format 0.8 not cut yet (just-dna-format tags end at v0.7.3, PyPI 0.7.1, checked 21:20 UTC).
   When it is, read the liaison's re-map against the 0.28 scope and take only what moves to the person.
 - **M8–M11 folded into 0.28** (the liaison's 23e340f, map at upstream `503730c`): part of the 0.8 adoption
-  the maintainer already bundled, so no new question. **C8's fields and C10** (0.7 report fields, the lead's
-  b7cc45b) added too, by the pm while the person was away; tell them on return, they may move both. M8 (Ensembl repo move, 14.5 GB pull on
+  the maintainer already bundled, so no new question. **C8's fields, C10 and C17** (0.7 report fields, the lead's
+  b7cc45b) and C17 (22b7f52) added too, by the pm while the person was away; tell them on return, they may move them. M8 (Ensembl repo move, 14.5 GB pull on
   both boxes before the deploy) sits with M1; M9–M11 with M4. **Not pushed**: `main` carries the
   liaison's 23e340f, whose push waits on desk #193; pushing ours would push it too. Push after #193.
 

@@ -634,13 +634,14 @@ waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
    compile gets, so the dry run and the publish reach one verdict. Required by the parity rule. Under an
    hour. **Header-only sidecars are gone** (M11, RM370): checked when the recompile runs, likely nothing
    to change here.
-   **Two more report fields from 0.7, not 0.8, built here because they touch the same model and
-   renderers** (added by the pm 2026-11-04 from the lead's b7cc45b; the person was away and may move them
-   to a later minor): C8's minor half (`trait_tables_not_read`, `gene_tables_not_read`, `pgs`,
+   **Three more report fields from 0.7, not 0.8, built here because they touch the same model and
+   renderers** (added by the pm 2026-11-04/05 from the lead's b7cc45b and 22b7f52; the person was away and
+   may move them to a later minor): C8's minor half (`trait_tables_not_read`, `gene_tables_not_read`, `pgs`,
    `pgs_not_checked`, and the PGS leg on a paced client in `UPSTREAMS`; its patch half ships as 0.27.x
-   first) and C10 (`allele_mismatches` beside `unresolved`, a fourth `unresolved_hint` case). Both are
-   additive. Rejected: a minor of their own after 0.28, which would add the same fields to the same four
-   places a second time. About three to four hours together. C5's `GET /caches` cost joins them only if
+   first) and C10 (`allele_mismatches` beside `unresolved`, a fourth `unresolved_hint` case) and C17
+   (`PgxResult.recorded_use`, so a PGx leg stops reading `declared_use=unstated`). All additive. Rejected:
+   a minor of their own after 0.28, which would add the same fields to the same four places a second
+   time. About four to five hours together. C5's `GET /caches` cost joins them only if
    it turns out to be a new field.
 5. **Publish recovery in the client** (*Decouple a large publish from its connection*, the client-side
    candidate): on a dropped connection, compare the server's stored `inputs[].sha256` with what was sent,
