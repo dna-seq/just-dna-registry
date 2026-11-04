@@ -16,16 +16,25 @@ reset").
   since (nothing to change). The 0.8 rows wait on the pm's sizing and the cut. The 49 entries were read
   through upstream's `INTEGRATION_0_8.md` and the source diff, not one by one. A probe of our tests against
   the 0.8 packages was refused by auto mode (installing unpublished upstream code); it needs the person's
-  allow or a run by hand.
-- **Sent to the lead**: C1 to C4. C4, C1, C2 filed on the roadmap (fcd2589, cd4c511), in that order; C3 waits on
-  the person.
+  allow or a run by hand. Filed on the kit as winternewt/agent-seat-blueprints#265 (the person: seats file
+  kit issues without asking).
+- **Sent to the lead**: C1 to C4. C4, C1, C2 filed on the roadmap (fcd2589, cd4c511), in that order; C3 folded into
+  the roadmap's older column-release entry (f96eca4).
 - **The compiler's seats were last asked** (2026-11-04, `agent-chat`): its lead (topic `registry`) to say when
   a cut is near and to add `just-dna-registry/liaison` to its lead's and triage's `wake_from`; its liaison
   (topic `upstream`) a hello naming fastapi, huggingface-hub, polars, duckdb. Its lead answered: the 0.8 cut is
   5-8 hours out (all three to 0.8.0, `>=0.8.0` floors, the release record, the finished guide), announced in
-  `#just-dna-compiler`; the `wake_from` change is put to the person, not made on my request. When the
+  `#just-dna-compiler`; the `wake_from` change went to the person, who answered: their triage's `wake_from` gains this
+  seat, as a plan b to their file watcher. Their liaison agreed: a defect under both of us is asked in
+  `agent-chat > upstream` first and filed once; their ledgers are UPSTREAM_POLARS/DUCKDB/GA4GH_VRS. When the
   `compiler` watcher says `tag v0.8.0`, re-read the map against the finished `INTEGRATION_0_8.md` and the record.
 - **Avatar** set (a giraffe lookout, from admin's 637614492).
+
+- **Waits until the kit pin carries 621966f** (the person, 2026-11-04: the dependency bump is this seat's
+  unattended routine): then add `[seat.liaison.watch.nightly]` `cmd = "sh kit:bin/py.sh
+  kit:classes/base/nightly.py deps"`, and land the grant's new lines (the lock and a mechanical fix as a
+  patch on main, suite green; a major shift on a branch for the lead) through change-priming. v0.1.126 does
+  not carry it.
 
 ## Backlog, in order
 
