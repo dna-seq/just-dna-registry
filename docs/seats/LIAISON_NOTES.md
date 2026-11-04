@@ -11,7 +11,7 @@ reset").
   liaison state file. When the compiler cuts 0.8 and opens 0.9, move `just-dna-compiler-next`'s `branch=`.
 - **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.7.3`), `docs/UPSTREAM_FASTAPI.md` (`0.141.1`, backlog
   to 0.162.0 unread), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (`v2.0.0`, the 2.0 major unread although installed;
-  floor still `>=0.34.0`).
+  read through v2.4.0 on 2026-11-05: H2 to H4).
 - **0.8 adoption map**: first pass in `docs/UPSTREAM_COMPILER.md`, sent to the lead and the pm; M6 checked
   since (nothing to change). The 0.8 rows wait on the pm's sizing and the cut. The 49 entries were read
   through upstream's `INTEGRATION_0_8.md` and the source diff, not one by one. A probe of our tests against
@@ -48,6 +48,5 @@ reset").
 ## Backlog, in order
 
 1. The compiler's 0.7.1 to 0.7.3 read for levers (0.7.0 done: C1-C3, C5-C15).
-2. huggingface-hub 2.0's notes, then 2.1 to 2.4.
 3. fastapi 0.142 to 0.162.
 4. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.

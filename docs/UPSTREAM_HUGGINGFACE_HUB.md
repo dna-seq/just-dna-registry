@@ -8,15 +8,14 @@ watched by its tags only: `[seat.liaison.watch.huggingface-hub]`, from a clone o
 
 ## Read mark
 
-**`v2.0.0`**, what `uv.lock` installs. The floor in `pyproject.toml` is still `huggingface-hub>=0.34.0`, which
-admits 0.x, 1.x and 2.x alike: the 2.0 major came in by a relock (registry 0.26.2), not a decision. No release
-has been read whole by this seat yet: the mark is the installed version, not a reading.
+**`v2.4.0`** read (2026-11-05, the release notes of 2.0.0 to 2.4.0 against the list below). Installed: `v2.0.0`
+(`uv.lock`). The floor in `pyproject.toml` is still `huggingface-hub>=0.34.0`, which admits 0.x, 1.x and 2.x
+alike: the 2.0 major came in by a relock (registry 0.26.2), not a decision. Nothing the registry calls was
+removed or retyped in 2.0 to 2.4, so no cap is wanted.
 
 ## Backlog
 
-- **The 2.0 major, read first.** It is installed, so what it changed is in production already; what it
-  broke surfaced only in the tests (H1). Read its notes against the list below.
-- `v2.1.0` to `v2.4.0` (latest on 2026-11-04), then, oldest first.
+None: read through `v2.4.0`.
 
 ## What the registry uses
 
@@ -38,6 +37,23 @@ swappable.
 - **H1 — 2.0 installs `httpx2`, and Starlette's TestClient prefers it.** Recorded, already handled: the SDK
   tests drive the client through `tests/sdk_transport.py` since 0.26.2. Production was never affected (a real
   socket). Nothing owed.
+- **H2 — 2.0 moved the HTTP stack to `httpx2`, so its logs come from the `httpx2` and `httpcore2` loggers.
+  *Breaks us, quietly.*** `logging_setup.py:20` `_NOISY` pins `"httpx", "httpcore"` to WARNING and not the new
+  two, so under `debug` every Hub request is logged again. Mechanical: add both names. Five minutes. Sent to the
+  lead 2026-11-05.
+- **H3 — `httpx2` uses the operating system's certificate store by default** (`SSL_CERT_FILE`/`SSL_CERT_DIR` still
+  honoured). Nothing for us unless a box relies on a CA bundle the system store lacks; none is configured in
+  this repo.
+- **H4 — `HfFileSystem` caches listings and "not found" answers for the life of the instance** (2.2.0 made
+  `exists(path, refresh=True)` clear a cached miss). The server and the CLI each hold one `HfStorage` for their
+  whole run (`api/app.py:59`, `cli.py:120`), and `exists` never passes `refresh`. No symptom seen: a version's
+  key is written once and asked about only after, so a cached miss needs a delete and re-publish of one key in a
+  running process (the polygon's delete verb) or a key asked about before another process wrote it. Watch, not a
+  task; reproduce before filing.
+- Read, nothing for us: 2.0's removed APIs (none of them called here); 2.1 `HfFileSystem.get_file` through
+  `hf_xet` (we use `cat_file`), Jobs, Inference, Sandboxes; 2.2 jobs and download changes; 2.3 bucket
+  `live_follow`, parallel listing, `create_commit` keeping a re-added file (we only add); 2.4 bucket copies, a
+  clearer "repository not found".
 
 ## Our pieces the upstream may come to do
 
