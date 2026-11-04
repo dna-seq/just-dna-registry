@@ -27,7 +27,8 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 1. C7: **done**, 1beb158 on `release-0.27.x` (from `v0.27.0`), merged into main 8a04cb1. How patches land:
    on `release-0.27.x` first, then that branch merged into main; changelog `## [0.27.1] — unreleased` under
    main's [Unreleased]. Tests in a worktree run with `--basetemp` under `/data/just-dna-cache/`, not `/tmp`
-   (a 32 GB tmpfs that filled on 2026-11-04, with 9.5 GB in `pytest-of-mau`).
+   (a 32 GB tmpfs that ran out of inodes on 2026-11-04, 780k of them in kept pytest runs).
+   H2 (httpx2 and httpcore2 loggers quiet): done, 015d3d0 on `release-0.27.x`, merged 087ce89.
 2. C4, derive `_ROW_MODELS` from upstream (breaks us quietly).
 3. C9, `enrich_verify_datasets`, default off (unmetered egress).
 4. C8's patch half: no early return in the identifier check, `write=False`, `check_pgs=False`, skips into `warnings`.
@@ -40,6 +41,6 @@ The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, 
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
 
-Kit pin at v0.1.127; this session runs it.
+Kit pin at v0.1.128 (moved 2026-11-05); this session runs 0.1.127 until `/reload-plugins`.
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
