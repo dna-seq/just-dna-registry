@@ -39,6 +39,12 @@ reset").
   (uploads the logs the manifest names, guards exactly the declared files). Tell the pm if the re-map moves a
   row of registry 0.28's scope (ROADMAP "0.28").
 
+- **Desk #193** (filed 2026-11-04, unattended): may the person push main by hand (nine local commits, the pm's
+  push refused by auto mode, kit #264). Default: stays local until #264 is fixed. My own pushes wait on it.
+- **0.8 map** extended to `503730c` (M8 to M11, from the guide's §§ 1.20-1.29); not yet sent to the lead
+  and pm, since the cut is hours away and the whole map is re-read then.
+- reflect after 2026-11-11: classes/base/BASE.md as of v0.1.127 (kit reports filed without asking, timed by cost).
+
 ## Backlog, in order
 
 1. The compiler's 0.7.0 cut read for levers (only C1 to C3 so far).
