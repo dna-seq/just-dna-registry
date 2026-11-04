@@ -18,6 +18,8 @@ from just_dna_registry.config import Settings
 # Third-party loggers that are too chatty at DEBUG — pinned to WARNING.
 _NOISY: tuple[str, ...] = (
     "polars", "duckdb", "httpx", "httpcore", "multipart", "python_multipart",
+    # huggingface-hub 2.0 sends its requests through these two, under their own logger names.
+    "httpx2", "httpcore2",
     "huggingface_hub", "urllib3", "asyncio",
 )
 
