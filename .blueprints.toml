@@ -65,8 +65,21 @@ wake_from = "just-dna-registry/lead just-dna-registry/triage just-dna-registry/p
 [seat.liaison.watch.desk]
 cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry liaison"
 
-# The upstreams' watchers (kit classes/liaison/watch-upstream.sh, one line each in the liaison state file) are
-# added by the seat itself once their clones exist (its first work); the compiler's comes first.
+# The upstreams' watchers (kit classes/liaison/watch-upstream.sh), each reading its line in the liaison state file
+# for its clone and branch. The compiler first: each release by its tags, and the coming minor's changelog on its
+# branch (just-dna-compiler-next's line names the branch; move it to 0.9 when 0.8 is cut).
+[seat.liaison.watch.compiler]
+cmd = "sh kit:classes/liaison/watch-upstream.sh just-dna-compiler --tags"
+
+[seat.liaison.watch.compiler-next]
+cmd = "sh kit:classes/liaison/watch-upstream.sh just-dna-compiler-next --path docs/CHANGELOG.md"
+
+# The libraries under the server: busy upstreams, tags only.
+[seat.liaison.watch.fastapi]
+cmd = "sh kit:classes/liaison/watch-upstream.sh fastapi --tags"
+
+[seat.liaison.watch.huggingface-hub]
+cmd = "sh kit:classes/liaison/watch-upstream.sh huggingface-hub --tags"
 
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
