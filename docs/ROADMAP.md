@@ -614,8 +614,10 @@ waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
 
 1. **The 0.8 lockstep cut** (M1): floors for all three tiers, `uv.lock`, the operator procedure in
    `docs/UPGRADE.md`, CLAUDE.md's floor reasons. Required. Written only once upstream's floors exist.
-2. **Six new spec tables** (M2), with the liaison's C4 folded in (derive the row-model roster from
-   upstream). Required: an unrecognized `meta.csv` is dropped by the rebuild and moves the signature.
+2. **Six new spec tables** (M2). Required: an unrecognized `meta.csv` is dropped by the rebuild and moves
+   the signature. The liaison's C4 (derive the row-model roster from upstream) ships earlier, as a 0.27.x
+   patch with C1 and C2, because the roster already misses four tables on 0.7 (the lead's call,
+   2026-11-04); M2 then only adds the six names.
 3. **The catalog-wide recompile** (M3): one PATCH per variants module under plain `--apply`, `--dry-run`
    first. Required. Waits on upstream writing the 0.8.0 release record.
 4. **The `/check` report shows 0.8's withheld placements and states** (M4), in the API model, the console
