@@ -25,7 +25,8 @@ Avatar set (the admin's bowerbird).
 1. C4, derive `_ROW_MODELS` from upstream (roadmap, unattended, patch; stale on 0.7 already).
 1. C1, declared correction filtered by `requires` (roadmap, unattended, patch).
 2. C2, let `LookupClients.ensure` fill the shared bundle (roadmap, unattended, after C1, patch).
-3. C3, name the release of a refused column: a new capability, asked of the person 2026-11-04; open.
+3. Name the format release of a refused column (the older roadmap entry; C3 folded in): unattended, its
+   deployment gate met 2026-11-04.
 4. The next minor holds the format-0.8 adoption; the liaison's first map is in `docs/UPSTREAM_COMPILER.md`
    (ced93e1), the pm sizes it. Floors not writable yet (only format 0.8.0 on upstream's branch).
 

@@ -660,16 +660,19 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   account into another. Sizing: **minor** (a new route, a `RegistryClient` method, a parity row; no
   status moves), so it is built on the next minor's branch.
 
-  **Facts that shape it.** A published manifest stamps `owner = account.name`
-  (`api/routers/publish.py`) and is immutable, so old versions keep the old handle for good. The index
-  projects `modules.owner` from `manifest.owner` (`db/repository.py`) and `?owner=` matches that column,
-  so rewriting the column would be undone by the next reindex: the filter has to resolve a handle to its
-  account, old spellings included. `identity.namespace` and `canonical_id` are baked into manifests too,
-  so a personal namespace claimed under the handle **does not** rename with it, and the response says so.
-  Keys and `versions.published_by` are by account id, so auth and RBAC survive the rename.
+  **Facts that shape it.** A published manifest stamps `owner = account.name` (`api/routers/publish.py`).
+  That field is registry-owned and outside both `artifact.digest` and `content_signature`, and the
+  signature covers the digest only (`sign_digest`), so it can be amended in place as `amend_logo` and
+  `amend_readme` already amend stored manifests. The person, 2026-11-04: "Its in meta, meta can be
+  amended, its our item". So **a rename amends `owner` on every version the account published**, and the
+  `modules.owner` projection agrees with the manifests again after a reindex. `identity.namespace` and
+  `canonical_id` are a different matter, so a personal namespace claimed under the handle **does not**
+  rename with it, and the response says so. Keys and `versions.published_by` are by account id, so auth
+  and RBAC survive the rename.
 
   **Decided defaults, each reversible, listed for review.** The old handle stays reserved to the same
-  account as an alias, so nobody else can claim it and inherit the look of old manifests (the strategy's
+  account as an alias, for links and for installs holding an older copy of a manifest, so nobody else can
+  claim it and inherit the look of those copies (the strategy's
   installers-first rule: an old `owner` must never point at a different person); rejected: releasing it.
   Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
   (already the rule at every door, CLAUDE.md "Deployment modes").
@@ -699,13 +702,6 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   Hand over an empty shared bundle, keep one test that a leg's client is reused across two calls, and
   rewrite the CLAUDE.md paragraph that describes an upstream which no longer exists. Sizing: **patch**.
   About an hour.
-
-- **Name the release that introduced a refused column** (**open, not decided: a new capability, so the
-  person's yes first**; the liaison's **C3**, upstream S81 / RM146, shipped in 0.7.0). Every authored field
-  now carries `since(...)`, read by `base.field_first_seen(model)`, which is the input-side roster
-  `version.schema_gap_advisory` was waiting for. The catch is which side can use it: the server runs the
-  *older* format and cannot look up a column it does not know, so the lever is in `registry-client` (which
-  holds the newer models) or in the advice text alone. Weigh before building.
 
 - **`config.py` loads the `.env` above the installed package, not the one where the server runs**
   (**severity low, open — needs an operator step, not scheduled**; motivated by **S27**). The module
@@ -818,9 +814,9 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     fixed by the author re-drafting from a fresh spec directory (a re-draft appends beside the
     superseded rows, so an in-place one makes things worse), never by `registry upgrade`.
 
-- **Name the format release a rejected column arrived in** (**severity medium, open — unblocked since
-  0.25, scheduled behind the deployment in the next bullet**; motivated by **S18**, reopened and
-  corrected by **S21**). 0.22.0 ships the half this service can compute on its
+- **Name the format release a rejected column arrived in** (**severity medium, unattended**: its gate, the format 0.7
+  deployment in the next bullet, was met on 2026-11-04; owner: lead; motivated by **S18**, reopened and
+  corrected by **S21**; the liaison's **C3** of 2026-11-04 restated it and was folded in here). 0.22.0 ships the half this service can compute on its
   own: `format_version` on every dry-run report and `format_advisory` when the caller's format is
   newer at patch grain. What it still cannot say is the sentence the consumer actually asked for —
   *`curator` is a 0.6.5 field* — because that needs a map from a spec column to the release that
@@ -882,8 +878,9 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   always been legal*. `field_first_seen` is the input-side counterpart and it shipped as RM146; that
   is the roster to read, and this paragraph stays as the reason not to reach for the other one.
 
-- **The instances run format 0.7 before this package is published to PyPI** (**severity high, open**;
-  motivated by **S20**). Not a code item and deliberately filed here anyway, because it is the one
+- **The instances run format 0.7 before this package is published to PyPI** (**done 2026-11-04**, measured: both
+  instances answer `/api/v1/version` with registry 0.27.0, format 0.7.1, compiler 0.7.2, and PyPI serves
+  just-dna-registry 0.27.0; motivated by **S20**). Kept for the ceiling argument below. Not a code item and deliberately filed here anyway, because it is the one
   release step whose omission breaks every consumer at once and nothing in the tree can assert it.
 
   0.25.0's own base dependency is `just-dna-format>=0.7.0`. So the day this package reaches PyPI, a
