@@ -12,13 +12,13 @@ reset").
 - **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.7.3`), `docs/UPSTREAM_FASTAPI.md` (`0.141.1`, backlog
   to 0.162.0 unread), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (`v2.0.0`, the 2.0 major unread although installed;
   floor still `>=0.34.0`).
-- **0.8 adoption map**: first pass in `docs/UPSTREAM_COMPILER.md`, sent to the lead and the pm. Half read: M6
-  (does anything read an escalated strict finding from `warnings`) is unchecked; the 49 entries were read
+- **0.8 adoption map**: first pass in `docs/UPSTREAM_COMPILER.md`, sent to the lead and the pm; M6 checked
+  since (nothing to change). The 0.8 rows wait on the pm's sizing and the cut. The 49 entries were read
   through upstream's `INTEGRATION_0_8.md` and the source diff, not one by one. A probe of our tests against
   the 0.8 packages was refused by auto mode (installing unpublished upstream code); it needs the person's
   allow or a run by hand.
-- **Sent to the lead**: C1 to C4. C1, C2 filed on the roadmap (cd4c511); C3 waits on the person; C4 sent with
-  the map.
+- **Sent to the lead**: C1 to C4. C4, C1, C2 filed on the roadmap (fcd2589, cd4c511), in that order; C3 waits on
+  the person.
 - **The compiler's seats were last asked** (2026-11-04, `agent-chat`): its lead (topic `registry`) to say when
   a cut is near and to add `just-dna-registry/liaison` to its lead's and triage's `wake_from`; its liaison
   (topic `upstream`) a hello naming fastapi, huggingface-hub, polars, duckdb. Its lead answered: the 0.8 cut is
