@@ -596,6 +596,30 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ## Next registry version (post-0.11)
 
+- **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
+  motivated by the liaison's **C1** in `docs/UPSTREAM_COMPILER.md`, upstream S90 / RM201, shipped in format
+  0.7.0). `DeclaredChange` gained `requires`: the manifest paths a module must carry for the change to reach
+  it, `()` for every module, `None` for unknown. `services/rebuild.declared_movement` reads `target`, `item`
+  and `axis` and never `requires`, so a sweep still over-reaches, bounded at one PATCH per module by the
+  convergence rule. Filter by `requires` against the stored manifest, `None` keeping today's behaviour, and
+  correct the two CLAUDE.md passages that still call S90 open. Sizing: **patch** (no route, field or status
+  moves; a sweep acts on fewer modules). About an hour with tests.
+
+- **Let upstream fill the shared lookup bundle** (**severity low, unattended, after the item above**, owner:
+  lead; the liaison's **C2**, upstream S92 / RM206, shipped in 0.7.0). `LookupClients.ensure(name, factory)`
+  makes every leg's lazy build one locked path and `close()` walks `CLIENT_FIELDS`, so
+  `services/enrich.shared_lookup_clients()` constructing all eight eagerly is now redundant, not wrong.
+  Hand over an empty shared bundle, keep one test that a leg's client is reused across two calls, and
+  rewrite the CLAUDE.md paragraph that describes an upstream which no longer exists. Sizing: **patch**.
+  About an hour.
+
+- **Name the release that introduced a refused column** (**open, not decided: a new capability, so the
+  person's yes first**; the liaison's **C3**, upstream S81 / RM146, shipped in 0.7.0). Every authored field
+  now carries `since(...)`, read by `base.field_first_seen(model)`, which is the input-side roster
+  `version.schema_gap_advisory` was waiting for. The catch is which side can use it: the server runs the
+  *older* format and cannot look up a column it does not know, so the lever is in `registry-client` (which
+  holds the newer models) or in the advice text alone. Weigh before building.
+
 - **`config.py` loads the `.env` above the installed package, not the one where the server runs**
   (**severity low, open — needs an operator step, not scheduled**; motivated by **S27**). The module
   calls a bare `load_dotenv()` at import, and python-dotenv walks up from the calling *file*, so it
