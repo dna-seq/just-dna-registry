@@ -26,11 +26,12 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 
 1. C7: **done**, 1beb158 on `release-0.27.x` (from `v0.27.0`), merged into main 8a04cb1. How patches land:
    on `release-0.27.x` first, then that branch merged into main; changelog `## [0.27.1] — unreleased` under
-   main's [Unreleased].
+   main's [Unreleased]. Tests in a worktree run with `--basetemp` under `/data/just-dna-cache/`, not `/tmp`
+   (a 32 GB tmpfs that filled on 2026-11-04, with 9.5 GB in `pytest-of-mau`).
 2. C4, derive `_ROW_MODELS` from upstream (breaks us quietly).
 3. C9, `enrich_verify_datasets`, default off (unmetered egress).
 4. C8's patch half: no early return in the identifier check, `write=False`, `check_pgs=False`, skips into `warnings`.
-5. The four small corrections: subtitle 240, `pacing.py` text (C6, no reconcile), C11 (module-level by code),
+5. The four small corrections: subtitle 240 (on **main**, not the patch branch: 240 is [Unreleased] material, 0.27.0 still says 120), `pacing.py` text (C6, no reconcile), C11 (module-level by code),
    C12 (`gather_pmids` over every citing table).
 6. C1, then C2.
 7. C5 + C13 + C15, reading what upstream made public.
