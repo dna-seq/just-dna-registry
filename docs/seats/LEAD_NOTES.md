@@ -10,7 +10,9 @@ Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
 2. **Id scripts stay** (`.claude/triage-state.py`, `.claude/triage-archive.py`); moving to the kit's
    `classes/triage/` is a later roadmap call, not filed yet.
 3. **Seats pointer in CLAUDE.md**: done, ad1b570.
-4. **Trust register** (`docs/TRUST.md`): asked the person once, 2026-11-04; open.
+4. **Trust register** (`docs/TRUST.md`): **waits until 2027-02-04**, the person, 2026-11-04: "no trust registry
+   here yet, ask me in 3 months". On that date ask once again whether to start one (the server holds
+   publishers' API keys and an HF write token).
 5. **Working tree**: `uv.lock` is no longer dirty (clean on 2026-11-04 at punch-in). `docs/DREAMS.md` was committed by
    the pm on the person's word (daeab95); closed.
 6. **Kit pin**: this seat moves it; nothing waiting.
