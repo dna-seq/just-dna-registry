@@ -22,8 +22,7 @@ reset").
 - **The compiler's seats were last asked** (2026-11-04, `agent-chat`): its lead (topic `registry`) to say when
   a cut is near and to add `just-dna-registry/liaison` to its lead's and triage's `wake_from`; its liaison
   (topic `upstream`) a hello naming fastapi, huggingface-hub, polars, duckdb. No answer yet.
-- **Avatar** asked of `agents-kit/admin` (topic `avatars`); set it with `watchdog.py avatar liaison --from ID`
-  on the reply.
+- **Avatar** set (a giraffe lookout, from admin's 637614492).
 
 ## Backlog, in order
 
