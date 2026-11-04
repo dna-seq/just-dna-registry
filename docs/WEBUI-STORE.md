@@ -59,7 +59,7 @@ class RegistryState(rx.State):
     def _client(self):
         return RegistryClient(REGISTRY_URL, self.token or None)
 
-    @rx.event(background=True)   # network → keep off the UI lock (see AGENTS.md Reflex rules)
+    @rx.event(background=True)   # network → keep off the UI lock (see just-dna-lite's AGENTS.md, Reflex rules)
     async def search(self):
         with self._client() as c:
             body = c.list_modules(q=self.query or None, sort=self.sort, page=self.page)

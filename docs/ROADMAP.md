@@ -245,7 +245,7 @@ limiting (publish/download/search buckets, §7) — a simple in-memory token buc
 - **Prebuilt "trust-but-verify" publish mode** (sandbox recompile + digest compare,
   `422 digest_mismatch`).
 - **A5 backfill** of existing `just-dna-seq/annotators` into manifests + index (ops/CLI task).
-- **Ed25519 signing** of `artifact.digest` + published pubkey (§5 "Future").
+- ~~**Ed25519 signing** of `artifact.digest` + published pubkey (§5 "Future").~~ **Shipped in 0.5.0** (`REGISTRY_SIGNING_KEY`).
 - **Postgres** migration; **FTS5** / advanced search; download analytics.
 - **S3/MinIO** storage backend behind the same `StorageBackend` interface.
 - **webui / Dagster consumer integration** (§11 — `registry://` source branch, catalog page) —
