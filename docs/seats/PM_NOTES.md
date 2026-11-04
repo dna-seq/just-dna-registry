@@ -22,8 +22,10 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **Account handle rename** filed by the lead (cd67d91, 1659ef8). The maintainer then ruled that `owner` is
   amendable registry metadata: a rename rewrites it on old manifests. Sent to the lead to fix the entry
   (637616735); check the entry says so.
-- **Not pushed**: the auto-mode check denies this seat's push of `main` (kit rule 11 lists no pm), filed as
-  kit #264. Local commits wait for the person or for the rule's fix.
+- **Pushed**: kit #264 closed in v0.1.127 (rule 11 now covers any seat granted a push); the rules here are
+  current (`automode.py --check` clean, 2026-11-04 ~21:20 UTC) and `main` matches `origin/main`.
+- **Waiting**: format 0.8 not cut yet (just-dna-format tags end at v0.7.3, PyPI 0.7.1, checked 21:20 UTC).
+  When it is, read the liaison's re-map against the 0.28 scope and take only what moves to the person.
 
 ## Tools
 
