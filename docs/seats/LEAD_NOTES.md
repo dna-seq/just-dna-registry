@@ -22,9 +22,13 @@ Avatar set (the admin's bowerbird).
 0. Account handle rename (roadmap, minor, unattended): self-service and site admin, the person's answer
    2026-11-04. Built on the next minor's branch (main's [Unreleased] already holds minor material,
    `merge_accounts`), in its own worktree.
+1. C4, derive `_ROW_MODELS` from upstream (roadmap, unattended, patch; stale on 0.7 already).
 1. C1, declared correction filtered by `requires` (roadmap, unattended, patch).
 2. C2, let `LookupClients.ensure` fill the shared bundle (roadmap, unattended, after C1, patch).
 3. C3, name the release of a refused column: a new capability, asked of the person 2026-11-04; open.
-4. The next minor holds the format-0.8 adoption; the pm sizes it, the liaison maps it. Nothing to build yet.
+4. The next minor holds the format-0.8 adoption; the liaison's first map is in `docs/UPSTREAM_COMPILER.md`
+   (ced93e1), the pm sizes it. Floors not writable yet (only format 0.8.0 on upstream's branch).
+
+Kit pin at v0.1.126 (2026-11-04); this session still runs 0.1.125 until `/reload-plugins`.
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).

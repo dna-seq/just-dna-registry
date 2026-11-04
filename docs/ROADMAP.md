@@ -619,6 +619,15 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
   Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
   (already the rule at every door, CLAUDE.md "Deployment modes").
 
+- **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
+  the liaison's items**, owner: lead; the liaison's **C4** in `docs/UPSTREAM_COMPILER.md`). `services/upgrade.py`
+  `_ROW_MODELS` is hand-kept and already stale on 0.7: it lacks `overrides.csv`, `expression_effects.csv`,
+  `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv`, all read by `extra="forbid"` models, so an
+  unknown column in one is neither trimmed nor reported blocked and fails the recompile instead, the 0.10
+  failure the roster's own comment describes. Derive it from upstream's `_TABLE_KINDS` and `_FACT_TABLES`
+  (0.8 adds the public `AUTHORED_NON_KIND_TABLES`), with a denominator floor in the test. Sizing: **patch**.
+  About an hour. Format 0.8 adds six more tables (the liaison's M2), which this makes free.
+
 - **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
   motivated by the liaison's **C1** in `docs/UPSTREAM_COMPILER.md`, upstream S90 / RM201, shipped in format
   0.7.0). `DeclaredChange` gained `requires`: the manifest paths a module must carry for the change to reach
