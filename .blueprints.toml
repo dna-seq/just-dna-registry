@@ -81,5 +81,10 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh fastapi --tags"
 [seat.liaison.watch.huggingface-hub]
 cmd = "sh kit:classes/liaison/watch-upstream.sh huggingface-hub --tags"
 
+# The weekly dependency bump (the kit's liaison role, "The dependency bump"): said due once a week while the
+# person is away, on this seat's own day.
+[seat.liaison.watch.nightly]
+cmd = "sh kit:bin/py.sh kit:classes/base/nightly.py deps"
+
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
