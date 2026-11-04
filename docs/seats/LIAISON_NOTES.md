@@ -21,7 +21,10 @@ reset").
   the map.
 - **The compiler's seats were last asked** (2026-11-04, `agent-chat`): its lead (topic `registry`) to say when
   a cut is near and to add `just-dna-registry/liaison` to its lead's and triage's `wake_from`; its liaison
-  (topic `upstream`) a hello naming fastapi, huggingface-hub, polars, duckdb. No answer yet.
+  (topic `upstream`) a hello naming fastapi, huggingface-hub, polars, duckdb. Its lead answered: the 0.8 cut is
+  5-8 hours out (all three to 0.8.0, `>=0.8.0` floors, the release record, the finished guide), announced in
+  `#just-dna-compiler`; the `wake_from` change is put to the person, not made on my request. When the
+  `compiler` watcher says `tag v0.8.0`, re-read the map against the finished `INTEGRATION_0_8.md` and the record.
 - **Avatar** set (a giraffe lookout, from admin's 637614492).
 
 ## Backlog, in order
