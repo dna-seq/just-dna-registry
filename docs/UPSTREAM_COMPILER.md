@@ -23,8 +23,8 @@ in `pyproject.toml` with their reasons). Upstream has cut nothing since.
 - **`main` past `v0.7.3`** (168 commits on 2026-11-04): patch entries marked "patch, on `main`" (RM339, RM340,
   RM338, RM347, RM353, RM355, RM354 at the top). A `v0.7.4` would carry them. Read when it is tagged, or earlier
   if one touches a symbol below.
-- **The `0.8` branch** (197 commits past `main`, head `0a5293b`): the coming minor. Its adoption map goes to the
-  lead and the pm (`format-0.8-adoption`); progress in `docs/seats/LIAISON_NOTES.md`.
+- **The `0.8` branch** (197 commits past `main`, head `0a5293b`): the coming minor. First-pass adoption map
+  below; read again at each `docs/CHANGELOG.md` commit the `compiler-next` watcher reports, and whole at the cut.
 
 ## What the registry uses
 
@@ -103,6 +103,53 @@ Each open item is the lead's to build; its state is said beside it.
   The catch: the server runs the *older* format, so it cannot look up a column it does not know; only the newer
   side can. The lever is in `registry-client` (it holds the newer models) or in the advice text. Weigh before
   building; no estimate yet. Sent to the lead 2026-11-04 as a question, not a task.
+- **C4 — `services/upgrade.py:188` `_ROW_MODELS` is already stale on 0.7. *Breaks us, quietly.*** It lists
+  the table kinds and six fact sidecars, and lacks four tables 0.7.3 reads with `extra="forbid"` models:
+  `overrides.csv` (in `_INPUT_FILES`), `expression_effects.csv`, `clin_sig_concordance.csv` and
+  `clin_sig_authority_calls.csv` (in `_FACT_TABLES`). An unknown column in one of them is neither trimmed nor
+  reported blocked by `registry upgrade`, and fails the recompile instead, which is the 0.10 failure the
+  roster's own comment describes. 0.8 adds six more (M2 below). Fix: derive the roster from upstream's
+  (`_TABLE_KINDS` and `_FACT_TABLES` carry the model beside each CSV; 0.8 adds the public
+  `AUTHORED_NON_KIND_TABLES`) with a denominator floor, as `tests/test_specfiles.py` already ties back the
+  file lists. About an hour. Sent to the lead 2026-11-04.
+
+State, 2026-11-04: the lead filed C1 and C2 on `docs/ROADMAP.md` (cd4c511, "Next registry version", unattended
+patches, C2 after C1); C3 waits on the person's yes.
+
+## The coming minor: format 0.8 (adoption map, first pass, 2026-11-04)
+
+For the lead and the pm, for `format-0.8-adoption`. Read from the `0.8` branch at `0a5293b`: upstream's
+`docs/INTEGRATION_0_8.md` (its consumer guide, which names this repository), the source diff `v0.7.3..0.8` of
+what the registry imports, and the changelog's 49 entries marked "0.8, uncut". **Everything here is moving**:
+every entry is dated 2026-11-04, the longevitymap v2 group (RM322 to RM336) is still being built, and nothing is
+installable. A probe of the registry's tests against the 0.8 packages was not run (the client's auto mode
+refused to install unpublished upstream code); every finding below is from reading.
+
+What did not move: all 117 names `src/` imports from the three packages still exist on `0.8` (an AST check,
+anchored on all 117 resolving on `v0.7.3`). `compiler.py` became a package (RM260) and re-exports every name,
+the private `_FACT_TABLES`, `_INPUT_FILES`, `_TABLE_KIND_CSVS`, `_PROVENANCE_FILE` the tests tie back to
+included. No test here monkeypatches the compiler module, so RM260's "patch the submodule" note reaches nothing.
+
+Hardest first.
+
+| # | What changes | Where it lands here | Fix and cost | Still moving |
+|---|---|---|---|---|
+| M1 | **The lockstep cut.** A 0.7 `just-dna-format` refuses 0.8 output in five places: every `verification.json` and manifest `verification` block a 0.8 enricher writes (RM292 adds four fields to `extra="forbid"` `VerificationRecord`), a 0.8-enriched `resolution.csv` (RM267's two columns), new `warnings_summary` codes (closed `VALID_WARNING_CODES`), `pmid=NONE` and the new `doi` columns (RM336), and a serialized `DeclaredChange` with `kind: toolchain` (RM352). Server, `registry-client` and the console move together; `version.contract_compatible` already refuses a mixed pair. | Floors `pyproject.toml:72` (format), `:119`, `:308-309` (compiler, enricher); `uv.lock`; `docs/UPGRADE.md`; CLAUDE.md's floor reasons. | A coordinated cut, as 0.7's was. About half a day with the 25-minute suite and the operator procedure. | The floors cannot be written yet: on the branch the format says 0.8.0 but the compiler is still 0.7.2 and the enricher 0.7.3. |
+| M2 | **Six new tables.** Authored and inside `content_signature`: `meta.csv` (RM28, RM323, RM324) and `model_organisms.csv` (RM335), registered in the new public `compiler.AUTHORED_NON_KIND_TABLES` beside `overrides.csv`. Derived fact tables, outside the signature: `locus_to_gene.csv`, `colocalisations.csv` (RM333), `consequences.csv` (RM236), `ld_pairs.csv` (RM331). Disjointness holds: none of the four derived ones is in `_INPUT_FILES`. | `specfiles.py` `FACT_CSVS` (hand-kept) and what derives from it (`SIGNATURE_INPUTS`, `RECOGNIZED_SPEC_FILES`, `DERIVED_FILES`); `services/upgrade.py:188` `_ROW_MODELS` (C4). The tie-back tests in `tests/test_specfiles.py` will fail until then, which is what they are for. A file left unrecognized is dropped by the `revalidate`/`upgrade` rebuild, which for `meta.csv` moves the signature. | Add the names, or better derive them (upstream's guide, item 9: `ARTIFACT_PARQUETS` and `table_bindings()`); fold C4 in. About two hours. | RM323/RM324's homes for per-locus facts were the order's first items; `meta.csv`'s columns may still grow. |
+| M3 | **The sweep at 0.8.** Every module with `variants.csv` gets a new `artifact.digest` on a 0.8 recompile (RM270's `vrs_id` on every variant parquet and left-aligned coordinates, RM325/RM332's study columns); `content_signature` moves for none. `parquet_bytes` is a recompile-driving axis (`RECOMPILE_DRIVING_AXES`), so once the 0.8.0 record measures it moved, which RM270 makes near certain, `declared_movement`'s "the record withholds" rule does not fire over 0.7→0.8 and the contract gap recompiles the whole catalog under plain `--apply`. RM352 adds `kind: toolchain`; `services/rebuild.py:252-253` sorts by `kind == "correction"`/`"addition"`, so a toolchain move is acted on by neither, as upstream's guide says it should be. | `services/rebuild.py`, `services/upgrade.py`, `docs/UPGRADE.md`. | Code: none needed for the kind (read `RecompileAnswer.toolchain_moves` if the report should name it). Operator: one PATCH per version, catalog-wide, with `upgrade --dry-run` first (RM336 refuses a DOI in `pmid`; upstream scanned all 47 prod versions and found none). | The 0.8.0 release record is not written; upstream expects it to declare the polars 1→2 byte move as `toolchain`. |
+| M4 | **Enrichment the `/check` report has to show.** RM267 withholds a placement two authorities give as two events (the rsID turns unresolved, `strict` refuses, `EnrichmentResult.placement` says what ran); RM272 names three answered-but-withheld states on `EnrichmentResult`; RM305 adds the `clinvar_gkm` lane and `enrich(clinvar_gkm_cache=)`. | `services/enrich.py` (the configured-cache argument, CLAUDE.md "always pass the configured cache path"); `models/api.py` and `console/src/types.ts`; the `registry-client check` and console renderers ("a pass that could not run reports why"; a placement disagreement is not a transient, so `unresolved_hint` must not say re-run). | Two to four hours. | RM267 against today's witnesses withholds less than its motivating case suggests (upstream's own probe). |
+| M5 | **Verification records name their witness** (RM292): `checked_source`, `witness_source`, `independence` (closed vocabulary), `undecided`. Upstream: a `self_consistent` check's agreement is not evidence for the value. | `models/api.py:195` `VerificationInfo` and its mirror in `console/src/types.ts`. | A lever: carry `independence`, and say beside each check whether its agreement counts. About two hours. | — |
+| M6 | **Under `strict`, an escalated finding is in `errors` only** (RM359). | The strict compiles at `services/publish.py:660,716` and `services/revalidate.py:117`. | Not yet checked whether anything here reads an escalated finding from a strict result's `warnings` or counts across both lists. Under an hour to check. | — |
+| M7 | **New manifest fields, no break**: `stats.clin_sig_counts` and `clin_sig_variant_counts` (RM300; empty means not counted), `compilation.toolchain` (RM342), `compilation.vrs_version` (RM304), `tier_scale`, `meta_selectors`, and the four derived tables' blocks. | `db/facets.py`, the module card. | Levers only: a ClinVar-tier facet; the toolchain as the explanation for a digest that moved with the content unchanged. The pm's to size. | — |
+
+Nothing for us, read: RM303 moved `release.json`'s model into `just_dna_format.snapshot` and `read_release` now
+returns a model, but the registry reads the raw JSON for keys that were not renamed (`builder_version` at
+`services/enrich.py:492`, `sf_version`/`gene_count` at `cli.py:1295`) and only tests `read_release(...) is None`
+(`services/enrich.py:615`); RM342's `ToolchainDiffersError` is the enricher's HuggingFace publisher, which the
+registry does not use; RM337/RM338/RM348's `logs/` rules apply inside the compile and `normalize_spec` already
+never moves `logs/`; RM253/RM356 change the CPIC drafter's output, which `POST /drafts` passes through; the
+polars, duckdb and `ga4gh.vrs` floors on the branch (`>=1.42.0`, `>=1.1.0`, `>=2.3.3,<2.4`) are met by this
+lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Our pieces the upstream may come to do
 
