@@ -14,7 +14,10 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled;
   nothing open. The run-time digest witness is an idea for downstream to decide, not a registry
   question.
-- **DREAMS.md** committed (daeab95) on the maintainer's word; no idea has a verdict yet.
+- **Dream triaged** (2026-10-18 dream, `docs/DREAMS.md` §7, 89092ff): the row catalog plus a gene-level facet to
+  the lead (637623436, after 0.28); nine ideas on the new `docs/TO_RESEARCH.md`, PGS module-level vs
+  catalog-level weighed there (leaning module-level plus a `pgs_id` facet); the rest let go with reasons.
+  Two stale facts (ROADMAP:248 signing, a foreign `AGENTS.md`) sent to the lead as defects.
 - **Avatar** set (an ibex, from admin's 637612986).
 - **Account handle rename** filed by the lead (cd67d91, 1659ef8). The maintainer then ruled that `owner` is
   amendable registry metadata: a rename rewrites it on old manifests. Sent to the lead to fix the entry
