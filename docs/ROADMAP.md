@@ -796,7 +796,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     sentence; if upstream gives it no code to read, the field stays as it is, the text is corrected, and the
     gap is filed upstream. Rejected: leaving it `true`, which tells an author the module is fine and only rows
     need work. **Upstream's answer (their S129, relayed by the liaison 2026-11-05):** coded errors are their
-    RM378, proposed for 0.8; until then the two strict-only refusals carry published, test-pinned fragments
+    RM378, placed in their 0.9 (a correction from their triage, 2026-11-05), so the match holds through 0.8; until then the two strict-only refusals carry published, test-pinned fragments
     (their RM377, `docs/COMPILER.md` "The refusals only strict adds"), already in the installed 0.7.2. So the
     flip **matches the frozen fragment now**, as `UNJOINABLE_PHRASE` does: only the build disagreement
     (`whose coordinates the enricher diagnosed as another assembly's`) is module-level; the per-row aggregate
