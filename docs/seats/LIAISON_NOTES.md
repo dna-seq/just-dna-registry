@@ -47,7 +47,7 @@ reset").
 
 ## Backlog, in order
 
-1. The compiler's 0.7.0 cut read for levers (only C1 to C3 so far).
+1. The compiler's 0.7.0 cut read for levers: the entries naming the registry are done (C1-C3, C5, C6); the rest next.
 2. huggingface-hub 2.0's notes, then 2.1 to 2.4.
 3. fastapi 0.142 to 0.162.
 4. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.

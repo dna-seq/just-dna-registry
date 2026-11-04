@@ -17,9 +17,9 @@ in `pyproject.toml` with their reasons). Upstream has cut nothing since.
 ## Backlog
 
 - **The 0.7.0 cut, read for levers.** 0.7 was adopted for what broke us (CLAUDE.md records each), not read for
-  what it fixed of ours. Three items below (C1 to C3) come from a first pass over the filings the registry made
-  upstream; the rest of the 0.7.0 changelog is unread for this purpose. Next slice starts at the 0.7.0 cut's
-  entries in `docs/CHANGELOG.md` on `main`.
+  what it fixed of ours. C1 to C3, C5 and C6 come from the entries answering the registry's own filings; the
+  rest of the 0.7.0 changelog is unread for this purpose. Next slice: the 0.7.0 entries that do not name the
+  registry, in `docs/CHANGELOG.md` on `main`, newest first.
 - **`main` past `v0.7.3`** (168 commits on 2026-11-04): patch entries marked "patch, on `main`" (RM339, RM340,
   RM338, RM347, RM353, RM355, RM354 at the top). A `v0.7.4` would carry them. Read when it is tagged, or earlier
   if one touches a symbol below.
@@ -112,6 +112,22 @@ Each open item is the lead's to build; its state is said beside it.
   (`_TABLE_KINDS` and `_FACT_TABLES` carry the model beside each CSV; 0.8 adds the public
   `AUTHORED_NON_KIND_TABLES`) with a denominator floor, as `tests/test_specfiles.py` already ties back the
   file lists. About an hour. Sent to the lead 2026-11-04.
+
+- **C5 — S91 / RM204 shipped in 0.7.0. *A piece of ours the upstream now does.*** `caches.lane_status(lanes)`
+  returns one `LaneStatus` per lane (`state`, `looked_in`, `path`, `release`, `release_unreadable`,
+  `size_bytes`), with `occupied` for what we call `partial`. `services/enrich.py` `lane_status(settings)` (read by
+  `api/routers/caches.py:65`) still runs its own loop over `lane_presence`. Ours adds what upstream's cannot: the
+  `declared_use` licence skip and no path in the response. Fix: compose upstream's and keep those two; one
+  vocabulary for the third state. About two hours. Low priority. Sent to the lead 2026-11-04.
+- **C6 — S95 / RM203 shipped in 0.7.0. *Fixed what we worked around, partly.*** `PacingGate.spent` counts the
+  upstream attempts a gate admitted. `pacing.py:291-296` still says "nothing downstream reports what it actually
+  spent (filed upstream as S92)", which is no longer true and names the wrong filing (S95). The design under it,
+  charging before the call so the meter can refuse, stands on its own reasons. Fix: correct the docstring; whether
+  to reconcile the meter from `spent` is the lead's call. Minutes for the text. Sent to the lead 2026-11-04.
+
+The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answering the registry's own filings
+(S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
+unstamped compiler; S91-S95 on 2026-09-11, giving C5 and C6). The rest of 0.7.0 is unread for this purpose.
 
 State, 2026-11-04: the lead filed C4, C1 and C2 on `docs/ROADMAP.md` (fcd2589, cd4c511; "Next registry version",
 unattended patches in that order), with the 0.8 map's M2 folded into C4's derivation. C3 was folded into the
