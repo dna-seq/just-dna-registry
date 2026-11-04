@@ -604,8 +604,10 @@ entry's detail stays where it is filed, and this section says only what the mino
 0.8 and carries everything below together. Rejected: shipping the non-0.8 items now as 0.28 and giving the
 adoption its own minor later, as 0.17 and 0.24 had. What that costs, said once: the rename and the client
 fixes wait for a date nobody has yet (on 2026-11-04 the `0.8` branch carried format 0.8.0 with compiler
-and enricher still at 0.7.2/0.7.3, nothing installable, and `just-dna-compiler/pm` had not answered on a
-cut). The items that need no 0.8 may be **built** on the minor's branch ahead of the cut; only the release
+and enricher still at 0.7.2/0.7.3, nothing installable). The compiler's lead, the same day: the cut follows
+the round-1 audit fixes, audit round 2 and its fixes, a release-gate sweep and a docs pass, "roughly 5-8
+hours from now"; it sets `>=0.8.0` floors, writes the 0.8.0 release record and finishes
+`docs/INTEGRATION_0_8.md`, and is announced in `#just-dna-compiler`. The liaison re-maps then. The items that need no 0.8 may be **built** on the minor's branch ahead of the cut; only the release
 waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
 
 **Holds, hardest first.**
