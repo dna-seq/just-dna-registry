@@ -40,7 +40,7 @@ swappable.
 - **H2 — 2.0 moved the HTTP stack to `httpx2`, so its logs come from the `httpx2` and `httpcore2` loggers.
   *Breaks us, quietly.*** `logging_setup.py:20` `_NOISY` pins `"httpx", "httpcore"` to WARNING and not the new
   two, so under `debug` every Hub request is logged again. Mechanical: add both names. Five minutes. Sent to the
-  lead 2026-11-05.
+  lead 2026-11-05; **built** the same night (015d3d0, with a test over every installed transport).
 - **H3 — `httpx2` uses the operating system's certificate store by default** (`SSL_CERT_FILE`/`SSL_CERT_DIR` still
   honoured). Nothing for us unless a box relies on a CA bundle the system store lacks; none is configured in
   this repo.
