@@ -14,6 +14,9 @@ The founding design document is **[docs/SPEC.md](docs/SPEC.md)** — read it fir
 of truth for the manifest contract (§4), integrity mechanism (§5), versioning (§6), and the REST
 interface (§8). This file (`CLAUDE.md`) is the *how we code* companion to that *what we build* spec.
 
+The standing roles a session can take here (lead, pm, triage, liaison) and their primings are in
+**[docs/seats/README.md](docs/seats/README.md)**.
+
 ---
 
 ## What this service does (one screen)
