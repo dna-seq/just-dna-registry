@@ -71,6 +71,15 @@ upstream's RM100 and offer no opt-out. That is filed upstream as their S124. The
 has the same package-relative walk and is left unchanged, because changing it changes which file a
 running deployment loads. The roadmap carries it with the operator step it needs.
 
+### The triage loop is woken by the seats kit, not by its own scripts
+
+Repository tooling only; nothing the service or the client runs moves. The consumer inbox is now
+watched by the triage seat's kit watchers (`[seat.triage.watch.*]` in `.blueprints.toml`), so the
+repository's own watcher, wake wrapper and arming hook (`.claude/watch-suggestions.sh`,
+`.claude/wake-on-suggestions.sh`, `.claude/arm-on-prompt.py`) are removed. The hook had never been
+registered. They went once the kit's file watcher had fired on a real edit of the inbox. The two ledger
+scripts stay. `docs/CONSUMER_TRIAGE_LOOP.md` §2 describes the new wake-up.
+
 ## [0.27.0] — 2026-09-27
 
 **Client surface:** `RegistryClient.publish` gains `pack=` and accepts an archive path in place of
