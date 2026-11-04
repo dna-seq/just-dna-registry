@@ -898,6 +898,12 @@ def enrich_spec(
             gnomad_client=clients.gnomad if clients else None,
             ensembl_cache=caches["ensembl"],
             clinvar_cache=caches["clinvar"],
+            # Every lane `enrich()` takes, never one left to its default: an omitted `*_cache` is
+            # `None`, and `None` is the ambient discovery the configured path exists to forbid.
+            # These two were omitted through 0.27.0, so a server's PubMind and CIViC came from
+            # wherever the enricher looked, into `published_refutation` and `verification.json`.
+            pubmind_cache=caches["pubmind"],
+            civic_cache=caches["civic"],
             use_clinvar=settings.enrich_use_clinvar,
             # Passed as configured, `offline` beside them. `enrich()` already gates both on it —
             # the gnomAD link and the dbSNP currency check are live-only — and an `and not offline`
@@ -1339,6 +1345,8 @@ def _run_enrichment_passes(
             gnomad_client=clients.gnomad if clients else None,
             ensembl_cache=caches["ensembl"],
             clinvar_cache=caches["clinvar"],
+            pubmind_cache=caches["pubmind"],  # as in `enrich_spec`: never omit a lane
+            civic_cache=caches["civic"],
             use_clinvar=settings.enrich_use_clinvar,
             use_gnomad=settings.enrich_use_gnomad,  # `offline` gates it inside `enrich()`
             download=False,  # never provision a multi-hundred-MB snapshot inside a request

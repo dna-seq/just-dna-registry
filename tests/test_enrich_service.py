@@ -13,6 +13,7 @@ Three things worth pinning that no HTTP test reaches:
   whether a deployment can be pinned at all.
 """
 
+import inspect
 import json
 import os
 import subprocess
@@ -196,6 +197,72 @@ def test_configured_caches_passes_the_setting_through_unresolved(tmp_path: Path)
     assert configured_caches(settings)["ensembl"] == empty
     # ...while *resolution* correctly reports there is nothing usable there.
     assert available_references(settings)["ensembl"] is None
+
+
+class _Captured(Exception):
+    """Raised by the stand-in `enrich()` once it has seen its arguments, so nothing runs past it."""
+
+
+def _enrich_cache_parameters() -> list[str]:
+    """Every `*_cache` parameter of the installed `enrich()` that names a lane we configure."""
+    from just_dna_enricher.enrich import enrich
+
+    lanes = configured_caches(Settings())
+    names = [
+        name
+        for name in inspect.signature(enrich).parameters
+        if name.endswith("_cache") and name.removesuffix("_cache") in lanes
+    ]
+    # Floor: ensembl, clinvar, pubmind and civic as of enricher 0.7. An emptied signature read
+    # (a renamed module, a wrapper) would otherwise pass every assertion below vacuously.
+    assert len(names) >= 4, names
+    return names
+
+
+@pytest.mark.parametrize("path", ["publish", "dry_run"])
+def test_every_cache_enrich_takes_is_handed_the_configured_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """Both `enrich()` call sites pass each lane the configured path, never `None` by omission.
+
+    An omitted `*_cache` argument defaults to `None`, and `None` tells the enricher to resolve the
+    lane itself: the ambient discovery the configured setting exists to forbid. Through 0.27.0 the
+    PubMind and CIViC caches were omitted on both paths (the liaison's C7), so whatever the enricher
+    found on its own fed `published_refutation` into `verification.json`.
+    """
+    import just_dna_enricher.enrich as upstream
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    parameters = _enrich_cache_parameters()  # read before the stand-in replaces `enrich`
+    seen: dict[str, object] = {}
+
+    def capture(_spec_dir: Path, **kwargs: object) -> None:
+        seen.update(kwargs)
+        raise _Captured
+
+    monkeypatch.setattr(upstream, "enrich", capture)
+    settings = Settings(
+        **{lane: tmp_path / lane for lane in ("ensembl_cache", "clinvar_cache", "constraint_cache")},
+        pubmind_cache=tmp_path / "pubmind",
+        civic_cache=tmp_path / "civic",
+        enrich_offline=True,
+    )
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    with pytest.raises(_Captured):
+        if path == "publish":
+            enrich_service.enrich_spec(spec, settings)
+        else:
+            enrich_service._run_enrichment_passes(
+                settings=settings, spec_dir=spec, offline=True,
+                caches=configured_caches(settings), frequencies=False, literature=False,
+                identifiers=False, acmg=False,
+            )
+    lanes = configured_caches(settings)
+    for name in parameters:
+        assert name in seen, f"{name} is not passed, so the enricher discovers it ambiently"
+        assert seen[name] == lanes[name.removesuffix("_cache")], name
 
 
 def test_available_references_ignores_ambient_state_when_configured(

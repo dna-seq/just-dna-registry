@@ -6,6 +6,22 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.27.1] — unreleased
+
+**Client surface:** unchanged.
+
+### A configured PubMind or CIViC snapshot is the one the enricher reads
+
+Both enrichment paths, the publish and the `/check` dry run, now hand `enrich()` the configured
+`pubmind_cache` and `civic_cache`. Through 0.27.0 they passed only the Ensembl and ClinVar
+paths, so the enricher resolved the other two itself, from its own environment variable or its
+default directory, whatever this server's settings said. What it found there feeds
+`published_refutation` and the `evidence_status_currency` check in `verification.json`. A
+configured path that holds no snapshot now reads as *no snapshot*, as it already did for
+Ensembl and ClinVar. A deployment that configures neither setting behaves as before. A test
+reads every `*_cache` parameter of the installed `enrich()` and fails if either path leaves
+one to its default, so the next lane upstream adds is caught the same way.
+
 ## [0.27.0] — 2026-09-27
 
 **Client surface:** `RegistryClient.publish` gains `pack=` and accepts an archive path in place of
