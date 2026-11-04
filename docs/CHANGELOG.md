@@ -96,6 +96,12 @@ Ensembl and ClinVar. A deployment that configures neither setting behaves as bef
 reads every `*_cache` parameter of the installed `enrich()` and fails if either path leaves
 one to its default, so the next lane upstream adds is caught the same way.
 
+### Debug logging no longer prints every Hugging Face request
+
+huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own
+names, and `REGISTRY_DEBUG` quieted only `httpx` and `httpcore`. Both are now held at WARNING
+with the others. A test checks every installed HTTP transport, so the next renamed pair is caught.
+
 ## [0.27.0] — 2026-09-27
 
 **Client surface:** `RegistryClient.publish` gains `pack=` and accepts an archive path in place of
