@@ -21,18 +21,22 @@ Avatar set (the admin's bowerbird).
 
 ## Plan, in order
 
-0. Account handle rename (roadmap, minor, unattended): self-service and site admin, the person's answer
-   2026-11-04. Built on the next minor's branch (main's [Unreleased] already holds minor material,
-   `merge_accounts`), in its own worktree.
-1. C4, derive `_ROW_MODELS` from upstream (roadmap, unattended, patch; stale on 0.7 already).
-1. C1, declared correction filtered by `requires` (roadmap, unattended, patch).
-2. C2, let `LookupClients.ensure` fill the shared bundle (roadmap, unattended, after C1, patch).
-3. Name the format release of a refused column (the older roadmap entry; C3 folded in): unattended, its
-   deployment gate met 2026-11-04.
-5. After 0.28: the variant-level catalog with a gene facet (roadmap, minor, decided 2026-11-04); design first.
-4. The next minor holds the format-0.8 adoption; the liaison's first map is in `docs/UPSTREAM_COMPILER.md`
-   (ced93e1), the pm sizes it. Floors not writable yet (only format 0.8.0 on upstream's branch).
+The 0.27.x patches, all unattended, each in its own worktree, on a maintenance branch from `v0.27.0`
+(main's [Unreleased] already holds minor material, `merge_accounts`), in this order:
 
-Kit pin at v0.1.126 (2026-11-04); this session still runs 0.1.125 until `/reload-plugins`.
+1. C7, pass the configured PubMind and CIViC caches to `enrich()` (breaks us; half an hour).
+2. C4, derive `_ROW_MODELS` from upstream (breaks us quietly).
+3. C9, `enrich_verify_datasets`, default off (unmetered egress).
+4. C8's patch half: no early return in the identifier check, `write=False`, `check_pgs=False`, skips into `warnings`.
+5. The four small corrections: subtitle 240, `pacing.py` text (C6, no reconcile), C11 (module-level by code),
+   C12 (`gather_pmids` over every citing table).
+6. C1, then C2.
+7. C5 + C13 + C15, reading what upstream made public.
+
+The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, C10, the column-release
+item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
+After 0.28: the variant-level catalog with a gene facet; design first.
+
+Kit pin at v0.1.127; this session runs it.
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).

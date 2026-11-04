@@ -737,6 +737,81 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   rewrite the CLAUDE.md paragraph that describes an upstream which no longer exists. Sizing: **patch**.
   About an hour.
 
+- **The enricher gets the configured PubMind and CIViC caches** (**severity high, unattended, first of the
+  0.27.x patches**, owner: lead; the liaison's **C7**, upstream RM134 §B / RM170, checked against the code
+  2026-11-04). Both `enrich()` calls in `services/enrich.py` pass `ensembl_cache` and `clinvar_cache` only,
+  though `configured_caches()` holds `pubmind` and `civic` and the installed `enrich()` takes both. The server
+  never runs `export_lane_locations` outside `warm-caches`, so `None` licenses the ambient discovery CLAUDE.md's
+  first enrichment rule forbids, and what it finds feeds `published_refutation` and
+  `evidence_status_currency` into `verification.json`. Pass both, one test that the configured path is what
+  `enrich()` receives. Sizing: **patch**. Half an hour.
+
+- **`check_identifiers` runs on every module, not only one with `variants.csv`** (**severity high,
+  unattended**, owner: lead; the liaison's **C8**, upstream RM155 / RM156 / RM163, checked 2026-11-04).
+  `services/enrich.py` returns "no variants.csv … nothing to check" before calling it, so `/check` tells a
+  PGx-only module there is nothing to check while the installed pass reads every table that carries the
+  columns. Two halves, by what they move. **The patch (0.27.x):** drop the early return; pass
+  `write=False` (its default merges licence rows into the scratch spec); pass `check_pgs=False`, because its
+  PGS Catalog client is outside the shared bundle and `pacing.UPSTREAMS`; and put the pass's `*_not_read`
+  lists and "PGS accessions not checked" into the existing `warnings`, so nothing it skipped reads as clean.
+  **The minor (0.28):** carry `trait_tables_not_read`, `gene_tables_not_read`, `pgs` and `pgs_not_checked`
+  as fields in the API model, the console types and both renderers, and run the PGS leg on a paced client
+  registered in `UPSTREAMS`. Rejected: shipping it whole in 0.28, since the wrong answer is live now; and
+  dropping the early return without the warnings, which would turn an honest "nothing to check" into a
+  silent clean. Two to three hours across both.
+
+- **A setting for the enricher's dataset probes** (**severity medium, unattended**, owner: lead; the liaison's
+  **C9**, upstream RM85, checked 2026-11-04). `enrich(verify_datasets=True)` is the default we inherit: every
+  run probes ClinVar's live VCF header and the PGS Catalog's `/rest/info` through clients outside the shared
+  bundle and the pace ledger. Add `enrich_verify_datasets` beside `enrich_verify_clinsig`, passed through (with
+  `release_probes=` where it applies). **Default off**, because an unpaced probe on every `/check` is egress the
+  ledger cannot see; the record then says the check was not run, which is the honest state, and an operator
+  turns it on. Rejected: default on (today's behaviour), which keeps the unmetered egress. Sizing: **patch**
+  (a setting, no route or field). About an hour.
+
+- **Four small corrections, one patch commit each** (**severity low, unattended, with the 0.27.x patches**,
+  owner: lead).
+  - *The card subtitle is 240 characters, not 120* (noticed by the liaison 2026-11-04):
+    `client.py:1066`, `client_cli.py:483`, `api/routers/publish.py:779` and `models/api.py:319` still say
+    120 where `services/publish.SHORT_DESCRIPTION_MAX_CHARS` is 240. Minutes; a test that the four read the
+    constant's number would keep them true.
+  - *`pacing.py:291-296`* says nothing downstream reports what it spent and names S92; `PacingGate.spent`
+    exists since 0.7.0 and the filing was S95 (the liaison's **C6**). Correct the text. **Decided: the meter
+    is not reconciled from `spent`**; charging before the call is what lets the ledger refuse, and a second
+    count after it would be two ledgers. Rejected: reconciling. Minutes.
+  - *Strictness can add a finding* (the liaison's **C11**, upstream RM218 with RM141 / RM143): the comments at
+    `services/enrich.py` around `would_publish_module_level` and CLAUDE.md's "the dry run grades where the
+    publish grades" say strictness changes severity only, and upstream's strict validate now adds an
+    aggregate finding of its own. The verdict holds (`_would_publish` also requires `validation.valid`).
+    **Decided:** where that strict-only finding is module-level (a recorded wrong build is about the module,
+    not a row), `would_publish_module_level` goes `false`, read from the finding's **code**, never its
+    sentence; if upstream gives it no code to read, the field stays as it is, the text is corrected, and the
+    gap is filed upstream. Rejected: leaving it `true`, which tells an author the module is fine and only rows
+    need work. Twenty minutes for the text, an hour if the code exists.
+  - *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
+    `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
+    `compiler.load_citing_rows` / `table_citations`. About an hour.
+
+- **Read what upstream made public instead of mirroring it** (**severity low, unattended, after the 0.27.x
+  patches**, owner: lead; the liaison's **C5**, **C13** and **C15**). `caches.lane_status()` (RM204) does what
+  our `lane_status(settings)` loop does, with `occupied` for our `partial`: compose it and keep the
+  `declared_use` licence skip and the path scrub, one word for the third state. `GET /caches` can then say what a
+  pull costs from `CacheLane.approx_mb` and `provisioning_closure` (RM229). `enrich.collect_subjects` is public
+  since RM158, so the mirrored table list at `services/enrich.py:720` goes. Sizing: **patch** unless the
+  `GET /caches` cost is a new field, which goes with 0.28. About three hours together.
+
+- **Say when the source answered and the allele did not match** (**severity low, unattended, with 0.28**, owner:
+  lead; the liaison's **C10**, upstream RM154). `EnrichmentResult.allele_mismatches` (typically a strand flip) is
+  read nowhere, and `unresolved_hint` offers three remedies that are all wrong for it. Carry it beside
+  `unresolved` and give the hint its fourth case. Sizing: **minor** (a response field). One to two hours.
+
+- ~~**Serve manifests compressed**~~ (the liaison's **C14**, upstream RM138: `carried` makes a manifest 1.84×
+  raw, 1.06× gzipped). **Canceled: already true, 2026-11-04.** `api/app.py` adds no GZip middleware, but both
+  boxes answer `content-encoding: gzip` with `vary: Accept-Encoding` (their proxy does it). The check, run
+  2026-11-04 on both hosts:
+  `curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' 'https://module-registry.just-dna.life/api/v1/modules?per_page=100' | grep -i content-encoding`.
+  A deployment without such a proxy would need the middleware; none is known.
+
 - **`config.py` loads the `.env` above the installed package, not the one where the server runs**
   (**severity low, open — needs an operator step, not scheduled**; motivated by **S27**). The module
   calls a bare `load_dotenv()` at import, and python-dotenv walks up from the calling *file*, so it
