@@ -472,3 +472,36 @@ Why? Look at where the real pain in your changelog and consumer suggestions actu
 
 If you build the **durable async job engine** first (solving S26 and large online `/check` runs), and then use that engine so the registry **automatically detects upstream ClinVar/CPIC/PGS releases, re-drafts affected modules in a clean sandbox, runs the full online verification suite, and stages the new version for the author or agent seat to approve**, the registry stops being a passive file host. It becomes a self-maintaining genomic knowledge factory.
 
+## 7. Triage (2026-11-04, the pm seat)
+
+Every idea gets one verdict: **to the lead** (filed as a proposal), **to research** (`docs/TO_RESEARCH.md`, with
+what would settle it), **to strategy** (`docs/STRATEGY.md`), or **let go**, with the reason. The yardstick is
+the strategy record the maintainer settled the same day: installers first; not an annotation service, not a
+judge of the science, not an authoring tool, not an annotation-time dependency.
+
+| Idea | Verdict | Why |
+|---|---|---|
+| **A. Variant-level catalog** (Opus 1's shape: a rebuildable row projection, `/variants/{key}`, cross-module conflicts on both cards) | **to the lead**, with a gene-level facet beside it | The maintainer: "Yes, and gene-level facet also (should be semi-feasible with enricher)". Manifests stay the truth; the table is a projection. Showing that two modules disagree reports what they say, not whether either is right. After 0.28. |
+| A, Sol's and Argon's shape (modules become views over a claim graph) | let go | Retires the manifest as the source of truth and the module as the published unit. Opus's projection gets the same queries without either. |
+| **B. Living modules**: the server re-drafts and proposes the next PATCH | let go | "Not an authoring tool". The reader-facing half, telling a catalog reader a module's source has moved, is already on the roadmap (*Tell a catalog reader that a module's source has published since it was drafted*). Re-drafting belongs to just-module-creator. |
+| **C. What applies to my genome**, server side (Argon 5's `POST /annotate`, Grok 2's keys-only call) | let go | "Not an annotation service"; a person's set of variant keys is genome data. |
+| C, local (Opus 2: a signed catalog-wide variant index lite fetches and intersects on the machine) | to research | Needs A first, and whether to build it is just-dna-lite's call. |
+| **D. Scientific trust**: grading, evidence court, adversarial LLM referee | let go | "Not a judge of the science". What survives is narrower and already in 0.28: M5 says beside each check whether its agreement counts as independent evidence. |
+| **E. Transparency log and mirrors** | to research | Serves installers (an audit trail outside one box), but it is a quarter's work and nothing has asked for it. |
+| E, Grok 7: a peer ring for the snapshot caches | to research | Real (the two instances share one IP's upstream budget), operator-side, and no second operator exists yet. |
+| **F. Composition**: module dependencies, bundles | to research | Needs a manifest field upstream first; the format decides whether modules may depend on modules. |
+| **G. Agents as first-class publishers** (claim packets, feeds, a cooperative of agent seats) | let go | Authoring workflow, which lives in just-module-creator and the seats kit. The registry's part (the API, `/check`) already serves agents as ordinary clients. |
+| **H. One store for the family** (PGS scores, biomarker panels) | to strategy and research | The maintainer: "May become, but we considered pgs ids inside modules. Weigh pro and contra for module-level vs catalog-level". Weighed in `docs/TO_RESEARCH.md`. |
+| Population calibration on public genomes (Opus 4) | to research | A check the server runs itself on public data, so it fits the strategy; the open question is the cost of running lite's join on the box. |
+| Forks that do not burn the hash (Grok 4) | to research | A real tax (`409 duplicate_content` never frees), but identity is `content_signature`, which upstream owns. |
+| Row patches (Grok 8) | let go | Artifacts are served through a CDN and nobody has reported their size. The upload half is in 0.28 (publish recovery). |
+| Installs talk back (Argon 3) | let go | Sends genome-derived aggregates off the person's machine: the line this ecosystem holds. |
+| Compile to several format minors (Argon 4) | to research | Aimed at the lockstep, the repo's most-documented pain, but it means keeping several compilers live. |
+| Pangenome-native identity (Sol 6) | let go here | Identity and coordinates are the format's; it already carries VRS ids. |
+| Compress the prose into checks (Opus 8) | let go as a project | The practice already exists (guards name their incidents, denominator floors), done one rule at a time where it pays. A wholesale rewrite costs more than it buys. |
+| Public evidence page per gene and variant (Opus 6) | to research | Follows A; whether it is a page here or in just-dna-lite is open. |
+
+Two facts the dream found, still true on 2026-11-04, sent to the lead as defects: `docs/ROADMAP.md:248` lists
+Ed25519 signing as deferred although it shipped in 0.5.0, and the repository root carries `AGENTS.md`, which is
+just-dna-lite's guide ("the coding standards and practices for **just-dna-lite**"), not this repository's.
+

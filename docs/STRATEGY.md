@@ -43,3 +43,10 @@ The maintainer, 2026-11-04, picking three lines as written and rewording the fou
   It is not a runtime dependency annotation-time". Such a witness is an idea, not a plan, and whether to
   build it, and what it does when it cannot be reached, is downstream's to decide (the maintainer,
   2026-11-04).
+
+## What it may become
+
+- **A store for more than annotation modules, PGS scores first.** The maintainer, 2026-11-04: "May become,
+  but we considered pgs ids inside modules". Not decided. Modules already reference scores by `pgs_id`; the
+  case for and against the registry listing scoring files itself is weighed in `docs/TO_RESEARCH.md`, and
+  the leaning there is to keep scores inside modules and make them findable across the catalog.
