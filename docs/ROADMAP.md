@@ -819,6 +819,36 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   read nowhere, and `unresolved_hint` offers three remedies that are all wrong for it. Carry it beside
   `unresolved` and give the hint its fourth case. Sizing: **minor** (a response field). One to two hours.
 
+- **An online run's withheld indel gets the re-run remedy, not the authoring one** (**severity medium,
+  unattended, second of the 0.27.x patches after C4**, owner: lead; the liaison's **C16**, upstream RM268 in
+  v0.7.3). On an online run, a REST indel whose reference base could not be read is withheld: it lands in
+  `unresolved`, and the enricher says why only in a log line this server does not keep (`unanchored_rsids` reaches
+  `EnrichmentResult` in 0.8's RM272, M4). `unresolved_hint` checks only `unreachable_rsids`, so this case falls
+  through to "provision a fuller snapshot … or author chrom/start", sending a publisher after an outage. The
+  patch: on an online run, the third branch also says an indel may have been withheld because the sequence service
+  did not answer, and to re-publish once before changing anything; correct `pyproject.toml`'s 0.7.3 comment, which
+  says every 0.7.3 change reaches us through existing routes. The structural fix rides M4 in 0.28. Sizing:
+  **patch**. Twenty minutes.
+
+- **`/check` says where a PGx leg's declared use came from** (**severity low, unattended, with 0.28**, owner:
+  lead; the liaison's **C17**, upstream RM252 / S105 in 0.7.1). With no `declared_use`, the PGx legs read the
+  module's own recorded declaration, and `PgxResult.recorded_use` says so; nothing here reads it, and
+  `registry-client check` prints `declared_use=unstated` beside a CPIC leg that ran under the recorded one (upstream's
+  own S105 symptom, in our renderer). Carry the field in `models/api.py`, `console/src/types.ts` and both
+  renderers. Sizing: **minor** (a response field). An hour.
+
+- **Rederive an uploaded `resolution.csv` on `/check`?** (**severity low, waits until the 0.27.x patches are
+  merged; weigh first**, owner: lead; the liaison's **C18**, upstream RM268 / RM271). An uploaded pre-0.7.3
+  `resolution.csv` keeps rows 0.7.3 would now derive differently; `enrich(rederive=True)` re-asks every subject,
+  and `EnrichmentResult.rederived` reports what moved. Neither call passes it. Rederiving spends egress on an
+  unprovisioned box, so the question is whether it runs snapshot-only (free) or not at all. Two hours once
+  weighed.
+
+- **The ClinVar counts on `stats` say what they count** (**severity low, waits until upstream tags RM299**,
+  owner: lead; the liaison's **C19**). `models/api.py`'s `pathogenic_count`, `clinvar_count` and `benign_count`
+  carry no description in the OpenAPI schema, the misreading behind S123. Take upstream's descriptions once their
+  patch is tagged. Sizing: **patch**. Fifteen minutes.
+
 - ~~**Serve manifests compressed**~~ (the liaison's **C14**, upstream RM138: `carried` makes a manifest 1.84×
   raw, 1.06× gzipped). **Canceled: already true, 2026-11-04.** `api/app.py` adds no GZip middleware, but both
   boxes answer `content-encoding: gzip` with `vary: Accept-Encoding` (their proxy does it). The check, run

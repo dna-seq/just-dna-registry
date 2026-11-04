@@ -30,6 +30,7 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
    (a 32 GB tmpfs that ran out of inodes on 2026-11-04, 780k of them in kept pytest runs).
    H2 (httpx2 and httpcore2 loggers quiet): done, 015d3d0 on `release-0.27.x`, merged 087ce89.
 2. C4, derive `_ROW_MODELS` from upstream (breaks us quietly).
+2b. C16, the withheld-indel hint and the pyproject 0.7.3 comment (twenty minutes).
 3. C9, `enrich_verify_datasets`, default off (unmetered egress).
 4. C8's patch half: no early return in the identifier check, `write=False`, `check_pgs=False`, skips into `warnings`.
 5. The four small corrections: subtitle 240 (on **main**, not the patch branch: 240 is [Unreleased] material, 0.27.0 still says 120), `pacing.py` text (C6, no reconcile), C11 (module-level by code),
