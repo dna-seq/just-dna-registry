@@ -1058,7 +1058,8 @@
           ["gene loci not checked", lociCell, lociFlag],
           // C8: which tables were not read (absence is normal), and the PGS accessions this server cannot check yet.
           ["tables that would not parse", listOrNone(Object.entries(id.unreadable_tables).map(([t, why]) => `${t}: ${why}`)), Object.keys(id.unreadable_tables).length > 0],
-          ["PGS accessions", id.pgs_ids.length ? `${id.pgs_ids.length}${id.pgs_not_checked ? " (not checked)" : ""}` : "none", !!id.pgs_not_checked],
+          ["PGS accessions", id.pgs_ids.length ? `${id.pgs_ids.length}${id.pgs_not_checked ? ` (not checked: ${id.pgs_not_checked})` : ""}` : "none", !!id.pgs_not_checked],
+          ["stale PGS accessions", listOrNone(id.stale_pgs), n(id.stale_pgs) > 0],
           ["clean", yesNo(id.clean, "cannot say")]
         ],
         { warnings: id.warnings, unreachable: id.unreachable, retired: id.retired, skipped: id.skipped_offline ? "skipped: offline" : null }

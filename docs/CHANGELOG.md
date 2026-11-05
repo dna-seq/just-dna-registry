@@ -79,9 +79,10 @@ it beside `declared_use`.
 
 0.27.1 put these in the identifier check's `warnings`. They are now fields: `trait_tables_not_read` and
 `gene_tables_not_read` (each table not read, and why), `unreadable_tables` (the ones that exist and would
-not parse, which is when identifiers went unchecked), and `pgs_ids` with `pgs_not_checked`. The PGS
-Catalog leg still does not run on this server, because its client is outside the shared, rate-paced ones,
-and `pgs_not_checked` says so rather than leaving the accessions to read as current.
+not parse, which is when identifiers went unchecked), and `pgs_ids`. **The PGS Catalog accession check now
+runs**: `stale_pgs` names an accession the Catalog does not hold, and `pgs_not_checked` says why the leg
+could not ask, when it could not. Its requests share one rate-paced gate across the server, so concurrent
+checks do not multiply them.
 
 ### A card subtitle may be 240 characters
 

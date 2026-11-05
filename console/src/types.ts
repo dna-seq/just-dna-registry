@@ -354,6 +354,7 @@ export interface IdentifierCheck {
   gene_tables_not_read: Record<string, string>;
   unreadable_tables: Record<string, string>;
   pgs_ids: string[];
+  stale_pgs: string[];
   pgs_not_checked: string | null;
   skipped_offline: boolean;
   warnings: string[];

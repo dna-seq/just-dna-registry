@@ -1089,12 +1089,15 @@ class IdentifierCheck(BaseModel):
         default_factory=list,
         description="PGS Catalog accessions the module authors (read locally, no request)",
     )
+    stale_pgs: list[str] = Field(
+        default_factory=list,
+        description="Authored accessions the PGS Catalog does not hold as known (upstream RM163)",
+    )
     pgs_not_checked: str | None = Field(
         default=None,
         description=(
-            "Why those accessions were not checked, or null when they were. On this server the leg does "
-            "not run yet: its client is outside the shared, paced bundle (upstream's `LookupClients` has "
-            "no PGS field). Not checked is not current"
+            "Why the accessions were not checked (a verification skip: `unreachable`, `retired`, …), or "
+            "null when they were or none was authored. Not checked is not current"
         ),
     )
     skipped_offline: bool = False

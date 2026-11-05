@@ -1241,7 +1241,7 @@ def check(
                 fg=typer.colors.YELLOW,
             )
         if e.identifiers is not None:
-            for line in e.identifiers.stale_traits + e.identifiers.stale_genes:
+            for line in e.identifiers.stale_traits + e.identifiers.stale_genes + e.identifiers.stale_pgs:
                 typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
             # A gene naming a chromosome its own variant is not on (S24). Red where a stale symbol is
             # yellow: a retired name still describes the right locus, while this says one of the two

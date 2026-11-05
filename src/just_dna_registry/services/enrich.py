@@ -306,6 +306,31 @@ def shared_lookup_clients() -> Any:
     return _shared_clients
 
 
+_pgs_gate: Any = None
+
+
+def pgs_catalog_client() -> Any:
+    """A fresh PGS Catalog client for one check, paced by the process's one gate.
+
+    The pace is shared the way `shared_lookup_clients` shares it, so N concurrent checks wait on one
+    spacing rather than egressing N times as fast. The client itself is not shared: upstream calls its
+    score cache per-run state, so a process-wide client would serve one request's answers to the next
+    (the liaison's design, 2026-11-05; not a `LookupClients` field for that reason).
+
+    The interval is upstream's private `pgs._REQUEST_INTERVAL`, read here and nowhere else, because the
+    client keeps its gate private too and no public name exists. Upstream's to name; see the roadmap.
+    """
+    from just_dna_enricher import pgs
+    from just_dna_enricher.net import PacingGate
+
+    global _pgs_gate
+    if _pgs_gate is None:
+        with _clients_lock:
+            if _pgs_gate is None:
+                _pgs_gate = PacingGate(pgs._REQUEST_INTERVAL)
+    return pgs.PgsCatalogClient(gate=_pgs_gate)
+
+
 def close_lookup_clients() -> None:
     """Close and drop the shared bundle (application shutdown)."""
     global _shared_clients
@@ -1807,14 +1832,18 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
                       "nothing was asked. That is not the same as nothing being found."],
         )
 
+    # The roster read is local (no request). A client is built only for a module that authors an
+    # accession, so a module without one makes no PGS request and holds no connection.
+    pgs_ids = authored_identifiers(spec_dir, "pgs_id").ids
+    pgs_client = pgs_catalog_client() if pgs_ids else None
     try:
         report = check_identifiers(
             spec_dir=spec_dir,
             client=clients.ontology if clients else None,
-            # Its PGS Catalog leg (RM163) builds a client outside the shared bundle and outside
-            # `pacing.UPSTREAMS`, so it would egress unpaced and unmetered. Off until 0.28 runs it on
-            # a paced client; the skip is said in `warnings` below, never left as a silent clean.
-            check_pgs=False,
+            # The PGS Catalog leg (RM163) on a client paced by the process's one gate (0.28). Built per
+            # check and closed below, since its score cache is per-run state.
+            check_pgs=True,
+            pgs_client=pgs_client,
             # The default writes licence rows into the spec. On a dry run that is a scratch copy, and
             # a check that edits what it reports on is not reporting.
             write=False,
@@ -1839,6 +1868,9 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
     except IdentifierCheckError as exc:
         # The question was put and the answer is a problem — distinct from the arm above since 0.6.2.
         return IdentifierCheck(warnings=[str(exc)])
+    finally:
+        if pgs_client is not None:
+            pgs_client.close()
 
     unchecked = [
         f"{t.curie}: not an ontology this tier can resolve, so its currency is unknown"
@@ -1852,14 +1884,10 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         f"{name} was not read ({why}), so the identifiers it carries were not checked"
         for name, why in sorted(report.unreadable_tables.items())
     ]
-    # The roster read is local (no request): it is how the skip is said only to a module it touches.
-    pgs_ids = authored_identifiers(spec_dir, "pgs_id").ids
-    if pgs_ids:
-        skipped.append(
-            f"{len(pgs_ids)} PGS Catalog accession(s) not checked: this server does not run that "
-            f"leg yet, because its client is not one of the paced ones. That is not the same as "
-            f"the accessions being current."
-        )
+    # The PGS leg does not raise (upstream: an outage at the Catalog must not mark OLS4/HGNC
+    # unreachable), so its could-not-ask state arrives as `pgs_not_checked`, said here too.
+    if report.pgs_not_checked is not None:
+        skipped.append(f"PGS Catalog accessions not checked ({report.pgs_not_checked[0]}): {report.pgs_not_checked[1]}")
     return IdentifierCheck(
         warnings=skipped,
         # The fields the 0.27.1 warnings stood in for (C8's minor half), passed through as upstream
@@ -1868,10 +1896,8 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         gene_tables_not_read=dict(report.gene_tables_not_read),
         unreadable_tables=dict(report.unreadable_tables),
         pgs_ids=pgs_ids,
-        pgs_not_checked=(
-            "not run on this server: the PGS Catalog client is outside the shared, paced bundle"
-            if pgs_ids else None
-        ),
+        stale_pgs=[f"{p.pgs_id} is {p.state}" for p in report.stale_pgs],
+        pgs_not_checked=report.pgs_not_checked[0] if report.pgs_not_checked else None,
         checked_traits=len(report.traits) - len(unchecked),
         checked_genes=len(report.genes),
         stale_traits=[
@@ -1897,8 +1923,8 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         # this pass's own finding, and upstream folded it into their `clean` in 0.5.4 for the same
         # reason.
         clean=(
-            not (report.stale_traits or report.stale_genes or report.gene_loci)
-            if (report.traits or report.genes)
+            not (report.stale_traits or report.stale_genes or report.gene_loci or report.stale_pgs)
+            if (report.traits or report.genes or report.pgs)
             else None
         ),
     )

@@ -1156,3 +1156,19 @@ def test_a_retired_source_is_never_counted_as_an_outage(module: str, retired: st
     assert _could_not_ask("src", gone)[:2] == ([], ["src"])
     assert "upgrading the enricher" in _could_not_ask("src", gone)[2]
     assert _could_not_ask("src", getattr(types, outage)("503"))[:2] == (["src"], [])
+
+
+def test_each_check_gets_its_own_pgs_client_on_one_shared_gate() -> None:
+    """The PGS leg (0.28): the pace is the process's, the client is the check's. One gate, so concurrent
+    checks wait on one spacing; one client per check, because upstream calls its score cache per-run
+    state and a shared one would answer one request from another's lookups."""
+    from just_dna_registry.services import enrich as enrich_service
+
+    first, second = enrich_service.pgs_catalog_client(), enrich_service.pgs_catalog_client()
+    try:
+        assert first is not second
+        assert enrich_service._pgs_gate is not None
+        assert first._gate is second._gate is enrich_service._pgs_gate
+    finally:
+        first.close()
+        second.close()
