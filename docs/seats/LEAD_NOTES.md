@@ -47,7 +47,7 @@ The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, 
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
 
-Kit pin at v0.1.129 (2026-11-05); this session runs 0.1.128 until `/reload-plugins`.
+Kit pin at v0.1.130 (2026-11-05).
 
 **Pushes are the lead's** (LEAD.md grant, "all pushes"): push main and `release-0.27.x` after each landed block,
 peers' commits included. Holding them for desk #193 was wrong (the person, 2026-11-05: "why noone pushes?");
