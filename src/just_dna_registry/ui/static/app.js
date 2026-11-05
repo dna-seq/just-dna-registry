@@ -1081,7 +1081,7 @@
         ["sources consulted", p.sources.join(", ") || h("span", { class: "faint" }, "none")],
         ["skipped", listOrNone(p.skipped), n(p.skipped) > 0],
         ["routes", Object.entries(p.routes).map(([k, v]) => `${k}: ${v}`).join(", ") || "—"],
-        ["declared use", p.declared_use],
+        ["declared use", p.declared_use + (Object.keys(p.recorded_use).length ? ` (recorded in the module: ${Object.entries(p.recorded_use).map(([k, v]) => `${k}=${v}`).join(", ")})` : "")],
         ["PharmVar", p.pharmvar_enabled ? "enabled" : "off"],
         ["offline", p.offline ? "yes" : "no"]
       ],

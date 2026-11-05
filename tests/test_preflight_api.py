@@ -632,6 +632,26 @@ def test_an_authored_sources_row_is_not_a_source_the_registry_consulted(tmp_path
     assert pgx["routes"].get("cpic") is None
 
 
+def test_a_pgx_leg_says_when_it_ran_under_the_modules_recorded_use(tmp_path: Path) -> None:
+    """C17 (upstream S105/RM252): with no `declared_use` on the request, a PGx leg reads the module's own
+    recorded declaration. `declared_use` stays what the request said and `recorded_use` says what the leg
+    ran under, so a reader never sees a CPIC leg beside `unstated` with nothing to explain it."""
+    parts = [
+        ("files", ("module_spec.yaml", _YAML.encode(), "text/yaml")),
+        ("files", ("allele_function.csv",
+                   b"gene,allele,function_status\nCYP2C19,*2,no_function\n", "text/csv")),
+        ("files", ("sources.csv",
+                   b"source,layer,license,commercial_use,declared_use\n"
+                   b"cpic,annotation,CC BY-SA 4.0,false,non_commercial\n", "text/csv")),
+    ]
+    pgx = _app(tmp_path).post(
+        "/api/v1/modules/just-dna-seq/coronary/check",
+        params={"offline": True, "pgx": True}, files=parts, headers=_AUTH,
+    ).json()["enrichment"]["pgx"]
+    assert pgx["declared_use"] == "unstated"
+    assert pgx["recorded_use"] == {"cpic": "non_commercial"}
+
+
 def test_a_pharmvar_snapshot_enables_the_leg_without_a_key(tmp_path: Path) -> None:
     """The key stopped being the only switch when PharmVar got a cache (0.5.1 / RM38).
 

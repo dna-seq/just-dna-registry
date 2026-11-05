@@ -973,6 +973,15 @@ class PgxCheck(BaseModel):
                     "the full check with zero egress.",
     )
     declared_use: str = "unstated"
+    recorded_use: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "`source -> declaration` for each leg that ran under the module's own recorded declaration "
+            "(its licence table) because the request stated none (upstream S105/RM252). `declared_use` "
+            "is what the request said; this is what a leg actually ran under, so a CPIC leg beside "
+            "`declared_use: unstated` is not a contradiction. Empty when the request decided every leg"
+        ),
+    )
     pharmvar_enabled: bool = Field(
         default=False,
         description=(

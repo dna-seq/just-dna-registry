@@ -68,6 +68,13 @@ coordinate, neither of which helps. `allele_mismatches` now lists each such rsID
 offered, and says when the genotype fits on the other strand. A strict publish's refusal names this case
 first and tells the author to check the genotype, or write it on the reference's strand.
 
+### A PGx check says when a leg ran under the module's own declared use
+
+With no `declared_use` on the request, the PGx legs read the module's recorded declaration from its
+licence table, and the report printed `declared_use=unstated` beside a CPIC leg that had plainly run.
+`pgx.recorded_use` now names each leg that ran under the module's own declaration, and both renderers show
+it beside `declared_use`.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

@@ -335,6 +335,7 @@ export interface PgxCheck {
   retired: string[];
   offline: boolean;
   declared_use: string;
+  recorded_use: Record<string, string>;
   pharmvar_enabled: boolean;
 }
 

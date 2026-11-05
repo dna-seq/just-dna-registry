@@ -2045,6 +2045,8 @@ def _pgx_leg_nomenclature(
     check.skipped.extend(pgx_result.skipped_offline)
     check.warnings.extend(pgx_result.warnings)
     check.routes.update(pgx_result.routes)
+    # Where each leg's declaration came from, when not the request (C17, upstream S105/RM252).
+    check.recorded_use.update(pgx_result.recorded_use)
     # `routes`, not `rows`. `PgxResult.rows` is the *merged* `sources.csv` — the module's own
     # authored rows plus whatever this run emitted, existing-wins — so reading sources off it
     # reported a source the module happened to declare as one the registry had consulted. A

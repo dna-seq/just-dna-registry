@@ -1267,8 +1267,12 @@ def check(
                 )
             for line in e.pgx.skipped:
                 typer.echo(f"  · {line}")
+            # C17: a leg that ran under the module's recorded declaration says so, instead of
+            # printing `unstated` beside a CPIC leg that plainly ran (upstream's own S105 symptom).
+            recorded = ", ".join(f"{src}={use}" for src, use in sorted(e.pgx.recorded_use.items()))
+            use = e.pgx.declared_use + (f" (recorded in the module: {recorded})" if recorded else "")
             typer.echo(
-                f"  PGx: declared_use={e.pgx.declared_use}"
+                f"  PGx: declared_use={use}"
                 f"  pharmvar_key={'yes' if e.pgx.pharmvar_enabled else 'no'}"
                 f"  consulted: {', '.join(e.pgx.sources) or 'nothing'}"
             )
