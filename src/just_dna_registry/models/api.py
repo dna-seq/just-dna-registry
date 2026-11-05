@@ -316,7 +316,7 @@ class ModuleCard(BaseModel):
         default=None,
         description=(
             "The registry-held **override** of the subtitle a listing shows (format 0.7, RM133), at "
-            "most 120 characters. `None` means the module has no override and a renderer shows "
+            "most 240 characters. `None` means the module has no override and a renderer shows "
             "`description` unchanged — which is not the same as an override set to the empty string, "
             "a deliberate blank. Held beside the module rather than in the spec so that amending it "
             "leaves `module_spec.yaml`'s bytes, and therefore `manifest.inputs`, `content_signature` "

@@ -480,7 +480,7 @@ def amend_logo(
 def set_short_description(
     namespace: str,
     name: str,
-    text: str | None = typer.Argument(None, help="The subtitle, at most 120 characters, one line"),
+    text: str | None = typer.Argument(None, help="The subtitle, at most 240 characters, one line"),
     clear: bool = typer.Option(
         False, "--clear", help="Remove the override so the card falls back to `module.description`"
     ),

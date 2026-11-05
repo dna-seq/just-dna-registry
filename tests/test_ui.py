@@ -35,6 +35,7 @@ from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
 from just_dna_registry.groups import GroupInfo
 from just_dna_registry.models import api as api_models
+from just_dna_registry.services import publish as publish_service
 from just_dna_registry.services.publish import SHORT_DESCRIPTION_MAX_CHARS
 from just_dna_registry.ui import standalone
 from just_dna_registry.ui.assets import ASSET_NAMES, STATIC_DIR, index_html
@@ -244,6 +245,22 @@ def test_the_subtitle_input_allows_what_the_server_accepts() -> None:
     assert lengths, "the subtitle input lost its maxlength, or the pattern no longer finds it"
     assert [int(n) for n in lengths] == [SHORT_DESCRIPTION_MAX_CHARS]
 
+
+
+def test_every_stated_subtitle_limit_is_the_servers() -> None:
+    """The SDK docstring, the CLI help, the route's body model and the response model each state the
+    subtitle bound in prose, and through 0.27.0 all four still said 120 after the server moved to 240.
+    Every "at most N characters" / "N characters and one line" in them must be the constant."""
+    package = Path(publish_service.__file__).parents[1]
+    sites = ["client.py", "client_cli.py", "api/routers/publish.py", "models/api.py"]
+    found = []
+    for site in sites:
+        text = (package / site).read_text()
+        for pair in re.findall(r"most (\d+) characters|(\d+) characters and one line", text):
+            found += [(site, int(n)) for n in pair if n]
+    # Floor: one statement per site, so a reworded sentence cannot pass by vanishing.
+    assert {site for site, _ in found} == set(sites), found
+    assert {n for _, n in found} == {SHORT_DESCRIPTION_MAX_CHARS}, found
 
 # ── the committed bundle is built from the sources ────────────────────────────────────────────────
 
