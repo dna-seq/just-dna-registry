@@ -32,7 +32,11 @@ reset").
 
 - **Dependency bump** set up 2026-11-04 on kit v0.1.127: `[seat.liaison.watch.nightly]` (nightly `deps`, weekly on
   this seat's day, while the person is away) and the grant in `LIAISON.md`. Run it as the kit's role says; the
-  full suite takes ~25 min, so run it detached. Not yet run.
+  full suite takes ~25 min, so run it detached. **First run 2026-11-05**: `bb42dbd` on main (pushed), polars 2.1 and
+  duckdb 2.0 held back on `deps/majors-2026-11-05` (`4c8fd55`), handed to the lead: polars with 0.28, duckdb after
+  upstream RM344. Until the lead merges it, each weekly bump keeps both out (`uv lock -P` over every other mover).
+  The worktree needs the untracked `.env` (a symlink) or `test_caches_api` fails for want of a lane. Worktrees
+  `/data/sources/just-dna-registry-deps` (branch `deps/2026-11-05`, no commits) and `-majors` are mine.
 - **At the 0.8 cut, check three items the compiler's pm named that the map has no row for** (via our pm,
   2026-11-04): RM342's `verify` reporting `toolchain_differs`, against our client's `verify_manifest` path with
   polars-1 consumers in the field; RM304's per-row VRS version and manifest pin; RM347/RM353's publisher
