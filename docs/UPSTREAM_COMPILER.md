@@ -333,7 +333,10 @@ lock (1.44.2, 1.5.5, 2.3.3).
   diagnosed as another assembly's", `unresolved_positions` = "have unresolved genomic positions after
   resolution". A frozen fragment, like `UNJOINABLE_PHRASE`, so matching it is the documented interim. Both
   phrases are already in the installed 0.7.2 compiler. Closes when RM378 ships and our pin reaches it.
-  Last checked: 2026-11-04.
+  **RM378 parked** after the 0.8.0 cut (their `6934fd3e`, 2026-11-05), no longer in 0.9: RM377's phrases stay our
+  way to tell the refusals apart, and their triage unparks RM378 if we need to tell apart a refusal those two do not
+  cover (RM382's third strict arm does not need it: M14 reads `allele_mismatches`, not the sentence).
+  Last checked: 2026-11-05.
 
 - **S130** (filed 2026-11-05, appended to the compiler checkout's inbox, uncommitted; its triage told): the
   Ensembl lane's repository (`just-dna-seq/ensembl_variations_split`) has no public name on `0.8`: the lane's
