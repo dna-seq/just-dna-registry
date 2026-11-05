@@ -61,8 +61,8 @@ on branch `0.28` (worktree `/data/sources/just-dna-registry.wt/0.28`, pushed), t
 at rev 5b1b73b8 by git source in pyproject (removed and floored `>=0.8.0` before merge; move the rev when the
 compiler's lead says §2 changed). Not merged, not shipped before the floors are on PyPI.
 Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
-(634038c). Next: M8 (Ensembl repo default), M9 (validate switches), M4+M10 (+ C8 minor, C10, C17 per the
-roadmap), M11 check. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
+(634038c), M8 (59ddcd9, 2d06f57), M9 (c1706e3), M4 (158e239), M10 (84d4a6c); main merged in (71bf1a7).
+Next: C10, C17, C8's minor half (same model and renderers), then M11 check. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
 
