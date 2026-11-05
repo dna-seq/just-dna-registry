@@ -46,6 +46,14 @@ Catalog which release they publish now through clients outside this server's sha
 ledger: egress nothing metered. `REGISTRY_ENRICH_VERIFY_DATASETS` (default `false`) now decides it, and with
 it off the verification record says the check was not requested. Set it to `true` for the old behaviour.
 
+### `/check?identifiers=true` checks a module that has no `variants.csv`
+
+A PGx or binning module was told there was nothing to check, while the enricher reads `gene` and
+`trait_efo_id` off every authored table that carries them. The check now runs on every module. Two parts of
+the pass are held back and said so in its `warnings`: the PGS Catalog accession check, whose client this
+server does not pace yet, and any table that exists but would not parse. The pass no longer writes into the
+spec it is checking. Fields for both arrive in 0.28.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own

@@ -895,6 +895,49 @@ def test_the_identifier_pass_reports_nothing_asked_offline(tmp_path: Path) -> No
     assert "nothing was asked" in " ".join(ident["warnings"])
 
 
+def test_the_identifier_pass_reads_a_module_with_no_variants_table(tmp_path: Path) -> None:
+    """C8: since enricher 0.7 (RM155/RM156) the pass reads `gene` and `trait_efo_id` off every
+    authored table, so a PGx module has identifiers to check. Through 0.27.0 the adapter answered
+    "nothing to check" before asking.
+
+    The same run carries a `pgs.csv`, whose Catalog leg this server does not run (its client is
+    unpaced): the skip has to be said, and the tripwire proves the leg really did not egress. And the
+    pass is handed `write=False`, so the spec it reports on comes back unchanged.
+    """
+    from types import SimpleNamespace
+
+    from just_dna_enricher.identifiers import GeneStatus, TraitStatus
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _Ontology:
+        def trait(self, curie: str) -> TraitStatus:
+            return TraitStatus(curie=curie, state="live")
+
+        def gene(self, symbol: str) -> GeneStatus:
+            return GeneStatus(symbol=symbol, state="retired", current="CYP2C19P1")
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "haplotypes.csv").write_text(
+        "haplotype_name,allele,rsid,gene\nCYP2C19*2,A,rs4244285,CYP2C19\n"
+    )
+    (spec / "pgs.csv").write_text("pgs_id,trait_efo_id\nPGS000001,EFO_0001645\n")
+    before = sorted(p.name for p in spec.iterdir())
+
+    result = enrich_service._identifiers_check(
+        spec, offline=False, clients=SimpleNamespace(ontology=_Ontology())
+    )
+
+    assert result.checked_genes == 1
+    assert result.stale_genes == ["CYP2C19 is retired — HGNC now approves CYP2C19P1"]
+    assert result.clean is False
+    warnings = " ".join(result.warnings)
+    assert "nothing to check" not in warnings
+    assert "1 PGS Catalog accession(s) not checked" in warnings
+    assert sorted(p.name for p in spec.iterdir()) == before  # nothing written beside the spec
+
+
 def test_the_identifier_pass_grades_traits_and_genes_without_gating_publish(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
