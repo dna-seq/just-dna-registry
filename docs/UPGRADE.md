@@ -1,5 +1,18 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.27.1 — no dependency moves (operator note — no sweep)
+
+Nothing upstream moves and the catalog needs nothing; upgrade with `uv sync` from the tag. Two behaviours
+an operator may notice:
+
+- **The dataset-release probe is off by default.** Publishes and `/check` no longer ask ClinVar and the PGS
+  Catalog which release they publish now, because those requests went outside the pace ledger. The
+  verification record then says `dataset_currency: not_requested`. Set `REGISTRY_ENRICH_VERIFY_DATASETS=true`
+  to restore the old behaviour.
+- **`registry upgrade` acts on fewer modules.** A declared correction re-baselines only modules carrying the
+  manifest blocks it requires. The next sweep after 0.27.1 may therefore report less to do than one before
+  it would have, which is the intended change.
+
 ## 0.27.0 — upstream v0.7.3: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (operator note — no sweep)
 
 **All three tiers move by a patch, and the catalog needs nothing.** Upstream's sweep gate moved no
