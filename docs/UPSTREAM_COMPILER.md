@@ -263,6 +263,14 @@ upstream's `0.8`, unmerged until the floors are on PyPI.
   *Where:* `services/upgrade.py:598` (the comment's premise, "carrying them makes the re-publish cheap and deterministic", is what § 1.30 makes unsafe); the publish path's `enrich()` calls, which pass no `rederive`; `docs/UPGRADE.md`.
   *Fix and cost:* A decision for the lead before M3 runs: drop the carried `resolution.csv` (re-resolves from the snapshot, egress-free on a provisioned box, but moves resolutions as data, § 1.29) or rederive (online re-asks every source; offline makes every indel verdict `undecided`). `upgrade --dry-run` must surface the refusal per module either way. Half a day with the choice.
   *Still moving:* Added 2026-11-05 from guide § 2 step 5 and § 1.30.
+  *Upstream's recommendation* (the compiler's lead, 2026-11-05): **rederive**, not a plain re-enrich and not a
+  drop. `enrich --rederive` yields a table byte-identical to delete-and-re-enrich, so the choice above is not
+  between two tables: rederive keeps the per-subject drift report (respelled / moved / undecided, RM375) and
+  stamps `source_release`, which the drop loses. Run it **online** for any module with indels, since offline
+  cannot left-align (RM376), which collides with the registry's offline-by-default publish
+  (`config.py:110` `enrich_offline = True`): the sweep needs an online enrich setting for its run, and its
+  egress budget. Measured upstream on their 14 examples: `content_signature` held on all, `artifact.digest`
+  moved on all. And **sweep after RM381** (per-ALT trim of multi-ALT indels, still landing), or rederive again.
 
 Also new, levers only: RM362's `compiler.subjects.module_subjects` is upstream's one answer to "which genes and loci is this module about" (for the variant catalog after 0.28); RM363's `just_dna_format.spelling` is one comparison rule per kind of value (gene, drug, DOI, contig), worth reading before the registry compares any of those itself.
 
