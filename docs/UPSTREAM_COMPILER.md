@@ -342,7 +342,9 @@ lock (1.44.2, 1.5.5, 2.3.3).
 - **S131** (filed 2026-11-05, appended to the compiler checkout's inbox, uncommitted): the PGS Catalog
   client's pace has no public name (`pgs._REQUEST_INTERVAL`, `self._gate`, both private), so the lead's C8 leg
   on 0.28 (`ffe263d`: one `PacingGate` per process, a fresh `PgsCatalogClient(gate=...)` per check) reads the
-  private interval. Asks for (a) a public interval or (b) a public `gate`. Not answered yet.
+  private interval. Asks for (a) a public interval or (b) a public `gate`. **Answered 2026-11-05**: filed as
+  RM396 (a minor their pm places, proposed 0.9), a public gate and interval on six clients, the private names kept
+  as aliases; no patch renames `pgs._REQUEST_INTERVAL`, so the 0.28 read stays until RM396 ships, then moves.
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
