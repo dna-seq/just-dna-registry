@@ -34,7 +34,7 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 3. C9: **done** on `release-0.27.x`, merged into main.
 4. C8's patch half: **done** on `release-0.27.x`, merged into main.
 5. The four small corrections: **all done** (subtitle 240, C6, C11, C12). (`gather_pmids` over every citing table).
-6. C1, then C2.
+6. C1 **done**; then C2.
 7. C5 + C13 + C15, reading what upstream made public.
 
 The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, C10, the column-release

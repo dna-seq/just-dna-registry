@@ -756,7 +756,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   (0.8 adds the public `AUTHORED_NON_KIND_TABLES`), with a denominator floor in the test. Sizing: **patch**.
   About an hour. Format 0.8 adds six more tables (the liaison's M2), which this makes free.
 
-- **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
+- ✅ **done** (in 0.27.1). **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
   motivated by the liaison's **C1** in `docs/UPSTREAM_COMPILER.md`, upstream S90 / RM201, shipped in format
   0.7.0). `DeclaredChange` gained `requires`: the manifest paths a module must carry for the change to reach
   it, `()` for every module, `None` for unknown. `services/rebuild.declared_movement` reads `target`, `item`
