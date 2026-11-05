@@ -7,8 +7,8 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.162.0`** read (2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.141.1`
-(`uv.lock`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.7.0 under it.
+**`0.162.0`** read (2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.0`
+(`uv.lock`, the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
 
 ## Backlog
 
@@ -44,6 +44,8 @@ From the imports under `src/` (an AST walk, 2026-11-04).
   either way. Reading finds no break. What reading cannot settle is whether an *empty* `title=` now arrives as
   `None` rather than `""`; the upload and publish tests answer that on the first `uv lock --upgrade`, which is
   the weekly bump's job.
+  **Measured 2026-11-05** (`bb42dbd`): the full suite passes on 0.162.0 (612 passed), upload and publish tests
+  included, and no warning from fastapi or starlette. Closed.
 - Read, nothing for us: 0.143 OpenTelemetry exporter opt-in (we set none up), 0.145 `openapi_prefix` and 0.146
   `root_path` on `FastAPI(...)` (neither used), 0.155 `**extra` on request parameters (none passed), 0.160 a
   parameter model's `extra` (no parameter models here); the features and fixes of 0.152 to 0.161.
