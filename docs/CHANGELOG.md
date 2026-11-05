@@ -69,6 +69,13 @@ The PMID check read `studies.csv` only, so a PGx or binning module's own citatio
 using the compiler's own list of them. A citing table that will not parse is reported as a failed PMID
 check for that version, not as a version with no PMIDs.
 
+### `registry upgrade` re-baselines a module only for corrections that can reach it
+
+A release record declares what each release corrected, and since format 0.7 it also says which modules a
+correction can reach: the manifest blocks a module must carry for the change to apply. `registry upgrade`
+now reads that, so a correction to `gene_metrics` no longer re-publishes a module that has no
+`gene_metrics` block. A correction whose reach upstream does not state still applies to every module.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own

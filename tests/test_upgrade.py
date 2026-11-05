@@ -1143,3 +1143,23 @@ def test_a_patch_interval_acts_only_on_a_declared_correction() -> None:
     assert verdict.state == REBUILD_YES
     assert {c.target for c in verdict.declared} == {c.target for c in interval.corrections}
     assert verdict.drift == [], "nothing was measured on an artifact here; the record is the witness"
+
+def test_a_declared_correction_reaches_only_a_module_that_carries_what_it_requires() -> None:
+    """C1 (S90 / upstream RM201): over 0.6.6 -> 0.7.0 every declared correction requires `gene_validity`
+    or `gene_metrics`, so a module carrying neither block gets no correction and the record alone no
+    longer re-baselines it. A module carrying both keeps all of them, and no manifest keeps today's
+    behaviour (every change kept)."""
+    everything = declared_movement("0.6.6", "0.7.0")
+    if not everything.complete:  # pragma: no cover — the record covers this pair by construction
+        pytest.skip("this format release carries no record for 0.6.6 -> 0.7.0")
+    # The haystack: the interval declares corrections, and each states a reach.
+    assert everything.corrections
+    assert all(c.requires for c in everything.corrections)
+
+    bare = ModuleManifest.model_construct(gene_validity=None, gene_metrics=None)
+    assert declared_movement("0.6.6", "0.7.0", bare).corrections == []
+    assert declared_movement("0.6.6", "0.7.0", bare).acts_by_default is False
+
+    both = ModuleManifest.model_construct(gene_validity=object(), gene_metrics=object())
+    assert declared_movement("0.6.6", "0.7.0", both).corrections == everything.corrections
+
