@@ -1021,6 +1021,10 @@ def test_the_identifier_pass_reads_a_module_with_no_variants_table(tmp_path: Pat
     warnings = " ".join(result.warnings)
     assert "nothing to check" not in warnings
     assert "1 PGS Catalog accession(s) not checked" in warnings
+    # C8's minor half: the same facts as fields, so a client need not parse the warning.
+    assert result.pgs_ids == ["PGS000001"]
+    assert result.pgs_not_checked
+    assert set(result.gene_tables_not_read) | set(result.trait_tables_not_read)  # the denominators exist
     assert sorted(p.name for p in spec.iterdir()) == before  # nothing written beside the spec
 
 

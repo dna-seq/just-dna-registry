@@ -1862,6 +1862,16 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         )
     return IdentifierCheck(
         warnings=skipped,
+        # The fields the 0.27.1 warnings stood in for (C8's minor half), passed through as upstream
+        # wrote them; `warnings` keeps the sentence for a reader of the prose.
+        trait_tables_not_read=dict(report.trait_tables_not_read),
+        gene_tables_not_read=dict(report.gene_tables_not_read),
+        unreadable_tables=dict(report.unreadable_tables),
+        pgs_ids=pgs_ids,
+        pgs_not_checked=(
+            "not run on this server: the PGS Catalog client is outside the shared, paced bundle"
+            if pgs_ids else None
+        ),
         checked_traits=len(report.traits) - len(unchecked),
         checked_genes=len(report.genes),
         stale_traits=[

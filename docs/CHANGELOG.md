@@ -75,6 +75,14 @@ licence table, and the report printed `declared_use=unstated` beside a CPIC leg 
 `pgx.recorded_use` now names each leg that ran under the module's own declaration, and both renderers show
 it beside `declared_use`.
 
+### The identifier check reports which tables it read and which PGS accessions it skipped
+
+0.27.1 put these in the identifier check's `warnings`. They are now fields: `trait_tables_not_read` and
+`gene_tables_not_read` (each table not read, and why), `unreadable_tables` (the ones that exist and would
+not parse, which is when identifiers went unchecked), and `pgs_ids` with `pgs_not_checked`. The PGS
+Catalog leg still does not run on this server, because its client is outside the shared, rate-paced ones,
+and `pgs_not_checked` says so rather than leaving the accessions to read as current.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

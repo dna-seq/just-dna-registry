@@ -1067,6 +1067,36 @@ class IdentifierCheck(BaseModel):
             "`gene_loci`, so a gene/variant contradiction makes it false"
         ),
     )
+    trait_tables_not_read: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Tables that carry `trait_efo_id` and were not read, with why (upstream S86). An absent "
+            "optional table is the normal case (`not_present`); any other reason means traits the module "
+            "carries went unchecked. Read this before believing `checked_traits`"
+        ),
+    )
+    gene_tables_not_read: dict[str, str] = Field(
+        default_factory=dict, description="The same pair for `gene`: tables not read, and why"
+    )
+    unreadable_tables: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Tables that exist and would not parse, across both columns: the actionable subset of the two "
+            "maps above (upstream's `IdentifierReport.unreadable_tables`, which leaves out absent tables)"
+        ),
+    )
+    pgs_ids: list[str] = Field(
+        default_factory=list,
+        description="PGS Catalog accessions the module authors (read locally, no request)",
+    )
+    pgs_not_checked: str | None = Field(
+        default=None,
+        description=(
+            "Why those accessions were not checked, or null when they were. On this server the leg does "
+            "not run yet: its client is outside the shared, paced bundle (upstream's `LookupClients` has "
+            "no PGS field). Not checked is not current"
+        ),
+    )
     skipped_offline: bool = False
     warnings: list[str] = Field(
         default_factory=list,

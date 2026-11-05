@@ -350,6 +350,11 @@ export interface IdentifierCheck {
   unreachable: string[];
   retired: string[];
   clean: boolean | null;
+  trait_tables_not_read: Record<string, string>;
+  gene_tables_not_read: Record<string, string>;
+  unreadable_tables: Record<string, string>;
+  pgs_ids: string[];
+  pgs_not_checked: string | null;
   skipped_offline: boolean;
   warnings: string[];
 }
