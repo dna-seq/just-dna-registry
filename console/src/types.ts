@@ -348,11 +348,36 @@ export interface IdentifierCheck {
   warnings: string[];
 }
 
+export interface PlacementSummary {
+  witnesses: string[];
+  compared: number;
+  placed: number;
+  contested: string[];
+  withheld: string[];
+  undecided: string[];
+  single_witness: string[];
+  not_asked: string[];
+  not_checked: string | null;
+  notes: string[];
+}
+
+export interface SpellingSummary {
+  checked: number;
+  unknown: number;
+  respelled: string[];
+  findings: string[];
+}
+
 export interface EnrichmentReport {
   mode: string;
   offline: boolean;
   unresolved: string[];
   unreachable_rsids: string[];
+  unanchored_rsids: string[];
+  non_nucleotide_rsids: string[];
+  reference_rejected_loci: string[];
+  placement: PlacementSummary | null;
+  spelling: SpellingSummary | null;
   ref_mismatches: RefMismatchEntry[];
   clin_sig_conflicts: ClinSigConflictEntry[];
   clin_sig_not_checked: string | null;

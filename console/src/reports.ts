@@ -93,9 +93,33 @@ export function enrichmentView(e: EnrichmentReport): HTMLDivElement {
     ["unresolved", listOrNone(e.unresolved), n(e.unresolved) > 0],
     // A key with no position says nothing about whether anybody asked: an unanswered request is not an absence.
     ["unreachable (never answered)", listOrNone(e.unreachable_rsids), n(e.unreachable_rsids) > 0],
+    // Format 0.8: answered, but withheld. Only the first is transient; the other two are answers a re-run repeats.
+    ["anchor base not read (re-run)", listOrNone(e.unanchored_rsids), n(e.unanchored_rsids) > 0],
+    ["no variation at that rsID", listOrNone(e.non_nucleotide_rsids), n(e.non_nucleotide_rsids) > 0],
+    ["rejected by the reference", listOrNone(e.reference_rejected_loci), n(e.reference_rejected_loci) > 0],
     ["stale rsIDs", listOrNone(e.stale_rsids.map((s) => `${s.rsid} ${s.state}${s.current ? "→" + s.current : ""}`)), n(e.stale_rsids) > 0],
     ["PAR twins dropped", listOrNone(e.par_twins_dropped)],
     ["ref mismatches", listOrNone(e.ref_mismatches.map((r) => `${r.variant_key} claimed ${r.claimed} actual ${r.actual}`)), n(e.ref_mismatches) > 0],
+  ]));
+
+  const pl = e.placement;
+  if (pl) {
+    const [plCell, plFlag] = notChecked(pl.not_checked);
+    out.append(passBox("Indel placement (second authority)", [
+      ["witnesses", pl.witnesses.join(", ") || h("span", { class: "faint" }, "none loaded")],
+      ["compared", `${fmtInt(pl.compared)} of ${fmtInt(pl.placed)}`, pl.placed > 0 && pl.compared === 0],
+      ["contested", listOrNone(pl.contested), n(pl.contested) > 0],
+      ["withheld (not written)", listOrNone(pl.withheld), n(pl.withheld) > 0],
+      ["undecided", listOrNone(pl.undecided), n(pl.undecided) > 0],
+      ["one witness only", listOrNone(pl.single_witness)],
+      ["not asked", listOrNone(pl.not_asked), n(pl.not_asked) > 0],
+      ["not checked", plCell, plFlag],
+    ], { warnings: pl.notes }));
+  }
+  const sp = e.spelling;
+  if (sp) out.append(passBox("Indel spelling", [
+    ["judged", fmtInt(sp.checked)], ["could not settle", fmtInt(sp.unknown), sp.unknown > 0],
+    ["fills left-aligned", listOrNone(sp.respelled)], ["authored spelling differs", listOrNone(sp.findings), n(sp.findings) > 0],
   ]));
 
   const vrs = e.vrs;

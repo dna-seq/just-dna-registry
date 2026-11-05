@@ -778,6 +778,22 @@ def test_an_ensembl_that_never_answered_is_unchecked_rather_than_absent(
     assert any("Re-run" in note for note in e["notes"])
 
 
+def test_an_offline_check_carries_the_placement_and_spelling_passes(tmp_path: Path) -> None:
+    """M4 (format 0.8): the real enricher's placement comparison and spelling pass reach the report,
+    built from upstream's own objects rather than stubs. An empty `contested` must never be read alone:
+    with nothing compared, `not_checked` says why, so "no disagreement" and "never compared" stay apart."""
+    code, body = _check(_app(tmp_path), offline=True)
+    assert code == 200, body
+    e = body["enrichment"]
+    placement, spelling = e["placement"], e["spelling"]
+    assert placement is not None and spelling is not None
+    assert placement["compared"] == 0 and placement["contested"] == []
+    assert placement["not_checked"], "nothing was compared, and the report has to say why"
+    assert spelling["checked"] >= 1  # the fixture authors one coordinate; the pass judged it
+    for withheld in ("unanchored_rsids", "non_nucleotide_rsids", "reference_rejected_loci"):
+        assert e[withheld] == [], withheld
+
+
 def test_an_offline_run_reports_no_unreachable_rsids(tmp_path: Path) -> None:
     """Nothing was asked, so nothing can be unanswered — the field is empty for the same reason
     `unresolved` is full. Pinned because "empty" here must mean "no failed request", never "no failure

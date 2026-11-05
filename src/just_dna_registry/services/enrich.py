@@ -49,8 +49,10 @@ from just_dna_registry.models.api import (
     IdentifierCheck,
     LiteratureCheck,
     PgxCheck,
+    PlacementSummary,
     RefMismatchEntry,
     SpecStats,
+    SpellingSummary,
     StaleRsidEntry,
     ValidationReport,
     VersionRef,
@@ -214,6 +216,13 @@ class EnrichOutcome:
     #: the advice for "Ensembl 5xx'd" have nothing in common, and the second is a re-run rather than a
     #: fix. Always empty offline.
     unreachable_rsids: list[str] = field(default_factory=list)
+    #: Format 0.8's three answered-but-withheld states (upstream RM272) and the placement comparison's
+    #: withheld rsIDs (RM267). Each is a subset of `unresolved`, and `unresolved_hint` branches on them:
+    #: only `unanchored_rsids` is transient, so only it earns "re-run".
+    unanchored_rsids: list[str] = field(default_factory=list)
+    non_nucleotide_rsids: list[str] = field(default_factory=list)
+    reference_rejected_loci: list[str] = field(default_factory=list)
+    placement_withheld: list[str] = field(default_factory=list)
     #: The enricher's own `MintResult` (0.5.1 / RM40), or `None` when minting did not run — which is
     #: not the same as a coverage of zero, and the reason this is not two integers.
     vrs: Any = None
@@ -938,6 +947,8 @@ def enrich_spec(
         fully_resolved=result.fully_resolved,
         unresolved=list(result.unresolved),
         unreachable_rsids=list(result.unreachable_rsids),
+        **_withheld_states(result),
+        placement_withheld=_placement_withheld(result),
         sources=list(result.sources),
         notes=_render_notes(result),
         vrs=result.vrs,
@@ -958,6 +969,52 @@ def enrich_spec(
             ),
         )
     return outcome
+
+
+def _withheld_states(result: Any) -> dict[str, list[str]]:
+    """Format 0.8's three answered-but-withheld lists (upstream RM272), disjoint subsets of `unresolved`."""
+    return {
+        "unanchored_rsids": list(result.unanchored_rsids),
+        "non_nucleotide_rsids": list(result.non_nucleotide_rsids),
+        "reference_rejected_loci": list(result.reference_rejected_loci),
+    }
+
+
+def _placement_withheld(result: Any) -> list[str]:
+    """rsIDs the placement comparison withheld whole (RM267). `enrich()` always sets `placement`."""
+    return list(result.placement.withheld) if result.placement is not None else []
+
+
+def _placement_summary(result: Any) -> PlacementSummary | None:
+    """The placement comparison (RM267), passed through; `None` only for a hand-built result."""
+    placement = result.placement
+    if placement is None:
+        return None
+    return PlacementSummary(
+        witnesses=list(placement.witnesses),
+        compared=placement.subjects,
+        placed=placement.placed,
+        contested=list(placement.contested),
+        withheld=list(placement.withheld),
+        undecided=list(placement.undecided),
+        single_witness=list(placement.single_witness),
+        not_asked=list(placement.not_asked),
+        not_checked=placement.not_checked,
+        notes=list(placement.sentences()),
+    )
+
+
+def _spelling_summary(result: Any) -> SpellingSummary | None:
+    """The spelling pass (RM270), passed through; `None` only for a hand-built result."""
+    spelling = result.spelling
+    if spelling is None:
+        return None
+    return SpellingSummary(
+        checked=spelling.checked,
+        unknown=spelling.unknown,
+        respelled=list(spelling.respelled),
+        findings=list(spelling.findings),
+    )
 
 
 def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
@@ -998,17 +1055,32 @@ def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
         f"(`registry warm-caches --apply`), allow live lookups "
         f"(REGISTRY_ENRICH_OFFLINE=false), or author chrom/start in variants.csv."
     )
-    if outcome.offline:
+    # Format 0.8 says why a key the sources *did* answer was withheld (RM272, RM267), and the remedy
+    # differs by case. Only `unanchored` is transient; the other three are answers, and a re-run gets
+    # the same one, so none of them may say re-run (upstream's guide, the registry block, item 5).
+    # They replace the 0.27.1 online sentence, which had to guess at the first case from a log line.
+    cases = [
+        (outcome.unanchored_rsids,
+         "the sequence service did not return the indel's anchor base, so no locus was written. "
+         "Re-publish once before changing anything: this one is transient"),
+        (outcome.placement_withheld,
+         "two authorities place the indel as different events, so neither placement was written. A "
+         "re-run asks the same sources; author chrom/start for the event you mean"),
+        (outcome.non_nucleotide_rsids,
+         "every allele the sources give is not a base: dbSNP records no variation there. Check the "
+         "rsID, or author the coordinate"),
+        (outcome.reference_rejected_loci,
+         "the reference shows the indel at that locus is a different event of the same size from the "
+         "authored genotype. Check the genotype's spelling against the locus"),
+    ]
+    said = [
+        f"{len(keys)} ({', '.join(keys[:3])}{' …' if len(keys) > 3 else ''}): {advice}"
+        for keys, advice in cases
+        if keys
+    ]
+    if not said:
         return hint
-    # Enricher 0.7.3 (RM268) withholds a REST indel whose reference base the sequence service did not
-    # return, and says so only in a log line this server does not keep: until 0.8's `unanchored_rsids`
-    # reaches `EnrichOutcome` (M4), an online run cannot tell that outage from a missing locus. So the
-    # online arm names it and puts the re-run first, rather than sending a publisher after an outage.
-    return (
-        f"{hint} On an online run an indel is also withheld when the sequence service did not "
-        f"return its reference base, which is an upstream failure rather than a defect in the "
-        f"module: re-publish once before changing anything."
-    )
+    return f"{hint} Of these, the sources answered but the answer was withheld for " + "; ".join(said) + "."
 
 
 #: The phrase of the one strict-only refusal that is about the module rather than its rows: the recorded
@@ -1456,6 +1528,9 @@ def _run_enrichment_passes(
         offline=offline,
         unresolved=list(result.unresolved),
         unreachable_rsids=list(result.unreachable_rsids),
+        **_withheld_states(result),
+        placement=_placement_summary(result),
+        spelling=_spelling_summary(result),
         sources=list(result.sources),
         ref_mismatches=[
             RefMismatchEntry(

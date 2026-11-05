@@ -42,6 +42,16 @@ Format 0.8 makes `validate` reach the compile's verdict when it is given the com
 and `revalidate`) now passes `REGISTRY_BA1_THRESHOLD`, the value the compile already used, so a dry run
 cannot pass a frequency finding the publish then raises.
 
+### `/check` says why the sources' answer was withheld (pre-built against upstream's 0.8 branch)
+
+Format 0.8's enricher withholds a placement it answered in four cases, and the report now names each:
+`unanchored_rsids` (the anchor base was not read; transient), `non_nucleotide_rsids` (dbSNP records no
+variation there), `reference_rejected_loci` (the reference shows a different event of the same size), and
+`placement.withheld` (two authorities place the indel as different events). The new `placement` and
+`spelling` objects carry the indel placement comparison and the left-alignment pass, each with the field
+that says whether anything was compared. The console and `registry-client check` render all of them, and a
+strict publish's refusal gives each case its own remedy: only the first says re-run.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

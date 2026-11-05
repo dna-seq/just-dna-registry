@@ -1152,6 +1152,38 @@ def check(
                 f"authoring coordinates for them.",
                 fg=typer.colors.YELLOW,
             )
+        # Format 0.8: the sources answered and the answer was withheld. Only the first is transient.
+        for keys, why in (
+            (e.unanchored_rsids, "the anchor base was not read, so no locus was written. Re-run"),
+            (e.non_nucleotide_rsids, "no allele is a base: dbSNP records no variation there"),
+            (e.reference_rejected_loci, "the reference shows a different event of the same size"),
+        ):
+            if keys:
+                typer.secho(
+                    f"  · {len(keys)} withheld ({', '.join(keys[:5])}{'…' if len(keys) > 5 else ''}): {why}.",
+                    fg=typer.colors.YELLOW,
+                )
+        if e.placement is not None:
+            p = e.placement
+            if p.withheld:
+                typer.secho(
+                    f"  ✗ {len(p.withheld)} rsID(s) two authorities place as different events, so no "
+                    f"placement was written ({', '.join(p.withheld[:5])}). Author chrom/start for the "
+                    f"event you mean; a re-run asks the same sources.",
+                    fg=typer.colors.RED,
+                )
+            if p.not_checked:
+                typer.echo(f"  · indel placement was not compared with a second authority: {p.not_checked}")
+            else:
+                typer.echo(
+                    f"  placement: {p.compared} of {p.placed} compared with "
+                    f"{', '.join(p.witnesses) or 'no second authority'}"
+                )
+            for line in p.notes:
+                typer.echo(f"  · {line}")
+        if e.spelling is not None:
+            for line in e.spelling.findings:
+                typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
         for m in e.ref_mismatches:
             shift = f" — likely a wrong `start`, off by {m.shift:+d}" if m.shift else ""
             typer.secho(

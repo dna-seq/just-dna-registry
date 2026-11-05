@@ -1030,6 +1030,59 @@ class IdentifierCheck(BaseModel):
     )
 
 
+class PlacementSummary(BaseModel):
+    """Format 0.8's placement comparison (upstream RM267): an indel's placement is compared with a
+    second authority, and a locus two authorities place as different events is **withheld**, never
+    written. `compared` is the denominator; an empty `contested` with `compared: 0` checked nothing."""
+
+    witnesses: list[str] = Field(
+        default_factory=list, description="Second authorities loaded or asked; empty means none was"
+    )
+    compared: int = Field(default=0, description="rsIDs a second authority also placed")
+    placed: int = Field(default=0, description="rsIDs the comparison looked at")
+    contested: list[str] = Field(
+        default_factory=list, description="rsIDs with at least one placement two authorities disagree on"
+    )
+    withheld: list[str] = Field(
+        default_factory=list,
+        description=(
+            "rsIDs none of whose placements was written, because every locus was disputed. Each is "
+            "also in `unresolved`. Not transient: a re-run asks the same authorities and gets the same "
+            "answer. The remedy is authoring the coordinate, or reading which source is right"
+        ),
+    )
+    undecided: list[str] = Field(
+        default_factory=list, description="rsIDs whose respelling nothing could settle"
+    )
+    single_witness: list[str] = Field(
+        default_factory=list,
+        description="Placed rsIDs no independent second authority placed: agreement was not tested",
+    )
+    not_asked: list[str] = Field(
+        default_factory=list, description="rsIDs a live witness was due to be asked and did not answer"
+    )
+    not_checked: str | None = Field(
+        default=None, description="Why the comparison could not run at all, or null when it ran"
+    )
+    notes: list[str] = Field(
+        default_factory=list, description="Upstream's counts beside the finding, one sentence per class"
+    )
+
+
+class SpellingSummary(BaseModel):
+    """Format 0.8's spelling pass (upstream RM270): fills written left-aligned, and authored indel
+    coordinates judged against their leftmost spelling. Reported, never repaired."""
+
+    checked: int = Field(default=0, description="Authored coordinates judged")
+    unknown: int = Field(default=0, description="Judged coordinates the reference could not settle")
+    respelled: list[str] = Field(
+        default_factory=list, description="Fills this run wrote left-aligned"
+    )
+    findings: list[str] = Field(
+        default_factory=list, description="Authored coordinates whose leftmost spelling differs"
+    )
+
+
 class EnrichmentReport(BaseModel):
     """What the network tier found. Every entry is reported, never repaired.
 
@@ -1052,6 +1105,35 @@ class EnrichmentReport(BaseModel):
             "refuses, because the publish really would refuse — but this says the refusal may be "
             "transient and worth re-running rather than an authoring defect to go fix"
         ),
+    )
+    # Format 0.8's answered-but-withheld states (upstream RM272). Each rsID here is also in
+    # `unresolved`, which is silent about why; the three are disjoint, and the remedy differs.
+    unanchored_rsids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "rsIDs live Ensembl answered with an indel whose anchor base could not be read, so no locus "
+            "was written. Transient: a re-run that reads the reference fixes it"
+        ),
+    )
+    non_nucleotide_rsids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "rsIDs whose every allele is not a base (dbSNP records no variation there). Permanent: a "
+            "re-run gets the same answer"
+        ),
+    )
+    reference_rejected_loci: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Loci dropped because the reference shows their indel is a different event of the same size "
+            "from the authored genotype's, as `<rsid> <chrom>:<start>`. Permanent, and per locus"
+        ),
+    )
+    placement: PlacementSummary | None = Field(
+        default=None, description="The placement comparison (format 0.8); null on an older enricher"
+    )
+    spelling: SpellingSummary | None = Field(
+        default=None, description="The spelling pass (format 0.8); null on an older enricher"
     )
     ref_mismatches: list[RefMismatchEntry] = Field(default_factory=list)
     clin_sig_conflicts: list[ClinSigConflictEntry] = Field(default_factory=list)

@@ -399,6 +399,11 @@ the validation findings and decides whether unresolved positions count against `
   "enrichment": {
     "mode": "best_effort", "offline": true,
     "unresolved": [], "unreachable_rsids": [],
+    "unanchored_rsids": [], "non_nucleotide_rsids": [], "reference_rejected_loci": [],
+    "placement": {"witnesses": [], "compared": 0, "placed": 0, "contested": [], "withheld": [],
+                  "undecided": [], "single_witness": [], "not_asked": [],
+                  "not_checked": "nothing_to_check", "notes": []},
+    "spelling": {"checked": 1, "unknown": 0, "respelled": [], "findings": []},
     "ref_mismatches": [], "clin_sig_conflicts": [],
     "clin_sig_not_checked": null, "stale_rsids": [],
     "vrs": {"alleles": 57, "identified": 55, "complete": false,
@@ -424,6 +429,17 @@ Always empty on `?offline=true`, where nothing was asked. It does **not** soften
 `?strict=true` an unresolved key still refuses, because the publish really would refuse — but a `false`
 verdict beside a non-empty `unreachable_rsids` means *re-run*, not *go author coordinates*. The same
 reason appears in prose on `notes`, and on the publish path in the `422`'s hint.
+
+**Four more reasons a key is in `unresolved`, from format 0.8 (registry 0.28): the source answered and the
+answer was withheld.** Each list is a subset of `unresolved`, and they are disjoint. `unanchored_rsids`:
+live Ensembl gave an indel whose anchor base could not be read, so no locus was written; this one is
+transient and worth a re-run. `non_nucleotide_rsids`: no allele the sources give is a base, so dbSNP
+records no variation there. `reference_rejected_loci` (per locus, `<rsid> <chrom>:<start>`): the reference
+shows the indel there is a different event of the same size from the authored genotype's.
+`placement.withheld`: two authorities place the indel as different events, so neither placement was
+written. Those last three are answers, and a re-run repeats them; the `422`'s hint says so. Read
+`placement.not_checked` and `placement.compared` before believing an empty `placement.contested`: with
+nothing compared, the empty list is not a finding.
 
 **`clin_sig_not_checked` is the field to read before believing `clin_sig_conflicts: []`.** An empty
 conflict list means two opposite things — "compared everything, nothing disagreed" and "never

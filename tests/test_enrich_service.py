@@ -513,15 +513,28 @@ def test_the_hint_does_not_send_the_author_after_an_upstream_failure() -> None:
     assert "warm-caches" not in hint and "variants.csv" not in hint
 
 
-def test_an_online_hint_says_an_indel_may_have_been_withheld() -> None:
-    """C16: enricher 0.7.3 (RM268) withholds a REST indel whose reference base never came back, and
-    reports it only in a log line. On an online run the hint has to name that outage and put the
-    re-run first; offline nothing was asked, so the sentence would be false there."""
-    online = unresolved_hint(EnrichOutcome(ran=True, offline=False, unresolved=["rs1"]), Settings())
-    assert "withheld" in online and "re-publish once" in online
-    offline = unresolved_hint(EnrichOutcome(ran=True, offline=True, unresolved=["rs1"]), Settings())
-    assert "variants.csv" in offline  # the haystack is the standard advice, not an empty string
-    assert "withheld" not in offline
+def test_the_hint_names_why_an_answered_key_was_withheld() -> None:
+    """M4 (format 0.8, RM272/RM267): the sources say why a key they answered was withheld, and only the
+    unanchored case is transient. Each case gets its own remedy; none but that one says re-run, and a
+    run with none of them keeps the standard advice (which replaced 0.27.1's guessed online sentence)."""
+    def hint(**withheld: list[str]) -> str:
+        outcome = EnrichOutcome(ran=True, offline=False, unresolved=["rs1", "rs2", "rs3", "rs4"], **withheld)
+        return unresolved_hint(outcome, Settings())
+
+    plain = hint()
+    assert "variants.csv" in plain and "withheld" not in plain
+
+    unanchored = hint(unanchored_rsids=["rs1"])
+    assert "rs1" in unanchored and "Re-publish once" in unanchored
+
+    for state, key in (
+        ("placement_withheld", "rs2"),
+        ("non_nucleotide_rsids", "rs3"),
+        ("reference_rejected_loci", "rs4 10:100"),
+    ):
+        permanent = hint(**{state: [key]})
+        assert key in permanent, state
+        assert "re-publish" not in permanent.lower(), f"{state} is an answer, not an outage"
 
 
 def test_the_hint_explains_a_skipped_enrichment_differently() -> None:
