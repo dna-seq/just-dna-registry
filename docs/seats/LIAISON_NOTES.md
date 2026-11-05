@@ -37,11 +37,10 @@ reset").
   upstream RM344. Until the lead merges it, each weekly bump keeps both out (`uv lock -P` over every other mover).
   The worktree needs the untracked `.env` (a symlink) or `test_caches_api` fails for want of a lane. Worktrees
   `/data/sources/just-dna-registry-deps` (branch `deps/2026-11-05`, no commits) and `-majors` are mine.
-- **At the 0.8 cut, check three items the compiler's pm named that the map has no row for** (via our pm,
-  2026-11-04): RM342's `verify` reporting `toolchain_differs`, against our client's `verify_manifest` path with
-  polars-1 consumers in the field; RM304's per-row VRS version and manifest pin; RM347/RM353's publisher
-  (uploads the logs the manifest names, guards exactly the declared files). Tell the pm if the re-map moves a
-  row of registry 0.28's scope (ROADMAP "0.28").
+- **0.8.0 cut** 2026-11-05 (`edf2661c`): map re-read against the final guide and the release record (`ee22dc6`): M3
+  corrected (RM363 moves `content_signature`), the pm's three items need nothing, lead and pm told. Still to do: the
+  `compiler` watcher's `v0.8.0` tag (after PyPI) moves the read mark; `just-dna-compiler-next`'s `branch=` moves when
+  the compiler's lead names the 0.9 branch (asked 2026-11-05).
 
 - **Desk #193** withdrawn 2026-11-05, decided elsewhere: the lead pushes the trunk under its grant ("all
   pushes"); hand it a commit to push.
