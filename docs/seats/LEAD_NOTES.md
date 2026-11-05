@@ -66,4 +66,9 @@ Next: C10, C17, C8's minor half (same model and renderers), then M11 check. M3/M
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
 
+**Plan watcher** (the kit builder's note, 2026-11-05): `[seat.lead.watch.plan]` needs `## <ID> — <title>` items
+with a `**State:**` line; our ROADMAP is bullets under version headings, so `plan-watch.py --once` reads no item.
+`waits until 2026-11-12`: decide then whether to convert the roadmap (a pm-scope restructure) or keep the
+notes' plan list. Adding the watcher also edits `.blueprints.toml`, which auto mode refused once (desk #201).
+
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
