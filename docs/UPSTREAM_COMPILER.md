@@ -94,9 +94,13 @@ Each open item is the lead's to build; its state is said beside it.
   factory)` makes every leg's lazy build one path under a lock; `close()` walks `CLIENT_FIELDS`.
   `services/enrich.py:226` `shared_lookup_clients()` still constructs all eight eagerly, and CLAUDE.md
   ("It said 'six' until 0.25 ... Filed upstream as the real fix") describes an upstream that no longer exists.
-  Ours is not wrong, only redundant: eager costs eight connections on the first online run. Fix: hand over an
-  empty shared bundle and let `ensure` fill it, keep one test that a leg's client is reused across two calls;
-  rewrite the CLAUDE.md paragraph. About an hour. Low priority. Sent to the lead 2026-11-04.
+  Ours is not wrong, only redundant: eager costs eight connections on the first online run. ~~Fix: hand over an
+  empty shared bundle and let `ensure` fill it~~ **Wrong, corrected by the lead (2026-11-05):** `services/enrich.py`
+  hands the passes single clients (`resolver=clients.ensembl`, `client=clients.ontology`), not the bundle, so an
+  empty bundle passes `None` and each pass builds its own unpaced client; only the `/hint` routes pass the bundle
+  whole, where `ensure` fills it. So the bundle stays filled. **Done, narrowed** (e64801f, registry 0.27.1): the
+  docs and a test over `CLIENT_FIELDS`. The lesson for this seat: a fit that removes a piece of ours is read
+  against every call site first, not against the call site the upstream entry describes.
 - **C3 — S81 / RM146 shipped in 0.7.0. *A lever to weigh.*** Every authored field carries `since(...)`, read back
   by `base.field_first_seen(model)`. `version.schema_gap_advisory` (`version.py:121`) still cannot say which
   release introduced a refused column, and CLAUDE.md says that "needs an input-side roster from upstream (S81)".
@@ -200,6 +204,9 @@ The third slice (2026-11-05): 0.7.1 to 0.7.3, 38 entries, read by a helper; each
 The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answering the registry's own filings
 (S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
 unstamped compiler; S91-S95 on 2026-09-11, giving C5 and C6). The rest of 0.7.0 is unread for this purpose.
+
+**Done in registry 0.27.1 (the lead, 2026-11-05):** C1, C2 (narrowed), C4, C6, C8's patch half, C9, C11, C12,
+C16.
 
 State of C5 to C15, 2026-11-04 (lead, b7cc45b): all filed; C7, C4, C9 (setting, default off) and C8's patch half
 lead the 0.27.x patches; C8's fields wait for 0.28; C6 no reconcile from `spent`, the text only; C14 canceled,
