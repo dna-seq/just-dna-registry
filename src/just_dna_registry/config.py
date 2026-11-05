@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     # Resolution + fact snapshots: what a strict publish depends on.
     ensembl_cache: Path | None = None
     clinvar_cache: Path | None = None
+    # ClinVar-GKM indels, the second placement witness `enrich()` compares an indel against (format 0.8,
+    # RM267; upstream's guide calls it optional). Passed to both enrich() call sites as configured, as
+    # every lane `enrich()` takes must be: omitted, the enricher would find one ambiently.
+    clinvar_gkm_cache: Path | None = None
     constraint_cache: Path | None = None
     # The licence-gated PGx snapshots (enricher 0.5.1 / RM38). Only the `?pgx=` check reads these, so
     # a deployment that never uses it needs none of them — but a *hosted* one that does needs all

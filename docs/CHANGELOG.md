@@ -11,7 +11,6 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 **Client surface:** unchanged. `whoami()` gains a `site_admin` field and `merge_accounts()` is
 new; no existing method moves.
 
-
 ### Format 0.8's six new spec tables are carried (pre-built against upstream's 0.8 branch)
 
 `meta.csv` and `model_organisms.csv` are authored and inside `content_signature`; `locus_to_gene.csv`,
@@ -19,6 +18,14 @@ new; no existing method moves.
 stored, and carried by `revalidate` and `registry upgrade`, so a rebuild neither drops a derived table nor
 moves a module's signature by dropping an authored one. `registry upgrade`'s column check reads the authored
 non-kind tables off upstream's `AUTHORED_NON_KIND_TABLES`.
+
+### The enricher's indel placement witness is configured, not discovered
+
+Format 0.8's enricher compares an indel's placement with ClinVar-GKM's (RM267) and takes the snapshot as
+`clinvar_gkm_cache`. `REGISTRY_CLINVAR_GKM_CACHE` sets it, and both enrichment paths pass it as configured,
+so an unset one is never found on its own somewhere on the host. It is optional and raises no boot warning.
+The test that guards this now fails on any snapshot the enricher takes that has no setting here, rather
+than only checking the ones it already knew.
 
 ### A card subtitle may be 240 characters
 

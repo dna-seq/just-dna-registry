@@ -335,6 +335,9 @@ def configured_caches(settings: Settings) -> dict[str, Path | None]:
     return {
         "ensembl": settings.ensembl_cache,
         "clinvar": settings.clinvar_cache,
+        # Format 0.8's placement witness (RM267). `enrich()` opens it; not in `REFERENCE_NAMES`, the
+        # same call as PubMind and CIViC: an optional lane must not raise a boot warning.
+        "clinvar_gkm": settings.clinvar_gkm_cache,
         "constraint": settings.constraint_cache,
         "cpic": settings.cpic_cache,
         "pharmvar": settings.pharmvar_cache,
@@ -904,6 +907,7 @@ def enrich_spec(
             # wherever the enricher looked, into `published_refutation` and `verification.json`.
             pubmind_cache=caches["pubmind"],
             civic_cache=caches["civic"],
+            clinvar_gkm_cache=caches["clinvar_gkm"],
             use_clinvar=settings.enrich_use_clinvar,
             # Passed as configured, `offline` beside them. `enrich()` already gates both on it —
             # the gnomAD link and the dbSNP currency check are live-only — and an `and not offline`
@@ -1359,6 +1363,7 @@ def _run_enrichment_passes(
             clinvar_cache=caches["clinvar"],
             pubmind_cache=caches["pubmind"],  # as in `enrich_spec`: never omit a lane
             civic_cache=caches["civic"],
+            clinvar_gkm_cache=caches["clinvar_gkm"],
             use_clinvar=settings.enrich_use_clinvar,
             use_gnomad=settings.enrich_use_gnomad,  # `offline` gates it inside `enrich()`
             download=False,  # never provision a multi-hundred-MB snapshot inside a request

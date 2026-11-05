@@ -204,18 +204,18 @@ class _Captured(Exception):
 
 
 def _enrich_cache_parameters() -> list[str]:
-    """Every `*_cache` parameter of the installed `enrich()` that names a lane we configure."""
+    """Every `*_cache` parameter of the installed `enrich()`, each of which must name a lane we
+    configure. Not filtered by the lanes we know: a lane `enrich()` takes and we have no setting for
+    is the C7 failure itself (format 0.8's `clinvar_gkm_cache` arrived that way), and a filter would
+    let it pass by never asking."""
     from just_dna_enricher.enrich import enrich
 
-    lanes = configured_caches(Settings())
-    names = [
-        name
-        for name in inspect.signature(enrich).parameters
-        if name.endswith("_cache") and name.removesuffix("_cache") in lanes
-    ]
+    names = [name for name in inspect.signature(enrich).parameters if name.endswith("_cache")]
     # Floor: ensembl, clinvar, pubmind and civic as of enricher 0.7. An emptied signature read
     # (a renamed module, a wrapper) would otherwise pass every assertion below vacuously.
     assert len(names) >= 4, names
+    unconfigured = sorted(n for n in names if n.removesuffix("_cache") not in configured_caches(Settings()))
+    assert not unconfigured, f"enrich() takes lanes this service has no setting for: {unconfigured}"
     return names
 
 
