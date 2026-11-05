@@ -839,7 +839,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   read nowhere, and `unresolved_hint` offers three remedies that are all wrong for it. Carry it beside
   `unresolved` and give the hint its fourth case. Sizing: **minor** (a response field). One to two hours.
 
-- **An online run's withheld indel gets the re-run remedy, not the authoring one** (**severity medium,
+- ✅ **done** (on `release-0.27.x`, in 0.27.1). **An online run's withheld indel gets the re-run remedy, not the authoring one** (**severity medium,
   unattended, second of the 0.27.x patches after C4**, owner: lead; the liaison's **C16**, upstream RM268 in
   v0.7.3). On an online run, a REST indel whose reference base could not be read is withheld: it lands in
   `unresolved`, and the enricher says why only in a log line this server does not keep (`unanchored_rsids` reaches
