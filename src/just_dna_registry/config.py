@@ -80,9 +80,10 @@ class Settings(BaseSettings):
     #
     # The split repo from format 0.8 (upstream RM372, the liaison's M8): dbSNP 157 / VEP 116, pulled into
     # the same `ensembl_variations` directory, and a cache holding files of both releases resolves to
-    # nothing. The old repo is no longer written. Spelled here because upstream's only public form is a
-    # fetch prefix (`download.SNAPSHOT_REPO_PREFIXES`); its RM384 (our S130) adds a lane-to-repo map, to
-    # be read here once it ships. Each box pulls 14.5 GB before the 0.28 deploy (docs/UPGRADE.md).
+    # nothing. The old repo is no longer written. Upstream names it in `locations.SNAPSHOT_REPO_IDS`
+    # (RM384, our S130); it is spelled here because this module is imported on the compile path and by a
+    # base install, neither of which may import the enricher, and `test_startup` holds the two equal.
+    # Each box pulls 14.5 GB before the 0.28 deploy (docs/UPGRADE.md).
     ensembl_reference: str = "just-dna-seq/ensembl_variations_split"
 
     # --- Compile policy (format/compiler 0.5) -------------------------------------------------
