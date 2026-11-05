@@ -113,6 +113,13 @@ locus: provision a fuller snapshot or author coordinates. The refusal's hint now
 have been withheld over an upstream failure and to re-publish once before changing anything. Offline runs
 keep the old advice, since nothing was asked. A field naming the withheld variants arrives with format 0.8.
 
+### The dataset-release probe is off unless an operator turns it on
+
+Every publish and `/check` inherited the enricher's `verify_datasets`, which asks ClinVar and the PGS
+Catalog which release they publish now through clients outside this server's shared ones and its pace
+ledger: egress nothing metered. `REGISTRY_ENRICH_VERIFY_DATASETS` (default `false`) now decides it, and with
+it off the verification record says the check was not requested. Set it to `true` for the old behaviour.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own

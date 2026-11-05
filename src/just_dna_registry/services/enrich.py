@@ -918,6 +918,7 @@ def enrich_spec(
             verify_ref=settings.enrich_verify_ref,
             verify_clinsig=settings.enrich_verify_clinsig,
             verify_rsids=settings.enrich_verify_rsids,
+            verify_datasets=settings.enrich_verify_datasets,  # unpaced probes; see config
             keep_par_twin=settings.enrich_keep_par_twin,
         )
     except EnrichmentError as exc:
@@ -1368,6 +1369,7 @@ def _run_enrichment_passes(
             verify_ref=settings.enrich_verify_ref,
             verify_clinsig=settings.enrich_verify_clinsig,
             verify_rsids=settings.enrich_verify_rsids,  # ditto — live dbSNP is the only oracle
+            verify_datasets=settings.enrich_verify_datasets,  # unpaced probes; see config
             keep_par_twin=settings.enrich_keep_par_twin,
         )
     except EnrichmentError as exc:

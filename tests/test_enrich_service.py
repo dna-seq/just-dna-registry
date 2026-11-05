@@ -230,11 +230,28 @@ def test_every_cache_enrich_takes_is_handed_the_configured_path(
     PubMind and CIViC caches were omitted on both paths (the liaison's C7), so whatever the enricher
     found on its own fed `published_refutation` into `verification.json`.
     """
+    parameters = _enrich_cache_parameters()  # read before the stand-in replaces `enrich`
+    settings = Settings(
+        **{lane: tmp_path / lane for lane in ("ensembl_cache", "clinvar_cache", "constraint_cache")},
+        pubmind_cache=tmp_path / "pubmind",
+        civic_cache=tmp_path / "civic",
+        enrich_offline=True,
+    )
+    seen = _enrich_kwargs(tmp_path, monkeypatch, path, settings)
+    lanes = configured_caches(settings)
+    for name in parameters:
+        assert name in seen, f"{name} is not passed, so the enricher discovers it ambiently"
+        assert seen[name] == lanes[name.removesuffix("_cache")], name
+
+
+def _enrich_kwargs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str, settings: Settings
+) -> dict[str, object]:
+    """The keyword arguments one of the two call sites hands `enrich()`, captured before it runs."""
     import just_dna_enricher.enrich as upstream
 
     from just_dna_registry.services import enrich as enrich_service
 
-    parameters = _enrich_cache_parameters()  # read before the stand-in replaces `enrich`
     seen: dict[str, object] = {}
 
     def capture(_spec_dir: Path, **kwargs: object) -> None:
@@ -242,12 +259,6 @@ def test_every_cache_enrich_takes_is_handed_the_configured_path(
         raise _Captured
 
     monkeypatch.setattr(upstream, "enrich", capture)
-    settings = Settings(
-        **{lane: tmp_path / lane for lane in ("ensembl_cache", "clinvar_cache", "constraint_cache")},
-        pubmind_cache=tmp_path / "pubmind",
-        civic_cache=tmp_path / "civic",
-        enrich_offline=True,
-    )
     spec = tmp_path / "spec"
     spec.mkdir()
     with pytest.raises(_Captured):
@@ -259,10 +270,22 @@ def test_every_cache_enrich_takes_is_handed_the_configured_path(
                 caches=configured_caches(settings), frequencies=False, literature=False,
                 identifiers=False, acmg=False,
             )
-    lanes = configured_caches(settings)
-    for name in parameters:
-        assert name in seen, f"{name} is not passed, so the enricher discovers it ambiently"
-        assert seen[name] == lanes[name.removesuffix("_cache")], name
+    return seen
+
+
+@pytest.mark.parametrize("path", ["publish", "dry_run"])
+@pytest.mark.parametrize("configured", [None, True])
+def test_the_dataset_currency_probe_is_off_unless_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str, configured: bool | None
+) -> None:
+    """C9: upstream's `verify_datasets` defaults on and probes each recorded source through clients
+    outside the shared bundle and the pace ledger. Both call sites pass the setting, which is off
+    unless an operator sets it: omitting the argument would inherit upstream's `True`."""
+    settings = Settings(enrich_offline=True) if configured is None else Settings(
+        enrich_offline=True, enrich_verify_datasets=configured
+    )
+    seen = _enrich_kwargs(tmp_path, monkeypatch, path, settings)
+    assert seen["verify_datasets"] is (configured is True)
 
 
 def test_available_references_ignores_ambient_state_when_configured(
