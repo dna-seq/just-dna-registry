@@ -1,5 +1,25 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.28 — format 0.8 (operator note — a coordinated cut; being written ahead of upstream's cut)
+
+The floors, the lock and the catalog recompile are added here when upstream cuts 0.8.0. One step is
+known now and does not depend on them.
+
+**Re-pull the Ensembl cache on each box before deploying 0.28** (upstream RM372). Format 0.8 reads
+`just-dna-seq/ensembl_variations_split` (dbSNP 157 / VEP 116), about 14.5 GB, into the same
+`ensembl_variations` directory, and a cache holding files from both releases resolves to nothing, with a
+warning. Use the enricher's own pull, from the deploy's checkout so it reads the same `.env` as the
+server (if `REGISTRY_ENSEMBL_CACHE` is set, export its value as `JUST_DNA_ENSEMBL_CACHE` first):
+
+```
+uv run just-dna-enricher cache pull --only ensembl
+```
+
+Not run here yet (it needs 0.8 installed and moves 14.5 GB). Upstream says a cache whose pull record
+names the old repo is pulled again and a file is kept only where the new manifest attests it.
+**`registry warm-caches` will not do this**: a 0.7 cache still reads as present under 0.8, and warm-caches
+leaves a present lane alone, so its dry run shows the Ensembl lane `✓` while it holds the old release.
+
 ## 0.27.0 — upstream v0.7.3: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (operator note — no sweep)
 
 **All three tiers move by a patch, and the catalog needs nothing.** Upstream's sweep gate moved no
