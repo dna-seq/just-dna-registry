@@ -989,11 +989,22 @@ def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
             f"network failure rather than a defect in the module."
         )
     where = settings.ensembl_cache or "the enricher's default cache location"
-    return (
+    hint = (
         f"the enricher ran offline={outcome.offline} against {where} and left "
         f"{len(outcome.unresolved)} variant(s) unresolved. Provision a fuller snapshot "
         f"(`registry warm-caches --apply`), allow live lookups "
         f"(REGISTRY_ENRICH_OFFLINE=false), or author chrom/start in variants.csv."
+    )
+    if outcome.offline:
+        return hint
+    # Enricher 0.7.3 (RM268) withholds a REST indel whose reference base the sequence service did not
+    # return, and says so only in a log line this server does not keep: until 0.8's `unanchored_rsids`
+    # reaches `EnrichOutcome` (M4), an online run cannot tell that outage from a missing locus. So the
+    # online arm names it and puts the re-run first, rather than sending a publisher after an outage.
+    return (
+        f"{hint} On an online run an indel is also withheld when the sequence service did not "
+        f"return its reference base, which is an upstream failure rather than a defect in the "
+        f"module: re-publish once before changing anything."
     )
 
 

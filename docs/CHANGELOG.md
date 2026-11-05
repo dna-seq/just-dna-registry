@@ -31,6 +31,14 @@ trimmed nor reported blocked, and its recompile failed instead. The list is now 
 own table registries, so a table upstream adds is checked without a change here, and a test fails if
 upstream ever reads a table the roster does not cover.
 
+### An online publish refused over a withheld indel says to re-run first
+
+Enricher 0.7.3 withholds an indel whose reference base the sequence service did not return, and says so
+only in its own log. On an online run that indel reached the strict refusal with the advice for a missing
+locus: provision a fuller snapshot or author coordinates. The refusal's hint now also says an indel may
+have been withheld over an upstream failure and to re-publish once before changing anything. Offline runs
+keep the old advice, since nothing was asked. A field naming the withheld variants arrives with format 0.8.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own
