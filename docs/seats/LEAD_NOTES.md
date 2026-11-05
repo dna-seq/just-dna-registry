@@ -33,7 +33,7 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 2b. C16: **done** on `release-0.27.x`, merged into main.
 3. C9: **done** on `release-0.27.x`, merged into main.
 4. C8's patch half: **done** on `release-0.27.x`, merged into main.
-5. The four small corrections: subtitle 240 (on **main**, not the patch branch: 240 is [Unreleased] material, 0.27.0 still says 120), `pacing.py` text (C6, no reconcile), C11 (module-level by code),
+5. The four small corrections: subtitle 240 **done** on main; `pacing.py` text (C6, no reconcile), C11 (module-level by code),
    C12 (`gather_pmids` over every citing table).
 6. C1, then C2.
 7. C5 + C13 + C15, reading what upstream made public.
