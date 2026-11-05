@@ -240,6 +240,14 @@ Hardest first.
 | M10 | **A retired source is `retired`, never `unreachable`** (RM361): `VALID_VERIFICATION_SKIPS` and `VALID_FULLTEXT_STATUS` gain it (HTTP 410), whose remedy is upgrading the enricher, not re-running. Several "could not ask" results gain fields (`FrequencyResult.unanswered`, `OpenTargetsResult.not_read`, …); OLS4/HGNC and eutils now raise their unavailability types on an empty body. `coordinate_key` no longer spells an absent cell `None`. | `services/enrich.py:1759` (ACMG: only `unreachable` reaches the `unreachable` list); the `registry-client check` and console renderers (`console/src/reports.ts:63-95`), "a pass that could not run reports why"; `unresolved_hint` must not say re-run for a retired source. | Two hours, with M4. | Added 2026-11-04 (guide § 1.26). |
 | M11 | **A pass that answered nothing writes no table** (RM370): the header-only sidecars and their licence rows are gone, so `artifact.files` loses empty parquets and the digest moves on a recompile. | `specfiles.plan_layout` and the split download (a `derived/` with fewer files, which "the folder is a consequence of the manifest's contents" already allows); any test fixture that expects an empty sidecar. | Check, likely nothing. Under an hour. | Added 2026-11-04 (guide § 1.24). |
 
+Read at `1007a26` (2026-11-05), guide §§ 1.30-1.33, no new row: each folds into one above. RM373 (`source_release`),
+RM375 (`authored_event`, `judged_coordinate`) add `resolution.csv` columns a 0.7 reader refuses, and RM379 adds a
+`clin_sig_authority_call` licence layer (`VALID_SOURCE_LAYERS`, closed, now 14): all M1, the lockstep. RM374's
+`rsid_placements_disagree` is a new warning code and a strict refusal (M1, M9), RM375's struct fields move the
+digest again (M3), and RM373's `rsid_coordinate_agreement.release` reading null for a mixed table is one more
+"unchecked is not clean" sibling for the renderers (M4). Nothing here keeps its own list of source layers
+(grep, 2026-11-05), so the new layer reaches us only through the floor.
+
 Also new, levers only: RM362's `compiler.subjects.module_subjects` is upstream's one answer to "which genes and loci is this module about" (for the variant catalog after 0.28); RM363's `just_dna_format.spelling` is one comparison rule per kind of value (gene, drug, DOI, contig), worth reading before the registry compares any of those itself.
 
 Nothing for us, read: RM303 moved `release.json`'s model into `just_dna_format.snapshot` and `read_release` now
