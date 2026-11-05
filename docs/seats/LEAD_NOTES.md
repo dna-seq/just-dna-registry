@@ -51,8 +51,14 @@ pushed c83164d. There is no trunk watcher; the lead pushes at the end of each bl
 **Waiting on the person**: `longevity-loci/liaison` (and `longevity-loci/triage`, per the kit's rule) into
 `[seat.triage] wake_from` in `.blueprints.toml`; the auto-mode classifier refused the edit (Self-Modification).
 
-**0.28 pre-build** (the person via pm, 2026-11-05: "0.8 is delayed ... pre-build on top of that"): when the
-compiler's lead posts the finished `INTEGRATION_0_8.md` commit, build M1's code, M2, M4, M8-M11 on the 0.28
-branch against upstream's 0.8 branch; not merged, not shipped before the floors are on PyPI.
+**0.28 pre-build** (the person via pm, 2026-11-05: "0.8 is delayed ... pre-build on top of that"): building
+on branch `0.28` (worktree `/data/sources/just-dna-registry.wt/0.28`, pushed), three tiers from upstream's 0.8
+at rev 5b1b73b8 by git source in pyproject (removed and floored `>=0.8.0` before merge; move the rev when the
+compiler's lead says §2 changed). Not merged, not shipped before the floors are on PyPI.
+Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
+(634038c). Next: M8 (Ensembl repo default), M9 (validate switches), M4+M10 (+ C8 minor, C10, C17 per the
+roadmap), M11 check. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
+**Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
+main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
