@@ -57,6 +57,7 @@ reset").
   (2026-11-05) swept the pm's staged `docs/ROADMAP.md` hunk although `git diff --cached --stat` showed only my two
   files the moment before: the pm staged in between. `--only` commits the named paths whatever else is staged.
 - reflect after 2026-11-11: classes/base/BASE.md as of v0.1.127 (kit reports filed without asking, timed by cost).
+- reflect after 2026-11-12: classes/base/BASE.md as of v0.1.136 (commit by path in a shared clone; my #286).
 
 ## Backlog, in order
 
