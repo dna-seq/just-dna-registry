@@ -127,9 +127,12 @@ with every driving axis measured `False` moved nothing, which retires the versio
 *parallel derivation* and leaves it as the fallback for every artifact compiled before the first
 release that has a record. **Three witnesses stay three** — a gap is about versions, a verdict is a
 measurement of one artifact, a record is what a release did — because folding any two loses a
-distinction only that one can draw. And **a declared change says what a release did, never which
-artifacts it did it to**, so a sweep over-reaches; that is bounded at one PATCH per module ever by the
-convergence rule and is filed upstream as S90, not worked around by parsing a target's spelling.
+distinction only that one can draw. And **a declared change says which modules it can reach only as
+a necessary condition**: since format 0.7 (our S90, their RM201) `DeclaredChange.requires` names the
+manifest paths a module must carry, and `declared_movement` drops a change whose `reaches(manifest)` is
+`False` (0.27.1). `True` means *not excluded* and `None` *not stated*, and both are kept, so a sweep can
+still over-reach, bounded at one PATCH per module ever by the convergence rule. Read the reach through
+upstream's predicate, never by parsing a target's spelling.
 
 **And when you do extend it, the new trigger has to converge.** `rebuild.RebuildVerdict` refuses to act
 on drift measured against the **identical** compiler, because a recompile derives the same value again
