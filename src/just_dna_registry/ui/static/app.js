@@ -943,12 +943,14 @@
   }
   function passBox(title, fields, opts = {}) {
     const unreachable = opts.unreachable ?? [];
+    const retired = opts.retired ?? [];
     const box = h("div", { class: "pass" });
     box.append(h(
       "h4",
       {},
       title,
       unreachable.length ? badge("bad", `${unreachable.length} source${unreachable.length === 1 ? "" : "s"} unreachable`, unreachable.join("\n")) : null,
+      retired.length ? badge("warn", `${retired.length} source${retired.length === 1 ? "" : "s"} retired: upgrade the enricher`, retired.join("\n")) : null,
       opts.skipped ? badge("warn", opts.skipped) : null
     ));
     const grid = h("div", { class: "fields" });
@@ -1023,7 +1025,7 @@
     if (f) out.append(passBox(
       "Frequencies (gnomAD)",
       [["covered", fmtInt(f.covered)], ["missing", listOrNone(f.missing), n(f.missing) > 0], ["uncovered", listOrNone(f.uncovered)], ["sources", f.sources.join(", ") || "—"]],
-      { warnings: f.warnings, unreachable: f.unreachable, skipped: f.skipped_offline ? "skipped: offline" : null }
+      { warnings: f.warnings, unreachable: f.unreachable, retired: f.retired, skipped: f.skipped_offline ? "skipped: offline" : null }
     ));
     const l = e.literature;
     if (l) out.append(passBox(
@@ -1037,7 +1039,7 @@
         // A title appears in its own fulltext, so the quote check cannot fail on one: found == authored and nothing was grounded.
         ["titles used as quotes", listOrNone(l.titles_as_quotes), n(l.titles_as_quotes) > 0]
       ],
-      { warnings: l.warnings, unreachable: l.unreachable, skipped: l.skipped_offline ? "skipped: offline" : null }
+      { warnings: l.warnings, unreachable: l.unreachable, retired: l.retired, skipped: l.skipped_offline ? "skipped: offline" : null }
     ));
     const id = e.identifiers;
     if (id) {
@@ -1054,7 +1056,7 @@
           ["gene loci not checked", lociCell, lociFlag],
           ["clean", yesNo(id.clean, "cannot say")]
         ],
-        { warnings: id.warnings, unreachable: id.unreachable, skipped: id.skipped_offline ? "skipped: offline" : null }
+        { warnings: id.warnings, unreachable: id.unreachable, retired: id.retired, skipped: id.skipped_offline ? "skipped: offline" : null }
       ));
     }
     const a = e.acmg;
@@ -1067,7 +1069,7 @@
         ["unverifiable", listOrNone(a.unverifiable), n(a.unverifiable) > 0],
         ["clean", yesNo(a.clean)]
       ],
-      { warnings: a.warnings, unreachable: a.unreachable }
+      { warnings: a.warnings, unreachable: a.unreachable, retired: a.retired }
     ));
     const p = e.pgx;
     if (p) out.append(passBox(
@@ -1081,7 +1083,7 @@
         ["PharmVar", p.pharmvar_enabled ? "enabled" : "off"],
         ["offline", p.offline ? "yes" : "no"]
       ],
-      { warnings: p.warnings, unreachable: p.unreachable }
+      { warnings: p.warnings, unreachable: p.unreachable, retired: p.retired }
     ));
     return out;
   }

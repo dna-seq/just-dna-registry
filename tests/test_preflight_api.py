@@ -1293,8 +1293,36 @@ def test_a_gnomad_outage_is_a_finding_rather_than_a_500(
     # gnomAD saying it has nothing.
     assert freq["skipped_offline"] is False
     assert freq["covered"] == 0 and freq["missing"] == [] and freq["uncovered"] == []
-    assert any("could not be reached" in w for w in freq["warnings"])
+    assert any("could not be asked" in w and "re-run" in w for w in freq["warnings"])
+    assert freq["retired"] == []
     # An outage upstream is not a defect in the module, so the verdict does not move.
+    assert body["would_publish"] is True
+
+
+def test_a_retired_gnomad_endpoint_says_retired_not_unreachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M10 (format 0.8, RM361): gnomAD answers 410. That is not an outage, so it is never
+    `unreachable`, and its remedy is an enricher upgrade, never a re-run."""
+    from just_dna_enricher.gnomad import GnomadRetired
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    class _Gone:
+        def fetch_frequencies(self, *_a, **_k):
+            raise GnomadRetired("gnomAD answered 410 Gone: the endpoint is retired")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(enrich_service, "shared_lookup_clients", lambda: _bundle(gnomad=_Gone()))
+    code, body = _check(_no_live_lookups(tmp_path), offline=False, frequencies=True)
+    assert code == 200, body
+    freq = body["enrichment"]["frequencies"]
+    assert freq["retired"] == ["gnomad"]
+    assert freq["unreachable"] == []
+    warning = " ".join(freq["warnings"])
+    assert "upgrading the enricher" in warning and "re-run" not in warning.replace("not a re-run", "")
     assert body["would_publish"] is True
 
 

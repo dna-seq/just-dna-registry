@@ -288,6 +288,7 @@ export interface FrequencyCheck {
   sources: string[];
   skipped_offline: boolean;
   unreachable: string[];
+  retired: string[];
   warnings: string[];
 }
 
@@ -301,6 +302,7 @@ export interface LiteratureCheck {
   titles_as_quotes: string[];
   skipped_offline: boolean;
   unreachable: string[];
+  retired: string[];
   warnings: string[];
 }
 
@@ -311,6 +313,7 @@ export interface AcmgCheck {
   unverifiable: string[];
   clean: boolean;
   unreachable: string[];
+  retired: string[];
   warnings: string[];
 }
 
@@ -329,6 +332,7 @@ export interface PgxCheck {
   sources: string[];
   routes: Record<string, string>;
   unreachable: string[];
+  retired: string[];
   offline: boolean;
   declared_use: string;
   pharmvar_enabled: boolean;
@@ -343,6 +347,7 @@ export interface IdentifierCheck {
   gene_loci: string[];
   gene_loci_not_checked: string | null;
   unreachable: string[];
+  retired: string[];
   clean: boolean | null;
   skipped_offline: boolean;
   warnings: string[];

@@ -179,7 +179,7 @@ def test_the_check_renderer_reads_every_unchecked_sibling() -> None:
     for field in (
         "unreachable", "unreachable_rsids", "clin_sig_not_checked", "gene_loci_not_checked",
         "quotes_unchecked", "titles_as_quotes", "skipped_offline", "skipped_reason",
-        "format_version", "format_advisory", "unanchored_rsids", "not_checked", "single_witness",
+        "format_version", "format_advisory", "unanchored_rsids", "not_checked", "single_witness", "retired",
     ):
         assert re.search(rf"\b{field}\b", script), f"the check renderer no longer reads `{field}`"
 

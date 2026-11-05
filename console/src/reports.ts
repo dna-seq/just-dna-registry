@@ -60,14 +60,17 @@ export function validationView(report: ValidationReport, title = "Validation"): 
 
 type Field = [label: string, value: Child, flag?: boolean];
 
-interface PassOptions { warnings?: string[]; unreachable?: string[]; skipped?: string | null; }
+interface PassOptions { warnings?: string[]; unreachable?: string[]; retired?: string[]; skipped?: string | null; }
 
 /** Every pass: the counts, and beside them the sibling that says whether the count was measured. */
 function passBox(title: string, fields: Field[], opts: PassOptions = {}): HTMLDivElement {
   const unreachable = opts.unreachable ?? [];
+  // Format 0.8 (RM361): a retired endpoint is not an outage. Its remedy is an enricher upgrade, not a re-run.
+  const retired = opts.retired ?? [];
   const box = h("div", { class: "pass" });
   box.append(h("h4", {}, title,
     unreachable.length ? badge("bad", `${unreachable.length} source${unreachable.length === 1 ? "" : "s"} unreachable`, unreachable.join("\n")) : null,
+    retired.length ? badge("warn", `${retired.length} source${retired.length === 1 ? "" : "s"} retired: upgrade the enricher`, retired.join("\n")) : null,
     opts.skipped ? badge("warn", opts.skipped) : null));
   const grid = h("div", { class: "fields" });
   for (const [k, v, flag] of fields) grid.append(h("div", { class: `f${flag ? " flag" : ""}` }, h("span", { class: "muted" }, k), h("b", {}, v)));
@@ -135,7 +138,7 @@ export function enrichmentView(e: EnrichmentReport): HTMLDivElement {
 
   const f = e.frequencies;
   if (f) out.append(passBox("Frequencies (gnomAD)", [["covered", fmtInt(f.covered)], ["missing", listOrNone(f.missing), n(f.missing) > 0], ["uncovered", listOrNone(f.uncovered)], ["sources", f.sources.join(", ") || "—"]],
-    { warnings: f.warnings, unreachable: f.unreachable, skipped: f.skipped_offline ? "skipped: offline" : null }));
+    { warnings: f.warnings, unreachable: f.unreachable, retired: f.retired, skipped: f.skipped_offline ? "skipped: offline" : null }));
 
   const l = e.literature;
   if (l) out.append(passBox("Literature", [
@@ -144,7 +147,7 @@ export function enrichmentView(e: EnrichmentReport): HTMLDivElement {
     ["quotes found", `${fmtInt(l.quotes_found)} of ${fmtInt(l.quotes_authored)}`], ["quotes unchecked", fmtInt(l.quotes_unchecked), l.quotes_unchecked > 0],
     // A title appears in its own fulltext, so the quote check cannot fail on one: found == authored and nothing was grounded.
     ["titles used as quotes", listOrNone(l.titles_as_quotes), n(l.titles_as_quotes) > 0]],
-    { warnings: l.warnings, unreachable: l.unreachable, skipped: l.skipped_offline ? "skipped: offline" : null }));
+    { warnings: l.warnings, unreachable: l.unreachable, retired: l.retired, skipped: l.skipped_offline ? "skipped: offline" : null }));
 
   const id = e.identifiers;
   if (id) {
@@ -155,14 +158,14 @@ export function enrichmentView(e: EnrichmentReport): HTMLDivElement {
       ["unchecked", listOrNone(id.unchecked), n(id.unchecked) > 0], ["gene loci off", listOrNone(id.gene_loci), n(id.gene_loci) > 0],
       ["gene loci not checked", lociCell, lociFlag],
       ["clean", yesNo(id.clean, "cannot say")]],
-      { warnings: id.warnings, unreachable: id.unreachable, skipped: id.skipped_offline ? "skipped: offline" : null }));
+      { warnings: id.warnings, unreachable: id.unreachable, retired: id.retired, skipped: id.skipped_offline ? "skipped: offline" : null }));
   }
 
   const a = e.acmg;
   if (a) out.append(passBox("ACMG secondary findings", [
     ["list version", a.list_version ?? h("span", { class: "faint" }, "no list read")], ["checked", fmtInt(a.checked), a.checked === 0],
     ["mismatches", listOrNone(a.mismatches), n(a.mismatches) > 0], ["unverifiable", listOrNone(a.unverifiable), n(a.unverifiable) > 0], ["clean", yesNo(a.clean)]],
-    { warnings: a.warnings, unreachable: a.unreachable }));
+    { warnings: a.warnings, unreachable: a.unreachable, retired: a.retired }));
 
   const p = e.pgx;
   if (p) out.append(passBox("PGx function status", [
@@ -170,7 +173,7 @@ export function enrichmentView(e: EnrichmentReport): HTMLDivElement {
     ["sources consulted", p.sources.join(", ") || h("span", { class: "faint" }, "none")], ["skipped", listOrNone(p.skipped), n(p.skipped) > 0],
     ["routes", Object.entries(p.routes).map(([k, v]) => `${k}: ${v}`).join(", ") || "—"], ["declared use", p.declared_use],
     ["PharmVar", p.pharmvar_enabled ? "enabled" : "off"], ["offline", p.offline ? "yes" : "no"]],
-    { warnings: p.warnings, unreachable: p.unreachable }));
+    { warnings: p.warnings, unreachable: p.unreachable, retired: p.retired }));
   return out;
 }
 

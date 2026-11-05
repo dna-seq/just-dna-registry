@@ -1017,6 +1017,21 @@ def _spelling_summary(result: Any) -> SpellingSummary | None:
     )
 
 
+def _could_not_ask(source: str, exc: BaseException) -> tuple[list[str], list[str], str]:
+    """`(unreachable, retired, remedy)` for a source a pass could not ask (format 0.8, RM361).
+
+    A source that answered 410 has retired the endpoint, which a re-run never fixes, and upstream's
+    `net.could_not_ask_reason` reads that off the exception and its causes. So the source lands in
+    exactly one of the two lists, and the remedy names the right actor: retry for an outage, upgrade the
+    enricher for a retirement. Never read from the message.
+    """
+    from just_dna_enricher.net import RETIRED, could_not_ask_reason
+
+    if could_not_ask_reason(exc) == RETIRED:
+        return [], [source], "the endpoint is retired; upgrading the enricher is the remedy, not a re-run"
+    return [source], [], "most likely transient; re-run"
+
+
 def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
     """Why the compiler's strict refusal happened, and what to do about it.
 
@@ -1632,11 +1647,13 @@ def _frequency_check(spec_dir: Path, offline: bool, clients: Any) -> FrequencyCh
         # `httpx.HTTPStatusError` before RM97 — past a handler written for exactly this case, and
         # `/check` answered 500 over somebody else's outage. Catching the client's type here was our
         # workaround; the pass now owns it, so the workaround is gone rather than kept beside it.
+        unreachable, retired, remedy = _could_not_ask("gnomad", exc)
         return FrequencyCheck(
-            unreachable=["gnomad"],
+            unreachable=unreachable,
+            retired=retired,
             warnings=[
-                f"gnomAD could not be reached ({exc}), so no allele was checked. Unchecked rather "
-                f"than clean: this says nothing about whether gnomAD holds these frequencies."
+                f"gnomAD could not be asked ({exc}; {remedy}), so no allele was checked. Unchecked "
+                f"rather than clean: this says nothing about whether gnomAD holds these frequencies."
             ],
         )
     except FrequencyEnrichmentError as exc:
@@ -1690,10 +1707,12 @@ def _literature_check(spec_dir: Path, offline: bool, clients: Any) -> Literature
         )
     except LiteratureUnavailable as exc:
         # Subclass before base, for the reason spelled out in `_frequency_check`.
+        unreachable, retired, remedy = _could_not_ask("pubmed", exc)
         return LiteratureCheck(
-            unreachable=["pubmed"],
+            unreachable=unreachable,
+            retired=retired,
             warnings=[
-                f"PubMed (eutils) could not be reached ({exc}), so no citation was checked. An "
+                f"PubMed (eutils) could not be asked ({exc}; {remedy}), so no citation was checked. An "
                 f"empty `missing_pmids` here means nothing was asked, not that every PMID exists."
             ],
         )
@@ -1789,9 +1808,11 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         # would have caught it walked a hand-written list of eight modules. So this arm was
         # `except httpx.HTTPError`, and it is the only one of ours that a *client* fix — rather than a
         # pass fix — turned off. Catching the leaked type is exactly the trap RM101 names.
+        unreachable, retired, remedy = _could_not_ask("ols4/hgnc", exc)
         return IdentifierCheck(
-            unreachable=["ols4/hgnc"],
-            warnings=[f"OLS4/HGNC could not be reached: {exc}. Nothing was checked."],
+            unreachable=unreachable,
+            retired=retired,
+            warnings=[f"OLS4/HGNC could not be asked: {exc} ({remedy}). Nothing was checked."],
         )
     except IdentifierCheckError as exc:
         # The question was put and the answer is a problem — distinct from the arm above since 0.6.2.
@@ -1912,7 +1933,9 @@ def _acmg_check(spec_dir: Path, settings: Settings, offline: bool) -> AcmgCheck:
         # `clean` defaults to `True` either way, so this return used to publish a pass nobody ran:
         # `checked: 0, mismatches: [], clean: true`. The count was honest and the verdict was not.
         return AcmgCheck(
+            # `retired` (format 0.8, RM361) is the third skip: a 410, cleared by an upgrade, not a re-run.
             unreachable=["acmg-sf-list"] if exc.skip == "unreachable" else [],
+            retired=["acmg-sf-list"] if exc.skip == "retired" else [],
             warnings=[f"the ACMG SF list could not be read ({exc.skip}): {exc}. Nothing was checked."],
         )
     except AcmgSfError as exc:
@@ -1988,10 +2011,12 @@ def _pgx_leg_nomenclature(
         # escaped from somewhere it does not (a cache load, a client construction). Which of the two
         # is in the message and not in the type, so the entry names the pair — same compromise as
         # `ols4/hgnc`, and for the same reason.
-        check.unreachable.append("pharmvar/cpic")
+        unreachable, retired, remedy = _could_not_ask("pharmvar/cpic", exc)
+        check.unreachable.extend(unreachable)
+        check.retired.extend(retired)
         check.warnings.append(
-            f"pharmvar/cpic: no answer ({exc}), so no authored allele function was compared. "
-            f"Unchecked rather than agreed."
+            f"pharmvar/cpic: no answer ({exc}; {remedy}), so no authored allele function was "
+            f"compared. Unchecked rather than agreed."
         )
         return
     check.skipped.extend(pgx_result.skipped)
@@ -2104,10 +2129,12 @@ def _pgx_leg_clingen(
         # detail to depend on; RM101 makes it a type, so the `isinstance` is gone. **Not the message**,
         # then or now: neither string is in the pinned warning-text catalogue, so a reword upstream
         # would have flipped this verdict from "unchecked" to "your table is broken".
-        check.unreachable.append("clingen")
+        unreachable, retired, remedy = _could_not_ask("clingen", exc)
+        check.unreachable.extend(unreachable)
+        check.retired.extend(retired)
         check.warnings.append(
-            f"clingen dosage: the curation list could not be fetched ({exc}), so no gene was "
-            f"checked against it. Unchecked, not no-curation-found."
+            f"clingen dosage: the curation list could not be fetched ({exc}; {remedy}), so no gene "
+            f"was checked against it. Unchecked, not no-curation-found."
         )
         return
     except ClinGenError as exc:

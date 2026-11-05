@@ -52,6 +52,14 @@ variation there), `reference_rejected_loci` (the reference shows a different eve
 that says whether anything was compared. The console and `registry-client check` render all of them, and a
 strict publish's refusal gives each case its own remedy: only the first says re-run.
 
+### A retired upstream says `retired`, not `unreachable` (pre-built against upstream's 0.8 branch)
+
+Format 0.8's enricher tells a source that answered HTTP 410 (the endpoint is retired) apart from one that
+did not answer. Each `/check` pass that names unreachable sources now has a `retired` list beside it, and a
+source is in exactly one of the two. The remedy differs and the report says so: an outage is worth a
+re-run, a retired endpoint needs the server's enricher upgraded. The console and `registry-client check`
+show both.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

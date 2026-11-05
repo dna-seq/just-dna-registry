@@ -824,6 +824,13 @@ class FrequencyCheck(BaseModel):
             "finding about the module and never a publish gate"
         ),
     )
+    retired: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that answered HTTP 410: the endpoint is retired (format 0.8, upstream RM361). "
+            "Never in `unreachable` as well. A re-run does not help; upgrading the enricher does"
+        ),
+    )
     warnings: list[str] = Field(
         default_factory=list,
         description="Why the pass could not run — a degradation, never a module defect",
@@ -860,6 +867,13 @@ class LiteratureCheck(BaseModel):
             "finding about the module and never a publish gate"
         ),
     )
+    retired: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that answered HTTP 410: the endpoint is retired (format 0.8, upstream RM361). "
+            "Never in `unreachable` as well. A re-run does not help; upgrading the enricher does"
+        ),
+    )
     warnings: list[str] = Field(
         default_factory=list,
         description="Why the pass could not run — e.g. a PGx-only module carries no studies.csv",
@@ -889,6 +903,13 @@ class AcmgCheck(BaseModel):
             "The list could not be read: a 5xx, a timeout, or a page whose shape the scrape guards "
             "refuse — which is the same state as an outage for a reader, since either way no gene "
             "was compared. Non-empty makes `clean: true` vacuous. Never a publish gate"
+        ),
+    )
+    retired: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that answered HTTP 410: the endpoint is retired (format 0.8, upstream RM361). "
+            "Never in `unreachable` as well. A re-run does not help; upgrading the enricher does"
         ),
     )
     warnings: list[str] = Field(default_factory=list)
@@ -937,6 +958,13 @@ class PgxCheck(BaseModel):
             "independently and one upstream's outage must not be read as silence from the other "
             "three — nor discard their findings. Distinct from `skipped` (a licensing refusal, "
             "nothing was asked) and from a `warning` (the source answered and something was odd)"
+        ),
+    )
+    retired: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that answered HTTP 410: the endpoint is retired (format 0.8, upstream RM361). "
+            "Never in `unreachable` as well. A re-run does not help; upgrading the enricher does"
         ),
     )
     offline: bool = Field(
@@ -1014,6 +1042,13 @@ class IdentifierCheck(BaseModel):
             "Non-empty means every count and list beside it is *unchecked* rather than clean: this "
             "pass reached its upstream's error, not its data. A degradation of the report, never a "
             "finding about the module and never a publish gate"
+        ),
+    )
+    retired: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources that answered HTTP 410: the endpoint is retired (format 0.8, upstream RM361). "
+            "Never in `unreachable` as well. A re-run does not help; upgrading the enricher does"
         ),
     )
     clean: bool | None = Field(

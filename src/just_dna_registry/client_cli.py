@@ -1214,6 +1214,13 @@ def check(
                     f"of the check is unchecked, not clean. Re-run.",
                     fg=typer.colors.YELLOW,
                 )
+            # Format 0.8 (RM361): a 410. Not an outage, so not "Re-run": the server's enricher is too old.
+            if result is not None and result.retired:
+                typer.secho(
+                    f"  · {pass_name}: {', '.join(result.retired)} retired the endpoint — that part of "
+                    f"the check is unchecked. The server's enricher needs an upgrade; re-running will not help.",
+                    fg=typer.colors.YELLOW,
+                )
         # The literature pass has no summary line, so a finding that lives only in a list has to be
         # printed here or it reaches nobody (the 0.17 lesson: a new report field is only half a fix).
         # Yellow: a quote that is its own article's title grounds nothing, but it is a defect in the
