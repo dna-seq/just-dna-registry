@@ -75,7 +75,11 @@ def revalidate_version(
         # legacy `module.namespace` (forbidden but registry-overridden) must not read as un-fixable
         # contract drift. Genuine drift (typo'd/forbidden columns) still surfaces.
         normalize_module_block(spec)
-        result = validate_spec(spec, IDENTITY_AUTHORITY_KEYS, strict=strict_check)
+        result = validate_spec(
+            spec, IDENTITY_AUTHORITY_KEYS, strict=strict_check,
+            # The compile's threshold (M9), and the configured default when no settings were passed.
+            ba1_threshold=(settings or Settings()).ba1_threshold,
+        )
         if not result.valid:
             return "needs_upgrade", result.errors
         strict_notes = list(result.warnings) if strict_check else []

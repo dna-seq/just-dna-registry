@@ -468,6 +468,7 @@ def _validate_worker(
         normalization = publish_service.normalize_spec(spec_dir)
         return enrich_service.validation_report(
             spec_dir, repo, namespace, name, strict,
+            ba1_threshold=settings.ba1_threshold,
             normalized=normalization.info, extra_warnings=normalization.warnings,
             client_format=client_format,
         )

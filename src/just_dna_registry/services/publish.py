@@ -592,7 +592,9 @@ def _finalize(
         # about *resolved* data, and raising them here — before any coordinate exists — would point
         # the author at the wrong column. `compile_module` re-runs validation itself and then re-runs
         # the mode-ladder checks at their real severity, which is where strict belongs.
-        validation = validate_spec(spec_dir, IDENTITY_AUTHORITY_KEYS)
+        validation = validate_spec(
+            spec_dir, IDENTITY_AUTHORITY_KEYS, ba1_threshold=settings.ba1_threshold
+        )
         action.log(
             message_type="validated", valid=validation.valid,
             errors=validation.errors[:20], warnings=validation.warnings[:20],

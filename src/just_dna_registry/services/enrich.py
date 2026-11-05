@@ -1020,6 +1020,7 @@ def validation_report(
     name: str,
     strict: bool,
     *,
+    ba1_threshold: float,
     normalized: list[str] | None = None,
     extra_warnings: list[str] | None = None,
     client_format: str | None = None,
@@ -1047,7 +1048,12 @@ def validation_report(
     changes a verdict — the findings are the ones this instance's own row models produce, which is
     the only honest answer a server can give about a spec it would have to compile itself.
     """
-    result = validate_spec(spec_dir, IDENTITY_AUTHORITY_KEYS, strict=strict)
+    # The compile's own switches (format 0.8, RM367, the liaison's M9): `validate_spec` and
+    # `compile_module` reach one verdict only when they are handed the same ones. `ba1_threshold`
+    # moves which frequency findings fire; `resolve_with_ensembl` stays at its default on both sides.
+    result = validate_spec(
+        spec_dir, IDENTITY_AUTHORITY_KEYS, strict=strict, ba1_threshold=ba1_threshold
+    )
     server_format = VersionInfo.local().format
 
     # Cheap (no reference, no parquet) and the same value publish will gate `409 duplicate_content`
@@ -1192,6 +1198,7 @@ def _dry_run_inner(
     # modeless with the reason written beside it — and this is that reasoning arriving here.
     gate = validation_report(
         spec_dir, repo, namespace, name, False,
+        ba1_threshold=settings.ba1_threshold,
         normalized=normalization.info, extra_warnings=normalization.warnings,
         client_format=client_format,
     )
@@ -1204,6 +1211,7 @@ def _dry_run_inner(
         return CheckReport(
             validation=gate if not strict else validation_report(
                 spec_dir, repo, namespace, name, True,
+                ba1_threshold=settings.ba1_threshold,
                 normalized=normalization.info, extra_warnings=normalization.warnings,
                 client_format=client_format,
             ),
@@ -1266,6 +1274,7 @@ def _dry_run_inner(
     if strict:
         graded = validation_report(
             spec_dir, repo, namespace, name, True,
+            ba1_threshold=settings.ba1_threshold,
             normalized=normalization.info, extra_warnings=normalization.warnings,
             client_format=client_format,
         )

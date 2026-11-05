@@ -137,6 +137,7 @@ def build_derived_tree(
             # judgement the enrichment tier is about to make anyway.
             validation = validation_report(
                 spec_dir, repo, namespace, name, strict=False,
+                ba1_threshold=settings.ba1_threshold,
                 normalized=normalization.info,
                 extra_warnings=normalization.warnings,
                 client_format=client_format,

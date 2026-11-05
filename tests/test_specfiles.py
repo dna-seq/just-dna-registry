@@ -7,6 +7,7 @@ table kind is added, and the failure mode of staleness is a module the registry 
 for no reason the author can see.
 """
 
+import ast
 import json
 from pathlib import Path
 
@@ -1121,3 +1122,20 @@ def test_a_derived_table_never_enters_the_content_signature() -> None:
     overlap = sorted(signature & set(hints.DERIVED_TABLE_MODELS))
     assert not overlap, f"a derived table reached SIGNATURE_INPUTS: {overlap}"
     assert not (signature & set(specfiles.DERIVED_FILES))
+
+
+def test_every_validate_spec_call_is_handed_the_compiles_ba1_threshold() -> None:
+    """M9 (format 0.8, RM367): `validate_spec` and `compile_module` reach one verdict only when they
+    get the same switches, and `ba1_threshold` is the one this service sets (`Settings.ba1_threshold`,
+    passed to every compile). A call without it validates at upstream's default while the compile beside
+    it uses ours, so a dry run could pass a frequency finding the publish then raises."""
+    package = Path(specfiles.__file__).parent
+    calls = []
+    for path in package.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "validate_spec":
+                calls.append((path.name, node.lineno, {k.arg for k in node.keywords}))
+    # Floor: publish's pre-gate, `validation_report` and `revalidate` as of 0.28.
+    assert len(calls) >= 3, calls
+    missing = [(name, line) for name, line, kws in calls if "ba1_threshold" not in kws]
+    assert not missing, f"validate_spec without the compile's ba1_threshold: {missing}"

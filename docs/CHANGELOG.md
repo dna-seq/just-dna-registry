@@ -35,6 +35,13 @@ repository format 0.8's enricher pulls; the old `just-dna-seq/ensembl_variations
 deployed, because a cache holding files from both releases resolves nothing. The procedure is in
 `docs/UPGRADE.md`.
 
+### `/validate` and `/check` grade at the publish's frequency threshold
+
+Format 0.8 makes `validate` reach the compile's verdict when it is given the compile's switches, and adds
+`ba1_threshold` to it. Every validation here (the publish pre-gate, `/validate`, `/check`, `POST .../derived`
+and `revalidate`) now passes `REGISTRY_BA1_THRESHOLD`, the value the compile already used, so a dry run
+cannot pass a frequency finding the publish then raises.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,
