@@ -1152,6 +1152,12 @@ def check(
                 f"authoring coordinates for them.",
                 fg=typer.colors.YELLOW,
             )
+        for m in e.allele_mismatches:
+            flip = " (fits on the other strand: write it on the reference's)" if m.strand_flip else ""
+            typer.secho(
+                f"  ! {m.rsid}: the source offers {', '.join(m.offered) or 'no allele'}, not {m.genotype}{flip}.",
+                fg=typer.colors.YELLOW,
+            )
         # Format 0.8: the sources answered and the answer was withheld. Only the first is transient.
         for keys, why in (
             (e.unanchored_rsids, "the anchor base was not read, so no locus was written. Re-run"),

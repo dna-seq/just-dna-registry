@@ -353,6 +353,14 @@ export interface IdentifierCheck {
   warnings: string[];
 }
 
+export interface AlleleMismatchEntry {
+  rsid: string;
+  genotype: string;
+  loci: string[];
+  offered: string[];
+  strand_flip: boolean;
+}
+
 export interface PlacementSummary {
   witnesses: string[];
   compared: number;
@@ -378,6 +386,7 @@ export interface EnrichmentReport {
   offline: boolean;
   unresolved: string[];
   unreachable_rsids: string[];
+  allele_mismatches: AlleleMismatchEntry[];
   unanchored_rsids: string[];
   non_nucleotide_rsids: string[];
   reference_rejected_loci: string[];

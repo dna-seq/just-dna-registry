@@ -60,6 +60,14 @@ source is in exactly one of the two. The remedy differs and the report says so: 
 re-run, a retired endpoint needs the server's enricher upgraded. The console and `registry-client check`
 show both.
 
+### `/check` says when the source has the rsID and the genotype does not fit (pre-built against upstream's 0.8 branch)
+
+When every source a key was asked of answers at alleles the authored genotype cannot sit on, the key has
+no position and was reported only as `unresolved`, with advice to provision a snapshot or author the
+coordinate, neither of which helps. `allele_mismatches` now lists each such rsID with what the source
+offered, and says when the genotype fits on the other strand. A strict publish's refusal names this case
+first and tells the author to check the genotype, or write it on the reference's strand.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

@@ -399,6 +399,7 @@ the validation findings and decides whether unresolved positions count against `
   "enrichment": {
     "mode": "best_effort", "offline": true,
     "unresolved": [], "unreachable_rsids": [],
+    "allele_mismatches": [],
     "unanchored_rsids": [], "non_nucleotide_rsids": [], "reference_rejected_loci": [],
     "placement": {"witnesses": [], "compared": 0, "placed": 0, "contested": [], "withheld": [],
                   "undecided": [], "single_witness": [], "not_asked": [],
@@ -429,6 +430,11 @@ Always empty on `?offline=true`, where nothing was asked. It does **not** soften
 `?strict=true` an unresolved key still refuses, because the publish really would refuse — but a `false`
 verdict beside a non-empty `unreachable_rsids` means *re-run*, not *go author coordinates*. The same
 reason appears in prose on `notes`, and on the publish path in the `422`'s hint.
+
+**`allele_mismatches` (0.28): the source has the rsID, and the genotype does not fit.** Each entry names the
+rsID, the authored genotype, the loci and alleles the source offered, and `strand_flip` (true when the
+genotype fits on the other strand; false means *not established*). Every such rsID is also in `unresolved`.
+It is an answer, so a re-run repeats it.
 
 **Four more reasons a key is in `unresolved`, from format 0.8 (registry 0.28): the source answered and the
 answer was withheld.** Each list is a subset of `unresolved`, and they are disjoint. `unanchored_rsids`:

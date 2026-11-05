@@ -527,6 +527,13 @@ def test_the_hint_names_why_an_answered_key_was_withheld() -> None:
     unanchored = hint(unanchored_rsids=["rs1"])
     assert "rs1" in unanchored and "Re-publish once" in unanchored
 
+    # C10/M14: the source has the rsID; the genotype does not fit. Never "re-run", and a strand flip
+    # upstream established gets its own remedy.
+    flipped = hint(allele_mismatches=["rs1"], strand_flipped=["rs1"])
+    assert "other strand" in flipped and "re-publish" not in flipped.lower()
+    mismatch = hint(allele_mismatches=["rs2"])
+    assert "rs2" in mismatch and "other strand" not in mismatch and "re-publish" not in mismatch.lower()
+
     for state, key in (
         ("placement_withheld", "rs2"),
         ("non_nucleotide_rsids", "rs3"),

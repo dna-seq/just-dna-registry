@@ -97,6 +97,8 @@ export function enrichmentView(e: EnrichmentReport): HTMLDivElement {
     // A key with no position says nothing about whether anybody asked: an unanswered request is not an absence.
     ["unreachable (never answered)", listOrNone(e.unreachable_rsids), n(e.unreachable_rsids) > 0],
     // Format 0.8: answered, but withheld. Only the first is transient; the other two are answers a re-run repeats.
+    // The source has the rsID; the authored genotype cannot sit on what it offers (S85/RM382).
+    ["genotype does not fit", listOrNone(e.allele_mismatches.map((m) => `${m.rsid} ${m.genotype} vs ${m.offered.join("|")}${m.strand_flip ? " (fits on the other strand)" : ""}`)), n(e.allele_mismatches) > 0],
     ["anchor base not read (re-run)", listOrNone(e.unanchored_rsids), n(e.unanchored_rsids) > 0],
     ["no variation at that rsID", listOrNone(e.non_nucleotide_rsids), n(e.non_nucleotide_rsids) > 0],
     ["rejected by the reference", listOrNone(e.reference_rejected_loci), n(e.reference_rejected_loci) > 0],

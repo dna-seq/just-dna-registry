@@ -39,6 +39,7 @@ from just_dna_format.release_records import parse_version
 from just_dna_registry.config import Settings
 from just_dna_registry.models.api import (
     AcmgCheck,
+    AlleleMismatchEntry,
     CacheLaneStatus,
     CacheStatusReport,
     CheckReport,
@@ -223,6 +224,9 @@ class EnrichOutcome:
     non_nucleotide_rsids: list[str] = field(default_factory=list)
     reference_rejected_loci: list[str] = field(default_factory=list)
     placement_withheld: list[str] = field(default_factory=list)
+    #: rsIDs answered at alleles the genotype cannot host (S85/RM382), and which of them a strand flip fits.
+    allele_mismatches: list[str] = field(default_factory=list)
+    strand_flipped: list[str] = field(default_factory=list)
     #: The enricher's own `MintResult` (0.5.1 / RM40), or `None` when minting did not run — which is
     #: not the same as a coverage of zero, and the reason this is not two integers.
     vrs: Any = None
@@ -949,6 +953,8 @@ def enrich_spec(
         unreachable_rsids=list(result.unreachable_rsids),
         **_withheld_states(result),
         placement_withheld=_placement_withheld(result),
+        allele_mismatches=[m.rsid for m in result.allele_mismatches],
+        strand_flipped=[m.rsid for m in result.allele_mismatches if m.strand_flip],
         sources=list(result.sources),
         notes=_render_notes(result),
         vrs=result.vrs,
@@ -1074,7 +1080,16 @@ def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
     # differs by case. Only `unanchored` is transient; the other three are answers, and a re-run gets
     # the same one, so none of them may say re-run (upstream's guide, the registry block, item 5).
     # They replace the 0.27.1 online sentence, which had to guess at the first case from a log line.
+    flipped = set(outcome.strand_flipped)
     cases = [
+        # First, because it is the commonest and the most often mis-remedied (the liaison's C10/M14): the
+        # source has the rsID, and the genotype is written at alleles it cannot sit on.
+        ([r for r in outcome.allele_mismatches if r in flipped],
+         "the source has the rsID, and the genotype fits only on the other strand. Write it on the "
+         "reference's strand"),
+        ([r for r in outcome.allele_mismatches if r not in flipped],
+         "the source has the rsID, at alleles the authored genotype cannot sit on. Check the genotype "
+         "against the alleles it offers"),
         (outcome.unanchored_rsids,
          "the sequence service did not return the indel's anchor base, so no locus was written. "
          "Re-publish once before changing anything: this one is transient"),
@@ -1544,6 +1559,13 @@ def _run_enrichment_passes(
         unresolved=list(result.unresolved),
         unreachable_rsids=list(result.unreachable_rsids),
         **_withheld_states(result),
+        allele_mismatches=[
+            AlleleMismatchEntry(
+                rsid=m.rsid, genotype=m.genotype, loci=list(m.loci), offered=list(m.offered),
+                strand_flip=m.strand_flip,
+            )
+            for m in result.allele_mismatches
+        ],
         placement=_placement_summary(result),
         spelling=_spelling_summary(result),
         sources=list(result.sources),

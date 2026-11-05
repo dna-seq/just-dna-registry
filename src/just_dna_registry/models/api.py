@@ -1065,6 +1065,22 @@ class IdentifierCheck(BaseModel):
     )
 
 
+class AlleleMismatchEntry(BaseModel):
+    """An rsID the source **has**, whose every locus cannot host the authored genotype (upstream S85,
+    RM154; RM382 asks the next link before giving up). Not `not_found`: the source answered, and the
+    answer did not match. Typically a genotype written on the other strand."""
+
+    rsid: str
+    genotype: str
+    loci: list[str] = Field(default_factory=list, description="`chrom:start ref>alts` per locus offered")
+    offered: list[str] = Field(default_factory=list, description="The allele sets the source published")
+    strand_flip: bool = Field(
+        default=False,
+        description="True when reading the genotype on the other strand makes it fit. False is *not "
+        "established*, never *established otherwise*",
+    )
+
+
 class PlacementSummary(BaseModel):
     """Format 0.8's placement comparison (upstream RM267): an indel's placement is compared with a
     second authority, and a locus two authorities place as different events is **withheld**, never
@@ -1155,6 +1171,14 @@ class EnrichmentReport(BaseModel):
         description=(
             "rsIDs whose every allele is not a base (dbSNP records no variation there). Permanent: a "
             "re-run gets the same answer"
+        ),
+    )
+    allele_mismatches: list[AlleleMismatchEntry] = Field(
+        default_factory=list,
+        description=(
+            "rsIDs the source has, at alleles the authored genotype cannot sit on, so no row was written "
+            "(each is in `unresolved`). An answer, not an outage: re-running repeats it. Check the "
+            "genotype, and its strand where `strand_flip` is true"
         ),
     )
     reference_rejected_loci: list[str] = Field(
