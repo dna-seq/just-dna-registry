@@ -622,6 +622,11 @@ is published"; no path or editable source in a tracked file); M3's recompile and
 Ensembl pull) wait for the cut; and the guide is re-read at the tag, since a branch can still move.
 Rejected: waiting idle for the cut, which would put a whole minor's build after it.
 
+**0.8.0 is cut** (2026-11-05, `edf2661c` on upstream's `0.8`; no behaviour change since the release candidate
+`c90e6d98` the branch already builds on). Re-read against this scope by the liaison (ee22dc6): one row
+corrected (M3, item 3), nothing added or dropped. 0.28 now waits only on the three packages reaching
+PyPI, which with the tags is the maintainer's step; the branch keeps its git source until then.
+
 **Holds, hardest first.**
 
 1. **The 0.8 lockstep cut** (M1): floors for all three tiers, `uv.lock`, the operator procedure in
@@ -644,7 +649,13 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    patch with C1 and C2, because the roster already misses four tables on 0.7 (the lead's call,
    2026-11-04); M2 then only adds the six names.
 3. **The catalog-wide recompile** (M3): one PATCH per variants module under plain `--apply`, `--dry-run`
-   first. Required. Waits on upstream writing the 0.8.0 release record.
+   first. Required. The 0.8.0 release record is written (the cut, `edf2661c`).
+   **And it moves `content_signature` for some modules** (RM363, the liaison's ee22dc6, correcting the map's
+   "moves for none"): a module whose `studies`, `haplotypes`, `pharm_variants` or `heteroplasmy` rows carry
+   `chr`-prefixed contigs signs differently once recompiled. The successor is a PATCH of the same module, so
+   no `409`, but the predecessor keeps its claim and `docs/UPGRADE.md` must say the identity can move. A
+   catalog query sizes it before M3 (owner: lead). About half an hour with the operator text. Not a question
+   for the person: no choice moves, only the procedure's wording and a count.
    **And it must survive the snapshot switch** (M12, upstream's guide § 1.30, the liaison's d351077): the
    sweep carries each stored 0.7 `resolution.csv` into a re-enrich against the new split snapshot (M8),
    and a module holding placements from both releases may refuse under strict

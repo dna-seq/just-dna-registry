@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-04)
+## Now (2026-11-05)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -33,6 +33,11 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   lead's b7cc45b and 22b7f52) added too, by the pm while the person was away; tell them on return, they
   may move them. M8 (Ensembl repo move, 14.5 GB pull on both boxes before the deploy) sits with M1; M9–M11 with M4. Pushed by the lead with the rest of
   `main` (c83164d, 2026-11-05); desk #193 decided elsewhere.
+- **0.8.0 cut** (2026-11-05, `edf2661c`): the at-the-cut re-read is done. The liaison's ee22dc6 corrects M3
+  (RM363 moves `content_signature` for `chr`-prefixed contigs on four tables), folded into item 3 as an
+  operator-text change and a sizing query for the lead; nothing else moved. 0.28 now waits only on the
+  maintainer publishing 0.8.0 to PyPI and tagging it; told them. Still owed on their return: C8's fields
+  and C17 may move out of 0.28.
 
 ## Tools
 
