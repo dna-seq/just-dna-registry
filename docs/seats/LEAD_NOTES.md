@@ -67,7 +67,8 @@ Rev moved to a4a401e7 (46603de); RM384 tie-back (7a275a4); M13 test (bd7fe67); C
 At upstream's release candidate c90e6d98 (049e036), main merged in (c949f91), polars 2.1.0 (0c23598): full
 suite 621 passed. duckdb 2 waits for upstream's RM344 (roadmap 3d4d850).
 **Upstream cut 0.8.0** (edf2661c, 2026-11-05; PyPI and tags are their maintainer's): 0.28 is on it with floors
-`>=0.8.0` (4579fea), full suite 621 passed. When 0.8.0 is on PyPI: drop `[tool.uv.sources]`, `uv lock`, re-run.
+`>=0.8.0` (4579fea), full suite 621 passed. **0.8.0 on PyPI** (all three, 2026-11-05): git source out, relocked from
+PyPI (c809c09), full suite on the published wheels 621 passed, 10 skipped. 0.28 depends on nothing unpublished now.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
 indels, so it needs an online setting and an egress budget for the run; then UPGRADE.md's 0.28 procedure
 (Ensembl pull, deploy, `upgrade --dry-run`, `--apply`; a chr-prefixed module's content_signature moves, RM363)
