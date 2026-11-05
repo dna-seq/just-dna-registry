@@ -44,4 +44,15 @@ After 0.28: the variant-level catalog with a gene facet; design first.
 
 Kit pin at v0.1.128 (moved 2026-11-05); this session runs 0.1.127 until `/reload-plugins`.
 
+**Pushes are the lead's** (LEAD.md grant, "all pushes"): push main and `release-0.27.x` after each landed block,
+peers' commits included. Holding them for desk #193 was wrong (the person, 2026-11-05: "why noone pushes?");
+pushed c83164d. There is no trunk watcher; the lead pushes at the end of each block instead.
+
+**Waiting on the person**: `longevity-loci/liaison` (and `longevity-loci/triage`, per the kit's rule) into
+`[seat.triage] wake_from` in `.blueprints.toml`; the auto-mode classifier refused the edit (Self-Modification).
+
+**0.28 pre-build** (the person via pm, 2026-11-05: "0.8 is delayed ... pre-build on top of that"): when the
+compiler's lead posts the finished `INTEGRATION_0_8.md` commit, build M1's code, M2, M4, M8-M11 on the 0.28
+branch against upstream's 0.8 branch; not merged, not shipped before the floors are on PyPI.
+
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
