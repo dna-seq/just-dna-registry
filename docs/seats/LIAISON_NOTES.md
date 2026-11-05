@@ -43,7 +43,9 @@ reset").
   pushes"); hand it a commit to push.
 - **0.8 map** extended to `503730c` (M8 to M11, from the guide's §§ 1.20-1.29); not yet sent to the lead
   and pm, since the cut is hours away and the whole map is re-read then.
-- **At the 0.8 cut, also check RM384** (the lane → repo-id map, from our S130) landed, and tell the lead M8's test can read it.
+- **RM384 landed** on `0.8` as `locations.SNAPSHOT_REPO_IDS`; the lead took it for M8 (2026-11-05).
+- **0.8 map read to `a4a401e7`** (2026-11-05): M13, M14 and M12's rederive effects sent to the lead. Before the cut: two
+  regenerated examples and audit round 3; re-read the delta from `a4a401e7` at the tag.
 - reflect after 2026-11-11: classes/base/BASE.md as of v0.1.127 (kit reports filed without asking, timed by cost).
 
 ## Backlog, in order
