@@ -345,6 +345,56 @@ def test_the_review_pass_carve_out_holds_for_check_too(tmp_path: Path) -> None:
     assert other["would_publish"] is False
 
 
+def _strict_errors(spec: Path) -> list[str]:
+    from just_dna_compiler.compiler import validate_spec
+
+    from just_dna_registry.services.enrich import IDENTITY_AUTHORITY_KEYS
+
+    return validate_spec(spec, IDENTITY_AUTHORITY_KEYS, strict=True).errors
+
+
+def test_a_recorded_build_disagreement_is_module_level_under_strict(tmp_path: Path) -> None:
+    """C11: strict adds two refusals of its own (upstream RM218), and the recorded build disagreement is
+    about the module: its rows contradict its declared `genome_build`. It turns `would_publish_module_level`
+    false; the per-row one (rows left without a position) does not. Both are produced here by the real
+    compiler, on upstream's own case for each, so the published phrase is checked against what is emitted."""
+    from just_dna_compiler.compiler import BUILD_AGREEMENT_CHECK
+    from just_dna_enricher.verification import record_verification
+    from just_dna_format.manifest import VerificationRecord
+
+    from just_dna_registry.services.enrich import refuses_module_under_strict
+
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "module_spec.yaml").write_text(_YAML)
+    (build / "variants.csv").write_text(
+        "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+        "rs61849494,10,51613269,G,A,A/G,alt,Pasted verbatim from a GRCh37 paper.\n"
+    )
+    (build / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "10:51613269:G:A,rs61849494,10,51613269,G,A,GRCh38,0,ensembl-rest,resolved\n"
+    )
+    record_verification(
+        [VerificationRecord(check=BUILD_AGREEMENT_CHECK, subjects=1, findings=1, source="ensembl-grch37")],
+        build, error=RuntimeError,
+    )
+    build_errors = _strict_errors(build)
+    assert build_errors, "the strict grade raised nothing: the case no longer provokes the refusal"
+    assert refuses_module_under_strict(build_errors)
+
+    rows = tmp_path / "rows"
+    rows.mkdir()
+    (rows / "module_spec.yaml").write_text(_YAML)
+    (rows / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,het\n"
+    )
+    row_errors = _strict_errors(rows)
+    # The haystack is the per-row refusal itself (upstream's other published phrase), not some other error.
+    assert any("have unresolved genomic positions after resolution" in e for e in row_errors), row_errors
+    assert not refuses_module_under_strict(row_errors)
+
+
 def test_the_module_level_verdict_composes_the_three_gates(tmp_path: Path) -> None:
     """S1: one branchable field for the publish gates that do not scale with the variant count.
 

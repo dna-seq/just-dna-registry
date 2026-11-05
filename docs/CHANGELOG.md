@@ -54,6 +54,14 @@ the pass are held back and said so in its `warnings`: the PGS Catalog accession 
 server does not pace yet, and any table that exists but would not parse. The pass no longer writes into the
 spec it is checking. Fields for both arrive in 0.28.
 
+### A strict `/check` says a module whose rows are another assembly's fails as a module
+
+When the enricher has recorded that a module's coordinates belong to another genome build than the one
+it declares, a strict compile refuses it. `/check?strict=true` already reported that refusal, but kept
+`would_publish_module_level: true`, telling an author the module itself was fine. The field is now
+`false` for that refusal. Rows left without a position under strict still count as per-row and leave it
+alone.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own
