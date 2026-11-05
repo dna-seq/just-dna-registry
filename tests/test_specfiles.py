@@ -17,6 +17,7 @@ from just_dna_compiler.compiler import (
     _INPUT_FILES,
     _PROVENANCE_FILE,
     _TABLE_KIND_CSVS,
+    AUTHORED_NON_KIND_TABLES,
 )
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.verification import VerificationDoc
@@ -26,6 +27,7 @@ from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
 from just_dna_registry.services.publish import SHORT_DESCRIPTION_MAX_CHARS
 from just_dna_registry.specfiles import (
+    AUTHORED_NON_KIND_CSVS,
     CORE_CSVS,
     DERIVED_DIR,
     DERIVED_FILES,
@@ -54,10 +56,19 @@ from just_dna_registry.specfiles import (
 def test_table_kinds_match_the_compiler() -> None:
     """A table kind the compiler accepts but the registry doesn't know is a module we reject for no
     reason the author can act on."""
-    assert set(_TABLE_KIND_CSVS) == set(SPEC_DATA_FILES) - set(CORE_CSVS) - set(FACT_CSVS) - {
-        RESOLUTION_CSV,
-        OVERRIDES_CSV,
-    }
+    assert set(_TABLE_KIND_CSVS) == (
+        set(SPEC_DATA_FILES) - set(CORE_CSVS) - set(FACT_CSVS) - set(AUTHORED_NON_KIND_CSVS)
+        - {RESOLUTION_CSV}
+    )
+
+
+def test_authored_non_kind_tables_match_the_compiler() -> None:
+    """The overlay, `meta.csv` and `model_organisms.csv` (format 0.8, the liaison's M2): authored,
+    inside `content_signature`, and not table kinds. An equality, for the reason the fact-table one
+    is: a name the compiler reads and we do not is dropped on a rebuild and moves the signature."""
+    upstream = {table.csv for table in AUTHORED_NON_KIND_TABLES}
+    assert OVERRIDES_CSV in upstream  # floor: an emptied registry must not read as agreement
+    assert set(AUTHORED_NON_KIND_CSVS) == upstream
 
 
 def test_fact_tables_match_the_compiler() -> None:

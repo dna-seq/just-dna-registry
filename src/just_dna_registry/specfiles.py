@@ -121,6 +121,13 @@ FACT_CSVS: tuple[str, ...] = (
     # drop. The lesson is the one the reporter stated: **a tie-back test is only as current as the
     # artifact it ties back to**, which is true of every `*_match_the_compiler` test in this file.
     "expression_effects.csv",
+    # Format 0.8's four derived tables (the liaison's M2): open-targets locus-to-gene and
+    # colocalisation, VEP consequences, and the computed LD pair (RM331). Derived, so outside
+    # `SIGNATURE_INPUTS`; carried here because a re-publish that drops one shrinks the module silently.
+    "locus_to_gene.csv",
+    "colocalisations.csv",
+    "consequences.csv",
+    "ld_pairs.csv",
 )
 
 # The rsid↔coordinate table. Produced by the enricher (the only tier permitted to fetch) and
@@ -145,6 +152,14 @@ RESOLUTION_CSV: str = "resolution.csv"
 #: author's recorded judgement that a derived value is wrong; dropping it on the next re-publish
 #: silently restores the value they rejected, and the module goes on compiling green.
 OVERRIDES_CSV: str = "overrides.csv"
+
+#: Every authored table that is not a table kind (upstream's `AUTHORED_NON_KIND_TABLES`, public from
+#: format 0.8): the overlay, and 0.8's `meta.csv` (meta-analysis rows) and `model_organisms.csv`
+#: (model-organism evidence). All three are authored and inside `content_signature`, so a rebuild that
+#: dropped one would move the module's identity, not only shrink it. Hand-kept because this module
+#: must not import the compiler (`client_cli` imports it on a base install);
+#: `test_signature_inputs_match_the_compilers_input_set` ties it back.
+AUTHORED_NON_KIND_CSVS: tuple[str, ...] = (OVERRIDES_CSV, "meta.csv", "model_organisms.csv")
 
 # Optional structured provenance authored beside the spec. Shipped and hashed like a log, kept out
 # of `artifact.digest`.
@@ -237,7 +252,7 @@ DERIVED_DIR: str = DERIVED_SUBDIR
 LOGS_DIR: str = "logs"
 
 SPEC_DATA_FILES: tuple[str, ...] = (
-    CORE_CSVS + TABLE_KIND_CSVS + FACT_CSVS + (RESOLUTION_CSV, OVERRIDES_CSV)
+    CORE_CSVS + TABLE_KIND_CSVS + FACT_CSVS + (RESOLUTION_CSV,) + AUTHORED_NON_KIND_CSVS
 )
 
 #: Every accepted *spelling* of every spec data file. For most names that is the name itself;
@@ -335,11 +350,11 @@ _HOISTABLE: frozenset[str] = frozenset(RECOGNIZED_SPEC_FILES) | set(RENAMED_ON_U
 #: Exactly what `just_dna_compiler.compiler.content_signature` reads. Mirrors `_INPUT_FILES`: the
 #: fact sidecars and `resolution.csv` are excluded because they are derived, not authored, so two
 #: modules with identical authored data share a signature regardless of which sidecars were run.
-#: `overrides.csv` joins it at format 0.7 and is the reason this tuple is not simply "the authored
-#: tables": the overlay is authored, is hashed, and is not a table kind. It stays root-level like
+#: `overrides.csv` joins it at format 0.7, and `meta.csv`/`model_organisms.csv` at 0.8, and they are
+#: the reason this tuple is not simply "the table kinds": each is authored, hashed, and not a kind. It stays root-level like
 #: every other member, which is what keeps `DERIVED_DIR` unable to move a `content_signature`.
 SIGNATURE_INPUTS: tuple[str, ...] = (
-    (SPEC_YAML,) + CORE_CSVS + TABLE_KIND_CSVS + (OVERRIDES_CSV,)
+    (SPEC_YAML,) + CORE_CSVS + TABLE_KIND_CSVS + AUTHORED_NON_KIND_CSVS
 )
 
 

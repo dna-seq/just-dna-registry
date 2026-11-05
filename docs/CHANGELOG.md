@@ -11,6 +11,15 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 **Client surface:** unchanged. `whoami()` gains a `site_admin` field and `merge_accounts()` is
 new; no existing method moves.
 
+
+### Format 0.8's six new spec tables are carried (pre-built against upstream's 0.8 branch)
+
+`meta.csv` and `model_organisms.csv` are authored and inside `content_signature`; `locus_to_gene.csv`,
+`colocalisations.csv`, `consequences.csv` and `ld_pairs.csv` are derived. All six are recognized on upload,
+stored, and carried by `revalidate` and `registry upgrade`, so a rebuild neither drops a derived table nor
+moves a module's signature by dropping an authored one. `registry upgrade`'s column check reads the authored
+non-kind tables off upstream's `AUTHORED_NON_KIND_TABLES`.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

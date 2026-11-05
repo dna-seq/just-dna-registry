@@ -27,11 +27,10 @@ import csv
 import io
 
 import yaml
-from just_dna_compiler.compiler import _FACT_TABLES, _TABLE_KINDS, OVERRIDES_CSV
+from just_dna_compiler.compiler import _FACT_TABLES, _TABLE_KINDS, AUTHORED_NON_KIND_TABLES
 from just_dna_format.identity import parse_version
 from just_dna_format.layout import sidecar_spellings
 from just_dna_format.manifest import Contribution, GenePanelSpec, ModuleManifest
-from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import Defaults, ModuleInfo, ModuleSpecConfig, StudyRow, VariantRow
 from pydantic import BaseModel, Field
@@ -176,8 +175,9 @@ def plan_variants_upgrade(variants_csv_text: str) -> UpgradePlan:
 # 0.10 failure above, back through a list nobody updated. `_TABLE_KINDS` (the authored annotation
 # tables) and `_FACT_TABLES` (the derived sidecars, `sources.csv` among them) each carry their
 # `(csv, parquet, model)` binding. Two categories are in neither and are named here, because upstream
-# binds no model to them in a registry: the SNP core (`variants.csv`, `studies.csv`, whose parquets are
-# `SNP_CORE_PARQUETS`) and the authored overlay (`OVERRIDES_CSV`, RM124's "third category").
+# binds no model to them in those two: the SNP core (`variants.csv`, `studies.csv`, whose parquets are
+# `SNP_CORE_PARQUETS`), named here, and the authored non-kind tables (the overlay, and 0.8's `meta.csv`
+# and `model_organisms.csv`), read from `AUTHORED_NON_KIND_TABLES`, public from format 0.8.
 # `tests/test_upgrade.py` holds every CSV in upstream's `_INPUT_FILES` and `_FACT_TABLES` to this
 # roster, so a table upstream adds fails a test here rather than a recompile on a box.
 #
@@ -188,7 +188,7 @@ _ROW_MODELS: dict[str, type[BaseModel]] = {
     "variants.csv": VariantRow,
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in (*_TABLE_KINDS, *_FACT_TABLES)},
-    OVERRIDES_CSV: OverrideRow,
+    **{table.csv: table.model for table in AUTHORED_NON_KIND_TABLES},
     **dict.fromkeys(sidecar_spellings("sources.csv"), SourceRow),
 }
 
