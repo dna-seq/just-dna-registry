@@ -739,7 +739,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
   (already the rule at every door, CLAUDE.md "Deployment modes").
 
-- **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
+- ✅ **done** (a96e8ac on `release-0.27.x`, in 0.27.1). **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
   the liaison's items**, owner: lead; the liaison's **C4** in `docs/UPSTREAM_COMPILER.md`). `services/upgrade.py`
   `_ROW_MODELS` is hand-kept and already stale on 0.7: it lacks `overrides.csv`, `expression_effects.csv`,
   `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv`, all read by `extra="forbid"` models, so an
