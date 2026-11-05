@@ -37,6 +37,12 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 6. C1 and C2 **done** (C2 narrowed: the bundle stays filled).
 7. C5 + C13 + C15, reading what upstream made public.
 
+**0.27.1 is prepared** (2026-11-05): version + lock (release-0.27.x, merged into main 33bee26), changelog
+dated, docs/UPGRADE.md 0.27.1 note, dists built in `/data/sources/just-dna-registry.wt/relprep/dist/`
+(wheel carries the console). Full suite on the branch: 596 passed. **Waits on the person: publishing to
+PyPI** (`uv publish` from that worktree), then the lead tags `v0.27.1` on release-0.27.x's head and
+deploys stay theirs. C5 + C13 + C15 move to 0.27.2.
+
 The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, C10, the column-release
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
