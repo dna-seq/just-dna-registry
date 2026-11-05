@@ -807,15 +807,15 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
 
 - **Four small corrections, one patch commit each** (**severity low, unattended, with the 0.27.x patches**,
   owner: lead).
-  - *The card subtitle is 240 characters, not 120* (noticed by the liaison 2026-11-04):
+  - ✅ done (4ecbffd, main). *The card subtitle is 240 characters, not 120* (noticed by the liaison 2026-11-04):
     `client.py:1066`, `client_cli.py:483`, `api/routers/publish.py:779` and `models/api.py:319` still say
     120 where `services/publish.SHORT_DESCRIPTION_MAX_CHARS` is 240. Minutes; a test that the four read the
     constant's number would keep them true.
-  - *`pacing.py:291-296`* says nothing downstream reports what it spent and names S92; `PacingGate.spent`
+  - ✅ done (db072b8, in 0.27.1). *`pacing.py:291-296`* says nothing downstream reports what it spent and names S92; `PacingGate.spent`
     exists since 0.7.0 and the filing was S95 (the liaison's **C6**). Correct the text. **Decided: the meter
     is not reconciled from `spent`**; charging before the call is what lets the ledger refuse, and a second
     count after it would be two ledgers. Rejected: reconciling. Minutes.
-  - *Strictness can add a finding* (the liaison's **C11**, upstream RM218 with RM141 / RM143): the comments at
+  - ✅ done (in 0.27.1). *Strictness can add a finding* (the liaison's **C11**, upstream RM218 with RM141 / RM143): the comments at
     `services/enrich.py` around `would_publish_module_level` and CLAUDE.md's "the dry run grades where the
     publish grades" say strictness changes severity only, and upstream's strict validate now adds an
     aggregate finding of its own. The verdict holds (`_would_publish` also requires `validation.valid`).
