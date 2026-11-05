@@ -830,7 +830,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     (`whose coordinates the enricher diagnosed as another assembly's`) is module-level; the per-row aggregate
     (`have unresolved genomic positions after resolution`) is not and leaves the field alone. Never widen the
     match past the fragment, and move to the code when RM378 ships. About an hour.
-  - *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
+  - ✅ done (in 0.27.1). *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
     `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
     `compiler.load_citing_rows` / `table_citations`. About an hour.
 
