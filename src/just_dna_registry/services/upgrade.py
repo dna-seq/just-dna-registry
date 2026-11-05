@@ -597,7 +597,7 @@ def prepare_version_upgrade(
     # less than a complete chain with every driving axis `False` — see `refutes_a_contract_gap`.
     # `gap.compiled_under` is already the parsed bare version; passing the raw stamp would raise on
     # the one manifest a foreign compiler touched.
-    declared = declared_movement(gap.compiled_under, gap.current)
+    declared = declared_movement(gap.compiled_under, gap.current, manifest)
     contract_acts = gap.acts_by_default and not declared.refutes_a_contract_gap
     already_acting = contract_acts or plan.needed or bool(dropped)
     drift, unmeasured = ([], []) if already_acting else measure_output_drift(manifest, files)

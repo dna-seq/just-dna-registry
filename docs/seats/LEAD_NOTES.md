@@ -33,26 +33,31 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 2b. C16: **done** on `release-0.27.x`, merged into main.
 3. C9: **done** on `release-0.27.x`, merged into main.
 4. C8's patch half: **done** on `release-0.27.x`, merged into main.
-5. The four small corrections: subtitle 240 (on **main**, not the patch branch: 240 is [Unreleased] material, 0.27.0 still says 120), `pacing.py` text (C6, no reconcile), C11 (module-level by code),
-   C12 (`gather_pmids` over every citing table).
-6. C1, then C2.
+5. The four small corrections: **all done** (subtitle 240, C6, C11, C12). (`gather_pmids` over every citing table).
+6. C1 and C2 **done** (C2 narrowed: the bundle stays filled).
 7. C5 + C13 + C15, reading what upstream made public.
 
 The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, C10, the column-release
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
 
-Kit pin at v0.1.128 (moved 2026-11-05); this session runs 0.1.127 until `/reload-plugins`.
+Kit pin at v0.1.129 (2026-11-05); this session runs 0.1.128 until `/reload-plugins`.
 
 **Pushes are the lead's** (LEAD.md grant, "all pushes"): push main and `release-0.27.x` after each landed block,
 peers' commits included. Holding them for desk #193 was wrong (the person, 2026-11-05: "why noone pushes?");
 pushed c83164d. There is no trunk watcher; the lead pushes at the end of each block instead.
 
 **Waiting on the person**: `longevity-loci/liaison` (and `longevity-loci/triage`, per the kit's rule) into
-`[seat.triage] wake_from` in `.blueprints.toml`; the auto-mode classifier refused the edit (Self-Modification).
+`[seat.triage] wake_from` in `.blueprints.toml`; the auto-mode classifier refused the edit (Self-Modification). `blocked: desk #201` (filed 2026-11-05, default: no change).
 
-**0.28 pre-build** (the person via pm, 2026-11-05: "0.8 is delayed ... pre-build on top of that"): when the
-compiler's lead posts the finished `INTEGRATION_0_8.md` commit, build M1's code, M2, M4, M8-M11 on the 0.28
-branch against upstream's 0.8 branch; not merged, not shipped before the floors are on PyPI.
+**0.28 pre-build** (the person via pm, 2026-11-05: "0.8 is delayed ... pre-build on top of that"): building
+on branch `0.28` (worktree `/data/sources/just-dna-registry.wt/0.28`, pushed), three tiers from upstream's 0.8
+at rev 5b1b73b8 by git source in pyproject (removed and floored `>=0.8.0` before merge; move the rev when the
+compiler's lead says §2 changed). Not merged, not shipped before the floors are on PyPI.
+Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
+(634038c). Next: M8 (Ensembl repo default), M9 (validate switches), M4+M10 (+ C8 minor, C10, C17 per the
+roadmap), M11 check. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
+**Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
+main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).

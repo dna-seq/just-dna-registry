@@ -159,6 +159,28 @@ the pass are held back and said so in its `warnings`: the PGS Catalog accession 
 server does not pace yet, and any table that exists but would not parse. The pass no longer writes into the
 spec it is checking. Fields for both arrive in 0.28.
 
+### A strict `/check` says a module whose rows are another assembly's fails as a module
+
+When the enricher has recorded that a module's coordinates belong to another genome build than the one
+it declares, a strict compile refuses it. `/check?strict=true` already reported that refusal, but kept
+`would_publish_module_level: true`, telling an author the module itself was fine. The field is now
+`false` for that refusal. Rows left without a position under strict still count as per-row and leave it
+alone.
+
+### `revalidate --check-pmids` checks the PMIDs a module's annotation tables cite
+
+The PMID check read `studies.csv` only, so a PGx or binning module's own citations (`pmid` on
+`pharm_variants.csv` and the binning tables) were never put to NCBI. It now reads every table that cites,
+using the compiler's own list of them. A citing table that will not parse is reported as a failed PMID
+check for that version, not as a version with no PMIDs.
+
+### `registry upgrade` re-baselines a module only for corrections that can reach it
+
+A release record declares what each release corrected, and since format 0.7 it also says which modules a
+correction can reach: the manifest blocks a module must carry for the change to apply. `registry upgrade`
+now reads that, so a correction to `gene_metrics` no longer re-publishes a module that has no
+`gene_metrics` block. A correction whose reach upstream does not state still applies to every module.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own

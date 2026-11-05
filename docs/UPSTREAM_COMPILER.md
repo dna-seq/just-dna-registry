@@ -305,6 +305,19 @@ lock (1.44.2, 1.5.5, 2.3.3).
   phrases are already in the installed 0.7.2 compiler. Closes when RM378 ships and our pin reaches it.
   Last checked: 2026-11-04.
 
+- **S130** (filed 2026-11-05, appended to the compiler checkout's inbox, uncommitted; its triage told): the
+  Ensembl lane's repository (`just-dna-seq/ensembl_variations_split`) has no public name on `0.8`: the lane's
+  `publish_repo` is `None` and the string is private (`download._ENSEMBL_HF_PREFIX`); the public
+  `SNAPSHOT_REPO_PREFIXES["ensembl"]` holds it as an fsspec prefix, not a repo id. Asks for a public
+  `DEFAULT_ENSEMBL_REPO_ID` or a lane → repo id map, or upstream's view that a pin should be the release
+  (`locations.ensembl_release_label`). From the lead's M8 pre-build (59ddcd9 on branch 0.28), which spells
+  the repo in `config.py` with a test reading the private prefix. **Answered 2026-11-05**: accepted as (b),
+  filed as RM384 (a minor their pm places): one public lane → repo-id map with every prefix derived from it,
+  `DEFAULT_*_REPO_ID` kept as aliases (every pulled lane spelled its repo twice, untied). On the release label:
+  not as the pin alone, since `ensembl_reference` documents `org/repo@<rev>`, which names bytes, and the label
+  names data. Keep the spelled repo until RM384 ships; then read the map. RM384 is placed in their 0.8
+  (their triage, 2026-11-05), so at the cut M8's drift test moves to it. Last checked: 2026-11-05.
+
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
 shipped in 0.7.0. The rest of the registry's past filings are not yet audited here.

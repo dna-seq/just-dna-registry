@@ -115,9 +115,10 @@ record (`release_records.needs_recompile`) as well as the version gap and the ou
 the **corrections** a re-baseline picks up. `gene_validity.classifications` (RM108),
 `gene_metrics.parquet` and `gene_metrics.signature` (RM110) are the three declared over 0.6.6 → 0.7.0.
 They are narrow in reality — RM110 reaches only modules compiled from the gnomAD v4.1 constraint
-snapshot — but a declared change says what a release *did*, not which artifacts it did it to, so the
-sweep acts on every module. That over-reach is bounded at one PATCH per module ever and is filed
-upstream as **S90**; it is not a reason to skip the sweep.
+snapshot. Through 0.27.0 the sweep acted on every module for them. From 0.27.1 it reads each change's
+stated reach (upstream answered our **S90** with `DeclaredChange.requires`), so a module carrying no
+`gene_validity` and no `gene_metrics` block is no longer re-baselined by these three. A reach upstream
+does not state still acts, bounded at one PATCH per module ever; it is not a reason to skip the sweep.
 
 **3. `registry upgrade --apply`, then run it again.** The second pass must report nothing to do. That
 property is what separates the detector from a trigger that can never finish, and it is worth checking

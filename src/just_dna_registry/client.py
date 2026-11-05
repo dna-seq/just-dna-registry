@@ -1063,7 +1063,7 @@ class RegistryClient:
 
         Pass `None` to **clear** the override and fall back to the authored subtitle; pass `""` for a
         deliberately blank one. They are two different requests and the server keeps them two. At
-        most 120 characters and one line, refused rather than truncated: silently cutting a
+        most 240 characters (`services.publish.SHORT_DESCRIPTION_MAX_CHARS`) and one line, refused rather than truncated: silently cutting a
         publisher's sentence mid-word is a worse answer than naming the limit.
         """
         resp = self._http.patch(

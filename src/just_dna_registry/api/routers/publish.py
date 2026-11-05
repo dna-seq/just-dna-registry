@@ -777,7 +777,7 @@ class ShortDescriptionRequest(BaseModel):
         default=None,
         description=(
             "The card subtitle to show instead of the authored `module.description`, at most "
-            "120 characters and one line. `null` **clears** the override and the card falls back to "
+            "240 characters and one line. `null` **clears** the override and the card falls back to "
             "the authored subtitle; `\"\"` sets a deliberately blank one. Two different requests, "
             "and they stay two"
         ),

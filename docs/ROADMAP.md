@@ -631,6 +631,14 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    a cache mixing the two releases resolves to nothing. The default moves, and the operator procedure gains
    a 14.5 GB pull on both boxes **before** the 0.8 deploy. Required. About an hour of work plus the pull,
    which is the step most likely to set the deploy's date.
+   **And `warm-caches` must see a wrong-release Ensembl cache** (found 2026-11-05 building M8, **unattended,
+   with 0.28**, owner: lead): under 0.8 a 0.7 cache still resolves as present, and warm-caches leaves a
+   present lane alone, so its dry run shows `✓` over the old release and the re-pull has to be upstream's
+   `cache pull --only ensembl` (docs/UPGRADE.md, 0.28). The cache's `pull-record.json` names the repo it came
+   from (`datasets/just-dna-seq/ensembl_variations/data` on the dev box), so the detector is a comparison,
+   the `LaneAge` shape: a recorded repo that is not the lane's current one reads as stale and is re-pulled,
+   an unrecorded one is *cannot say*. Ask upstream first whether `prepare_lane` already answers it on 0.8
+   (it did not read the record at 5b1b73b8). About an hour.
 2. **Six new spec tables** (M2). Required: an unrecognized `meta.csv` is dropped by the rebuild and moves
    the signature. The liaison's C4 (derive the row-model roster from upstream) ships earlier, as a 0.27.x
    patch with C1 and C2, because the roster already misses four tables on 0.7 (the lead's call,
@@ -748,7 +756,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   (0.8 adds the public `AUTHORED_NON_KIND_TABLES`), with a denominator floor in the test. Sizing: **patch**.
   About an hour. Format 0.8 adds six more tables (the liaison's M2), which this makes free.
 
-- **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
+- ✅ **done** (in 0.27.1). **A declared correction reaches only the modules it names** (**severity low, unattended**, owner: lead;
   motivated by the liaison's **C1** in `docs/UPSTREAM_COMPILER.md`, upstream S90 / RM201, shipped in format
   0.7.0). `DeclaredChange` gained `requires`: the manifest paths a module must carry for the change to reach
   it, `()` for every module, `None` for unknown. `services/rebuild.declared_movement` reads `target`, `item`
@@ -757,7 +765,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   correct the two CLAUDE.md passages that still call S90 open. Sizing: **patch** (no route, field or status
   moves; a sweep acts on fewer modules). About an hour with tests.
 
-- **Let upstream fill the shared lookup bundle** (**severity low, unattended, after the item above**, owner:
+- ✅ **done, narrowed** (in 0.27.1; the bundle stays filled, because the passes here take single clients and an empty bundle would hand each `None`; the docs and the test were the real change). **Let upstream fill the shared lookup bundle** (**severity low, unattended, after the item above**, owner:
   lead; the liaison's **C2**, upstream S92 / RM206, shipped in 0.7.0). `LookupClients.ensure(name, factory)`
   makes every leg's lazy build one locked path and `close()` walks `CLIENT_FIELDS`, so
   `services/enrich.shared_lookup_clients()` constructing all eight eagerly is now redundant, not wrong.
@@ -799,15 +807,15 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
 
 - **Four small corrections, one patch commit each** (**severity low, unattended, with the 0.27.x patches**,
   owner: lead).
-  - *The card subtitle is 240 characters, not 120* (noticed by the liaison 2026-11-04):
+  - ✅ done (4ecbffd, main). *The card subtitle is 240 characters, not 120* (noticed by the liaison 2026-11-04):
     `client.py:1066`, `client_cli.py:483`, `api/routers/publish.py:779` and `models/api.py:319` still say
     120 where `services/publish.SHORT_DESCRIPTION_MAX_CHARS` is 240. Minutes; a test that the four read the
     constant's number would keep them true.
-  - *`pacing.py:291-296`* says nothing downstream reports what it spent and names S92; `PacingGate.spent`
+  - ✅ done (db072b8, in 0.27.1). *`pacing.py:291-296`* says nothing downstream reports what it spent and names S92; `PacingGate.spent`
     exists since 0.7.0 and the filing was S95 (the liaison's **C6**). Correct the text. **Decided: the meter
     is not reconciled from `spent`**; charging before the call is what lets the ledger refuse, and a second
     count after it would be two ledgers. Rejected: reconciling. Minutes.
-  - *Strictness can add a finding* (the liaison's **C11**, upstream RM218 with RM141 / RM143): the comments at
+  - ✅ done (in 0.27.1). *Strictness can add a finding* (the liaison's **C11**, upstream RM218 with RM141 / RM143): the comments at
     `services/enrich.py` around `would_publish_module_level` and CLAUDE.md's "the dry run grades where the
     publish grades" say strictness changes severity only, and upstream's strict validate now adds an
     aggregate finding of its own. The verdict holds (`_would_publish` also requires `validation.valid`).
@@ -822,7 +830,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     (`whose coordinates the enricher diagnosed as another assembly's`) is module-level; the per-row aggregate
     (`have unresolved genomic positions after resolution`) is not and leaves the field alone. Never widen the
     match past the fragment, and move to the code when RM378 ships. About an hour.
-  - *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
+  - ✅ done (in 0.27.1). *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
     `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
     `compiler.load_citing_rows` / `table_citations`. About an hour.
 

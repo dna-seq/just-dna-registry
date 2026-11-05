@@ -127,9 +127,12 @@ with every driving axis measured `False` moved nothing, which retires the versio
 *parallel derivation* and leaves it as the fallback for every artifact compiled before the first
 release that has a record. **Three witnesses stay three** — a gap is about versions, a verdict is a
 measurement of one artifact, a record is what a release did — because folding any two loses a
-distinction only that one can draw. And **a declared change says what a release did, never which
-artifacts it did it to**, so a sweep over-reaches; that is bounded at one PATCH per module ever by the
-convergence rule and is filed upstream as S90, not worked around by parsing a target's spelling.
+distinction only that one can draw. And **a declared change says which modules it can reach only as
+a necessary condition**: since format 0.7 (our S90, their RM201) `DeclaredChange.requires` names the
+manifest paths a module must carry, and `declared_movement` drops a change whose `reaches(manifest)` is
+`False` (0.27.1). `True` means *not excluded* and `None` *not stated*, and both are kept, so a sweep can
+still over-reach, bounded at one PATCH per module ever by the convergence rule. Read the reach through
+upstream's predicate, never by parsing a target's spelling.
 
 **And when you do extend it, the new trigger has to converge.** `rebuild.RebuildVerdict` refuses to act
 on drift measured against the **identical** compiler, because a recompile derives the same value again
@@ -263,8 +266,11 @@ stale wrapper.
     every rsID-authored module, at the endpoint whose whole contract is to report. `resolve_with_ensembl`
     stays at its default on both sides — a pre-flight that silenced the fill would be *more optimistic*
     than the compile it precedes, the one disagreement direction the parity rule forbids. And
-    `would_publish_module_level` is carried from the modeless gate by definition: strictness changes
-    severity only, so every strict-only error is a per-row judgement belonging to the enrichment tier.
+    `would_publish_module_level` is carried from the modeless gate, with one exception: strict is not
+    only a change of severity (upstream RM218), it adds two refusals, and the recorded build
+    disagreement is about the module, so it turns the field `false`. Read it off the phrase upstream
+    published as API (`BUILD_DISAGREEMENT_PHRASE`, their RM377), never widened, and move to the code
+    when their RM378 ships one. The other strict-only refusal is per-row and leaves the field alone.
   - **A validation finding is a `200`, not a `422`.** `/validate` and `/check` return `valid: false`
     with the reasons in the body; only a request no spec dir can be built from is a 4xx. Publish is
     the opposite. Getting this backwards makes the endpoints useless to the CI jobs they exist for.
@@ -336,22 +342,15 @@ Four rules that each cost a bug to learn:
   permit is now about the *budget*, not about the race: the pace is shared, so concurrent runs interleave
   on one spacing rather than going faster, and `enrich_max_concurrency` stays 1 as a latency choice
   rather than a correctness one.
-  **And the bundle has to be *constructed*: bare `LookupClients()` is eight `None`s.** Its docstring's
-  "lazily built" describes `lookup.py`, whose functions do `clients.x or XClient()` and close what
-  they made — nothing fills the dataclass. An empty bundle passes `None` into every `resolver=` /
-  `gnomad_client=` / `eutils=` argument, so each pass builds its own client, the pacing is per call
-  again, and `close_lookup_clients` closes nothing. `shared_lookup_clients()` builds all eight.
-
-  **It said "six" until 0.25, and the two it was missing were not a rounding error.** That dataclass
-  carries **three different lazy-build semantics and which one a field gets is invisible at the call
-  site**: `_lookup_live_loci` and `lookup_old_assembly` assign the client they build *back onto the
-  caller's bundle*, so a shared bundle ends up pacing those whether you filled the field or not;
-  `_check_pmcid` and `_lookup_frequencies` build-and-close per call, so an unfilled field there is
-  per-request pacing however shared the bundle is. `gnomad` happened to be filled and `pmc_idconv`
-  did not, which made the citation leg the one that would have egressed unpaced the moment it was
-  exposed over HTTP. **Fill every field; do not reason about which ones matter** — the reasoning is
-  what was wrong, not the count. Filed upstream as the real fix: one constructor, or one uniform
-  lazy path.
+  **And the bundle has to be *filled*, because this service hands its passes single clients.** Since
+  enricher 0.7.0 (RM206, our S92) upstream's `lookup.*` legs fill an empty field through one locked path,
+  `LookupClients.ensure`, and `close()` walks `CLIENT_FIELDS`, so a bundle handed *whole* fills itself:
+  that is the `/hint` routes. The passes in `services/enrich.py` are handed one client each
+  (`resolver=clients.ensembl`, `client=clients.ontology`, …), and an unfilled field arrives as `None`, so
+  each pass builds its own client and the pacing is per call again. `shared_lookup_clients()` therefore
+  fills every field upstream lists, and a test holds it to `CLIENT_FIELDS`. Through 0.25 it filled six of
+  eight and the citation leg would have egressed unpaced; **fill every field, do not reason about which
+  ones matter.**
 - **`offline` means *snapshot only*, not "that source is off" (enricher 0.5.1 / RM38).** Every pass
   is snapshot → live → skipped-with-a-reason, so a provisioned deployment gets the full `?pgx=` check
   with zero egress. Assuming the family is online-only silently skips work a cache could have done.

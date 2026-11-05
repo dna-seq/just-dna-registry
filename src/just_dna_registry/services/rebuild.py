@@ -226,8 +226,19 @@ class DeclaredMovement(BaseModel):
         )
 
 
-def declared_movement(compiled_under: str | None, current: str | None) -> DeclaredMovement:
+def declared_movement(
+    compiled_under: str | None, current: str | None, manifest: ModuleManifest | None = None
+) -> DeclaredMovement:
     """Read upstream's release record for the interval `(compiled_under, current]`.
+
+    **With `manifest`, only the changes that can reach that module** (S90 / upstream RM201, the
+    liaison's C1). A `DeclaredChange` names the manifest paths a module must carry for it to apply
+    (`requires`), and `DeclaredChange.reaches` answers three ways: a change whose reach is certainly
+    `False` is dropped, while `True` (*not excluded*) and `None` (*reach not stated*) are kept, since
+    unknown is never no. Through 0.27.0 nothing read `requires`, so a sweep acted on every module for a
+    correction only some could carry (RM110's `gene_metrics` fix reached every module), bounded at one
+    PATCH per module by the convergence rule. The predicate is upstream's; we never read a target's
+    spelling to guess the reach.
 
     **`compiled_under` must already be a bare, parsed version** — `upgrade.stamped_compiler_version`
     returns exactly that, `None` included. `needs_recompile` answers *unknown* for a `None` stamp
@@ -243,7 +254,10 @@ def declared_movement(compiled_under: str | None, current: str | None) -> Declar
         return DeclaredMovement(compiled_under=compiled_under, current=None, complete=False)
     answer = needs_recompile(compiled_under, current)
     declared = [
-        change for change in answer.declared if change.axis in RECOMPILE_DRIVING_AXES
+        change
+        for change in answer.declared
+        if change.axis in RECOMPILE_DRIVING_AXES
+        and (manifest is None or change.reaches(manifest) is not False)
     ]
     return DeclaredMovement(
         compiled_under=answer.compiled_under,
