@@ -788,7 +788,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   dropping the early return without the warnings, which would turn an honest "nothing to check" into a
   silent clean. Two to three hours across both.
 
-- **A setting for the enricher's dataset probes** (**severity medium, unattended**, owner: lead; the liaison's
+- ✅ **done** (on `release-0.27.x`, in 0.27.1). **A setting for the enricher's dataset probes** (**severity medium, unattended**, owner: lead; the liaison's
   **C9**, upstream RM85, checked 2026-11-04). `enrich(verify_datasets=True)` is the default we inherit: every
   run probes ClinVar's live VCF header and the PGS Catalog's `/rest/info` through clients outside the shared
   bundle and the pace ledger. Add `enrich_verify_datasets` beside `enrich_verify_clinsig`, passed through (with
