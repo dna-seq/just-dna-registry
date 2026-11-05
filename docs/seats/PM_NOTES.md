@@ -31,8 +31,8 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **M8–M11 folded into 0.28** (the liaison's 23e340f, map at upstream `503730c`): part of the 0.8 adoption
   the maintainer already bundled, so no new question. **C8's fields, C10 and C17** (0.7 report fields, the
   lead's b7cc45b and 22b7f52) added too, by the pm while the person was away; tell them on return, they
-  may move them. M8 (Ensembl repo move, 14.5 GB pull on both boxes before the deploy) sits with M1; M9–M11 with M4. **Not pushed**: `main` carries the
-  liaison's 23e340f, whose push waits on desk #193; pushing ours would push it too. Push after #193.
+  may move them. M8 (Ensembl repo move, 14.5 GB pull on both boxes before the deploy) sits with M1; M9–M11 with M4. Pushed by the lead with the rest of
+  `main` (c83164d, 2026-11-05); desk #193 decided elsewhere.
 
 ## Tools
 
