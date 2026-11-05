@@ -765,7 +765,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   correct the two CLAUDE.md passages that still call S90 open. Sizing: **patch** (no route, field or status
   moves; a sweep acts on fewer modules). About an hour with tests.
 
-- **Let upstream fill the shared lookup bundle** (**severity low, unattended, after the item above**, owner:
+- ✅ **done, narrowed** (in 0.27.1; the bundle stays filled, because the passes here take single clients and an empty bundle would hand each `None`; the docs and the test were the real change). **Let upstream fill the shared lookup bundle** (**severity low, unattended, after the item above**, owner:
   lead; the liaison's **C2**, upstream S92 / RM206, shipped in 0.7.0). `LookupClients.ensure(name, factory)`
   makes every leg's lazy build one locked path and `close()` walks `CLIENT_FIELDS`, so
   `services/enrich.shared_lookup_clients()` constructing all eight eagerly is now redundant, not wrong.
