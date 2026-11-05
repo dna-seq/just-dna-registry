@@ -62,7 +62,10 @@ at rev 5b1b73b8 by git source in pyproject (removed and floored `>=0.8.0` before
 compiler's lead says §2 changed). Not merged, not shipped before the floors are on PyPI.
 Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
 (634038c), M8 (59ddcd9, 2d06f57), M9 (c1706e3), M4 (158e239), M10 (84d4a6c); main merged in (71bf1a7).
-Next: C10, C17, C8's minor half (same model and renderers), then M11 check. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
+Rev moved to a4a401e7 (46603de); RM384 tie-back (7a275a4); M13 test (bd7fe67); C10/M14 (9f4e114); C17
+(276df93); C8 minor half (af18b2e; the PGS leg stays off: upstream's LookupClients has no PGS field, asked of
+the liaison). Next: M11 check, then the rest of the 0.28 list (rename, publish recovery, .env, M5, M7, C3,
+/stats) per the roadmap's 0.28 section. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
 
