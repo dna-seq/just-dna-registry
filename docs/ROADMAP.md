@@ -631,6 +631,14 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    a cache mixing the two releases resolves to nothing. The default moves, and the operator procedure gains
    a 14.5 GB pull on both boxes **before** the 0.8 deploy. Required. About an hour of work plus the pull,
    which is the step most likely to set the deploy's date.
+   **And `warm-caches` must see a wrong-release Ensembl cache** (found 2026-11-05 building M8, **unattended,
+   with 0.28**, owner: lead): under 0.8 a 0.7 cache still resolves as present, and warm-caches leaves a
+   present lane alone, so its dry run shows `✓` over the old release and the re-pull has to be upstream's
+   `cache pull --only ensembl` (docs/UPGRADE.md, 0.28). The cache's `pull-record.json` names the repo it came
+   from (`datasets/just-dna-seq/ensembl_variations/data` on the dev box), so the detector is a comparison,
+   the `LaneAge` shape: a recorded repo that is not the lane's current one reads as stale and is re-pulled,
+   an unrecorded one is *cannot say*. Ask upstream first whether `prepare_lane` already answers it on 0.8
+   (it did not read the record at 5b1b73b8). About an hour.
 2. **Six new spec tables** (M2). Required: an unrecognized `meta.csv` is dropped by the rebuild and moves
    the signature. The liaison's C4 (derive the row-model roster from upstream) ships earlier, as a 0.27.x
    patch with C1 and C2, because the roster already misses four tables on 0.7 (the lead's call,
