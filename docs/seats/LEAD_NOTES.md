@@ -63,8 +63,10 @@ compiler's lead says §2 changed). Not merged, not shipped before the floors are
 Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
 (634038c), M8 (59ddcd9, 2d06f57), M9 (c1706e3), M4 (158e239), M10 (84d4a6c); main merged in (71bf1a7).
 Rev moved to a4a401e7 (46603de); RM384 tie-back (7a275a4); M13 test (bd7fe67); C10/M14 (9f4e114); C17
-(276df93); C8 minor half (af18b2e; the PGS leg stays off: upstream's LookupClients has no PGS field, asked of
-the liaison). Next: M11 check, then the rest of the 0.28 list (rename, publish recovery, .env, M5, M7, C3,
+(276df93); C8 minor half (af18b2e). **Next on 0.28: the PGS leg on** (decided by the roadmap's C8 entry; the liaison's design,
+2026-11-05): one process-wide `PacingGate` beside `shared_lookup_clients`, a fresh `PgsCatalogClient(gate=…)`
+per check as `pgs_client=` (its score cache is per-run state, so not a `LookupClients` field), a `pgs` row in
+`pacing.UPSTREAMS` with the interval read off the gate (upstream's is private), and its rate bucket. Next: M11 check, then the rest of the 0.28 list (rename, publish recovery, .env, M5, M7, C3,
 /stats) per the roadmap's 0.28 section. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
