@@ -774,7 +774,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   `evidence_status_currency` into `verification.json`. Pass both, one test that the configured path is what
   `enrich()` receives. Sizing: **patch**. Half an hour.
 
-- **`check_identifiers` runs on every module, not only one with `variants.csv`** (**severity high,
+- **`check_identifiers` runs on every module, not only one with `variants.csv`** (patch half ✅ **done** on `release-0.27.x`, in 0.27.1; the minor half rides 0.28) (**severity high,
   unattended**, owner: lead; the liaison's **C8**, upstream RM155 / RM156 / RM163, checked 2026-11-04).
   `services/enrich.py` returns "no variants.csv … nothing to check" before calling it, so `/check` tells a
   PGx-only module there is nothing to check while the installed pass reads every table that carries the
