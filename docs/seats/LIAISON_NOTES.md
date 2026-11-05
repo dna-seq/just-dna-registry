@@ -53,6 +53,9 @@ reset").
   regenerated examples and audit round 3; re-read the delta from `a4a401e7` at the tag.
 - **Read a 0.8 finding against `origin/0.28`, not `main`**: the lead pre-builds there, and M13 was already
   fixed on it (2026-11-05).
+- **Commit with `git commit --only -- <paths>`**: the index is shared with three other seats. 7e88e7d
+  (2026-11-05) swept the pm's staged `docs/ROADMAP.md` hunk although `git diff --cached --stat` showed only my two
+  files the moment before: the pm staged in between. `--only` commits the named paths whatever else is staged.
 - reflect after 2026-11-11: classes/base/BASE.md as of v0.1.127 (kit reports filed without asking, timed by cost).
 
 ## Backlog, in order
