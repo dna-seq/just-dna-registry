@@ -244,15 +244,14 @@ def shared_lookup_clients() -> Any:
     it waits its turn — which makes the limit a policy choice about latency rather than a race guard.
     Left at 1 deliberately: see `EnrichmentGate` and the setting's own comment.
 
-    **Every member is constructed here, and `LookupClients()` on its own is not a bundle.** Its
-    docstring says the clients are "optional and lazily built", which is true of `lookup.py` — each
-    of its functions does `client = clients.x or XClient()` and closes what it made. Nothing builds
-    them on the dataclass. So an empty `LookupClients()` handed to the passes below is six `None`s:
-    every `resolver=`, `gnomad_client=`, `client=`, `eutils=` argument arrived empty, each pass built
-    its own client with a fresh `PacingGate`, and the process-wide pacing this function exists for
-    never happened — `close_lookup_clients` closed nothing either. Constructed eagerly rather than
-    per attribute because the bundle is built once per process, on the first online run, and only
-    then: an offline caller never asks for it.
+    **Every member is constructed here.** Since enricher 0.7.0 (RM206) upstream's `lookup.*` legs fill
+    an empty field on the bundle they are handed, through `LookupClients.ensure`, and `close()` walks
+    `CLIENT_FIELDS`. That covers the `/hint` routes, which hand the bundle whole. It does not cover the
+    passes below, which take one client each (`resolver=clients.ensembl`): handed an empty bundle, every
+    one of those arguments would be `None`, each pass would build its own client with a fresh
+    `PacingGate`, and the process-wide pacing this function exists for would not happen. Through 0.25
+    that is exactly what this service did. Built once per process, on the first online run; an offline
+    caller never asks for it.
     """
     global _shared_clients
     if _shared_clients is None:
@@ -280,15 +279,14 @@ def shared_lookup_clients() -> Any:
                     crossref=CrossrefClient(),
                     ontology=OntologyClient(),
                     ensembl=EnsemblResolver(),
-                    # **Eight, not six (0.25).** `LookupClients` carries three different lazy-build
-                    # semantics and which one a field gets is invisible at the call site:
-                    # `_lookup_live_loci` and `lookup_old_assembly` assign their client *back onto*
-                    # the bundle, so a shared bundle ends up pacing those; `_check_pmcid` and
-                    # `_lookup_frequencies` build-and-close per call, so an unfilled field there is
-                    # per-request pacing however shared the bundle is. `gnomad` was already filled and
-                    # `pmc_idconv` was not, which made the citation route the one leg that would have
-                    # egressed unpaced. Filling all eight removes the distinction rather than
-                    # requiring a reader to know it; filed upstream as the real fix.
+                    # **Every field, and eager on purpose.** Since enricher 0.7.0 (RM206, our S92)
+                    # upstream's legs fill an empty field through one locked path
+                    # (`LookupClients.ensure`), so a bundle handed whole to `lookup.*` (the `/hint`
+                    # routes) fills itself. The passes in this module are handed *single* clients
+                    # (`resolver=clients.ensembl`, `client=clients.ontology`, …), and an unfilled
+                    # field would arrive as `None` and each pass would build its own unpaced client.
+                    # So the bundle is filled here; `test_the_shared_bundle_actually_holds_clients`
+                    # holds it to upstream's `CLIENT_FIELDS`.
                     pmc_idconv=PmcIdConverterClient(),
                     grch37=Grch37Client(),
                 )
