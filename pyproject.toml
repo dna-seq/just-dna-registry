@@ -400,6 +400,6 @@ ignore = [
 # Upstream's 0.8 branch, by git dependency as their docs/INTEGRATION_0_8.md says (never a published lock).
 # This block is removed, and the floors raised to the published >=0.8.0, before the branch merges.
 [tool.uv.sources]
-just-dna-format = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "a4a401e75f61bf64fe084d6d66b4340846e0f890", subdirectory = "schema" }
-just-dna-compiler = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "a4a401e75f61bf64fe084d6d66b4340846e0f890", subdirectory = "compiler" }
-just-dna-enricher = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "a4a401e75f61bf64fe084d6d66b4340846e0f890", subdirectory = "enricher" }
+just-dna-format = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "c90e6d9813fb1acbef925d37a93242c59ae05566", subdirectory = "schema" }
+just-dna-compiler = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "c90e6d9813fb1acbef925d37a93242c59ae05566", subdirectory = "compiler" }
+just-dna-enricher = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "c90e6d9813fb1acbef925d37a93242c59ae05566", subdirectory = "enricher" }
