@@ -1126,3 +1126,26 @@ def test_gate_forecast_does_not_invent_a_refusal_for_a_lane_that_permits_sale() 
         assert "WILL BE REFUSED" in _gate_forecast(lanes[name], "commercial")
         settled = _gate_forecast(lanes[name], "non_commercial")
         assert "WILL BE" not in settled, f"{name}: a declared use should proceed — {settled}"
+
+
+@pytest.mark.parametrize(
+    ("module", "retired", "outage"),
+    [
+        ("just_dna_enricher.clingen", "ClinGenRetired", "ClinGenUnavailable"),
+        ("just_dna_enricher.gnomad", "GnomadRetired", "GnomadError"),
+    ],
+)
+def test_a_retired_source_is_never_counted_as_an_outage(module: str, retired: str, outage: str) -> None:
+    """M10/M13 (format 0.8, RM361): a `*Retired` error is a subclass of the could-not-ask type each
+    adapter catches, so the arm sees it; `_could_not_ask` must still put it in `retired`, with the
+    upgrade remedy, and a plain outage of the same family in `unreachable`."""
+    import importlib
+
+    from just_dna_registry.services.enrich import _could_not_ask
+
+    types = importlib.import_module(module)
+    gone = getattr(types, retired)("410 Gone")
+    assert isinstance(gone, getattr(types, outage)), "the adapter's arm would not catch it"
+    assert _could_not_ask("src", gone)[:2] == ([], ["src"])
+    assert "upgrading the enricher" in _could_not_ask("src", gone)[2]
+    assert _could_not_ask("src", getattr(types, outage)("503"))[:2] == (["src"], [])
