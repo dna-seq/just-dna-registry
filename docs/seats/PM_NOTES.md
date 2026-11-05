@@ -24,8 +24,10 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   (637616735); check the entry says so.
 - **Push works again**: kit #264 closed in v0.1.127 (rule 11 now covers any seat granted a push); the rules
   here are current (`automode.py --check` clean, 2026-11-04 ~21:20 UTC).
-- **Waiting**: format 0.8 not cut yet (just-dna-format tags end at v0.7.3, PyPI 0.7.1, checked 21:20 UTC).
-  When it is, read the liaison's re-map against the 0.28 scope and take only what moves to the person.
+- **0.8 delayed; pre-build** (the maintainer, 2026-11-05, b4acd0c): the lead builds the 0.8 items on the
+  0.28 branch against upstream's `0.8` branch once the compiler's lead announces the finished
+  `docs/INTEGRATION_0_8.md`. Forwarded to the lead (637669801). At the cut: re-read the guide and the
+  liaison's re-map against the 0.28 scope, and take only what moves to the person.
 - **M8–M11 folded into 0.28** (the liaison's 23e340f, map at upstream `503730c`): part of the 0.8 adoption
   the maintainer already bundled, so no new question. **C8's fields, C10 and C17** (0.7 report fields, the
   lead's b7cc45b and 22b7f52) added too, by the pm while the person was away; tell them on return, they
