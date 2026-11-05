@@ -289,11 +289,13 @@ class PaceLedger:
     def charge(self, identity: str, charges: Mapping[str, int]) -> list[PaceVerdict]:
         """Commit units against one or more upstreams and say what the caller now owes in waiting.
 
-        Committed **before** the call rather than measured after it, because nothing downstream
-        reports what it actually spent (filed upstream as S92) and a meter that can only look
-        backwards cannot refuse anything. The consequence is at most one over-charge per call, on a
-        request that turned out to be served from a snapshot; reconciling that downward would invite a
-        caller to game their own miss rate, so it is not refunded.
+        Committed **before** the call rather than measured after it, because a meter that can only
+        look backwards cannot refuse anything. Since enricher 0.7.0 the enricher does report what it
+        spent (`PacingGate.spent`, our filing S95), and this still does not reconcile from it: the
+        charge is what lets the ledger refuse, and a second count that could disagree with the first is
+        a reason to distrust both (the liaison's C6, decided 2026-11-04). The consequence is at most one
+        over-charge per call, on a request that turned out to be served from a snapshot; reconciling
+        that downward would also invite a caller to game their own miss rate, so it is not refunded.
 
         A zero charge is still a verdict: `charged: 0` is how a client learns its offline traffic is
         free.
