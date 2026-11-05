@@ -146,6 +146,10 @@ re-checked against the code and the installed packages before it was written.
   builds its own `PgsCatalogClient`, outside the shared bundle and `pacing.UPSTREAMS`; and `write=True` by
   default merges licence rows into the scratch spec. Fix: drop the early return, carry the fields, decide
   `check_pgs` (off, or a paced client) and `write=False`. Two to three hours with the models and renderers.
+  *2026-11-05, no filing:* the lead asked whether `LookupClients` should gain a PGS field. Not needed:
+  `PgsCatalogClient(gate=...)` takes a `PacingGate` and calls its gate and cache per-run state, so one gate per
+  process and a fresh client per check shares the pace without sharing a cache. On 0.28 the leg is off,
+  reported by `pgs_not_checked`, until the lead spends the egress.
 - **C9 — RM85: `verify_datasets=True` is `enrich()`'s default, and we never set it.** It probes ClinVar's live
   VCF header and the PGS Catalog's `/rest/info` at the end of every run, through clients outside the shared bundle
   and the pace ledger; offline it records the check unchecked. `config.py` has `enrich_verify_clinsig` (`:124`)
