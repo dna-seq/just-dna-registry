@@ -391,3 +391,11 @@ ignore = [
 # A test that asserts a bad row is rejected does not care which exception class carries the rejection —
 # the point is that *something* refuses it.
 "tests/*" = ["B017"]
+
+# 0.28 pre-build ONLY (the maintainer, 2026-11-05: "pre-build on top of that to be ready for release").
+# Upstream's 0.8 branch, by git dependency as their docs/INTEGRATION_0_8.md says (never a published lock).
+# This block is removed, and the floors raised to the published >=0.8.0, before the branch merges.
+[tool.uv.sources]
+just-dna-format = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "5b1b73b8de26bb0af844c5a03c8d454c2b73ec30", subdirectory = "schema" }
+just-dna-compiler = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "5b1b73b8de26bb0af844c5a03c8d454c2b73ec30", subdirectory = "compiler" }
+just-dna-enricher = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "5b1b73b8de26bb0af844c5a03c8d454c2b73ec30", subdirectory = "enricher" }

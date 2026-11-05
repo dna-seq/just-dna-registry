@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 
 [[package]]
@@ -565,22 +565,18 @@ wheels = [
 [[package]]
 name = "just-dna-compiler"
 version = "0.7.2"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30#5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" }
 dependencies = [
     { name = "just-dna-format" },
     { name = "polars" },
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/9a/b54c063a53aef8b0697c1293494b549f168b9e94718a2e38105cf1691f7d/just_dna_compiler-0.7.2.tar.gz", hash = "sha256:a60cb49c4db009eea06552690ea9ced4f99edf9d2692c8a026ec094785bf717d", size = 230456, upload-time = "2026-09-27T00:45:17.018Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/09/1cccfb3dfb15f0091e3147f4c71fc00332e658a579a7abb2687e68426fca/just_dna_compiler-0.7.2-py3-none-any.whl", hash = "sha256:1137b833bf2ad1144027835a92400a616b35c57299a2afaacdb5d0517f6f3991", size = 238967, upload-time = "2026-09-27T00:45:15.559Z" },
-]
 
 [[package]]
 name = "just-dna-enricher"
 version = "0.7.3"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=enricher&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30#5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" }
 dependencies = [
     { name = "duckdb" },
     { name = "ga4gh-vrs" },
@@ -593,22 +589,14 @@ dependencies = [
     { name = "tenacity" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/3e/8f272634963efa73c8fdad592556b8e18d6b37b79d0cd8cc2884334350bc/just_dna_enricher-0.7.3.tar.gz", hash = "sha256:7062e6b119f3408e2ec8df90fb3e1b68483043edebb0667cbb9c6c043579feb3", size = 822293, upload-time = "2026-09-27T00:45:18.584Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/86/e2ad8b7c101d626e79862f06b1642df2940dcd874baf100459f2f6149a11/just_dna_enricher-0.7.3-py3-none-any.whl", hash = "sha256:f729c262aa97f25b7545690c69878f0834f8e0370c949f453ce5c70127573fbc", size = 907708, upload-time = "2026-09-27T00:45:13.898Z" },
-]
 
 [[package]]
 name = "just-dna-format"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
+version = "0.8.0"
+source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=schema&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30#5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" }
 dependencies = [
     { name = "cryptography" },
     { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/be/12/3de25598c72fb381eea0b31034983268d7e23eac3c262320aa1aa84a9082/just_dna_format-0.7.1.tar.gz", hash = "sha256:0d1eaa3d7e2f5b0af913132313566eb5a11702ff51a3a87fd731bb280925f7c5", size = 290881, upload-time = "2026-09-27T00:45:21.714Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/fe/72ae8f812e4258b7ee0722775d68acc903a7edf905510e4f874fe37f9d94/just_dna_format-0.7.1-py3-none-any.whl", hash = "sha256:35465f57900efefa98d6a58a8f2555dc72a7aadb96df08922df12cd69f4301eb", size = 319870, upload-time = "2026-09-27T00:45:20.136Z" },
 ]
 
 [[package]]
@@ -654,10 +642,10 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'server'", specifier = ">=0.34.0" },
-    { name = "just-dna-compiler", marker = "extra == 'compiler'", specifier = ">=0.7.2" },
-    { name = "just-dna-compiler", marker = "extra == 'server'", specifier = ">=0.7.2" },
-    { name = "just-dna-enricher", marker = "extra == 'server'", specifier = ">=0.7.3" },
-    { name = "just-dna-format", specifier = ">=0.7.1" },
+    { name = "just-dna-compiler", marker = "extra == 'compiler'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
+    { name = "just-dna-compiler", marker = "extra == 'server'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
+    { name = "just-dna-enricher", marker = "extra == 'server'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=enricher&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
+    { name = "just-dna-format", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=schema&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
     { name = "pydantic", marker = "extra == 'server'", specifier = ">=2.13.4" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.7.0" },
     { name = "pyjwt", marker = "extra == 'server'", specifier = ">=2.10.0" },
@@ -1073,11 +1061,11 @@ wheels = [
 
 [[package]]
 name = "tenacity"
-version = "9.1.4"
+version = "9.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/9e/497c1c8ebe5a5b5d1d4a7511aea22c0bb1a97e3170d98abdef0e1b34265a/tenacity-9.2.1.tar.gz", hash = "sha256:a606b5c808d0cded4a359d5b9932d867ff2a6a6b64d37350260fd01bbdf83839", size = 58261, upload-time = "2026-10-07T12:13:01.633Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/26/1ff2b0721ac66a3ec5b1402b333110b352ab0a8724052ac279a7b82d40c4/tenacity-9.2.1-py3-none-any.whl", hash = "sha256:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e", size = 32310, upload-time = "2026-10-07T12:13:00.102Z" },
 ]
 
 [[package]]
