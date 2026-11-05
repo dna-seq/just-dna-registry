@@ -7,12 +7,15 @@ there rather than writing here.
 
 Watched on this machine from a clone outside the repository, `/data/sources/just-dna-compiler` (its line in the
 liaison state file): `[seat.liaison.watch.compiler]` says each new tag, `[seat.liaison.watch.compiler-next]` each
-commit to `docs/CHANGELOG.md` on the coming minor's branch (`0.8` today).
+commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0.8.0 cut and the opening of `0.9`).
 
 ## Read mark
 
-**`v0.7.3`**: format 0.7.1, compiler 0.7.2, enricher 0.7.3, the trio `uv.lock` installs (registry 0.27.0, floors
-in `pyproject.toml` with their reasons). Upstream has cut nothing since.
+**`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
+`main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
+read at the cut, is the read of the tag. Installed on `main`: still format 0.7.1, compiler 0.7.2, enricher 0.7.3
+(registry 0.27.0); the 0.28 branch is on 0.8.0 with `>=0.8.0` floors. Past the tag, `main` holds RM397
+(`3f2dac4`, the enricher wheel drops its Atlas `.proto` sources; packaging only, nothing we import) and docs.
 
 ## Backlog
 
@@ -20,11 +23,8 @@ in `pyproject.toml` with their reasons). Upstream has cut nothing since.
   what it fixed of ours. C1 to C3, C5 and C6 come from the entries answering the registry's own filings; the
   rest gave C7 to C15 (second slice, 2026-11-04); 0.7.1 to 0.7.3 gave C16 to C19 (2026-11-05). Everything up
   to the read mark is read.
-- **`main` past `v0.7.3`** (168 commits on 2026-11-04): patch entries marked "patch, on `main`" (RM339, RM340,
-  RM338, RM347, RM353, RM355, RM354 at the top). A `v0.7.4` would carry them. Read when it is tagged, or earlier
-  if one touches a symbol below.
-- **The `0.8` branch** (197 commits past `main`, head `0a5293b`): the coming minor. First-pass adoption map
-  below; read again at each `docs/CHANGELOG.md` commit the `compiler-next` watcher reports, and whole at the cut.
+- ~~**`main` past `v0.7.3`** and **the `0.8` branch**~~: both reached `v0.8.0` (the main patches were merged into
+  the cut; no `v0.7.4` was made). Read through the map below.
 
 ## What the registry uses
 
@@ -294,7 +294,7 @@ upstream's `0.8`, unmerged until the floors are on PyPI.
 
 **The guide at `a4a401e7` (2026-11-05)**, read §§ 1.35-1.40, § 2 steps 23-25 and the new § 4: M13 and M14 above, and M12's rederive gains three effects. RM384 landed as `locations.SNAPSHOT_REPO_IDS` (not `download`), which the lead takes for M8's pin; RM386's publish pinning is the enricher's HuggingFace publisher, which the registry does not use. Still before the cut: two regenerated examples and audit round 3.
 
-**The cut, 0.8.0 (`edf2661c` on `0.8`, `e97339a3` on `main`, 2026-11-05)**: no behaviour change since `c90e6d98`. Not on PyPI and not tagged yet (both the maintainer's; the tag follows the publish), so the 0.28 branch keeps its git source until then. Three things the final guide and `RELEASE_RECORDS["0.8.0"]` change in this map:
+**The cut, 0.8.0 (`edf2661c` on `0.8`, `e97339a3` on `main`, 2026-11-05)**: no behaviour change since `c90e6d98`. Not on PyPI and not tagged yet (both the maintainer's; the tag follows the publish), so the 0.28 branch keeps its git source until then. **Published and tagged the same evening** (PyPI 19:56 UTC, `v0.8.0` = `e97339a3`, package sources identical to `edf2661c`): the git source can give way to the PyPI floors, told to the lead. Three things the final guide and `RELEASE_RECORDS["0.8.0"]` change in this map:
 
 - **M3 is wrong on one point: `content_signature` does move, for some modules.** The record's `content_signature` axis is `True`, from RM363's correction: `studies`, `haplotypes`, `pharm_variants` and `heteroplasmy` now store a primary-assembly contig bare (`chr12` → `12`, `chrM` → `MT`), so a module that wrote `chr`-prefixed contigs on those tables gets a new `content_signature` on the sweep's recompile (no upstream example does). The successor is a PATCH of the same module, so `409 duplicate_content` does not fire, but the predecessor's claim stays (only a purge frees it), and until such a module is swept, a same-data upload under another name signs differently and is not caught as a duplicate. Both corrections (RM363, RM361's `:None` key) state `requires=None`, so `declared_movement` keeps them for every module: the sweep reaches the whole catalog, as M3 already expects. To size it, a catalog query for published versions whose four tables carry `chr`-prefixed contigs, for the lead.
 - **`toolchain_differs` is the normal case, not a one-off.** The compiler's own lock is now polars 2.1.0 while just-dna-lite stays on polars 1.x (polars-bio caps `<2`), so one spec under one `compiler_version` has two digests. Content is compared by `content_signature`; the registry compares no digest against a recompile, and our client's `verify_manifest` is unchanged at 0.8 (a hash check, no toolchain), so nothing here breaks. Polars 2 goes in with 0.28 (the lead, 2026-11-05).

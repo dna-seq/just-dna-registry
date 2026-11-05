@@ -624,8 +624,9 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
 
 **0.8.0 is cut** (2026-11-05, `edf2661c` on upstream's `0.8`; no behaviour change since the release candidate
 `c90e6d98` the branch already builds on). Re-read against this scope by the liaison (ee22dc6): one row
-corrected (M3, item 3), nothing added or dropped. 0.28 now waits only on the three packages reaching
-PyPI, which with the tags is the maintainer's step; the branch keeps its git source until then.
+corrected (M3, item 3), nothing added or dropped. **All three are on PyPI at 0.8.0 and `v0.8.0` is tagged**
+(checked 2026-11-05), so nothing upstream holds 0.28 any longer: the branch swaps its git source for the
+published floors, then M12's decision, M3's recompile and the operator steps, then the release.
 
 **Holds, hardest first.**
 
