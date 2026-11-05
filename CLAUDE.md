@@ -339,22 +339,15 @@ Four rules that each cost a bug to learn:
   permit is now about the *budget*, not about the race: the pace is shared, so concurrent runs interleave
   on one spacing rather than going faster, and `enrich_max_concurrency` stays 1 as a latency choice
   rather than a correctness one.
-  **And the bundle has to be *constructed*: bare `LookupClients()` is eight `None`s.** Its docstring's
-  "lazily built" describes `lookup.py`, whose functions do `clients.x or XClient()` and close what
-  they made — nothing fills the dataclass. An empty bundle passes `None` into every `resolver=` /
-  `gnomad_client=` / `eutils=` argument, so each pass builds its own client, the pacing is per call
-  again, and `close_lookup_clients` closes nothing. `shared_lookup_clients()` builds all eight.
-
-  **It said "six" until 0.25, and the two it was missing were not a rounding error.** That dataclass
-  carries **three different lazy-build semantics and which one a field gets is invisible at the call
-  site**: `_lookup_live_loci` and `lookup_old_assembly` assign the client they build *back onto the
-  caller's bundle*, so a shared bundle ends up pacing those whether you filled the field or not;
-  `_check_pmcid` and `_lookup_frequencies` build-and-close per call, so an unfilled field there is
-  per-request pacing however shared the bundle is. `gnomad` happened to be filled and `pmc_idconv`
-  did not, which made the citation leg the one that would have egressed unpaced the moment it was
-  exposed over HTTP. **Fill every field; do not reason about which ones matter** — the reasoning is
-  what was wrong, not the count. Filed upstream as the real fix: one constructor, or one uniform
-  lazy path.
+  **And the bundle has to be *filled*, because this service hands its passes single clients.** Since
+  enricher 0.7.0 (RM206, our S92) upstream's `lookup.*` legs fill an empty field through one locked path,
+  `LookupClients.ensure`, and `close()` walks `CLIENT_FIELDS`, so a bundle handed *whole* fills itself:
+  that is the `/hint` routes. The passes in `services/enrich.py` are handed one client each
+  (`resolver=clients.ensembl`, `client=clients.ontology`, …), and an unfilled field arrives as `None`, so
+  each pass builds its own client and the pacing is per call again. `shared_lookup_clients()` therefore
+  fills every field upstream lists, and a test holds it to `CLIENT_FIELDS`. Through 0.25 it filled six of
+  eight and the citation leg would have egressed unpaced; **fill every field, do not reason about which
+  ones matter.**
 - **`offline` means *snapshot only*, not "that source is off" (enricher 0.5.1 / RM38).** Every pass
   is snapshot → live → skipped-with-a-reason, so a provisioned deployment gets the full `?pgx=` check
   with zero egress. Assuming the family is online-only silently skips work a cache could have done.

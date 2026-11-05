@@ -605,16 +605,18 @@ def test_the_shared_bundle_actually_holds_clients() -> None:
     no key to raise, and `close_lookup_clients` closed nothing. The gate defaulting to 1 is what
     makes one shared bundle *safe*; it is not what makes it exist.
     """
+    from just_dna_enricher.lookup import CLIENT_FIELDS
+
     from just_dna_registry.services.enrich import close_lookup_clients, shared_lookup_clients
 
     close_lookup_clients()  # this is process-global; start from a known state
     try:
         bundle = shared_lookup_clients()
         assert bundle is shared_lookup_clients(), "one bundle per process, or the pacing is per call"
-        members = {
-            name: getattr(bundle, name)
-            for name in ("gnomad", "eutils", "europepmc", "crossref", "ontology", "ensembl")
-        }
+        # Every field upstream lists, read off `CLIENT_FIELDS` rather than named here: the hand-kept
+        # list this test had named six of eight. Floor: an emptied import must not pass as "all filled".
+        assert len(CLIENT_FIELDS) >= 8, CLIENT_FIELDS
+        members = {name: getattr(bundle, name) for name in CLIENT_FIELDS}
         assert all(client is not None for client in members.values()), members
         # Every paced client carries the state worth sharing. Ensembl deliberately has no gate: it
         # is the last link after cache and snapshot, so its volume stays low.
