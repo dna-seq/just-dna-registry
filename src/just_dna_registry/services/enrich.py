@@ -1642,14 +1642,14 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
     from just_dna_enricher.identifiers import (
         IdentifierCheckError,
         IdentifierUnavailable,
+        authored_identifiers,
         check_identifiers,
     )
 
-    if not (spec_dir / "variants.csv").is_file():
-        return IdentifierCheck(
-            warnings=["no variants.csv — `trait_efo_id` and `gene` are variants-table columns, so "
-                      "there is nothing to check"]
-        )
+    # No early return on a module without `variants.csv` (0.27.1, the liaison's C8). Since enricher
+    # 0.7 (RM155/RM156) the pass reads `trait_efo_id` and `gene` off every authored table that
+    # declares them, so a PGx or binning module has identifiers to check, and the old "nothing to
+    # check" was a wrong answer rather than a skip.
     if offline:
         return IdentifierCheck(
             skipped_offline=True,
@@ -1658,9 +1658,19 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         )
 
     try:
-        report = check_identifiers(spec_dir=spec_dir, client=clients.ontology if clients else None)
+        report = check_identifiers(
+            spec_dir=spec_dir,
+            client=clients.ontology if clients else None,
+            # Its PGS Catalog leg (RM163) builds a client outside the shared bundle and outside
+            # `pacing.UPSTREAMS`, so it would egress unpaced and unmetered. Off until 0.28 runs it on
+            # a paced client; the skip is said in `warnings` below, never left as a silent clean.
+            check_pgs=False,
+            # The default writes licence rows into the spec. On a dry run that is a scratch copy, and
+            # a check that edits what it reports on is not reporting.
+            write=False,
+        )
     except ValueError as exc:
-        # `variants.csv` will not load — which the validation findings already explain in full, so
+        # An authored table will not load, which the validation findings already explain in full, so
         # this is a note rather than a second, worse-worded copy of them.
         return IdentifierCheck(warnings=[str(exc)])
     except IdentifierUnavailable as exc:
@@ -1683,7 +1693,23 @@ def _identifiers_check(spec_dir: Path, offline: bool, clients: Any) -> Identifie
         for t in report.traits
         if t.state == "unchecked"
     ]
+    # What the pass did not read, as warnings until 0.28 carries the fields (C8's minor half). Only the
+    # tables that exist and would not parse: an absent optional table is every module's normal shape,
+    # and listing those would bury the one line that means identifiers went unchecked.
+    skipped = [
+        f"{name} was not read ({why}), so the identifiers it carries were not checked"
+        for name, why in sorted(report.unreadable_tables.items())
+    ]
+    # The roster read is local (no request): it is how the skip is said only to a module it touches.
+    pgs_ids = authored_identifiers(spec_dir, "pgs_id").ids
+    if pgs_ids:
+        skipped.append(
+            f"{len(pgs_ids)} PGS Catalog accession(s) not checked: this server does not run that "
+            f"leg yet, because its client is not one of the paced ones. That is not the same as "
+            f"the accessions being current."
+        )
     return IdentifierCheck(
+        warnings=skipped,
         checked_traits=len(report.traits) - len(unchecked),
         checked_genes=len(report.genes),
         stale_traits=[
