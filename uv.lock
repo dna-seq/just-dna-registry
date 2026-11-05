@@ -565,7 +565,7 @@ wheels = [
 [[package]]
 name = "just-dna-compiler"
 version = "0.7.2"
-source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30#5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" }
+source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890#a4a401e75f61bf64fe084d6d66b4340846e0f890" }
 dependencies = [
     { name = "just-dna-format" },
     { name = "polars" },
@@ -576,7 +576,7 @@ dependencies = [
 [[package]]
 name = "just-dna-enricher"
 version = "0.7.3"
-source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=enricher&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30#5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" }
+source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=enricher&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890#a4a401e75f61bf64fe084d6d66b4340846e0f890" }
 dependencies = [
     { name = "duckdb" },
     { name = "ga4gh-vrs" },
@@ -593,7 +593,7 @@ dependencies = [
 [[package]]
 name = "just-dna-format"
 version = "0.8.0"
-source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=schema&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30#5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" }
+source = { git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=schema&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890#a4a401e75f61bf64fe084d6d66b4340846e0f890" }
 dependencies = [
     { name = "cryptography" },
     { name = "pydantic" },
@@ -642,10 +642,10 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'server'", specifier = ">=0.34.0" },
-    { name = "just-dna-compiler", marker = "extra == 'compiler'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
-    { name = "just-dna-compiler", marker = "extra == 'server'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
-    { name = "just-dna-enricher", marker = "extra == 'server'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=enricher&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
-    { name = "just-dna-format", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=schema&rev=5b1b73b8de26bb0af844c5a03c8d454c2b73ec30" },
+    { name = "just-dna-compiler", marker = "extra == 'compiler'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890" },
+    { name = "just-dna-compiler", marker = "extra == 'server'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=compiler&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890" },
+    { name = "just-dna-enricher", marker = "extra == 'server'", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=enricher&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890" },
+    { name = "just-dna-format", git = "https://github.com/dna-seq/just-dna-compiler?subdirectory=schema&rev=a4a401e75f61bf64fe084d6d66b4340846e0f890" },
     { name = "pydantic", marker = "extra == 'server'", specifier = ">=2.13.4" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.7.0" },
     { name = "pyjwt", marker = "extra == 'server'", specifier = ">=2.10.0" },
