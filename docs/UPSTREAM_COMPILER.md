@@ -315,7 +315,8 @@ lock (1.44.2, 1.5.5, 2.3.3).
   filed as RM384 (a minor their pm places): one public lane → repo-id map with every prefix derived from it,
   `DEFAULT_*_REPO_ID` kept as aliases (every pulled lane spelled its repo twice, untied). On the release label:
   not as the pin alone, since `ensembl_reference` documents `org/repo@<rev>`, which names bytes, and the label
-  names data. Keep the spelled repo until RM384 ships; then read the map. Last checked: 2026-11-05.
+  names data. Keep the spelled repo until RM384 ships; then read the map. RM384 is placed in their 0.8
+  (their triage, 2026-11-05), so at the cut M8's drift test moves to it. Last checked: 2026-11-05.
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
