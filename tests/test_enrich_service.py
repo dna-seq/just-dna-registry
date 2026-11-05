@@ -490,6 +490,17 @@ def test_the_hint_does_not_send_the_author_after_an_upstream_failure() -> None:
     assert "warm-caches" not in hint and "variants.csv" not in hint
 
 
+def test_an_online_hint_says_an_indel_may_have_been_withheld() -> None:
+    """C16: enricher 0.7.3 (RM268) withholds a REST indel whose reference base never came back, and
+    reports it only in a log line. On an online run the hint has to name that outage and put the
+    re-run first; offline nothing was asked, so the sentence would be false there."""
+    online = unresolved_hint(EnrichOutcome(ran=True, offline=False, unresolved=["rs1"]), Settings())
+    assert "withheld" in online and "re-publish once" in online
+    offline = unresolved_hint(EnrichOutcome(ran=True, offline=True, unresolved=["rs1"]), Settings())
+    assert "variants.csv" in offline  # the haystack is the standard advice, not an empty string
+    assert "withheld" not in offline
+
+
 def test_the_hint_explains_a_skipped_enrichment_differently() -> None:
     outcome = EnrichOutcome(ran=False, skipped_reason="enrichment disabled")
     assert "enrichment disabled" in unresolved_hint(outcome, Settings())
