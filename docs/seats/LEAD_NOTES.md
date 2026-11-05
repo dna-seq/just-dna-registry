@@ -63,7 +63,9 @@ compiler's lead says §2 changed). Not merged, not shipped before the floors are
 Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
 (634038c), M8 (59ddcd9, 2d06f57), M9 (c1706e3), M4 (158e239), M10 (84d4a6c); main merged in (71bf1a7).
 Rev moved to a4a401e7 (46603de); RM384 tie-back (7a275a4); M13 test (bd7fe67); C10/M14 (9f4e114); C17
-(276df93); C8 minor half (af18b2e). **PGS leg on** (ffe263d, the liaison's design; no UPSTREAMS row, since the ledger charges /hint only). Next: M11 check,
+(276df93); C8 minor half (af18b2e). **PGS leg on** (ffe263d, the liaison's design; no UPSTREAMS row, since the ledger charges /hint only).
+At upstream's release candidate c90e6d98 (049e036), main merged in (c949f91), polars 2.1.0 (0c23598): full
+suite 621 passed. duckdb 2 waits for upstream's RM344 (roadmap 3d4d850). Next: M11 check,
 then the rest of the 0.28 list. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
