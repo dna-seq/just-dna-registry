@@ -27,28 +27,11 @@ import csv
 import io
 
 import yaml
-from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.binning import (
-    ActivityPhenotypeRow,
-    CopyNumberRow,
-    HeteroplasmyRow,
-    RepeatAlleleRow,
-)
-from just_dna_format.frequency import FrequencyRow
-from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.gene_validity import GeneValidityRow
-from just_dna_format.gwas import GwasEffectRow
+from just_dna_compiler.compiler import _FACT_TABLES, _TABLE_KINDS, OVERRIDES_CSV
 from just_dna_format.identity import parse_version
 from just_dna_format.layout import sidecar_spellings
-from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import Contribution, GenePanelSpec, ModuleManifest
-from just_dna_format.pgs import PgsRow
-from just_dna_format.pgx import (
-    AlleleFunctionRow,
-    DiplotypeRow,
-    HaplotypeRow,
-    PharmVariantRow,
-)
+from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import Defaults, ModuleInfo, ModuleSpecConfig, StudyRow, VariantRow
 from pydantic import BaseModel, Field
@@ -185,30 +168,27 @@ def plan_variants_upgrade(variants_csv_text: str) -> UpgradePlan:
 # Every authored table kind, not just the SNP core: a PGx module carries `haplotypes.csv` and no
 # `variants.csv` at all, and through 0.10 the trim/block pass simply could not see those files, so
 # an offending column in one went unreported and then failed the recompile.
+#
+# **Read off upstream's own registries, never listed here** (0.27.1, the liaison's C4). The hand-kept
+# list this replaced had drifted by four tables on 0.7 (`overrides.csv`, `expression_effects.csv`,
+# `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv`), each read by an `extra="forbid"` model,
+# so an unknown column in one was neither trimmed nor reported and failed the recompile instead: the
+# 0.10 failure above, back through a list nobody updated. `_TABLE_KINDS` (the authored annotation
+# tables) and `_FACT_TABLES` (the derived sidecars, `sources.csv` among them) each carry their
+# `(csv, parquet, model)` binding. Two categories are in neither and are named here, because upstream
+# binds no model to them in a registry: the SNP core (`variants.csv`, `studies.csv`, whose parquets are
+# `SNP_CORE_PARQUETS`) and the authored overlay (`OVERRIDES_CSV`, RM124's "third category").
+# `tests/test_upgrade.py` holds every CSV in upstream's `_INPUT_FILES` and `_FACT_TABLES` to this
+# roster, so a table upstream adds fails a test here rather than a recompile on a box.
+#
+# The licensing ledger is keyed by **every spelling**, so it is checked under whichever name a stored
+# version actually carries. `normalize_spec` stores the preferred one, but this planner also runs over
+# versions published years earlier, whose storage still holds the name of their own era.
 _ROW_MODELS: dict[str, type[BaseModel]] = {
     "variants.csv": VariantRow,
     "studies.csv": StudyRow,
-    "activity_phenotype.csv": ActivityPhenotypeRow,
-    "copynumbers.csv": CopyNumberRow,
-    "repeat_alleles.csv": RepeatAlleleRow,
-    "heteroplasmy.csv": HeteroplasmyRow,
-    "haplotypes.csv": HaplotypeRow,
-    "allele_function.csv": AlleleFunctionRow,
-    "diplotypes.csv": DiplotypeRow,
-    "pgs.csv": PgsRow,
-    "pharm_variants.csv": PharmVariantRow,
-    # The derived-fact sidecars. Enricher-produced rather than hand-authored, but they round-trip
-    # through storage like everything else and an unknown column in one fails the same recompile.
-    # The last three are 0.6's (RM24 / RM25 / RM90).
-    "frequencies.csv": FrequencyRow,
-    "gene_metrics.csv": GeneMetricsRow,
-    "literature.csv": LiteratureRow,
-    "gene_validity.csv": GeneValidityRow,
-    "clinical_assertions.csv": ClinicalAssertionRow,
-    "gwas_effects.csv": GwasEffectRow,
-    # Keyed by **spelling**, so the licensing ledger is checked under whichever name a stored version
-    # actually carries. `normalize_spec` stores the preferred one, but this planner also runs over
-    # versions published years earlier, whose storage still holds the name of their own era.
+    **{csv_name: model for csv_name, _, model in (*_TABLE_KINDS, *_FACT_TABLES)},
+    OVERRIDES_CSV: OverrideRow,
     **dict.fromkeys(sidecar_spellings("sources.csv"), SourceRow),
 }
 

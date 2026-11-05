@@ -96,6 +96,38 @@ Ensembl and ClinVar. A deployment that configures neither setting behaves as bef
 reads every `*_cache` parameter of the installed `enrich()` and fails if either path leaves
 one to its default, so the next lane upstream adds is caught the same way.
 
+### `registry upgrade` checks the columns of every table the compiler reads
+
+`--trim` and the blocked report used to know nineteen tables from a list kept here, which had fallen
+four behind format 0.7: `overrides.csv`, `expression_effects.csv`, `clin_sig_concordance.csv` and
+`clin_sig_authority_calls.csv`. A stored version with an unknown column in one of those was neither
+trimmed nor reported blocked, and its recompile failed instead. The list is now read from the compiler's
+own table registries, so a table upstream adds is checked without a change here, and a test fails if
+upstream ever reads a table the roster does not cover.
+
+### An online publish refused over a withheld indel says to re-run first
+
+Enricher 0.7.3 withholds an indel whose reference base the sequence service did not return, and says so
+only in its own log. On an online run that indel reached the strict refusal with the advice for a missing
+locus: provision a fuller snapshot or author coordinates. The refusal's hint now also says an indel may
+have been withheld over an upstream failure and to re-publish once before changing anything. Offline runs
+keep the old advice, since nothing was asked. A field naming the withheld variants arrives with format 0.8.
+
+### The dataset-release probe is off unless an operator turns it on
+
+Every publish and `/check` inherited the enricher's `verify_datasets`, which asks ClinVar and the PGS
+Catalog which release they publish now through clients outside this server's shared ones and its pace
+ledger: egress nothing metered. `REGISTRY_ENRICH_VERIFY_DATASETS` (default `false`) now decides it, and with
+it off the verification record says the check was not requested. Set it to `true` for the old behaviour.
+
+### `/check?identifiers=true` checks a module that has no `variants.csv`
+
+A PGx or binning module was told there was nothing to check, while the enricher reads `gene` and
+`trait_efo_id` off every authored table that carries them. The check now runs on every module. Two parts of
+the pass are held back and said so in its `warnings`: the PGS Catalog accession check, whose client this
+server does not pace yet, and any table that exists but would not parse. The pass no longer writes into the
+spec it is checking. Fields for both arrive in 0.28.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own

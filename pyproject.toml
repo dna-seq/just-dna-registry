@@ -297,7 +297,7 @@ server = [
     # **0.7.3 (upstream `v0.7.3`, all three tiers by a patch) is the 0.6.4 kind on every tier.** No
     # field, table, parameter, public function or warning code is added, and no symbol we import
     # moved. What changes is what the enricher *derives*, and it reaches us through routes that
-    # already pass results through: RM268/RM271 anchor a one-sided REST indel and withhold a
+    # already pass results through, with one exception said below: RM268/RM271 anchor a one-sided REST indel and withhold a
     # non-base allele on both Ensembl rungs (publish, `/check`, `/hint/variant` — which gains a
     # finding for the withheld case), RM274 settles a same-size indel against the reference, RM273
     # left-aligns CIViC and flags PubMind indels, RM276 names a STRchive locus graded
@@ -305,6 +305,10 @@ server = [
     # deletions joinable in the derived `mitomap_miss` lane. That last one needs the lane rebuilt,
     # which `warm-caches` will not do over a present cache — see UPGRADE.md. A box left on 0.7.2 is
     # not broken; it derives less well.
+    # The exception (0.27.1, the liaison's C16): RM268 withholds an online REST indel whose reference
+    # base did not come back and says so only in a log line, so it reached `unresolved` with the
+    # authoring remedy attached. `unresolved_hint` now names it on an online run; the field
+    # (`unanchored_rsids`) arrives with 0.8.
     "just-dna-compiler>=0.7.2",
     "just-dna-enricher>=0.7.3",
 ]

@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     enrich_verify_ref: bool = True  # auto-skipped offline (needs the reference sequence)
     enrich_verify_clinsig: bool = True  # warning-only in both modes, by upstream design
     enrich_verify_rsids: bool = False  # live dbSNP only
+    # Off by default (0.27.1, the liaison's C9). Upstream's `verify_datasets` (RM85) asks each source a
+    # module's `sources.csv` names which release it publishes now, through clients of its own: outside
+    # the shared bundle and outside the pace ledger, so on every publish and `/check` it is egress this
+    # server cannot meter. Off, the verification record says `dataset_currency: not_requested`, which
+    # is true. An operator who wants the check turns it on and accepts the unmetered requests.
+    enrich_verify_datasets: bool = False
     enrich_keep_par_twin: bool = False  # record a pseudoautosomal locus once, on X
 
     # Reference snapshot caches. ALWAYS passed explicitly to the enricher: with no path its

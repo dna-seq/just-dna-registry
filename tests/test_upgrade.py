@@ -11,9 +11,14 @@ from pathlib import Path
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from just_dna_compiler.compiler import _FACT_TABLES, _INPUT_FILES, _TABLE_KINDS
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.identity import parse_version
 from just_dna_format.manifest import ModuleManifest
+from just_dna_format.overrides import OverrideRow
 from just_dna_format.spec import StudyRow, VariantRow
+from pydantic import BaseModel
 
 from just_dna_registry.config import Settings
 from just_dna_registry.services.publish import publish_version
@@ -27,6 +32,7 @@ from just_dna_registry.services.rebuild import (
 )
 from just_dna_registry.services.revalidate import revalidate_version
 from just_dna_registry.services.upgrade import (
+    _ROW_MODELS,
     GAP_CONTRACT,
     GAP_NONE,
     GAP_PATCH,
@@ -42,6 +48,7 @@ from just_dna_registry.services.upgrade import (
     trim_unknown_yaml_keys,
     upgrade_version,
 )
+from just_dna_registry.specfiles import SPEC_YAML
 from just_dna_registry.storage.base import version_key
 from just_dna_registry.version import installed_compiler
 
@@ -263,6 +270,44 @@ def _make_stored_spec_legacy(app, api_key, client) -> ModuleManifest:
         {"variants.csv": _VARIANTS_EXTRA_COL.encode()},
     )
     return manifest
+
+
+def test_row_model_roster_covers_every_table_upstream_reads() -> None:
+    """C4: the trim/block roster is upstream's, not a list kept here. Every CSV the compiler hashes as
+    an input, and every derived sidecar it reads, has a row model in `_ROW_MODELS`, and where upstream
+    binds a model to the table it is that model."""
+    upstream = {*(n for n in _INPUT_FILES if n != SPEC_YAML), *(c for c, _, _ in _FACT_TABLES)}
+    # Denominator floor: an emptied or moved upstream registry must not read as "all covered".
+    assert len(upstream) >= 15
+    assert upstream <= set(_ROW_MODELS)
+    bound = (*_TABLE_KINDS, *_FACT_TABLES)
+    assert len(bound) >= 15
+    assert {c: m for c, _, m in bound} == {c: _ROW_MODELS[c] for c, _, _ in bound}
+
+
+# The four tables the hand-kept roster missed on 0.7, each read by an `extra="forbid"` model.
+@pytest.mark.parametrize(
+    ("fname", "model"),
+    [
+        ("overrides.csv", OverrideRow),
+        ("expression_effects.csv", ExpressionEffectRow),
+        ("clin_sig_concordance.csv", ClinSigConcordanceRow),
+        ("clin_sig_authority_calls.csv", ClinSigAuthorityCallRow),
+    ],
+)
+def test_offending_column_in_a_table_the_old_roster_missed_is_blocked(
+    client: TestClient, api_key: str, app, fname: str, model: type[BaseModel]
+) -> None:
+    manifest = _publish(client, api_key)
+    header = ",".join([*model.model_fields, "legacy_note"]) + "\n"
+    app.state.storage.store_module(
+        version_key("just-dna-seq", "coronary", "1.0.0"), {fname: header.encode()}
+    )
+    prep = prepare_version_upgrade(
+        app.state.storage, "just-dna-seq", "coronary", "1.0.0", manifest, trim=False
+    )
+    assert prep is not None
+    assert prep.blocked == {fname: ["legacy_note"]}
 
 
 def test_offending_column_blocks_upgrade_without_trim(

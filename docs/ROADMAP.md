@@ -739,7 +739,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
   (already the rule at every door, CLAUDE.md "Deployment modes").
 
-- **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
+- ✅ **done** (a96e8ac on `release-0.27.x`, in 0.27.1). **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
   the liaison's items**, owner: lead; the liaison's **C4** in `docs/UPSTREAM_COMPILER.md`). `services/upgrade.py`
   `_ROW_MODELS` is hand-kept and already stale on 0.7: it lacks `overrides.csv`, `expression_effects.csv`,
   `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv`, all read by `extra="forbid"` models, so an
@@ -774,7 +774,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   `evidence_status_currency` into `verification.json`. Pass both, one test that the configured path is what
   `enrich()` receives. Sizing: **patch**. Half an hour.
 
-- **`check_identifiers` runs on every module, not only one with `variants.csv`** (**severity high,
+- **`check_identifiers` runs on every module, not only one with `variants.csv`** (patch half ✅ **done** on `release-0.27.x`, in 0.27.1; the minor half rides 0.28) (**severity high,
   unattended**, owner: lead; the liaison's **C8**, upstream RM155 / RM156 / RM163, checked 2026-11-04).
   `services/enrich.py` returns "no variants.csv … nothing to check" before calling it, so `/check` tells a
   PGx-only module there is nothing to check while the installed pass reads every table that carries the
@@ -788,7 +788,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   dropping the early return without the warnings, which would turn an honest "nothing to check" into a
   silent clean. Two to three hours across both.
 
-- **A setting for the enricher's dataset probes** (**severity medium, unattended**, owner: lead; the liaison's
+- ✅ **done** (on `release-0.27.x`, in 0.27.1). **A setting for the enricher's dataset probes** (**severity medium, unattended**, owner: lead; the liaison's
   **C9**, upstream RM85, checked 2026-11-04). `enrich(verify_datasets=True)` is the default we inherit: every
   run probes ClinVar's live VCF header and the PGS Catalog's `/rest/info` through clients outside the shared
   bundle and the pace ledger. Add `enrich_verify_datasets` beside `enrich_verify_clinsig`, passed through (with
@@ -839,7 +839,7 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   read nowhere, and `unresolved_hint` offers three remedies that are all wrong for it. Carry it beside
   `unresolved` and give the hint its fourth case. Sizing: **minor** (a response field). One to two hours.
 
-- **An online run's withheld indel gets the re-run remedy, not the authoring one** (**severity medium,
+- ✅ **done** (on `release-0.27.x`, in 0.27.1). **An online run's withheld indel gets the re-run remedy, not the authoring one** (**severity medium,
   unattended, second of the 0.27.x patches after C4**, owner: lead; the liaison's **C16**, upstream RM268 in
   v0.7.3). On an online run, a REST indel whose reference base could not be read is withheld: it lands in
   `unresolved`, and the enricher says why only in a log line this server does not keep (`unanchored_rsids` reaches
