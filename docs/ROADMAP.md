@@ -852,12 +852,12 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     sentence; if upstream gives it no code to read, the field stays as it is, the text is corrected, and the
     gap is filed upstream. Rejected: leaving it `true`, which tells an author the module is fine and only rows
     need work. **Upstream's answer (their S129, relayed by the liaison 2026-11-05):** coded errors are their
-    RM378, placed in their 0.9 (a correction from their triage, 2026-11-05), so the match holds through 0.8; until then the two strict-only refusals carry published, test-pinned fragments
+    RM378, parked after their 0.8.0 cut (their 6934fd3e, 2026-11-05; unparked if the registry needs a refusal the two phrases do not cover), so the match may be permanent; meanwhile the two strict-only refusals carry published, test-pinned fragments
     (their RM377, `docs/COMPILER.md` "The refusals only strict adds"), already in the installed 0.7.2. So the
     flip **matches the frozen fragment now**, as `UNJOINABLE_PHRASE` does: only the build disagreement
     (`whose coordinates the enricher diagnosed as another assembly's`) is module-level; the per-row aggregate
     (`have unresolved genomic positions after resolution`) is not and leaves the field alone. Never widen the
-    match past the fragment, and move to the code when RM378 ships. About an hour.
+    match past the fragment, and move to the code if RM378 ever ships. About an hour.
   - ✅ done (in 0.27.1). *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
     `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
     `compiler.load_citing_rows` / `table_citations`. About an hour.
