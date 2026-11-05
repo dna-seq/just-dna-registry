@@ -1009,6 +1009,20 @@ def unresolved_hint(outcome: EnrichOutcome, settings: Settings) -> str:
     )
 
 
+#: The phrase of the one strict-only refusal that is about the module rather than its rows: the recorded
+#: build disagreement (`compiler.build_disagreement_error`). Published as API by upstream's RM377 (their
+#: COMPILER.md, *The refusals only `strict` adds*, pinned by their `test_strict_refusal_phrases.py`) and
+#: emitted verbatim by the installed compiler; `errors` carry no code until their RM378 (format 0.9).
+#: Match this fragment and **never widen it**: the sentence around it is upstream's to reword, as with
+#: `UNJOINABLE_PHRASE` in `db/facets.py`. Move to the code when RM378 ships.
+BUILD_DISAGREEMENT_PHRASE: str = "whose coordinates the enricher diagnosed as another assembly's"
+
+
+def refuses_module_under_strict(errors: list[str]) -> bool:
+    """Whether a strict grade's errors include the one strict-only refusal about the module itself."""
+    return any(BUILD_DISAGREEMENT_PHRASE in error for error in errors)
+
+
 def validation_report(
     spec_dir: Path,
     repo: Any,
@@ -1265,16 +1279,24 @@ def _dry_run_inner(
             normalized=normalization.info, extra_warnings=normalization.warnings,
             client_format=client_format,
         )
-        # **The module-level verdict is carried from the modeless gate, and that is the field's own
-        # definition rather than a repair.** `would_publish_module_level` answers *do the gates that
-        # do not scale with the variant count pass* — the name matches the path, the data is not
-        # already published elsewhere, the spec is well-formed. Strictness changes severity only; it
-        # never adds or removes a finding, so every strict-only error is a per-row judgement that
-        # belongs to the tier `enrichment` reports on. Letting one flip this field would collapse the
-        # two halves the field exists to keep apart, and a caller reading the weaker field as the
-        # stronger one is the exact confusion it was introduced to end.
+        # **The module-level verdict is carried from the modeless gate**, because
+        # `would_publish_module_level` answers *do the gates that do not scale with the variant count
+        # pass* — the name matches the path, the data is not already published elsewhere, the spec is
+        # well-formed — and most of what strict adds is a per-row judgement belonging to the tier
+        # `enrichment` reports on. Letting those flip this field would collapse the two halves it
+        # exists to keep apart.
+        #
+        # **But strict is not only a change of severity** (upstream RM218 corrected the docstring that
+        # said so). It adds two refusals of its own, and one of them is about the module, not a row:
+        # the verification record says the module's rows are another assembly's than its declared
+        # `genome_build`. That one flips the field (the liaison's C11), read off its published phrase,
+        # never widened (see `BUILD_DISAGREEMENT_PHRASE`). The other, rows left without a position, is
+        # per-row and leaves the field alone.
         validation = graded.model_copy(
-            update={"would_publish_module_level": gate.would_publish_module_level}
+            update={
+                "would_publish_module_level": gate.would_publish_module_level
+                and not refuses_module_under_strict(graded.errors)
+            }
         )
     return CheckReport(
         validation=validation,

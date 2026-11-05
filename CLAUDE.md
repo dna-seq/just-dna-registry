@@ -263,8 +263,11 @@ stale wrapper.
     every rsID-authored module, at the endpoint whose whole contract is to report. `resolve_with_ensembl`
     stays at its default on both sides — a pre-flight that silenced the fill would be *more optimistic*
     than the compile it precedes, the one disagreement direction the parity rule forbids. And
-    `would_publish_module_level` is carried from the modeless gate by definition: strictness changes
-    severity only, so every strict-only error is a per-row judgement belonging to the enrichment tier.
+    `would_publish_module_level` is carried from the modeless gate, with one exception: strict is not
+    only a change of severity (upstream RM218), it adds two refusals, and the recorded build
+    disagreement is about the module, so it turns the field `false`. Read it off the phrase upstream
+    published as API (`BUILD_DISAGREEMENT_PHRASE`, their RM377), never widened, and move to the code
+    when their RM378 ships one. The other strict-only refusal is per-row and leaves the field alone.
   - **A validation finding is a `200`, not a `422`.** `/validate` and `/check` return `valid: false`
     with the reasons in the body; only a request no spec dir can be built from is a 4xx. Publish is
     the opposite. Getting this backwards makes the endpoints useless to the CI jobs they exist for.
