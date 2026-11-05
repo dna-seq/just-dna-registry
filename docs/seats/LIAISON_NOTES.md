@@ -8,7 +8,7 @@ reset").
 - **Watchers** armed and alive: `compiler` (tags), `compiler-next` (`docs/CHANGELOG.md` on `0.8`), `fastapi` and
   `huggingface-hub` (tags), plus `desk`. Clones outside the repo: `/data/sources/just-dna-compiler`,
   `/data/sources/fastapi`, `/data/sources/huggingface_hub`, each a line (`repo=just-dna-registry`) in the
-  liaison state file. When the compiler cuts 0.8 and opens 0.9, move `just-dna-compiler-next`'s `branch=`.
+  liaison state file. When the compiler opens `0.9`, move `just-dna-compiler-next`'s `branch=` from `main` to it.
 - **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.7.3`), `docs/UPSTREAM_FASTAPI.md` (installed `0.141.1`,
   read through 0.162.0 on 2026-11-05: F1, for the first bump), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (installed `v2.0.0`,
   read through v2.4.0 on 2026-11-05: H2 to H4).
@@ -39,8 +39,9 @@ reset").
   `/data/sources/just-dna-registry-deps` (branch `deps/2026-11-05`, no commits) and `-majors` are mine.
 - **0.8.0 cut** 2026-11-05 (`edf2661c`): map re-read against the final guide and the release record (`ee22dc6`): M3
   corrected (RM363 moves `content_signature`), the pm's three items need nothing, lead and pm told. Still to do: the
-  `compiler` watcher's `v0.8.0` tag (after PyPI) moves the read mark; `just-dna-compiler-next`'s `branch=` moves when
-  the compiler's lead names the 0.9 branch (asked 2026-11-05).
+  `compiler` watcher's `v0.8.0` tag (after PyPI) moves the read mark; `just-dna-compiler-next` follows `main` (the 0.8.x
+  patches) since 2026-11-05, on the compiler's lead's word; it moves to `0.9` when that branch opens, which their lead
+  posts in `agent-chat > 0.8 integration`.
 
 - **Desk #193** withdrawn 2026-11-05, decided elsewhere: the lead pushes the trunk under its grant ("all
   pushes"); hand it a commit to push.
