@@ -96,6 +96,15 @@ Ensembl and ClinVar. A deployment that configures neither setting behaves as bef
 reads every `*_cache` parameter of the installed `enrich()` and fails if either path leaves
 one to its default, so the next lane upstream adds is caught the same way.
 
+### `registry upgrade` checks the columns of every table the compiler reads
+
+`--trim` and the blocked report used to know nineteen tables from a list kept here, which had fallen
+four behind format 0.7: `overrides.csv`, `expression_effects.csv`, `clin_sig_concordance.csv` and
+`clin_sig_authority_calls.csv`. A stored version with an unknown column in one of those was neither
+trimmed nor reported blocked, and its recompile failed instead. The list is now read from the compiler's
+own table registries, so a table upstream adds is checked without a change here, and a test fails if
+upstream ever reads a table the roster does not cover.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own
