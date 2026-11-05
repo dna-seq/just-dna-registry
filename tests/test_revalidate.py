@@ -1,6 +1,7 @@
 """Contract-drift audit: `revalidate` finds published versions that fail the current contract,
 sets a non-destructive `needs_upgrade` flag, and never touches the immutable artifact."""
 
+import pytest
 from fastapi.testclient import TestClient
 from just_dna_format.manifest import ModuleManifest
 
@@ -47,6 +48,26 @@ def test_revalidate_ok_and_pmids(client: TestClient, api_key: str, app) -> None:
     status, errors = revalidate_version(app.state.storage, "just-dna-seq", "coronary", "1.0.0", manifest)
     assert status == "ok", errors
     assert gather_pmids(app.state.storage, "just-dna-seq", "coronary", "1.0.0", manifest) == ["29165669"]
+
+
+def test_gather_pmids_reads_every_citing_table(client: TestClient, api_key: str, app) -> None:
+    """C12: a PGx row grounds its own claim with a `pmid` (upstream RM132), and through 0.27.0 the PMID
+    check never saw it. Stored beside the published spec, it is gathered after `studies.csv`'s; an
+    unparseable citing table raises rather than reporting the tables that did parse."""
+    manifest = _publish(client, api_key)
+    key = version_key("just-dna-seq", "coronary", "1.0.0")
+    app.state.storage.store_module(
+        key,
+        {"pharm_variants.csv": b"rsid,gene,drug,pmid,conclusion\nrs4244285,CYP2C19,clopidogrel,21716271,Reduced activation.\n"},
+    )
+    assert gather_pmids(app.state.storage, "just-dna-seq", "coronary", "1.0.0", manifest) == [
+        "29165669",
+        "21716271",
+    ]
+
+    app.state.storage.store_module(key, {"pharm_variants.csv": b"rsid,pmid\nrs4244285,21716271\n"})
+    with pytest.raises(ValueError, match="pharm_variants.csv"):
+        gather_pmids(app.state.storage, "just-dna-seq", "coronary", "1.0.0", manifest)
 
 
 def test_revalidate_flags_drifted_version(client: TestClient, api_key: str, app) -> None:

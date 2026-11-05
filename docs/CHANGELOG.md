@@ -62,6 +62,13 @@ it declares, a strict compile refuses it. `/check?strict=true` already reported 
 `false` for that refusal. Rows left without a position under strict still count as per-row and leave it
 alone.
 
+### `revalidate --check-pmids` checks the PMIDs a module's annotation tables cite
+
+The PMID check read `studies.csv` only, so a PGx or binning module's own citations (`pmid` on
+`pharm_variants.csv` and the binning tables) were never put to NCBI. It now reads every table that cites,
+using the compiler's own list of them. A citing table that will not parse is reported as a failed PMID
+check for that version, not as a version with no PMIDs.
+
 ### Debug logging no longer prints every Hugging Face request
 
 huggingface-hub 2.0 sends its requests through `httpx2` and `httpcore2`, which log under their own
