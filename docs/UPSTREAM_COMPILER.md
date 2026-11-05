@@ -294,6 +294,8 @@ upstream's `0.8`, unmerged until the floors are on PyPI.
 
 **The guide at `a4a401e7` (2026-11-05)**, read §§ 1.35-1.40, § 2 steps 23-25 and the new § 4: M13 and M14 above, and M12's rederive gains three effects. RM384 landed as `locations.SNAPSHOT_REPO_IDS` (not `download`), which the lead takes for M8's pin; RM386's publish pinning is the enricher's HuggingFace publisher, which the registry does not use. Still before the cut: two regenerated examples and audit round 3.
 
+**The release candidate `c90e6d98` (2026-11-05)**, read §§ 1.41-1.43 and § 2's changes: nothing new to build. RM395's `draft_repeat_loci(catalogue=None)` now resolves the STRchive lane ambiently, but `services/drafting.py:318` refuses a draft before calling it when the lane is not present, so `None` never reaches it. RM393 helps M12: a rederive that did not read the back-filling snapshot keeps the recorded rsID. RM394 is a lever for M12's dry run: `SubjectDrift.case` names seven arms, three of which (`moved`, `lost_allele`, `renamed`) want an operator's reading; the registry matches none of the reworded warnings. A reversed `resolution.csv` now has eleven new columns (step 21), read through upstream's models here.
+
 Also new, levers only: RM362's `compiler.subjects.module_subjects` is upstream's one answer to "which genes and loci is this module about" (for the variant catalog after 0.28); RM363's `just_dna_format.spelling` is one comparison rule per kind of value (gene, drug, DOI, contig), worth reading before the registry compares any of those itself.
 
 Nothing for us, read: RM303 moved `release.json`'s model into `just_dna_format.snapshot` and `read_release` now
