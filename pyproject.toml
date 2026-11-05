@@ -69,7 +69,13 @@ dependencies = [
     # (`Literature.quotes_found`/`quotes_unchecked` now send the reader to `abstract_only_count`) and
     # adds, removes or retypes nothing, so a client left on 0.7.0 parses every manifest 0.7.1 does.
     # It is the floor because the compiler 0.7.2 below floors it and the suite adopting it ran on that trio.
-    "just-dna-format>=0.7.1",
+    #
+    # **0.8.0 is a coordinated cut, and the floor is hard** (registry 0.28, the liaison's M1). A 0.7 reader
+    # refuses 0.8 output where upstream's guide says (§1, §1.11, §1.13, §1.18, §1.31-§1.33: new warning
+    # codes, a `toolchain` change kind, verification records naming their witness, new resolution columns),
+    # so a client on 0.7 cannot read a manifest this server writes. The server, `registry-client` and the
+    # console move together; see docs/UPGRADE.md, 0.28.
+    "just-dna-format>=0.8.0",
 ]
 
 [project.optional-dependencies]
@@ -116,7 +122,7 @@ dependencies = [
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.7.2",
+    "just-dna-compiler>=0.8.0",  # lockstep with the format floor above (0.28)
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -309,8 +315,8 @@ server = [
     # base did not come back and says so only in a log line, so it reached `unresolved` with the
     # authoring remedy attached. `unresolved_hint` now names it on an online run; the field
     # (`unanchored_rsids`) arrives with 0.8.
-    "just-dna-compiler>=0.7.2",
-    "just-dna-enricher>=0.7.3",
+    "just-dna-compiler>=0.8.0",  # lockstep with the format floor above (0.28)
+    "just-dna-enricher>=0.8.0",  # lockstep (0.28)
 ]
 
 [build-system]
@@ -403,6 +409,6 @@ ignore = [
 # Upstream's 0.8 branch, by git dependency as their docs/INTEGRATION_0_8.md says (never a published lock).
 # This block is removed, and the floors raised to the published >=0.8.0, before the branch merges.
 [tool.uv.sources]
-just-dna-format = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "c90e6d9813fb1acbef925d37a93242c59ae05566", subdirectory = "schema" }
-just-dna-compiler = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "c90e6d9813fb1acbef925d37a93242c59ae05566", subdirectory = "compiler" }
-just-dna-enricher = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "c90e6d9813fb1acbef925d37a93242c59ae05566", subdirectory = "enricher" }
+just-dna-format = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "edf2661c66b7e54c0619acaaa6d62b3f8b4f5960", subdirectory = "schema" }
+just-dna-compiler = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "edf2661c66b7e54c0619acaaa6d62b3f8b4f5960", subdirectory = "compiler" }
+just-dna-enricher = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "edf2661c66b7e54c0619acaaa6d62b3f8b4f5960", subdirectory = "enricher" }
