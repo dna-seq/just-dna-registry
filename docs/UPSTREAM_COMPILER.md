@@ -94,9 +94,13 @@ Each open item is the lead's to build; its state is said beside it.
   factory)` makes every leg's lazy build one path under a lock; `close()` walks `CLIENT_FIELDS`.
   `services/enrich.py:226` `shared_lookup_clients()` still constructs all eight eagerly, and CLAUDE.md
   ("It said 'six' until 0.25 ... Filed upstream as the real fix") describes an upstream that no longer exists.
-  Ours is not wrong, only redundant: eager costs eight connections on the first online run. Fix: hand over an
-  empty shared bundle and let `ensure` fill it, keep one test that a leg's client is reused across two calls;
-  rewrite the CLAUDE.md paragraph. About an hour. Low priority. Sent to the lead 2026-11-04.
+  Ours is not wrong, only redundant: eager costs eight connections on the first online run. ~~Fix: hand over an
+  empty shared bundle and let `ensure` fill it~~ **Wrong, corrected by the lead (2026-11-05):** `services/enrich.py`
+  hands the passes single clients (`resolver=clients.ensembl`, `client=clients.ontology`), not the bundle, so an
+  empty bundle passes `None` and each pass builds its own unpaced client; only the `/hint` routes pass the bundle
+  whole, where `ensure` fills it. So the bundle stays filled. **Done, narrowed** (e64801f, registry 0.27.1): the
+  docs and a test over `CLIENT_FIELDS`. The lesson for this seat: a fit that removes a piece of ours is read
+  against every call site first, not against the call site the upstream entry describes.
 - **C3 — S81 / RM146 shipped in 0.7.0. *A lever to weigh.*** Every authored field carries `since(...)`, read back
   by `base.field_first_seen(model)`. `version.schema_gap_advisory` (`version.py:121`) still cannot say which
   release introduced a refused column, and CLAUDE.md says that "needs an input-side roster from upstream (S81)".
@@ -142,6 +146,10 @@ re-checked against the code and the installed packages before it was written.
   builds its own `PgsCatalogClient`, outside the shared bundle and `pacing.UPSTREAMS`; and `write=True` by
   default merges licence rows into the scratch spec. Fix: drop the early return, carry the fields, decide
   `check_pgs` (off, or a paced client) and `write=False`. Two to three hours with the models and renderers.
+  *2026-11-05, no filing:* the lead asked whether `LookupClients` should gain a PGS field. Not needed:
+  `PgsCatalogClient(gate=...)` takes a `PacingGate` and calls its gate and cache per-run state, so one gate per
+  process and a fresh client per check shares the pace without sharing a cache. On 0.28 the leg is off,
+  reported by `pgs_not_checked`, until the lead spends the egress.
 - **C9 — RM85: `verify_datasets=True` is `enrich()`'s default, and we never set it.** It probes ClinVar's live
   VCF header and the PGS Catalog's `/rest/info` at the end of every run, through clients outside the shared bundle
   and the pace ledger; offline it records the check unchecked. `config.py` has `enrich_verify_clinsig` (`:124`)
@@ -201,6 +209,9 @@ The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answeri
 (S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
 unstamped compiler; S91-S95 on 2026-09-11, giving C5 and C6). The rest of 0.7.0 is unread for this purpose.
 
+**Done in registry 0.27.1 (the lead, 2026-11-05):** C1, C2 (narrowed), C4, C6, C8's patch half, C9, C11, C12,
+C16.
+
 State of C5 to C15, 2026-11-04 (lead, b7cc45b): all filed; C7, C4, C9 (setting, default off) and C8's patch half
 lead the 0.27.x patches; C8's fields wait for 0.28; C6 no reconcile from `spent`, the text only; C14 canceled,
 both boxes already gzip at the proxy.
@@ -239,6 +250,8 @@ Hardest first.
 | M9 | **`validate` and `compile` reach one verdict** (RM367): `validate_spec(strict=True)` refuses wherever the strict compile does, carries every warning code the compile would, and takes the compile's switches (`resolve_with_ensembl`, new `ba1_threshold`). A refused compile now writes nothing. | The three `validate_spec` calls: `services/publish.py:595` (the modeless gate), `services/enrich.py:1028` (`/validate`, `/check`), `services/revalidate.py:78`. CLAUDE.md's parity rule ("the dry run grades where the publish grades") becomes easier to keep, not harder. | Pass the same switches the compile gets; drop any cleanup of a partial output directory. Under an hour. | Added 2026-11-04 (guide § 1.23). |
 | M10 | **A retired source is `retired`, never `unreachable`** (RM361): `VALID_VERIFICATION_SKIPS` and `VALID_FULLTEXT_STATUS` gain it (HTTP 410), whose remedy is upgrading the enricher, not re-running. Several "could not ask" results gain fields (`FrequencyResult.unanswered`, `OpenTargetsResult.not_read`, …); OLS4/HGNC and eutils now raise their unavailability types on an empty body. `coordinate_key` no longer spells an absent cell `None`. | `services/enrich.py:1759` (ACMG: only `unreachable` reaches the `unreachable` list); the `registry-client check` and console renderers (`console/src/reports.ts:63-95`), "a pass that could not run reports why"; `unresolved_hint` must not say re-run for a retired source. | Two hours, with M4. | Added 2026-11-04 (guide § 1.26). |
 | M11 | **A pass that answered nothing writes no table** (RM370): the header-only sidecars and their licence rows are gone, so `artifact.files` loses empty parquets and the digest moves on a recompile. | `specfiles.plan_layout` and the split download (a `derived/` with fewer files, which "the folder is a consequence of the manifest's contents" already allows); any test fixture that expects an empty sidecar. | Check, likely nothing. Under an hour. | Added 2026-11-04 (guide § 1.24). |
+| M13 | ~~**A retired ClinGen list is reported `unreachable`**~~ *Already held on branch `0.28`: M10 (`84d4a6c`) routes every outage arm, ClinGen's included, through `net.could_not_ask_reason`, which reads `EndpointRetired`; I read `main`, not the branch. The lead tests it after the rev move. Upstream's § 1.26 row now says such a host catches `EndpointRetired` first.* (RM361's audit round 2, guide § 1.26): a 410 now raises the lane's `*Retired`, a subclass of its `*Unavailable` and of `net.EndpointRetired`. Upstream says a handler catching the `*Unavailable` needs nothing, which holds for its own CLI and not here: our ClinGen arm appends `clingen` to `unreachable` for any `ClinGenUnavailable`, so a retired list reads as an outage and sends the operator to a network that is fine (M10's rule, one leg over). ACMG is safe (`AcmgRetired.skip` is `retired`, and the arm reads `skip`); ClinPgx is safe (snapshot only, `download=False`, caught as a skip). | `services/enrich.py:2011`: a `ClinGenRetired` arm above it (subclass first, as the AST guard already wants), reported as a skip naming the upgrade; the guard's subclass table gains the pair. | Thirty minutes, with M10. | Added 2026-11-05 (guide at `a4a401e7`). |
+| M14 | **An answered-but-rejected rsID is now `unresolved` with no row, and our hint gives it three wrong remedies** (RM382, reversing S85, guide § 1.36 and § 2 step 23). Since 0.7 such an rsID had a `not_found` row; on 0.8 a later link may place it (`superseded_answers`), and if none can host the genotype it has no row, sits in `unresolved`, and strict refuses with a third sentence. `unresolved_hint` then says provision a snapshot, allow egress or author coordinates, when the fault is the authored genotype (a strand flip, a wrong allele). This turns C10 from a lever into a defect on 0.8. | `services/enrich.py:959` `unresolved_hint` and `EnrichOutcome` (`:193`): carry `allele_mismatches` keys (with `links`), and name them first, apart from `unreachable_rsids`; the `/check` renderers (CLI and console) show them. Never match the strict sentence. | Two hours (C10's estimate). | Added 2026-11-05 (guide at `a4a401e7`). |
 
 Read at `1007a26` (2026-11-05), guide §§ 1.30-1.33, no new row: each folds into one above. RM373 (`source_release`),
 RM375 (`authored_event`, `judged_coordinate`) add `resolution.csv` columns a 0.7 reader refuses, and RM379 adds a
@@ -270,7 +283,18 @@ upstream's `0.8`, unmerged until the floors are on PyPI.
   cannot left-align (RM376), which collides with the registry's offline-by-default publish
   (`config.py:110` `enrich_offline = True`): the sweep needs an online enrich setting for its run, and its
   egress budget. Measured upstream on their 14 examples: `content_signature` held on all, `artifact.digest`
-  moved on all. And **sweep after RM381** (per-ALT trim of multi-ALT indels, still landing), or rederive again.
+  moved on all. And **sweep after RM381** (per-ALT trim of multi-ALT indels, landed by `a4a401e7`), or rederive again.
+  *Since `a4a401e7`*, three more things a rederive sweep does: RM381 can give an authored positional row
+  its `rsid` from the split repo's padded row, so a module that also authors that rsID's same allele by rsID
+  stops compiling (`Duplicate (variant, genotype)`; the dry run must show it per module); RM383 retires a
+  `resolution`-layer licence row no `resolution.csv` row names, so `manifest.sources`, `sources.signature`
+  and our licensing facets can move on the successor; RM387 adds `source_loci` to `resolution.csv` and to the
+  `resolution_loci` struct (the digest moves anyway, M3). Guide § 4 ships RM385 unfixed (offline cannot
+  left-align), so the online setting for the sweep is not optional.
+
+**The guide at `a4a401e7` (2026-11-05)**, read §§ 1.35-1.40, § 2 steps 23-25 and the new § 4: M13 and M14 above, and M12's rederive gains three effects. RM384 landed as `locations.SNAPSHOT_REPO_IDS` (not `download`), which the lead takes for M8's pin; RM386's publish pinning is the enricher's HuggingFace publisher, which the registry does not use. Still before the cut: two regenerated examples and audit round 3.
+
+**The release candidate `c90e6d98` (2026-11-05)**, read §§ 1.41-1.43 and § 2's changes: nothing new to build. RM395's `draft_repeat_loci(catalogue=None)` now resolves the STRchive lane ambiently, but `services/drafting.py:318` refuses a draft before calling it when the lane is not present, so `None` never reaches it. RM393 helps M12: a rederive that did not read the back-filling snapshot keeps the recorded rsID. RM394 is a lever for M12's dry run: `SubjectDrift.case` names seven arms, three of which (`moved`, `lost_allele`, `renamed`) want an operator's reading; the registry matches none of the reworded warnings. A reversed `resolution.csv` now has eleven new columns (step 21), read through upstream's models here.
 
 Also new, levers only: RM362's `compiler.subjects.module_subjects` is upstream's one answer to "which genes and loci is this module about" (for the variant catalog after 0.28); RM363's `just_dna_format.spelling` is one comparison rule per kind of value (gene, drug, DOI, contig), worth reading before the registry compares any of those itself.
 
@@ -317,6 +341,14 @@ lock (1.44.2, 1.5.5, 2.3.3).
   not as the pin alone, since `ensembl_reference` documents `org/repo@<rev>`, which names bytes, and the label
   names data. Keep the spelled repo until RM384 ships; then read the map. RM384 is placed in their 0.8
   (their triage, 2026-11-05), so at the cut M8's drift test moves to it. Last checked: 2026-11-05.
+- **S131** (filed 2026-11-05, appended to the compiler checkout's inbox, uncommitted): the PGS Catalog
+  client's pace has no public name (`pgs._REQUEST_INTERVAL`, `self._gate`, both private), so the lead's C8 leg
+  on 0.28 (`ffe263d`: one `PacingGate` per process, a fresh `PgsCatalogClient(gate=...)` per check) reads the
+  private interval. Asks for (a) a public interval or (b) a public `gate`. **Answered 2026-11-05**: filed as
+  RM396, a public gate and interval on six clients, the private names kept as aliases. **Parked** by their pm
+  (`a617b4f3`): our read of `pgs._REQUEST_INTERVAL` stays the answer, and no patch renames it. Tell their triage
+  to unpark it when we need a second client's pace (or `clingen_allele`'s), or a private name we read is about
+  to be renamed.
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93

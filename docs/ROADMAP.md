@@ -656,7 +656,13 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    types and both renderers. Required. **With it, a retired source says `retired`** (M10, RM361): never
    `unreachable`, in the ACMG list, both renderers and `unresolved_hint`, whose remedy is upgrading the
    enricher rather than re-running; this is "a pass that could not run reports why" with a new reason.
-   Required. Two hours, built with M4.
+   Required. Two hours, built with M4. **M13** (a4a401e7: ClinGen's own retired error, a subclass of its
+   outage error) is the same rule at one more arm; the lead expects M10's routing to cover it and pins it
+   with a test at the rev move. **Pre-built on branch `0.28`** (2026-11-05, against upstream's 0.8 at
+   a4a401e7): M4 (158e239), M10 (84d4a6c, M13's test bd7fe67), C10/M14 (9f4e114), C17 (276df93), C8's minor
+   half (af18b2e, the PGS leg on a paced gate ffe263d), M9 (c1706e3), M2 (be1d6db), M8 (59ddcd9, RM384 tie-back
+   7a275a4). **M11 checked: nothing to change** (no code or fixture here reads a header-only sidecar; the
+   full suite passes at a4a401e7, 620).
    **And `validate` takes the compile's switches** (M9, RM367): the three `validate_spec` calls pass what the
    compile gets, so the dry run and the publish reach one verdict. Required by the parity rule. Under an
    hour. **Header-only sidecars are gone** (M11, RM370): checked when the recompile runs, likely nothing
@@ -665,7 +671,9 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    renderers** (added by the pm 2026-11-04/05 from the lead's b7cc45b and 22b7f52; the person was away and
    may move them to a later minor): C8's minor half (`trait_tables_not_read`, `gene_tables_not_read`, `pgs`,
    `pgs_not_checked`, and the PGS leg on a paced client in `UPSTREAMS`; its patch half ships as 0.27.x
-   first) and C10 (`allele_mismatches` beside `unresolved`, a fourth `unresolved_hint` case) and C17
+   first) and C10 (`allele_mismatches` beside `unresolved`, a fourth `unresolved_hint` case; on 0.8 it is
+   **M14** and a defect, since RM382 moves such an rsID into `unresolved`, where the hint's three remedies
+   are all wrong, so it is no longer movable out of 0.28) and C17
    (`PgxResult.recorded_use`, so a PGx leg stops reading `declared_use=unstated`). All additive. Rejected:
    a minor of their own after 0.28, which would add the same fields to the same four places a second
    time. About four to five hours together. C5's `GET /caches` cost joins them only if

@@ -153,7 +153,7 @@ repository's own watcher, wake wrapper and arming hook (`.claude/watch-suggestio
 registered. They went once the kit's file watcher had fired on a real edit of the inbox. The two ledger
 scripts stay. `docs/CONSUMER_TRIAGE_LOOP.md` §2 describes the new wake-up.
 
-## [0.27.1] — unreleased
+## [0.27.1] — 2026-11-05
 
 **Client surface:** unchanged.
 

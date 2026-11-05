@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.27.0"
+version = "0.27.1"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -340,6 +340,9 @@ dev = [
 # `auto` so `async def test_*` run without a per-test marker (used by the client SDK suite, which
 # bridges the sync client onto a worker thread while the ASGI app is driven in-process).
 asyncio_mode = "auto"
+# Stated, not left to the plugin: pytest-asyncio 1.4.1 warns when it is unset. `function` is its default,
+# so nothing changes but the warning.
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 # Mirrors `just-dna-format`'s section, deliberately: the two repos are edited in the same sitting by

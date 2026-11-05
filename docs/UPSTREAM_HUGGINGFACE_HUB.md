@@ -8,8 +8,8 @@ watched by its tags only: `[seat.liaison.watch.huggingface-hub]`, from a clone o
 
 ## Read mark
 
-**`v2.4.0`** read (2026-11-05, the release notes of 2.0.0 to 2.4.0 against the list below). Installed: `v2.0.0`
-(`uv.lock`). The floor in `pyproject.toml` is still `huggingface-hub>=0.34.0`, which admits 0.x, 1.x and 2.x
+**`v2.4.0`** read (2026-11-05, the release notes of 2.0.0 to 2.4.0 against the list below). Installed: `v2.4.0`
+(`uv.lock`, the bump of 2026-11-05, `bb42dbd`; suite green, no warning from it). The floor in `pyproject.toml` is still `huggingface-hub>=0.34.0`, which admits 0.x, 1.x and 2.x
 alike: the 2.0 major came in by a relock (registry 0.26.2), not a decision. Nothing the registry calls was
 removed or retyped in 2.0 to 2.4, so no cap is wanted.
 

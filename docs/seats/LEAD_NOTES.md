@@ -37,11 +37,17 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 6. C1 and C2 **done** (C2 narrowed: the bundle stays filled).
 7. C5 + C13 + C15, reading what upstream made public.
 
+**0.27.1 is prepared** (2026-11-05): version + lock (release-0.27.x, merged into main 33bee26), changelog
+dated, docs/UPGRADE.md 0.27.1 note, dists built in `/data/sources/just-dna-registry.wt/relprep/dist/`
+(wheel carries the console). Full suite on the branch: 596 passed. **Waits on the person: publishing to
+PyPI**, `blocked: desk #202` (`uv publish` from that worktree), then the lead tags `v0.27.1` on release-0.27.x's head and
+deploys stay theirs. C5 + C13 + C15 move to 0.27.2.
+
 The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, C10, the column-release
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
 
-Kit pin at v0.1.129 (2026-11-05); this session runs 0.1.128 until `/reload-plugins`.
+Kit pin at v0.1.132 (2026-11-05).
 
 **Pushes are the lead's** (LEAD.md grant, "all pushes"): push main and `release-0.27.x` after each landed block,
 peers' commits included. Holding them for desk #193 was wrong (the person, 2026-11-05: "why noone pushes?");
@@ -55,9 +61,16 @@ on branch `0.28` (worktree `/data/sources/just-dna-registry.wt/0.28`, pushed), t
 at rev 5b1b73b8 by git source in pyproject (removed and floored `>=0.8.0` before merge; move the rev when the
 compiler's lead says §2 changed). Not merged, not shipped before the floors are on PyPI.
 Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
-(634038c). Next: M8 (Ensembl repo default), M9 (validate switches), M4+M10 (+ C8 minor, C10, C17 per the
-roadmap), M11 check. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
+(634038c), M8 (59ddcd9, 2d06f57), M9 (c1706e3), M4 (158e239), M10 (84d4a6c); main merged in (71bf1a7).
+Rev moved to a4a401e7 (46603de); RM384 tie-back (7a275a4); M13 test (bd7fe67); C10/M14 (9f4e114); C17
+(276df93); C8 minor half (af18b2e). **PGS leg on** (ffe263d, the liaison's design; no UPSTREAMS row, since the ledger charges /hint only). Next: M11 check,
+then the rest of the 0.28 list. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.
+
+**Plan watcher** (the kit builder's note, 2026-11-05): `[seat.lead.watch.plan]` needs `## <ID> — <title>` items
+with a `**State:**` line; our ROADMAP is bullets under version headings, so `plan-watch.py --once` reads no item.
+`waits until 2026-11-12`: decide then whether to convert the roadmap (a pm-scope restructure) or keep the
+notes' plan list. Adding the watcher also edits `.blueprints.toml`, which auto mode refused once (desk #201).
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
