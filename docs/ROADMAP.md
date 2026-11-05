@@ -698,6 +698,15 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
 13. **Strict findings live in `errors` only** (M6): checked by the liaison (20536fe), nothing here reads
     an escalated finding from `warnings`. Kept on the list so the release notes say it was looked at.
 
+**polars 2 goes with 0.28; duckdb 2 waits** (the lead, 2026-11-05, on the liaison's measurement: the suite
+passes on polars 2.1.0 and duckdb 2.0.0, branch `deps/majors-2026-11-05`, 612). Polars writes the parquet
+bytes, so it moves `artifact.digest`; the 0.8 recompile (M3) moves every digest anyway and 0.8 records the
+toolchain (RM342), so one cut moves them once and both boxes match. **unattended, with 0.28**: `uv lock
+--upgrade-package polars` on branch `0.28`, full suite, before M3. duckdb 2 **waits until the compiler ships
+RM344**: a 2.0-written `.duckdb` crashes a 1.x enricher sharing the cache, and the module-creator plugin on
+the same box runs 1.5.5. Rejected: both now (breaks a cache neighbour), polars in a 0.27.x patch (a digest
+move outside the recompile, then a second at 0.8).
+
 **Not in 0.28**: dataset currency on the card (needs the operator refresh designed first), the `/check` job
 queue and the online-tier paging (one subsystem, built once), Redis for the limiter and gate, the
 `short_description` and `amend_display` items (wait on format), `httpx2`.
