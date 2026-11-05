@@ -610,6 +610,18 @@ hours from now"; it sets `>=0.8.0` floors, writes the 0.8.0 release record and f
 `docs/INTEGRATION_0_8.md`, and is announced in `#just-dna-compiler`. The liaison re-maps then. The items that need no 0.8 may be **built** on the minor's branch ahead of the cut; only the release
 waits. C1 and C2 are patches and are not held: they ship as 0.27.x as filed.
 
+**0.8 is delayed, so the 0.8 items are pre-built too** (the maintainer, 2026-11-05: "wait on their 0.8
+integration and pre-build on top of that to be ready for release"). Upstream's
+`docs/INTEGRATION_0_8.md` on their `0.8` branch is being finished (a complete "What to change" through
+RM379, an upgrade order, per-consumer checklists with the registry's block matched against M1–M11), and
+the compiler's lead asked that nothing act on it before they announce the finished commit. From that
+commit the lead builds the 0.8-dependent items (M1's code, M2, M4, M8–M11) on the 0.28 branch against
+upstream's `0.8` branch, so 0.28 needs only its floors, lock and recompile once the cut is on PyPI. Three
+limits: the branch is not merged and nothing ships until the floors are published (CLAUDE.md: "Pin what
+is published"; no path or editable source in a tracked file); M3's recompile and the operator steps (the
+Ensembl pull) wait for the cut; and the guide is re-read at the tag, since a branch can still move.
+Rejected: waiting idle for the cut, which would put a whole minor's build after it.
+
 **Holds, hardest first.**
 
 1. **The 0.8 lockstep cut** (M1): floors for all three tiers, `uv.lock`, the operator procedure in
