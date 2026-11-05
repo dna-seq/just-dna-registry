@@ -339,6 +339,10 @@ lock (1.44.2, 1.5.5, 2.3.3).
   not as the pin alone, since `ensembl_reference` documents `org/repo@<rev>`, which names bytes, and the label
   names data. Keep the spelled repo until RM384 ships; then read the map. RM384 is placed in their 0.8
   (their triage, 2026-11-05), so at the cut M8's drift test moves to it. Last checked: 2026-11-05.
+- **S131** (filed 2026-11-05, appended to the compiler checkout's inbox, uncommitted): the PGS Catalog
+  client's pace has no public name (`pgs._REQUEST_INTERVAL`, `self._gate`, both private), so the lead's C8 leg
+  on 0.28 (`ffe263d`: one `PacingGate` per process, a fresh `PgsCatalogClient(gate=...)` per check) reads the
+  private interval. Asks for (a) a public interval or (b) a public `gate`. Not answered yet.
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
