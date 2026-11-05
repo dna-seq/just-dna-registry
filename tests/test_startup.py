@@ -118,3 +118,15 @@ def test_env_template_mentions_every_cache_lane() -> None:
     body = _template().upper()
     unmentioned = sorted(n for n in lanes if n.upper() not in body)
     assert not unmentioned, f"lanes absent from .env.template: {unmentioned}"
+
+
+@pytest.mark.skipif(not enrich.enricher_available(), reason="the network tier is not installed")
+def test_the_ensembl_reference_default_is_the_repo_the_enricher_pulls() -> None:
+    """M8: the compile stamps `ensembl_reference`, and the enricher pulls the snapshot. Format 0.8 moved
+    the repo (RM372) and exposes no public name for it, so this reads the enricher's private download
+    prefix: a move upstream fails here instead of stamping manifests with a repo nothing pulls."""
+    from just_dna_enricher import download
+
+    default = Settings.model_fields["ensembl_reference"].default
+    assert default.startswith("just-dna-seq/")  # the haystack below is a repo path, not empty
+    assert download._ENSEMBL_HF_PREFIX.startswith(f"datasets/{default}/")

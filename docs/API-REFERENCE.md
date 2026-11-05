@@ -1379,7 +1379,7 @@ The source-of-truth contract (from `just-dna-format`; the DB is a projection of 
             "genes": ["…"], "categories": ["…"]},
   "compilation": {"compile_success": true, "compiled_by": "marketplace-server",
                   "compiler_version": "just-dna-compiler 0.1.0",
-                  "ensembl_reference": "just-dna-seq/ensembl_variations",
+                  "ensembl_reference": "just-dna-seq/ensembl_variations_split",
                   "compiled_at": "…", "warnings": []},
   "inputs":  [{"name": "variants.csv", "sha256": "sha256:…", "size": 4350}],
   "artifact": {"digest": "sha256:…",

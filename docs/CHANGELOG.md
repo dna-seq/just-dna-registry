@@ -27,6 +27,14 @@ so an unset one is never found on its own somewhere on the host. It is optional 
 The test that guards this now fails on any snapshot the enricher takes that has no setting here, rather
 than only checking the ones it already knew.
 
+### The Ensembl reference is format 0.8's split snapshot
+
+`REGISTRY_ENSEMBL_REFERENCE` defaults to `just-dna-seq/ensembl_variations_split` (dbSNP 157 / VEP 116), the
+repository format 0.8's enricher pulls; the old `just-dna-seq/ensembl_variations` is no longer written.
+**Operators:** the Ensembl cache on each box has to be pulled again (14.5 GB) before this release is
+deployed, because a cache holding files from both releases resolves nothing. The procedure is in
+`docs/UPGRADE.md`.
+
 ### A card subtitle may be 240 characters
 
 `PATCH /modules/{ns}/{name}/short-description` now accepts up to **240** characters, up from 120,

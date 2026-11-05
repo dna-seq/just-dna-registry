@@ -77,7 +77,13 @@ class Settings(BaseSettings):
     )
 
     # Server-side recompile (M4) pins one Ensembl reference across the ecosystem.
-    ensembl_reference: str = "just-dna-seq/ensembl_variations"
+    #
+    # The split repo from format 0.8 (upstream RM372, the liaison's M8): dbSNP 157 / VEP 116, pulled into
+    # the same `ensembl_variations` directory, and a cache holding files of both releases resolves to
+    # nothing. The old repo is no longer written. Spelled here because upstream exposes no public name
+    # for it (the `ensembl` lane's `publish_repo` is None; the string lives in the enricher's private
+    # `download._ENSEMBL_HF_PREFIX`). Each box pulls 14.5 GB before the 0.28 deploy (docs/UPGRADE.md).
+    ensembl_reference: str = "just-dna-seq/ensembl_variations_split"
 
     # --- Compile policy (format/compiler 0.5) -------------------------------------------------
     # `strict` is the compiler's all-or-nothing mode: it refuses to emit a partial artifact when
