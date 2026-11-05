@@ -637,6 +637,13 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    2026-11-04); M2 then only adds the six names.
 3. **The catalog-wide recompile** (M3): one PATCH per variants module under plain `--apply`, `--dry-run`
    first. Required. Waits on upstream writing the 0.8.0 release record.
+   **And it must survive the snapshot switch** (M12, upstream's guide § 1.30, the liaison's d351077): the
+   sweep carries each stored 0.7 `resolution.csv` into a re-enrich against the new split snapshot (M8),
+   and a module holding placements from both releases may refuse under strict
+   (`rsid_placements_disagree`), so M3 can fail module by module. The lead decides before M3 between
+   dropping the carried table (re-resolve from the snapshot, no egress, resolutions move as data) and
+   re-deriving online (costly; offline leaves indel verdicts undecided); `upgrade --dry-run` shows the
+   refusal either way. Required. About half a day, pre-buildable on the branch with the rest.
 4. **The `/check` report shows 0.8's withheld placements and states** (M4), in the API model, the console
    types and both renderers. Required. **With it, a retired source says `retired`** (M10, RM361): never
    `unreachable`, in the ACMG list, both renderers and `unresolved_hint`, whose remedy is upgrading the
