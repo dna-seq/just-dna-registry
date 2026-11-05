@@ -12,7 +12,12 @@ import io
 import tempfile
 from pathlib import Path
 
-from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_compiler.compiler import (
+    compile_module,
+    load_citing_rows,
+    table_citations,
+    validate_spec,
+)
 from just_dna_format.manifest import MARKETPLACE_COMPILED_BY, ModuleManifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_format.spec import extract_pmids
@@ -21,7 +26,12 @@ from just_dna_registry.config import Settings
 from just_dna_registry.services.enrich import enrich_spec, unresolved_hint
 from just_dna_registry.services.publish import normalize_module_block
 from just_dna_registry.services.upgrade import plan_variants_upgrade
-from just_dna_registry.specfiles import RECOGNIZED_SPEC_FILES, SPEC_YAML, has_spec_data
+from just_dna_registry.specfiles import (
+    RECOGNIZED_SPEC_FILES,
+    SPEC_YAML,
+    TABLE_KIND_CSVS,
+    has_spec_data,
+)
 from just_dna_registry.storage.base import StorageBackend, version_key
 
 
@@ -130,13 +140,28 @@ def _strict_recompile_blockers(spec: Path, settings: Settings) -> list[str]:
 def gather_pmids(
     storage: StorageBackend, namespace: str, name: str, version: str, manifest: ModuleManifest
 ) -> list[str]:
-    """All digit-only PMIDs referenced by a version's `studies.csv` (deduplicated, in order)."""
+    """Every digit-only PMID a version cites (deduplicated, in order): `studies.csv`, then every annotation
+    table that grounds its own rows with a `pmid` (the binning kinds and `pharm_variants.csv`).
+
+    Through 0.27.0 this read `studies.csv` only, so `revalidate --check-pmids` never asked NCBI about a
+    PGx or binning module's citations (the liaison's C12). The citing tables are read with upstream's
+    `load_citing_rows` and `table_citations`, which derive the kinds from the models rather than a list
+    kept here. An unparseable citing table raises `ValueError`, as upstream's loader does: reporting the
+    PMIDs of the tables that did parse would under-report in silence.
+    """
     key = version_key(namespace, name, version)
-    if not any(e.name == "studies.csv" for e in manifest.inputs) or not storage.exists(key, "studies.csv"):
-        return []
-    text = storage.read_file(key, "studies.csv").decode("utf-8")
     seen: dict[str, None] = {}
-    for row in csv.DictReader(io.StringIO(text)):
-        for pmid in extract_pmids((row.get("pmid") or "").strip()):
-            seen.setdefault(pmid, None)
+    if any(e.name == "studies.csv" for e in manifest.inputs) and storage.exists(key, "studies.csv"):
+        text = storage.read_file(key, "studies.csv").decode("utf-8")
+        for row in csv.DictReader(io.StringIO(text)):
+            for pmid in extract_pmids((row.get("pmid") or "").strip()):
+                seen.setdefault(pmid, None)
+    tables = [n for n in (SPEC_YAML, *TABLE_KIND_CSVS) if storage.exists(key, n)]
+    if any(n != SPEC_YAML for n in tables):
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp)
+            for fname in tables:
+                (spec / fname).write_bytes(storage.read_file(key, fname))
+            for pmid in table_citations(load_citing_rows(spec)):
+                seen.setdefault(pmid, None)
     return list(seen)

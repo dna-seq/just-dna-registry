@@ -636,10 +636,12 @@ def revalidate(
 
         pmid_note = ""
         if check_pmids:
-            pmids = gather_pmids(storage, ns, name, ver, manifest)
             try:
+                pmids = gather_pmids(storage, ns, name, ver, manifest)
                 missing = [p for p, exists in verify_pmids(pmids).items() if not exists]
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ValueError) as exc:
+                # ValueError: a citing table would not parse, so its PMIDs cannot be listed. Said as a
+                # failed check, not as zero PMIDs; revalidate's own status already names the table.
                 pmid_note = f"  [pmid check failed: {exc}]"
             else:
                 if missing:
