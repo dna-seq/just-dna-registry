@@ -13,6 +13,7 @@ import sys
 import tarfile
 from pathlib import Path
 
+import httpx
 import typer
 from dotenv import find_dotenv, load_dotenv
 from just_dna_format.identity import parse_version
@@ -312,6 +313,10 @@ def publish(
     ),
     changelog: str = typer.Option("", "--changelog"),
     pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
+    recover_within: float = typer.Option(
+        600.0, "--recover-within",
+        help="On a lost connection, wait this many seconds for the version to land (0: off)",
+    ),
     url: str | None = UrlOpt,
     token: str | None = TokenOpt,
 ) -> None:
@@ -320,7 +325,16 @@ def publish(
     Every file in the directory travels, packed or not, so the logo reaches the card either way.
     """
     with _client(url, token, need_token=True) as c:
-        manifest = c.publish(namespace, name, version, spec_dir, changelog, pack=pack)
+        try:
+            manifest = c.publish(
+                namespace, name, version, spec_dir, changelog, pack=pack,
+                recover_within=recover_within,
+            )
+        except httpx.TransportError as exc:
+            typer.secho(f"✗ connection lost: {type(exc).__name__}: {exc}", fg=typer.colors.RED)
+            for note in getattr(exc, "__notes__", []):
+                typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+            raise typer.Exit(code=1) from exc
     typer.echo(f"✓ published {manifest.identity.canonical_id}")
     typer.echo(f"  digest {manifest.artifact.digest}  compile_success={manifest.compilation.compile_success}")
     if spec_dir.is_dir():

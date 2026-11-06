@@ -184,7 +184,7 @@ other status and any registry before 0.26. `str(err)` names both when present.
 
 ### Writes (token required)
 
-- **`publish(namespace, name, version, spec_dir, changelog="", *, allow_test_data=False, pack=False) -> ModuleManifest`**
+- **`publish(namespace, name, version, spec_dir, changelog="", *, allow_test_data=False, pack=False, recover_within=600.0) -> ModuleManifest`**
   — uploads the spec directory (`gather_spec_files` collects yaml/csv/md/logo/logs, skipping parquets +
   `manifest.json`) and returns the compiled manifest. **`spec_dir` may be a `.tar.gz`/`.zip`, and
   `pack=True` compresses a directory client-side** (0.27, needs a 0.27 server): the same files travel
@@ -192,7 +192,13 @@ other status and any registry before 0.26. `str(err)` names both when present.
   transfer bound, which is refused `413 upload_too_large` raw. Before 0.27 such a spec had to go
   through `import_module`. A `derived/` subfolder, a legacy `MODULE.md`
   and a format-0.6 `licensing.csv` are all normalised server-side — see *Spec layout* in
-  [API-REFERENCE.md](API-REFERENCE.md). Nothing to do on your side: send the spec as your tooling
+  [API-REFERENCE.md](API-REFERENCE.md). **A lost response is recovered** (0.28): when the connection
+  fails after the upload left, `publish()` polls the version's manifest for up to `recover_within`
+  seconds and returns it when it appears with every authored table you sent byte-identical
+  (`module_spec.yaml` is compared but not required, since the server rewrites registry-owned keys in
+  its `module:` block). At the deadline, or when the version landed with other tables, it re-raises
+  the original `httpx` error with a note saying which; `recover_within=0` turns it off. Works against
+  any server version. Nothing to do on your side: send the spec as your tooling
   wrote it.
 - **`import_module(namespace, name, version, archive_path, *, changelog="", display=None) -> ModuleManifest`**
   — uploads a zip/tar.gz. `display` (`title/description/report_title/icon/color`) is used only for
@@ -342,7 +348,7 @@ Exit code `1` (and "not published") if there are no matches.
 
 ### `publish`  *(token)*
 ```bash
-registry-client publish NS NAME VERSION SPEC_DIR [--changelog "…"] [--pack]
+registry-client publish NS NAME VERSION SPEC_DIR [--changelog "…"] [--pack] [--recover-within 600]
 ```
 Uploads a spec directory (must contain `module_spec.yaml` + `variants.csv` + `studies.csv`). On
 success it **stamps** the returned manifest into `SPEC_DIR/manifest.json`, so the local module is
@@ -352,10 +358,13 @@ no directory to stamp). Every file travels either way, `logo.png` included (0.27
 
 **A dropped connection is not a failed publish.** On a large spec the server may still be compiling
 when a proxy closes the connection (`httpx.RemoteProtocolError: Server disconnected`), and it indexes
-the version when it finishes. Do not retry blind: check with `registry-client list --namespace NS`,
-or `is_published(spec_dir, namespace=NS, name=NAME)` from Python. A retry is safe in the sense that it
-cannot damage the published version (it gets `409 version_exists`), but it costs a second compile
-and a script under `set -e` stops on the 409 instead.
+the version when it finishes. Since 0.28 the client waits for it (`--recover-within`, default 600
+seconds) and reports success when the version lands with the tables you sent. When it gives up it
+says whether the version never appeared or appeared with other tables. Even then, do not retry blind:
+check with `registry-client list --namespace NS`, or `is_published(spec_dir, namespace=NS, name=NAME)`
+from Python. A retry is safe in the sense that it cannot damage the published version (it gets
+`409 version_exists`), but it costs a second compile and a script under `set -e` stops on the 409
+instead.
 
 ### `import-module`  *(token)*
 ```bash

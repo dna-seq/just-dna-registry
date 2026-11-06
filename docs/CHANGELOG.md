@@ -8,8 +8,21 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-**Client surface:** unchanged. `whoami()` gains a `site_admin` field; `merge_accounts()`,
-`rename_account()` and `admin_rename_account()` are new; no existing method moves.
+**Client surface:** `publish()` gains `recover_within=600.0`: a publish whose response was lost may
+now return the version that landed instead of raising, after waiting up to that long. `whoami()`
+gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
+new; no other method moves.
+
+### A publish whose response was lost returns the version that landed
+
+A large publish holds one connection through the whole enrich and compile, and a proxy can close it
+first while the server finishes and indexes the version. `publish()` now waits for it (default 600
+seconds, `recover_within=0` or `--recover-within 0` turns it off) and returns the manifest when the
+version appears with every authored table the call sent. `module_spec.yaml` is compared but not
+required, because the server rewrites registry-owned keys in it. When it gives up, it re-raises the
+original error with a note saying whether the version never appeared or appeared with other tables.
+A connection that failed before the upload left is not waited on. Client-side only; it works against
+any server. The job route remains the real fix and is not in this release.
 
 ### An account can rename its handle, and keeps the old one
 

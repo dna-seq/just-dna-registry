@@ -6,12 +6,14 @@ tests. Depends only on `httpx` + the `just-dna-format` contract (for verify-then
 import io
 import logging
 import tarfile
+import time
+import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import httpx
-from just_dna_format.integrity import verify_manifest
+from just_dna_format.integrity import sha256_bytes, verify_manifest
 from just_dna_format.manifest import ModuleManifest, write_manifest
 
 from just_dna_registry.models.api import (
@@ -26,7 +28,7 @@ from just_dna_registry.models.api import (
     VariantHintReport,
     VersionRef,
 )
-from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES
+from just_dna_registry.specfiles import DERIVED_DIR, DERIVED_FILES, SPEC_YAML, plan_layout
 from just_dna_registry.version import VersionInfo, compatibility_error
 
 API_PREFIX: str = "/api/v1"
@@ -99,6 +101,35 @@ def spec_upload(spec_dir: Path, *, pack: bool) -> list[tuple[str, tuple[str, byt
         ("files", (rel, data, "application/octet-stream"))
         for rel, data in gather_spec_files(spec_dir)
     ]
+
+
+def sent_input_hashes(spec_dir: Path) -> dict[str, str]:
+    """`sha256` of every file an upload of `spec_dir` carries, under the name the server records it
+    by: a subfoldered or legacy-named file is mapped through `specfiles.plan_layout`, the same plan
+    the server applies. A directory is read as `gather_spec_files` sends it; an archive by its
+    members. What `publish()` compares a landed version's `manifest.inputs` against when the
+    response was lost."""
+    spec_dir = Path(spec_dir)
+    if not is_archive(spec_dir):
+        files = gather_spec_files(spec_dir)
+    elif zipfile.is_zipfile(spec_dir):
+        with zipfile.ZipFile(spec_dir) as zf:
+            files = [(i.filename, zf.read(i)) for i in zf.infolist() if not i.is_dir()]
+    else:
+        with tarfile.open(spec_dir, mode="r:*") as tar:
+            files = [
+                (m.name, tar.extractfile(m).read())  # type: ignore[union-attr]
+                for m in tar.getmembers() if m.isfile()
+            ]
+    renames = plan_layout([name for name, _ in files]).renames
+    return {renames.get(name, name): sha256_bytes(data) for name, data in files}
+
+
+#: Transport failures that mean the request never fully left: nothing can have landed, so there is
+#: nothing to recover and `publish()` re-raises at once rather than waiting out its deadline.
+_NOTHING_SENT: tuple[type[Exception], ...] = (
+    httpx.ConnectError, httpx.ConnectTimeout, httpx.WriteError, httpx.WriteTimeout,
+)
 
 
 def gather_spec_files(spec_dir: Path) -> list[tuple[str, bytes]]:
@@ -948,6 +979,7 @@ class RegistryClient:
         *,
         allow_test_data: bool = False,
         pack: bool = False,
+        recover_within: float = 600.0,
     ) -> ModuleManifest:
         """Upload a spec directory and publish it as a new version (server-side recompile).
 
@@ -964,17 +996,77 @@ class RegistryClient:
         buys past the refusal is a version number and a global `content_hash` claim that only a
         purge releases — and `registry purge-test-data` matches that prefix, so data kept here on
         purpose is data a routine cleanup would remove.
+
+        **A lost response is recovered (0.28).** A large publish holds one connection across the
+        whole enrich and compile, and a proxy may close it before the server, which finishes anyway,
+        answers. When the connection fails after the upload was sent, this polls the version's
+        manifest for up to `recover_within` seconds (`0` turns it off) and returns it when it
+        appears with the inputs this call sent: every authored table byte-identical
+        (`manifest.inputs[].sha256` is over the raw bytes). `module_spec.yaml` is compared but not
+        required, because the server rewrites registry-owned keys in its `module:` block. It
+        cannot tell *still compiling* from *never arrived*, so at the deadline it re-raises the
+        original transport error with a note saying which it gave up on; a version that landed with
+        other inputs re-raises it with a note naming the file. A connection that failed before the
+        upload left (connect or write errors) re-raises at once.
         """
         self.assert_compatible()
-        resp = self._http.post(
-            f"/modules/{namespace}/{name}/versions",
-            data={
-                "version": version, "changelog": changelog,
-                "allow_test_data": str(allow_test_data).lower(),
-            },
-            files=spec_upload(spec_dir, pack=pack),
-        )
+        sent = sent_input_hashes(spec_dir) if recover_within > 0 else {}
+        try:
+            resp = self._http.post(
+                f"/modules/{namespace}/{name}/versions",
+                data={
+                    "version": version, "changelog": changelog,
+                    "allow_test_data": str(allow_test_data).lower(),
+                },
+                files=spec_upload(spec_dir, pack=pack),
+            )
+        except _NOTHING_SENT:
+            raise
+        except httpx.TransportError as exc:
+            if recover_within <= 0:
+                raise
+            return self._recover_publish(namespace, name, version, sent, exc, recover_within)
         return ModuleManifest.model_validate(self._json(resp))
+
+    #: Seconds between polls while recovering a lost publish response.
+    recover_poll_seconds: float = 15.0
+
+    def _recover_publish(
+        self,
+        namespace: str,
+        name: str,
+        version: str,
+        sent: dict[str, str],
+        exc: httpx.TransportError,
+        within: float,
+    ) -> ModuleManifest:
+        where = f"{namespace}/{name}@{version}"
+        _log.warning("publish %s: connection lost (%s); waiting up to %gs for it to land",
+                       where, type(exc).__name__, within)
+        deadline = time.monotonic() + within
+        while (remaining := deadline - time.monotonic()) > 0:
+            time.sleep(min(self.recover_poll_seconds, remaining))
+            try:
+                stored = self.manifest(namespace, name, version)
+            except (RegistryError, httpx.TransportError):  # not there yet, or the server restarting
+                continue
+            compared = [i for i in stored.inputs if i.name in sent]
+            differ = [i.name for i in compared if i.sha256 != sent[i.name] and i.name != SPEC_YAML]
+            tables = [i.name for i in compared if i.sha256 == sent[i.name] and i.name != SPEC_YAML]
+            if differ or not tables:
+                why = (f"its {', '.join(differ)} differ from what this call sent" if differ
+                       else "none of its authored tables is one this call sent")
+                exc.add_note(f"publish: {where} exists, but {why}; it is not this upload. "
+                             f"A retry is `409 version_exists`.")
+                raise exc
+            _log.warning("publish %s: the response was lost and the version landed; recovered", where)
+            return stored
+        exc.add_note(
+            f"publish: gave up after {within:g}s: {where} had not appeared. The server may still be "
+            f"compiling it, or the upload never arrived. Check with `manifest()` or `is_published` "
+            f"before retrying; a retry of a version that landed is `409 version_exists`."
+        )
+        raise exc
 
     def import_module(
         self,
