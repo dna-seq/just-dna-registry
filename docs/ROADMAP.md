@@ -723,7 +723,7 @@ serve it, is unblocked earlier. Rejected: the cut waits for the whole list below
 9. **A ClinVar-tier facet** (M7, `stats.clin_sig_counts`): a new card filter. Needs its own short design
    before building: what an empty count means (upstream: *not counted*), and that a facet over a
    compile-time count must say over what it quantifies (CLAUDE.md, "A manifest flag scoped to one file").
-   **Designed 2026-11-06 (the lead), building next**: `?clin_sig=<tier>` matches modules whose latest
+   **Built** (fef4ba1), as designed: `?clin_sig=<tier>` matches modules whose latest
    version has `clin_sig_variant_counts[tier] > 0` (variant grain, over `variants.csv` only); every tier
    stored in a side table, zeros included, so a version with no rows there is *not counted* (compiled
    before 0.8) and never matches; an unknown tier is `422` naming upstream's `VALID_CLIN_SIG`, read live;
@@ -740,6 +740,17 @@ serve it, is unblocked earlier. Rejected: the cut waits for the whole list below
     version by semver, through upstream's three-valued `toolchains_differ`; a `toolchain` badge in the console.
 13. **Strict findings live in `errors` only** (M6): checked by the liaison (20536fe), nothing here reads
     an escalated finding from `warnings`. Kept on the list so the release notes say it was looked at.
+
+**0.28.0 cut, 2026-11-06** (the lead): every item above built on branch `0.28`; version + lock c5a7840; full suite
+on the release head 687 passed, 10 skipped; main fast-forwarded to it and pushed. Dists in
+`/data/sources/just-dna-registry.wt/0.28/dist/`. **Publishing waits on the person: `blocked: desk #215`**; the lead
+tags `v0.28.0` after. Deploying follows `docs/UPGRADE.md`, 0.28 (Ensembl pull first) and is the person's.
+
+**Filed while building the facet** (the lead, 2026-11-06; `unattended`, a patch): `?gene=` and `?category=` match a
+module with **any** non-yanked version carrying the value, while `search_modules`' docstring, the fact-table
+paragraph in API-REFERENCE and the list route all say they match the current version. One of the two is wrong;
+the current-version reading is what every newer facet does (`clin_sig`, the fact tables). Fix: scope both joins to
+`m.latest_version`, as `clin_sig` does, with a test that a gene dropped from the latest version stops matching.
 
 **polars 2 goes with 0.28; duckdb 2 waits** (the lead, 2026-11-05, on the liaison's measurement: the suite
 passes on polars 2.1.0 and duckdb 2.0.0, branch `deps/majors-2026-11-05`, 612). Polars writes the parquet
