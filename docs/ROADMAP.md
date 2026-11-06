@@ -782,6 +782,26 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
   (already the rule at every door, CLAUDE.md "Deployment modes").
 
+  **Plan, reviewed 2026-11-06 (the lead; built on branch `0.28`, about a day).** An `account_aliases`
+  table; a name is taken if it is a current name or an alias, checked in one transaction at all four doors
+  that mint one (register, org create, `issue-key`, `import-keys`; `issue-key` of an alias names the
+  current handle instead of minting a lookalike account), exported and imported with the keys. The rename
+  amends every version whose **manifest** `owner` is any of the account's names, never keyed on
+  `published_by`, which `registry upgrade` leaves empty on every successor it mints. `_finalize` maps the
+  owner it stamps through the aliases, so neither a publish racing the rename nor a later upgrade sweep
+  re-mints an old handle; re-running a rename finishes one a storage error interrupted. A JWT session
+  stops carrying the handle (it named the publisher until it expired); the name is read per request.
+  `?owner=` and the admin route resolve an alias. Routes: `POST /auth/rename` (self, its own rate bucket)
+  and `POST /admin/accounts/{account}/rename` (site admin, dry run by default, backup first), each with a
+  client method, a parity row and `AccountRename` in the console's types; `registry rename-account` and
+  `registry-client account rename`.
+  **More defaults, for the person's veto:** a self-service rename refuses once the account holds 3
+  aliases (each rename reserves a name forever, so uncapped it hoards handles; a site admin is not capped);
+  an org is renamed by a site admin only in this release; a namespace named like the old handle keeps its
+  name; `purge-test-data` lists an account renamed into `test-` and deletes its aliases with it.
+  Found while planning, filed apart: `merge-accounts` moves `published_by` but leaves the lost account's
+  name in `owner` on its manifests; the same amendment fixes it.
+
 - ✅ **done** (a96e8ac on `release-0.27.x`, in 0.27.1). **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
   the liaison's items**, owner: lead; the liaison's **C4** in `docs/UPSTREAM_COMPILER.md`). `services/upgrade.py`
   `_ROW_MODELS` is hand-kept and already stale on 0.7: it lacks `overrides.csv`, `expression_effects.csv`,
