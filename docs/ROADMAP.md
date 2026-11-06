@@ -670,6 +670,8 @@ serve it, is unblocked earlier. Rejected: the cut waits for the whole list below
    dropping the carried table (re-resolve from the snapshot, no egress, resolutions move as data) and
    re-deriving online (costly; offline leaves indel verdicts undecided); `upgrade --dry-run` shows the
    refusal either way. Required. About half a day, pre-buildable on the branch with the rest.
+   ✅ **M12 done** (cfba29b, 68aed3d on `0.28`): a pre-0.8 table (no `source_release`) is re-derived; indel
+   modules need `--online`; unread drift holds; the Ensembl pull record is checked first. Full suite 639 passed.
 4. **The `/check` report shows 0.8's withheld placements and states** (M4), in the API model, the console
    types and both renderers. Required. **With it, a retired source says `retired`** (M10, RM361): never
    `unreachable`, in the ACMG list, both renderers and `unresolved_hint`, whose remedy is upgrading the
