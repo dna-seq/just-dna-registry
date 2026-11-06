@@ -71,13 +71,12 @@ suite 621 passed. duckdb 2 waits for upstream's RM344 (roadmap 3d4d850).
 **Upstream cut 0.8.0** (edf2661c, 2026-11-05; PyPI and tags are their maintainer's): 0.28 is on it with floors
 `>=0.8.0` (4579fea), full suite 621 passed. **0.8.0 on PyPI** (all three, 2026-11-05): git source out, relocked from
 PyPI (c809c09), full suite on the published wheels 621 passed, 10 skipped. 0.28 depends on nothing unpublished now.
-**M12 done** (cfba29b, 68aed3d; full suite 639 passed). **Handle rename built** (eb70aca on `0.28`, pushed; targeted
-suites green, full suite running 2026-11-06 evening). **Next: publish recovery in the client** (item 5), plan in review:
-CSV inputs compared strictly, `module_spec.yaml` softly (the server rewrites the `module:` block on all 27 sample specs),
-`publish()` only (a parquet-only import has no inputs to compare), write/connect errors re-raise at once.
-Filed while building: `merge-accounts` amends `owner` too, and its sweep should refresh `modules.owner` from each
-module's latest manifest (the rename's bulk UPDATE moves a conflict module's projection; rare). And the HF backend
-costs one dataset commit per amended version: say so in API-REFERENCE #39.
+**M12 done** (cfba29b, 68aed3d; full suite 639 passed). **Built on `0.28` since M12** (2026-11-06, all pushed): the handle rename (eb70aca, aae63cb), publish recovery
+(43dac96), the `.env` read (c84ec69), M5 (8467fde), C3 (2d1b6fd), `/stats` (e009ac1), the toolchain item (6b74fab),
+merge amends owner (60a20bb), CLAUDE.md's 0.8 paragraph (43ebf85). Full suite after the rename: 653 passed, its one
+failure fixed (aae63cb); a second full run started 2026-11-06 evening, before the facet.
+**Next**: the ClinVar-tier facet (designed, roadmap), M6's changelog line, then the cut: version bump + `uv lock` in
+one commit, changelog dated, `0.28` merged into main, full suite on main. Publishing to PyPI stays the person's.
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
 indels, so it needs an online setting and an egress budget for the run; then UPGRADE.md's 0.28 procedure

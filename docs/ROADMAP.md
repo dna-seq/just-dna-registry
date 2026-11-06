@@ -713,18 +713,31 @@ serve it, is unblocked earlier. Rejected: the cut waits for the whole list below
    the deploy (UPGRADE.md step 2: read the boot line) instead of before it, which needed access to the boxes
    this seat does not have. Rejected: flipping to `usecwd=True` outright (silent defaults on a box that
    relied on the walk). The fallback retires when neither box logs it.
-7. **Rename an account's handle**, as filed (self-service and site admin).
+7. **Rename an account's handle**, as filed (self-service and site admin). **Built** (eb70aca, aae63cb);
+   `merge-accounts` amends `owner` the same way (60a20bb), which also made a card's `owner` re-read from
+   each module's latest manifest rather than set in bulk.
 8. **Verification records name their witness** (M5): carry `independence`, and say beside each check
    whether its agreement counts as evidence. Fits the strategy's "not a judge of the science".
+   **Built** (8467fde): the four RM292 fields carried, plus `agreement_is_evidence` read by member
+   (`independent` true, `self_consistent` false, anything else null); an agreement column in the console.
 9. **A ClinVar-tier facet** (M7, `stats.clin_sig_counts`): a new card filter. Needs its own short design
    before building: what an empty count means (upstream: *not counted*), and that a facet over a
    compile-time count must say over what it quantifies (CLAUDE.md, "A manifest flag scoped to one file").
+   **Designed 2026-11-06 (the lead), building next**: `?clin_sig=<tier>` matches modules whose latest
+   version has `clin_sig_variant_counts[tier] > 0` (variant grain, over `variants.csv` only); every tier
+   stored in a side table, zeros included, so a version with no rows there is *not counted* (compiled
+   before 0.8) and never matches; an unknown tier is `422` naming upstream's `VALID_CLIN_SIG`, read live;
+   the card carries the counts or `null`; clickable chips in the console or none. `/stats` does not take it.
 10. **Name the format release a refused column arrived in**, client-side, as already shaped in its entry
     (one entry: the liaison's C3 duplicates it). Unblocked: both boxes serve format 0.7.1 since before
-    2026-11-04.
-11. **A real `GET /api/v1/stats`**, with `catalog_stats()` rewired and its signature kept.
+    2026-11-04. **Built** (2d1b6fd): `registry-client validate`/`check` list the columns under the
+    advisory; it needs the compiler extra (upstream's `model_for`) and says so when absent.
+11. **A real `GET /api/v1/stats`**, with `catalog_stats()` rewired and its signature kept. **Built**
+    (e009ac1): equal to the old paging over five scopes (a test holds it); unlike paging it charges no
+    module a search hit; the client pages only against a server with no route.
 12. **The toolchain as the reason a digest moved** (M7): shown where a digest moved with the content
-    unchanged.
+    unchanged. **Built** (6b74fab): `digest_moved_by_toolchain` on each version, against the previous
+    version by semver, through upstream's three-valued `toolchains_differ`; a `toolchain` badge in the console.
 13. **Strict findings live in `errors` only** (M6): checked by the liaison (20536fe), nothing here reads
     an escalated finding from `warnings`. Kept on the list so the release notes say it was looked at.
 
