@@ -554,7 +554,7 @@ class Repository:
         """Wipe the catalog projection (modules/versions/facets/stars/reviews). The auth graph
         (accounts/api_keys/namespaces/members) is kept unless `keep_auth=False`. Does NOT touch
         artifact storage — clear the bucket/HF repo separately if a full reset is wanted."""
-        catalog = ("reviews", "module_stars", "version_genes", "version_categories",
+        catalog = ("reviews", "module_stars", "version_genes", "version_categories", "version_clin_sig",
                    "versions", "modules")  # child → parent (FK-safe)
         for table in catalog:
             self.conn.execute(f"DELETE FROM {table}")
@@ -880,6 +880,10 @@ class Repository:
             "INSERT INTO version_categories(version_id, category) VALUES (?, ?)",
             [(version_id, c) for c in manifest.stats.categories],
         )
+        self.conn.executemany(
+            "INSERT INTO version_clin_sig(version_id, tier, variants) VALUES (?, ?, ?)",
+            [(version_id, tier, n) for tier, n in sorted(manifest.stats.clin_sig_variant_counts.items())],
+        )
         self.conn.commit()
         return version_id
 
@@ -1163,6 +1167,7 @@ class Repository:
         has_gwas_effects: bool | None = None,
         has_frequencies: bool | None = None,
         weighting_declared: bool | None = None,
+        clin_sig: str | None = None,
         sort: str = "name",
         limit: int = 20,
         offset: int = 0,
@@ -1227,6 +1232,15 @@ class Repository:
                 "WHERE v.yanked = 0 AND c.category = ?)"
             )
             params.append(category)
+        if clin_sig:
+            # The current version's variants in that ClinVar tier (format 0.8). A version compiled
+            # before 0.8 has no `version_clin_sig` rows and never matches: not counted, not zero.
+            where.append(
+                "EXISTS (SELECT 1 FROM versions v JOIN version_clin_sig cs ON cs.version_id = v.id "
+                "WHERE v.module_id = m.id AND v.version = m.latest_version "
+                "AND cs.tier = ? AND cs.variants > 0)"
+            )
+            params.append(clin_sig)
         for column, wanted in (
             ("has_gene_validity", has_gene_validity),
             ("has_clinical_assertions", has_clinical_assertions),

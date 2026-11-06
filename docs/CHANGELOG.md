@@ -12,7 +12,20 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 `GET /stats` (paging the listing only against an older server). `publish()` gains `recover_within=600.0`: a publish whose response was lost may
 now return the version that landed instead of raising, after waiting up to that long. `whoami()`
 gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
-new; no other method moves.
+new; `list_modules()` gains `clin_sig=`; no other method moves.
+
+### Filter the catalog by ClinVar tier
+
+`GET /modules?clin_sig=pathogenic` (`list_modules(clin_sig=)`, `registry-client list --clin-sig`, a filter
+in the console) keeps modules whose current version has variants in that tier, from format 0.8's
+`stats.clin_sig_variant_counts`, counted over `variants.csv`. A module compiled before 0.8 was not counted
+and does not match until `registry upgrade` recompiles it; its card says `null` rather than zeros. The
+detail shows the tiers as clickable chips. An existing catalog is indexed at start.
+
+### Strict findings are in `errors` only, and nothing here read them elsewhere
+
+Format 0.8 moves a finding strict escalates into `errors` only (RM359). Checked: `revalidate` returns on
+an invalid result before it reads `warnings`, and publish passes both lists through, so nothing changes.
 
 ### A version list says when a toolchain moved the digest
 

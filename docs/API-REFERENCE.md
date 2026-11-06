@@ -799,6 +799,14 @@ said what their authored `weight` column means, which is the population a consum
 aggregate across. An absent declaration means *the module has not said*, never *the weights are
 comparable*.
 
+**The ClinVar-tier filter (unreleased, format 0.8)** — `clin_sig=<tier>`, one of upstream's
+`VALID_CLIN_SIG` (`pathogenic`, `likely_pathogenic`, `uncertain_significance`, `benign`, …). It keeps
+modules whose **current** version has at least one variant in that tier, from
+`stats.clin_sig_variant_counts`: distinct variants, counted over authored `variants.csv` only. A module
+compiled before 0.8 was **not counted** and never matches, so absent from the result is not the same as
+having none; its card's `stats.clin_sig_variant_counts` is `null`. An unknown tier is
+`422 {"error": "invalid_clin_sig"}`, naming the tiers.
+
 There is no `verification` filter and there will not be one — see *ModuleDetail*.
 
 **`group`** is a server-defined tab preset over the raw filters (a group wins over the equivalent
@@ -1334,8 +1342,11 @@ version's author's donation link; `org_funding_url` is the owning org's (both nu
 created_at, updated_at`. Version-scoped; `highlighted` is set by the namespace owner.
 
 ### CardStats
-`variant_count, study_count, gene_count, genes: string[], categories: string[]`. In cards `genes`
-is truncated to 3; in detail/manifest it's the full list.
+`variant_count, study_count, gene_count, genes: string[], categories: string[], clinvar_count,
+pathogenic_count, benign_count, clin_sig_variant_counts`. In cards `genes` is truncated to 3; in
+detail/manifest it's the full list. `clin_sig_variant_counts` (unreleased) is every ClinVar tier with its
+distinct-variant count, zeros included, or `null` for a version compiled before 0.8 (the manifest spells
+that `{}`: not counted, never zero of each).
 
 ### VersionSummary
 `version, artifact_digest, content_signature, compile_success, yanked, signed, needs_upgrade,

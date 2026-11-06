@@ -6,6 +6,7 @@ The DB is a *projection* of each version's `manifest.json` (the source of truth)
 tables (`version_genes`, `version_categories`) for facet filters. SPEC §9.
 """
 
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -137,6 +138,17 @@ CREATE TABLE IF NOT EXISTS reviews (
     UNIQUE (module_id, version, account_id)
 );
 
+-- Format 0.8's ClinVar tiers per version (0.28, RM300): distinct variants per `clin_sig` tier, every
+-- tier upstream counts, zeros included. A version with **no rows here** was compiled before 0.8 and is
+-- *not counted*, which is not the same as zero of each; the `?clin_sig=` facet never matches it.
+-- Over authored `variants.csv` only.
+CREATE TABLE IF NOT EXISTS version_clin_sig (
+    version_id INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    tier       TEXT NOT NULL,
+    variants   INTEGER NOT NULL,
+    PRIMARY KEY (version_id, tier)
+);
+
 CREATE INDEX IF NOT EXISTS idx_versions_module ON versions(module_id);
 CREATE INDEX IF NOT EXISTS idx_version_genes ON version_genes(gene);
 CREATE INDEX IF NOT EXISTS idx_version_categories ON version_categories(category);
@@ -260,6 +272,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     _migrate_0_11_facets(conn, ver_cols)
     _migrate_0_11_3_trust(conn)
     _migrate_0_17_fact_tables(conn, ver_cols)
+    _migrate_0_28_clin_sig(conn)
 
     # 0.6.0 namespace membership: seed each existing single-owner namespace as an `owner` member,
     # so the new membership check (which supersedes single-owner) sees no disruption. Idempotent.
@@ -371,6 +384,29 @@ def _migrate_0_17_fact_tables(conn: sqlite3.Connection, ver_cols: set[str]) -> N
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_versions_gwas_effects ON versions(has_gwas_effects)"
     )
+
+
+def clin_sig_rows(manifest_json: str) -> list[tuple[str, int]]:
+    """`(tier, variants)` from a stored manifest's `stats.clin_sig_variant_counts`; empty when it was
+    compiled before 0.8 (not counted). Read field by field, so an unrelated defect elsewhere in an old
+    manifest cannot withhold it."""
+    stats = json.loads(manifest_json).get("stats") or {}
+    counts = stats.get("clin_sig_variant_counts") or {}
+    return [(tier, int(n)) for tier, n in sorted(counts.items())]
+
+
+def _migrate_0_28_clin_sig(conn: sqlite3.Connection) -> None:
+    """Fill `version_clin_sig` for any version that has none. Idempotent and storage-free: a version
+    compiled before 0.8 yields no rows and is read again at the next start, which costs one JSON parse
+    each until `registry upgrade` recompiles it onto 0.8."""
+    for row in conn.execute(
+        "SELECT id, manifest_json FROM versions "
+        "WHERE id NOT IN (SELECT DISTINCT version_id FROM version_clin_sig)"
+    ).fetchall():
+        conn.executemany(
+            "INSERT INTO version_clin_sig(version_id, tier, variants) VALUES (?, ?, ?)",
+            [(row["id"], tier, n) for tier, n in clin_sig_rows(row["manifest_json"])],
+        )
 
 
 def _migrate_0_11_3_trust(conn: sqlite3.Connection) -> None:

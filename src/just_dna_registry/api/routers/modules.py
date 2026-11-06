@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
-from just_dna_format.manifest import ModuleManifest
+from just_dna_format.manifest import VALID_CLIN_SIG, ModuleManifest
 
 from just_dna_registry.api.deps import (
     Account,
@@ -75,6 +75,15 @@ def list_modules(
     caller: CallerDep,
     q: str | None = None,
     category: str | None = None,
+    clin_sig: str | None = Query(
+        None,
+        description=(
+            "Modules whose current version has variants in this ClinVar tier (format 0.8; one of "
+            "upstream's `VALID_CLIN_SIG`). Counted over authored `variants.csv` only, and a module "
+            "compiled before 0.8 was not counted, so it never matches: absent from the result is "
+            "not the same as having none."
+        ),
+    ),
     gene: str | None = None,
     genome_build: str | None = None,
     owner: str | None = None,
@@ -111,6 +120,14 @@ def list_modules(
     group: str | None = Query(None, pattern="^(all|featured|curated|popular|new|test)$"),
     sort: str = Query("name", pattern="^(downloads|recent|name|stars|popular)$"),
 ) -> Page[ModuleCard]:
+    if clin_sig is not None and clin_sig not in VALID_CLIN_SIG:
+        # Read live from upstream, never a copy: a member added there is valid here the day we adopt it.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"error": "invalid_clin_sig", "errors": [
+                f"{clin_sig!r} is not a ClinVar tier; one of: {', '.join(sorted(VALID_CLIN_SIG))}"
+            ]},
+        )
     return catalog.list_modules(
         repo,
         page=page.page,
@@ -121,6 +138,7 @@ def list_modules(
         is_test_instance=settings.is_test_instance,
         q=q,
         category=category,
+        clin_sig=clin_sig,
         gene=gene,
         genome_build=genome_build,
         # A retired handle lists the account's modules under its current one (0.28): old links work.

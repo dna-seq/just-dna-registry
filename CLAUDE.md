@@ -1024,7 +1024,10 @@ The rules that keep it a consumer rather than a second API:
   could not return the modules it most obviously exists for. Compiler 0.6.6 unions the column over every
   authored gene-bearing kind. Note what this cost us to find: nothing here was wrong, so nothing here
   failed, and the symptom was a facet quietly returning less than it should. **A field you only read is
-  still a field to ask "over what?" about.** **Positional joinability is the
+  still a field to ask "over what?" about.** The 0.28 ClinVar-tier facet (`?clin_sig=`) answers it in
+  its own description: format 0.8's `clin_sig_variant_counts` is over authored `variants.csv` only, and
+  an empty map means *not counted* (compiled before 0.8), so it is stored as no rows and never matches,
+  rather than as zeros. **Positional joinability is the
   separate question**: rows with no `chrom`+`start` match nothing in a VCF, it is legal and stays a
   warning in both modes (compiler 0.5.3), and it must never become a publish gate — the remedy is a
   compiler change (upstream RM43), **which shipped in 0.6**: the fill places rsID-keyed positional rows

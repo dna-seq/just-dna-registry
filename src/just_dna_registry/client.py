@@ -396,6 +396,7 @@ class RegistryClient:
         has_gwas_effects: bool | None = None,
         has_frequencies: bool | None = None,
         weighting_declared: bool | None = None,
+        clin_sig: str | None = None,
         group: str | None = None,
         sort: str = "name",
         page: int = 1,
@@ -413,6 +414,10 @@ class RegistryClient:
         are tri-state: omitted is "do not filter", which is not `False`. `weighting_declared=False`
         is the useful negative — it finds modules that have not said what their `weight` column
         means, which is the population you must not aggregate across.
+
+        `clin_sig` (0.28) keeps modules whose current version has variants in that ClinVar tier,
+        counted over `variants.csv` by a format-0.8 compile; a module compiled earlier was not counted
+        and never matches. An unknown tier is `422 invalid_clin_sig`, naming the tiers.
         """
         params: dict[str, Any] = {
             "q": q, "category": category, "gene": gene, "genome_build": genome_build,
@@ -423,6 +428,7 @@ class RegistryClient:
             "has_gwas_effects": has_gwas_effects,
             "has_frequencies": has_frequencies,
             "weighting_declared": weighting_declared,
+            "clin_sig": clin_sig,
             "sort": sort, "page": page, "per_page": per_page,
         }
         clean = {k: v for k, v in params.items() if v is not None}

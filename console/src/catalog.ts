@@ -6,7 +6,7 @@ import { state } from "./state";
 import type { GroupInfo, ModuleCard, Page, ResolutionInfo } from "./types";
 
 const FILTERS: [string, string][] = [
-  ["namespace", "namespace"], ["category", "category"], ["gene", "gene"],
+  ["namespace", "namespace"], ["category", "category"], ["gene", "gene"], ["clin_sig", "ClinVar tier"],
   ["genome_build", "build"], ["owner", "owner"], ["license", "license"],
 ];
 const FACT_FILTERS: [string, string][] = [
@@ -110,8 +110,9 @@ export async function viewCatalog(root: HTMLElement): Promise<void> {
 
   // Facet suggestions are what the loaded page shows: there is no facet-values endpoint, and
   // inventing one here would spend the anonymous search budget on every load.
-  const seen: Record<string, Set<string>> = { category: new Set(), gene: new Set(), genome_build: new Set(), owner: new Set(), license: new Set(), namespace: new Set() };
+  const seen: Record<string, Set<string>> = { category: new Set(), gene: new Set(), clin_sig: new Set(), genome_build: new Set(), owner: new Set(), license: new Set(), namespace: new Set() };
   for (const it of items) {
+    Object.entries(it.stats.clin_sig_variant_counts ?? {}).forEach(([tier, n]) => { if (n > 0) seen["clin_sig"]?.add(tier); });
     it.stats.categories.forEach((x) => seen["category"]?.add(x));
     it.stats.genes.forEach((x) => seen["gene"]?.add(x));
     seen["genome_build"]?.add(it.genome_build);

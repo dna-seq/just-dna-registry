@@ -301,6 +301,7 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> 
         clinvar_count=stats.clinvar_count if stats else 0,
         pathogenic_count=stats.pathogenic_count if stats else 0,
         benign_count=stats.benign_count if stats else 0,
+        clin_sig_variant_counts=(stats.clin_sig_variant_counts or None) if stats else None,
     )
     starred = starred_by is not None and repo.is_starred(int(row["id"]), starred_by)
     reviews = repo.review_summary(int(row["id"]))
@@ -449,6 +450,7 @@ def module_detail(
     if manifest is not None:
         # Detail carries the FULL gene list (SPEC §8.3); only cards truncate.
         data["stats"] = manifest.stats.model_dump(include=set(CardStats.model_fields))
+        data["stats"]["clin_sig_variant_counts"] = manifest.stats.clin_sig_variant_counts or None
     return ModuleDetail(
         **data,
         readme=row["readme"],

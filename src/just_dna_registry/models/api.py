@@ -20,6 +20,13 @@ class CardStats(BaseModel):
     clinvar_count: int = 0
     pathogenic_count: int = 0
     benign_count: int = 0
+    clin_sig_variant_counts: dict[str, int] | None = Field(
+        default=None,
+        description="Distinct variants per ClinVar tier in the current version's authored "
+        "`variants.csv` (format 0.8), every tier upstream counts, zeros included. null when the "
+        "version was compiled before 0.8 and nothing was counted, which is not zero of each (the "
+        "manifest spells that `{}`). Over `variants.csv` only.",
+    )
 
 
 class ResolutionInfo(BaseModel):

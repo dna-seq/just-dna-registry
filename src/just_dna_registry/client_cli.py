@@ -209,6 +209,9 @@ def list_modules(
     q: str | None = typer.Option(None, help="Full-text query"),
     gene: str | None = typer.Option(None),
     category: str | None = typer.Option(None),
+    clin_sig: str | None = typer.Option(
+        None, "--clin-sig", help="ClinVar tier, e.g. pathogenic (modules compiled on format 0.8)"
+    ),
     genome_build: str | None = typer.Option(None, "--genome-build"),
     namespace: str | None = typer.Option(None),
     owner: str | None = typer.Option(None),
@@ -223,7 +226,8 @@ def list_modules(
     """List / search catalog modules."""
     with _client(url, None) as c:
         body = c.list_modules(
-            q=q, gene=gene, category=category, genome_build=genome_build, namespace=namespace,
+            q=q, gene=gene, category=category, clin_sig=clin_sig, genome_build=genome_build,
+            namespace=namespace,
             owner=owner, license=license, featured=featured, group=group, sort=sort,
             page=page, per_page=per_page,
         )

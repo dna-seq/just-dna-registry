@@ -16,6 +16,7 @@ export interface CardStats {
   clinvar_count: number;
   pathogenic_count: number;
   benign_count: number;
+  clin_sig_variant_counts: Record<string, number> | null;
 }
 
 export interface ResolutionInfo {

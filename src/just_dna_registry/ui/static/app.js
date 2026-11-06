@@ -681,6 +681,7 @@
     ["namespace", "namespace"],
     ["category", "category"],
     ["gene", "gene"],
+    ["clin_sig", "ClinVar tier"],
     ["genome_build", "build"],
     ["owner", "owner"],
     ["license", "license"]
@@ -801,8 +802,11 @@
     } else {
       put(grid, items.map(cardView));
     }
-    const seen = { category: /* @__PURE__ */ new Set(), gene: /* @__PURE__ */ new Set(), genome_build: /* @__PURE__ */ new Set(), owner: /* @__PURE__ */ new Set(), license: /* @__PURE__ */ new Set(), namespace: /* @__PURE__ */ new Set() };
+    const seen = { category: /* @__PURE__ */ new Set(), gene: /* @__PURE__ */ new Set(), clin_sig: /* @__PURE__ */ new Set(), genome_build: /* @__PURE__ */ new Set(), owner: /* @__PURE__ */ new Set(), license: /* @__PURE__ */ new Set(), namespace: /* @__PURE__ */ new Set() };
     for (const it of items) {
+      Object.entries(it.stats.clin_sig_variant_counts ?? {}).forEach(([tier, n2]) => {
+        if (n2 > 0) seen["clin_sig"]?.add(tier);
+      });
       it.stats.categories.forEach((x) => seen["category"]?.add(x));
       it.stats.genes.forEach((x) => seen["gene"]?.add(x));
       seen["genome_build"]?.add(it.genome_build);
@@ -1810,7 +1814,18 @@
         })),
         h("div", {}, h("h3", {}, "Categories"), chipList(m.stats.categories, (category) => {
           location.hash = `#/${qs({ category })}`;
-        }))
+        })),
+        h(
+          "div",
+          {},
+          h("h3", {}, "ClinVar tiers"),
+          m.stats.clin_sig_variant_counts === null ? h("p", { class: "faint small" }, "Not counted: compiled before format 0.8.") : chipList(
+            Object.entries(m.stats.clin_sig_variant_counts).filter(([, n2]) => n2 > 0).map(([tier, n2]) => `${tier} (${n2})`),
+            (chip) => {
+              location.hash = `#/${qs({ clin_sig: chip.replace(/ \(\d+\)$/, "") })}`;
+            }
+          )
+        )
       )
     );
   }

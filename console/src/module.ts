@@ -218,6 +218,11 @@ function trustPanel(m: ModuleDetail): HTMLDivElement {
           : h("p", { class: "faint small" }, "This version carries no verification block.")),
       h("div", {}, h("h3", {}, "Genes"), chipList(m.stats.genes, (gene) => { location.hash = `#/${qs({ gene })}`; })),
       h("div", {}, h("h3", {}, "Categories"), chipList(m.stats.categories, (category) => { location.hash = `#/${qs({ category })}`; })),
+      h("div", {}, h("h3", {}, "ClinVar tiers"),
+        m.stats.clin_sig_variant_counts === null
+          ? h("p", { class: "faint small" }, "Not counted: compiled before format 0.8.")
+          : chipList(Object.entries(m.stats.clin_sig_variant_counts).filter(([, n]) => n > 0).map(([tier, n]) => `${tier} (${n})`),
+              (chip) => { location.hash = `#/${qs({ clin_sig: chip.replace(/ \(\d+\)$/, "") })}`; })),
     ),
   );
 }
