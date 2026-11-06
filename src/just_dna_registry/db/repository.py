@@ -1218,18 +1218,18 @@ class Repository:
         if license:
             where.append("m.license = ?")
             params.append(license)
+        # The current version only (0.28.1), as the docstring has always said: through 0.28.0 these
+        # matched any non-yanked version, so a gene dropped two releases ago kept the module listed.
         if gene:
             where.append(
-                "m.id IN (SELECT v.module_id FROM versions v "
-                "JOIN version_genes g ON g.version_id = v.id "
-                "WHERE v.yanked = 0 AND g.gene = ?)"
+                "EXISTS (SELECT 1 FROM versions v JOIN version_genes g ON g.version_id = v.id "
+                "WHERE v.module_id = m.id AND v.version = m.latest_version AND g.gene = ?)"
             )
             params.append(gene)
         if category:
             where.append(
-                "m.id IN (SELECT v.module_id FROM versions v "
-                "JOIN version_categories c ON c.version_id = v.id "
-                "WHERE v.yanked = 0 AND c.category = ?)"
+                "EXISTS (SELECT 1 FROM versions v JOIN version_categories c ON c.version_id = v.id "
+                "WHERE v.module_id = m.id AND v.version = m.latest_version AND c.category = ?)"
             )
             params.append(category)
         if clin_sig:

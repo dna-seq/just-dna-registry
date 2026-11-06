@@ -787,7 +787,8 @@ Query params: `q` (title/description substring), `category`, `gene`, `genome_bui
 `license` (exact facet matches), `namespace` (restrict to one namespace), `featured` (`true` →
 only featured), `include_blacklisted` (`true` → include hidden namespaces), `group` (a tab preset —
 see below), `sort` = `name` (default) | `downloads` | `recent` | `stars` | `popular`, plus `page`,
-`per_page`. Facet filters match modules with a non-yanked version carrying that gene/category.
+`per_page`. Facet filters match modules whose **current** version carries that gene/category (0.28.1;
+through 0.28.0 any non-yanked version matched).
 
 **Fact-table filters (0.17, format 0.6)** — `has_gene_validity`, `has_clinical_assertions`,
 `has_gwas_effects`, `has_frequencies`, `weighting_declared`. Each is **tri-state**: omitting it does

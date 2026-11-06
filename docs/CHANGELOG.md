@@ -8,6 +8,15 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `?gene=` and `?category=` match the current version
+
+They matched a module if **any** non-yanked version carried the gene or category, so a gene dropped from a
+module two releases ago kept it in the results, while the reference said they read the current version, as
+every other facet does. They now read the current version. A search can return fewer modules than before;
+each one it drops no longer carries that gene or category.
+
+**Client surface:** unchanged.
+
 ## [0.28.0] — 2026-11-06
 
 **Client surface:** `catalog_stats()` keeps its signature and keys and makes one request to the new
