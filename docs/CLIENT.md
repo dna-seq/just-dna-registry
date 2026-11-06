@@ -5,9 +5,11 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.27.x** against a server speaking API `v1` (0.25 added nine methods
+**Normative for:** client **0.14.x–0.28.x** against a server speaking API `v1` (0.25 added nine methods
 and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`;
-0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server).
+0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server;
+0.28 adds `merge_accounts`, `rename_account` and `admin_rename_account`, gives `publish` `recover_within=`
+and `list_modules` `clin_sig=`, and points `catalog_stats` at `GET /stats` with its signature kept).
 Every method signature and
 payload shape here is exact for that range. The client surface is additive within `v1`: methods gain
 optional keyword arguments and responses gain fields, so code written against an earlier 0.x client
@@ -80,6 +82,8 @@ export REGISTRY_TOKEN=mk_live_…
 | Amend readme (card prose) | `amend_readme(ns, name, v, path_or_text)` | `amend-readme` | bearer |
 | Set card subtitle (module-wide) | `set_short_description(ns, name, text_or_None)` | `set-short-description` | bearer |
 | Merge a lost-key account into its owner's new one | `merge_accounts(source, into, apply=False)` | `merge-accounts` | site admin |
+| Rename your own handle | `rename_account(name, dry_run=False)` | `rename-account NEW` | bearer |
+| Rename any account's handle (an org's too) | `admin_rename_account(account, name, apply=False)` | `rename-account NEW --account OLD` | site admin |
 | Browser console over any registry | *(a page, not a method — see [UI.md](UI.md))* | `ui` | optional bearer |
 
 ---
@@ -117,7 +121,7 @@ other status and any registry before 0.26. `str(err)` names both when present.
 - **`list_modules(*, q=None, category=None, gene=None, genome_build=None, owner=None, license=None,
   namespace=None, featured=None, include_blacklisted=False, has_gene_validity=None,
   has_clinical_assertions=None, has_gwas_effects=None, has_frequencies=None,
-  weighting_declared=None, group=None, sort="name", page=1, per_page=20) -> dict`** — a `Page` of
+  weighting_declared=None, clin_sig=None, group=None, sort="name", page=1, per_page=20) -> dict`** — a `Page` of
   cards; `None` filters are dropped. Keyword-only and fully named on purpose: the server ignores a
   query param it does not know, so a misspelled facet would otherwise come back as a *wider* result
   set that looks like a working search.
@@ -125,6 +129,10 @@ other status and any registry before 0.26. `str(err)` names both when present.
     tri-state — omitted means "do not filter", which is not `False`. `weighting_declared=False` is
     the useful negative: it finds the modules that have not stated what their `weight` column means,
     i.e. the ones you must not aggregate across.
+  - `clin_sig` (0.28) keeps modules whose current version has variants in that ClinVar tier, counted
+    over `variants.csv` by a format-0.8 compile. A module compiled earlier was not counted and never
+    matches (its card's `stats.clin_sig_variant_counts` is `None`). An unknown tier is
+    `422 invalid_clin_sig`.
 - **`get_module(namespace, name) -> dict`** — module detail (readme, versions, `latest_manifest`,
   full `stats.genes`), plus the format-0.6 blocks `weighting`, `gwas_effects` and `verification`,
   each `null` when the latest version carries none. Two reading rules that the API reference spells
@@ -251,7 +259,16 @@ for a member, any for admin+).
   member needs admin+, granting admin/owner needs owner).
 - **`merge_accounts(source, into, *, apply=False) -> dict`** — **site admins only.** Fold a
   lost-key account into its owner's new one: namespaces, roles, authored versions, stars and
-  reviews move, and `source`'s keys are revoked. Reports only unless `apply=True`.
+  reviews move, and `source`'s keys are revoked. Since 0.28 it also amends `owner` on the lost
+  account's manifests to `into` (`owner_versions`, `owner_amended`). Reports only unless `apply=True`.
+- **`rename_account(name, *, dry_run=False, allow_test_data=False) -> dict`** (0.28) — rename your own
+  handle. The old one stays reserved to your account, old links follow it, and `owner` is amended on
+  every manifest naming you (outside the digest: nothing changes identity). Returns the
+  `AccountRename` report; anything under `failed` is finished by calling it again. An org asks a site
+  admin; self-service stops at three retired handles.
+- **`admin_rename_account(account, name, *, apply=False, allow_test_data=False) -> dict`** (0.28) —
+  **site admins only.** The same for any account; `account` may be a retired handle. Reports only
+  unless `apply=True`.
 
 ### Orgs & funding (token)
 
@@ -271,8 +288,9 @@ for a member, any for admin+).
   server; `all`'s **description** differs on a `mode=test` deployment, where nothing is excluded
   (0.21.1). Render what you are served rather than a label baked into the client.
 - **`catalog_stats(namespace=None, *, group=None) -> dict`** — aggregate totals (modules,
-  namespaces, downloads, stars, views, reviews, curated, variants, studies, genes) by paging the
-  listing; there is no dedicated stats endpoint, so this rolls up the card fields.
+  namespaces, downloads, stars, views, reviews, curated, variants, studies, genes) over what the
+  listing shows. Since 0.28 one request to `GET /stats`; against an older server it pages the listing
+  and rolls up the card fields, as before.
   - **It inherits the default listing's server-side scope.** Against a *pre-0.21.1* test instance
     that meant every total came back `0`, since the listing excluded all its sandbox namespaces —
     pass `group="test"` when talking to one. Against 0.21.1+ the default is already the whole

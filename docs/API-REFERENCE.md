@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.27.x**, API `v1` (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.28.x**, API `v1` (**0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -183,10 +183,10 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 35 | DELETE | `/api/v1/modules/{ns}/{name}/versions/{v}` | bearer | Hard-delete a version — **test instance only**, `405` on prod (0.12) |
 | 36 | DELETE | `/api/v1/modules/{ns}/{name}` | bearer | Hard-delete every version — **test instance only** (0.12) |
 | 37 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/readme` | bearer | Replace the card's readme prose (metadata, out of digest) (0.14) |
-| 38 | POST | `/api/v1/admin/accounts/{account}/merge` | site admin | Fold a lost-key account into its owner's new one (unreleased) |
-| 39 | POST | `/api/v1/auth/rename` | bearer | Rename the caller's own handle; the old one stays reserved to it (unreleased) |
-| 40 | POST | `/api/v1/admin/accounts/{account}/rename` | site admin | Rename any account's handle, an org's included (unreleased) |
-| 41 | GET | `/api/v1/stats?namespace=&group=` | — | Catalog totals over what the listing shows (unreleased) |
+| 38 | POST | `/api/v1/admin/accounts/{account}/merge` | site admin | Fold a lost-key account into its owner's new one (0.28) |
+| 39 | POST | `/api/v1/auth/rename` | bearer | Rename the caller's own handle; the old one stays reserved to it (0.28) |
+| 40 | POST | `/api/v1/admin/accounts/{account}/rename` | site admin | Rename any account's handle, an org's included (0.28) |
+| 41 | GET | `/api/v1/stats?namespace=&group=` | — | Catalog totals over what the listing shows (0.28) |
 
 ---
 
@@ -799,7 +799,7 @@ said what their authored `weight` column means, which is the population a consum
 aggregate across. An absent declaration means *the module has not said*, never *the weights are
 comparable*.
 
-**The ClinVar-tier filter (unreleased, format 0.8)** — `clin_sig=<tier>`, one of upstream's
+**The ClinVar-tier filter (0.28, format 0.8)** — `clin_sig=<tier>`, one of upstream's
 `VALID_CLIN_SIG` (`pathogenic`, `likely_pathogenic`, `uncertain_significance`, `benign`, …). It keeps
 modules whose **current** version has at least one variant in that tier, from
 `stats.clin_sig_variant_counts`: distinct variants, counted over authored `variants.csv` only. A module
@@ -1269,7 +1269,7 @@ name.
 `200 → {"source", "into", "applied", "namespaces": [...], "namespace_memberships",
 "org_memberships", "versions", "stars_moved", "stars_collapsed", "reviews_moved",
 "reviews_kept_on_source", "keys_revoked", "snapshot", "owner_versions": [...], "owner_amended",
-"owner_failed": [...]}`. The last three (unreleased): an applied merge amends `owner` from `{account}`'s
+"owner_failed": [...]}`. The last three (0.28): an applied merge amends `owner` from `{account}`'s
 handles to `into` on the manifests it published, as a rename does; a failed amendment leaves the merge
 standing and is listed. Errors: `401`, `403 site_admin_required`,
 `404 account_not_found`, `422 same_account`, `422 not_a_user_account` (org accounts do not merge).
@@ -1344,7 +1344,7 @@ created_at, updated_at`. Version-scoped; `highlighted` is set by the namespace o
 ### CardStats
 `variant_count, study_count, gene_count, genes: string[], categories: string[], clinvar_count,
 pathogenic_count, benign_count, clin_sig_variant_counts`. In cards `genes` is truncated to 3; in
-detail/manifest it's the full list. `clin_sig_variant_counts` (unreleased) is every ClinVar tier with its
+detail/manifest it's the full list. `clin_sig_variant_counts` (0.28) is every ClinVar tier with its
 distinct-variant count, zeros included, or `null` for a version compiled before 0.8 (the manifest spells
 that `{}`: not counted, never zero of each).
 
@@ -1353,7 +1353,7 @@ that `{}`: not counted, never zero of each).
 downloads, created_at, changelog, manifest_url, resolution: ResolutionInfo, toolchain,
 digest_moved_by_toolchain`. `downloads` is the per-version download count. `toolchain` is
 `compilation.toolchain` (format 0.8: `{"python": …, "polars": …}`), `null` before 0.8.
-`digest_moved_by_toolchain` (unreleased) reads the version against the previous one by semver: when the
+`digest_moved_by_toolchain` (0.28) reads the version against the previous one by semver: when the
 two carry the same `content_signature` and different digests, `true` if different toolchains wrote them
 and `false` if the same one did; otherwise, or when either side recorded no toolchain, `null`.
 
@@ -1422,7 +1422,7 @@ The four witness fields are format 0.8's (RM292), carried verbatim and `null` on
 it: `checked_source` is where the values came from (`authored`, or the source they were copied from),
 `witness_source` what they were compared against, `independence` upstream's reading of the two, and
 `undecided` the rows a tolerance left without a verdict, outside `subjects`. `agreement_is_evidence` is
-ours, read off `independence` (unreleased): `true` for `independent`; `false` for `self_consistent`, a
+ours, read off `independence` (0.28): `true` for `independent`; `false` for `self_consistent`, a
 value compared with the source it was copied from, where agreement proves nothing about the value and
 only a disagreement says something (the source moved); `null` when it cannot be said, which includes a
 member upstream adds later.
@@ -1443,7 +1443,7 @@ someone else's unverifiable pass would be lending it our credibility.
 `account: string` (handle), `namespaces: string[]` (every namespace the account is a member of),
 `type: "user"|"org"`, `display_name: string|null`, `avatar_url: string|null` (public userpic),
 `funding_url: string|null` (public donation link), `email: string|null` (private — only returned to
-the account itself). `site_admin: bool` (unreleased): whether the account holds the registry-wide
+the account itself). `site_admin: bool` (0.28): whether the account holds the registry-wide
 admin flag.
 
 ### MemberList / OrgMemberList
@@ -1457,7 +1457,7 @@ publish + amend/yank *own* versions; **admin** = + amend/yank *any* + manage nam
 curate reviews; **owner** = + assign roles + edit settings (incl. funding). `*_own` vs `*_any` is
 resolved by `versions.published_by`; a 403 carries `detail: "insufficient_capability"`.
 
-A **site admin** (unreleased; an account flag set by the operator CLI) is `owner` on every namespace
+A **site admin** (0.28; an account flag set by the operator CLI) is `owner` on every namespace
 and org that **exists**. An unclaimed namespace still answers `403`. The flag adds no route, so on
 production it reaches no hard delete, because those routes are mounted on the polygon only.
 

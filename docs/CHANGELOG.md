@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-11-06
+
 **Client surface:** `catalog_stats()` keeps its signature and keys and makes one request to the new
 `GET /stats` (paging the listing only against an older server). `publish()` gains `recover_within=600.0`: a publish whose response was lost may
 now return the version that landed instead of raising, after waiting up to that long. `whoami()`
