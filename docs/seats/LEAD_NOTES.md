@@ -47,7 +47,9 @@ The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, 
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
 
-Kit pin at v0.1.132 (2026-11-05).
+Kit pin at v0.1.137 (2026-11-06). The kit's liaison role now takes an in-house release's mechanical half; here the
+priming keeps a format **minor** the lead's (a coordinated cut), so that covers patches only (the liaison's concern,
+2026-11-06; which way the priming says it is the person's). On main (shared clone) commit by path: `git commit --only -- <paths>` (kit #286).
 
 **Pushes are the lead's** (LEAD.md grant, "all pushes"): push main and `release-0.27.x` after each landed block,
 peers' commits included. Holding them for desk #193 was wrong (the person, 2026-11-05: "why noone pushes?");
@@ -63,7 +65,28 @@ compiler's lead says §2 changed). Not merged, not shipped before the floors are
 Baseline on 0.8: 5 failed / 587 passed. Done: M2 (be1d6db), `clinvar_gkm_cache` + the C7 guard over every lane
 (634038c), M8 (59ddcd9, 2d06f57), M9 (c1706e3), M4 (158e239), M10 (84d4a6c); main merged in (71bf1a7).
 Rev moved to a4a401e7 (46603de); RM384 tie-back (7a275a4); M13 test (bd7fe67); C10/M14 (9f4e114); C17
-(276df93); C8 minor half (af18b2e). **PGS leg on** (ffe263d, the liaison's design; no UPSTREAMS row, since the ledger charges /hint only). Next: M11 check,
+(276df93); C8 minor half (af18b2e). **PGS leg on** (ffe263d, the liaison's design; no UPSTREAMS row, since the ledger charges /hint only).
+At upstream's release candidate c90e6d98 (049e036), main merged in (c949f91), polars 2.1.0 (0c23598): full
+suite 621 passed. duckdb 2 waits for upstream's RM344 (roadmap 3d4d850).
+**Upstream cut 0.8.0** (edf2661c, 2026-11-05; PyPI and tags are their maintainer's): 0.28 is on it with floors
+`>=0.8.0` (4579fea), full suite 621 passed. **0.8.0 on PyPI** (all three, 2026-11-05): git source out, relocked from
+PyPI (c809c09), full suite on the published wheels 621 passed, 10 skipped. 0.28 depends on nothing unpublished now.
+**M12 done** (cfba29b, 68aed3d; full suite 639 passed). **Built on `0.28` since M12** (2026-11-06, all pushed): the handle rename (eb70aca, aae63cb), publish recovery
+(43dac96), the `.env` read (c84ec69), M5 (8467fde), C3 (2d1b6fd), `/stats` (e009ac1), the toolchain item (6b74fab),
+merge amends owner (60a20bb), CLAUDE.md's 0.8 paragraph (43ebf85). Full suite after the rename: 653 passed, its one
+failure fixed (aae63cb); a second full run started 2026-11-06 evening, before the facet.
+**Next**: the ClinVar-tier facet (designed, roadmap), M6's changelog line, then the cut: version bump + `uv lock` in
+one commit, changelog dated, `0.28` merged into main, full suite on main. Publishing to PyPI stays the person's.
+**Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
+**M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
+indels, so it needs an online setting and an egress budget for the run; then UPGRADE.md's 0.28 procedure
+(Ensembl pull, deploy, `upgrade --dry-run`, `--apply`; a chr-prefixed module's content_signature moves, RM363)
+and CLAUDE.md's floor reasons.
+**Next on 0.28: the handle rename** (roadmap, decided 2026-11-04). It amends `owner` on every stored manifest the
+account published and reserves the old handle as an alias: one-way on production data, so it starts with a
+written plan and a "what did I miss" review pass (memory: dogfood plans before immutable decisions), then the
+build: route + client method + parity row, admin route beside merge-accounts, CLI, tests. Then publish
+recovery, the `.env` item, M5, M7, C3, /stats. M3/M12 at the cut. Next: M11 check,
 then the rest of the 0.28 list. M3/M12 wait for the cut (rederive online, after RM381, per upstream).
 **Tests in a worktree need `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`**: the `.env` lives only in the
 main checkout, and without it `test_no_filesystem_path_reaches_the_wire` sees no provisioned lane.

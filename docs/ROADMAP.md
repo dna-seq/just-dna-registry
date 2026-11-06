@@ -622,6 +622,18 @@ is published"; no path or editable source in a tracked file); M3's recompile and
 Ensembl pull) wait for the cut; and the guide is re-read at the tag, since a branch can still move.
 Rejected: waiting idle for the cut, which would put a whole minor's build after it.
 
+**0.8.0 is cut** (2026-11-05, `edf2661c` on upstream's `0.8`; no behaviour change since the release candidate
+`c90e6d98` the branch already builds on). Re-read against this scope by the liaison (ee22dc6): one row
+corrected (M3, item 3), nothing added or dropped. **All three are on PyPI at 0.8.0 and `v0.8.0` is tagged**
+(checked 2026-11-05), so nothing upstream holds 0.28 any longer: the branch swaps its git source for the
+published floors, then M12's decision, M3's recompile and the operator steps, then the release. The git
+source is out (c809c09; full suite on the published wheels 621 passed, 10 skipped).
+
+**The bundle stands** (asked again 2026-11-06, the maintainer: "Keep full 0.28"). The lead proposed cutting
+0.28 lean, as the 0.8 adoption alone (M12, the operator docs, release prep) with the rename and the rest
+moved to 0.29, so both boxes reach 0.8 sooner and just-module-creator, which moves its floor only once both
+serve it, is unblocked earlier. Rejected: the cut waits for the whole list below.
+
 **Holds, hardest first.**
 
 1. **The 0.8 lockstep cut** (M1): floors for all three tiers, `uv.lock`, the operator procedure in
@@ -644,7 +656,13 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    patch with C1 and C2, because the roster already misses four tables on 0.7 (the lead's call,
    2026-11-04); M2 then only adds the six names.
 3. **The catalog-wide recompile** (M3): one PATCH per variants module under plain `--apply`, `--dry-run`
-   first. Required. Waits on upstream writing the 0.8.0 release record.
+   first. Required. The 0.8.0 release record is written (the cut, `edf2661c`).
+   **And it moves `content_signature` for some modules** (RM363, the liaison's ee22dc6, correcting the map's
+   "moves for none"): a module whose `studies`, `haplotypes`, `pharm_variants` or `heteroplasmy` rows carry
+   `chr`-prefixed contigs signs differently once recompiled. The successor is a PATCH of the same module, so
+   no `409`, but the predecessor keeps its claim and `docs/UPGRADE.md` must say the identity can move. A
+   catalog query sizes it before M3 (owner: lead). About half an hour with the operator text. Not a question
+   for the person: no choice moves, only the procedure's wording and a count.
    **And it must survive the snapshot switch** (M12, upstream's guide § 1.30, the liaison's d351077): the
    sweep carries each stored 0.7 `resolution.csv` into a re-enrich against the new split snapshot (M8),
    and a module holding placements from both releases may refuse under strict
@@ -652,6 +670,8 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
    dropping the carried table (re-resolve from the snapshot, no egress, resolutions move as data) and
    re-deriving online (costly; offline leaves indel verdicts undecided); `upgrade --dry-run` shows the
    refusal either way. Required. About half a day, pre-buildable on the branch with the rest.
+   ✅ **M12 done** (cfba29b, 68aed3d on `0.28`): a pre-0.8 table (no `source_release`) is re-derived; indel
+   modules need `--online`; unread drift holds; the Ensembl pull record is checked first. Full suite 639 passed.
 4. **The `/check` report shows 0.8's withheld placements and states** (M4), in the API model, the console
    types and both renderers. Required. **With it, a retired source says `retired`** (M10, RM361): never
    `unreachable`, in the ACMG list, both renderers and `unresolved_hint`, whose remedy is upgrading the
@@ -681,22 +701,54 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
 5. **Publish recovery in the client** (*Decouple a large publish from its connection*, the client-side
    candidate): on a dropped connection, compare the server's stored `inputs[].sha256` with what was sent,
    with a stated deadline. Additive; the job route stays the later, real fix.
+   **Built on `0.28` (43dac96, 2026-11-06).** `publish(recover_within=600)`: authored tables compared
+   strictly, `module_spec.yaml` not required (the server rewrites its `module:` block on all 27 sample
+   specs in `data/input/`); connect and write errors re-raise at once; `import_module` left out, since a
+   parquet-only archive has no inputs to compare.
 6. **The server reads the `.env` where it runs** (*`config.py` loads the `.env` above the installed
    package*): lands only with its `docs/UPGRADE.md` step checking each box's launch directory first.
-7. **Rename an account's handle**, as filed (self-service and site admin).
+   **Built on `0.28` (c84ec69, 2026-11-06), by a different route than that line asked.** The working
+   directory's `.env` wins, and the package walk stays as a fallback when the working directory has none,
+   logged at boot (`.env: fallback`). So no box can lose its configuration, and the check moves to after
+   the deploy (UPGRADE.md step 2: read the boot line) instead of before it, which needed access to the boxes
+   this seat does not have. Rejected: flipping to `usecwd=True` outright (silent defaults on a box that
+   relied on the walk). The fallback retires when neither box logs it.
+7. **Rename an account's handle**, as filed (self-service and site admin). **Built** (eb70aca, aae63cb);
+   `merge-accounts` amends `owner` the same way (60a20bb), which also made a card's `owner` re-read from
+   each module's latest manifest rather than set in bulk.
 8. **Verification records name their witness** (M5): carry `independence`, and say beside each check
    whether its agreement counts as evidence. Fits the strategy's "not a judge of the science".
+   **Built** (8467fde): the four RM292 fields carried, plus `agreement_is_evidence` read by member
+   (`independent` true, `self_consistent` false, anything else null); an agreement column in the console.
 9. **A ClinVar-tier facet** (M7, `stats.clin_sig_counts`): a new card filter. Needs its own short design
    before building: what an empty count means (upstream: *not counted*), and that a facet over a
    compile-time count must say over what it quantifies (CLAUDE.md, "A manifest flag scoped to one file").
+   **Designed 2026-11-06 (the lead), building next**: `?clin_sig=<tier>` matches modules whose latest
+   version has `clin_sig_variant_counts[tier] > 0` (variant grain, over `variants.csv` only); every tier
+   stored in a side table, zeros included, so a version with no rows there is *not counted* (compiled
+   before 0.8) and never matches; an unknown tier is `422` naming upstream's `VALID_CLIN_SIG`, read live;
+   the card carries the counts or `null`; clickable chips in the console or none. `/stats` does not take it.
 10. **Name the format release a refused column arrived in**, client-side, as already shaped in its entry
     (one entry: the liaison's C3 duplicates it). Unblocked: both boxes serve format 0.7.1 since before
-    2026-11-04.
-11. **A real `GET /api/v1/stats`**, with `catalog_stats()` rewired and its signature kept.
+    2026-11-04. **Built** (2d1b6fd): `registry-client validate`/`check` list the columns under the
+    advisory; it needs the compiler extra (upstream's `model_for`) and says so when absent.
+11. **A real `GET /api/v1/stats`**, with `catalog_stats()` rewired and its signature kept. **Built**
+    (e009ac1): equal to the old paging over five scopes (a test holds it); unlike paging it charges no
+    module a search hit; the client pages only against a server with no route.
 12. **The toolchain as the reason a digest moved** (M7): shown where a digest moved with the content
-    unchanged.
+    unchanged. **Built** (6b74fab): `digest_moved_by_toolchain` on each version, against the previous
+    version by semver, through upstream's three-valued `toolchains_differ`; a `toolchain` badge in the console.
 13. **Strict findings live in `errors` only** (M6): checked by the liaison (20536fe), nothing here reads
     an escalated finding from `warnings`. Kept on the list so the release notes say it was looked at.
+
+**polars 2 goes with 0.28; duckdb 2 waits** (the lead, 2026-11-05, on the liaison's measurement: the suite
+passes on polars 2.1.0 and duckdb 2.0.0, branch `deps/majors-2026-11-05`, 612). Polars writes the parquet
+bytes, so it moves `artifact.digest`; the 0.8 recompile (M3) moves every digest anyway and 0.8 records the
+toolchain (RM342), so one cut moves them once and both boxes match. **unattended, with 0.28**: `uv lock
+--upgrade-package polars` on branch `0.28`, full suite, before M3. duckdb 2 **waits until the compiler ships
+RM344**: a 2.0-written `.duckdb` crashes a 1.x enricher sharing the cache, and the module-creator plugin on
+the same box runs 1.5.5. Rejected: both now (breaks a cache neighbour), polars in a 0.27.x patch (a digest
+move outside the recompile, then a second at 0.8).
 
 **Not in 0.28**: dataset currency on the card (needs the operator refresh designed first), the `/check` job
 queue and the online-tier paging (one subsystem, built once), Redis for the limiter and gate, the
@@ -754,6 +806,39 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   installers-first rule: an old `owner` must never point at a different person); rejected: releasing it.
   Production refuses a rename into a `test-` handle unless `allow_test_data=true`, as `issue-key` does
   (already the rule at every door, CLAUDE.md "Deployment modes").
+
+  **Plan, reviewed 2026-11-06 (the lead; built on branch `0.28`, about a day).** An `account_aliases`
+  table; a name is taken if it is a current name or an alias, checked in one transaction at all four doors
+  that mint one (register, org create, `issue-key`, `import-keys`; `issue-key` of an alias names the
+  current handle instead of minting a lookalike account), exported and imported with the keys. The rename
+  amends every version whose **manifest** `owner` is any of the account's names, never keyed on
+  `published_by`, which `registry upgrade` leaves empty on every successor it mints. `_finalize` maps the
+  owner it stamps through the aliases, so neither a publish racing the rename nor a later upgrade sweep
+  re-mints an old handle; re-running a rename finishes one a storage error interrupted. A JWT session
+  stops carrying the handle (it named the publisher until it expired); the name is read per request.
+  `?owner=` and the admin route resolve an alias. Routes: `POST /auth/rename` (self, its own rate bucket)
+  and `POST /admin/accounts/{account}/rename` (site admin, dry run by default, backup first), each with a
+  client method, a parity row and `AccountRename` in the console's types; `registry rename-account` and
+  `registry-client account rename`.
+  **More defaults, for the person's veto:** a self-service rename refuses once the account holds 3
+  aliases (each rename reserves a name forever, so uncapped it hoards handles; a site admin is not capped);
+  an org is renamed by a site admin only in this release; a namespace named like the old handle keeps its
+  name; `purge-test-data` lists an account renamed into `test-` and deletes its aliases with it.
+  Found while planning, filed apart: `merge-accounts` moves `published_by` but leaves the lost account's
+  name in `owner` on its manifests; the same amendment fixes it.
+  **Built on `0.28` (eb70aca, 2026-11-06).** As planned, with three differences: there were five doors,
+  not four (`registry create-org` is one too); the client command is `registry-client rename-account NEW
+  [--account OTHER]`, flat like `merge-accounts`, rather than `account rename`; and `AccountRename` is not
+  in the console's `types.ts`, because the page reads it nowhere (as with `AccountMerge`). The self route
+  costs a `rename` bucket token (5/h) and refunds a dry run and a refusal. Verified: digest, content
+  signature and signature unchanged after an amend, and `verify_manifest` passes on the downloaded copy.
+
+- **`merge-accounts` amends `owner` too** (filed by the lead 2026-11-06 while planning the rename;
+  `unattended`, after the rename; owner: lead). A merge moves `published_by` to the account kept and leaves
+  the lost account's handle in `owner` on every manifest it published, so the cards keep naming an account
+  nobody uses. The rename's amendment (`services/accounts.rename_account`'s sweep) is the fix: after the
+  merge, amend `owner` from the lost account's handles to the kept one's. Sizing: patch-sized inside the
+  0.28 minor, since merge ships in it.
 
 - ✅ **done** (a96e8ac on `release-0.27.x`, in 0.27.1). **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
   the liaison's items**, owner: lead; the liaison's **C4** in `docs/UPSTREAM_COMPILER.md`). `services/upgrade.py`
@@ -832,12 +917,12 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
     sentence; if upstream gives it no code to read, the field stays as it is, the text is corrected, and the
     gap is filed upstream. Rejected: leaving it `true`, which tells an author the module is fine and only rows
     need work. **Upstream's answer (their S129, relayed by the liaison 2026-11-05):** coded errors are their
-    RM378, placed in their 0.9 (a correction from their triage, 2026-11-05), so the match holds through 0.8; until then the two strict-only refusals carry published, test-pinned fragments
+    RM378, parked after their 0.8.0 cut (their 6934fd3e, 2026-11-05; unparked if the registry needs a refusal the two phrases do not cover), so the match may be permanent; meanwhile the two strict-only refusals carry published, test-pinned fragments
     (their RM377, `docs/COMPILER.md` "The refusals only strict adds"), already in the installed 0.7.2. So the
     flip **matches the frozen fragment now**, as `UNJOINABLE_PHRASE` does: only the build disagreement
     (`whose coordinates the enricher diagnosed as another assembly's`) is module-level; the per-row aggregate
     (`have unresolved genomic positions after resolution`) is not and leaves the field alone. Never widen the
-    match past the fragment, and move to the code when RM378 ships. About an hour.
+    match past the fragment, and move to the code if RM378 ever ships. About an hour.
   - ✅ done (in 0.27.1). *`gather_pmids` reads `studies.csv` only* (the liaison's **C12**, upstream RM132):
     `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
     `compiler.load_citing_rows` / `table_citations`. About an hour.

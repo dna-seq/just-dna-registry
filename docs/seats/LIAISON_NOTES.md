@@ -8,8 +8,8 @@ reset").
 - **Watchers** armed and alive: `compiler` (tags), `compiler-next` (`docs/CHANGELOG.md` on `0.8`), `fastapi` and
   `huggingface-hub` (tags), plus `desk`. Clones outside the repo: `/data/sources/just-dna-compiler`,
   `/data/sources/fastapi`, `/data/sources/huggingface_hub`, each a line (`repo=just-dna-registry`) in the
-  liaison state file. When the compiler cuts 0.8 and opens 0.9, move `just-dna-compiler-next`'s `branch=`.
-- **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.7.3`), `docs/UPSTREAM_FASTAPI.md` (installed `0.141.1`,
+  liaison state file. When the compiler opens `0.9`, move `just-dna-compiler-next`'s `branch=` from `main` to it.
+- **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.8.0`), `docs/UPSTREAM_FASTAPI.md` (installed `0.141.1`,
   read through 0.162.0 on 2026-11-05: F1, for the first bump), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (installed `v2.0.0`,
   read through v2.4.0 on 2026-11-05: H2 to H4).
 - **0.8 adoption map**: first pass in `docs/UPSTREAM_COMPILER.md`, sent to the lead and the pm; M6 checked
@@ -32,12 +32,17 @@ reset").
 
 - **Dependency bump** set up 2026-11-04 on kit v0.1.127: `[seat.liaison.watch.nightly]` (nightly `deps`, weekly on
   this seat's day, while the person is away) and the grant in `LIAISON.md`. Run it as the kit's role says; the
-  full suite takes ~25 min, so run it detached. Not yet run.
-- **At the 0.8 cut, check three items the compiler's pm named that the map has no row for** (via our pm,
-  2026-11-04): RM342's `verify` reporting `toolchain_differs`, against our client's `verify_manifest` path with
-  polars-1 consumers in the field; RM304's per-row VRS version and manifest pin; RM347/RM353's publisher
-  (uploads the logs the manifest names, guards exactly the declared files). Tell the pm if the re-map moves a
-  row of registry 0.28's scope (ROADMAP "0.28").
+  full suite takes ~25 min, so run it detached. **First run 2026-11-05**: `bb42dbd` on main (pushed), polars 2.1 and
+  duckdb 2.0 held back on `deps/majors-2026-11-05` (`4c8fd55`), handed to the lead: polars with 0.28, duckdb after
+  upstream RM344. Until the lead merges it, each weekly bump keeps both out (`uv lock -P` over every other mover).
+  The worktree needs the untracked `.env` (a symlink) or `test_caches_api` fails for want of a lane. Worktrees
+  `/data/sources/just-dna-registry-deps` (branch `deps/2026-11-05`, no commits) and `-majors` are mine.
+- **0.8.0 cut** 2026-11-05 (`edf2661c`): map re-read against the final guide and the release record (`ee22dc6`): M3
+  corrected (RM363 moves `content_signature`), the pm's three items need nothing, lead and pm told. **On PyPI and
+  tagged `v0.8.0` the same evening** (sources identical to `edf2661c`): read mark moved, lead told the git source on
+  0.28 can go. `just-dna-compiler-next` follows `main` (the 0.8.x
+  patches) since 2026-11-05, on the compiler's lead's word; it moves to `0.9` when that branch opens, which their lead
+  posts in `agent-chat > 0.8 integration`.
 
 - **Desk #193** withdrawn 2026-11-05, decided elsewhere: the lead pushes the trunk under its grant ("all
   pushes"); hand it a commit to push.
@@ -48,7 +53,12 @@ reset").
   regenerated examples and audit round 3; re-read the delta from `a4a401e7` at the tag.
 - **Read a 0.8 finding against `origin/0.28`, not `main`**: the lead pre-builds there, and M13 was already
   fixed on it (2026-11-05).
+- **Commit with `git commit --only -- <paths>`**: the index is shared with three other seats. 7e88e7d
+  (2026-11-05) swept the pm's staged `docs/ROADMAP.md` hunk although `git diff --cached --stat` showed only my two
+  files the moment before: the pm staged in between. `--only` commits the named paths whatever else is staged.
 - reflect after 2026-11-11: classes/base/BASE.md as of v0.1.127 (kit reports filed without asking, timed by cost).
+- reflect after 2026-11-12: classes/base/BASE.md as of v0.1.136 (commit by path in a shared clone; my #286).
+- reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137 ("An in-house release"; concern raised 2026-11-06 in `#just-dna-registry > seats`: the priming keeps a minor with the lead, a patch is the weekly bump's). The `compiler` tag watcher hears in-house tags from v0.1.137 (#287); it was silent on `v0.8.0`.
 
 ## Backlog, in order
 
