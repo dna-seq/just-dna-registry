@@ -8,6 +8,14 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `.env.template` no longer sets the 0.7 Ensembl repo
+
+Through 0.27 the template set `REGISTRY_ENSEMBL_REFERENCE=just-dna-seq/ensembl_variations`, and a `.env` copied
+from it overrides 0.28's default (the split repo), so the retired name would be recorded in every manifest the
+server publishes. The line is commented out now, and a test holds every text value the template writes to the
+code's default. A box whose `.env` carries the old line should comment it out before deploying 0.28
+(docs/UPGRADE.md, 0.28 step 1).
+
 ### `?gene=` and `?category=` match the current version
 
 They matched a module if **any** non-yanked version carried the gene or category, so a gene dropped from a

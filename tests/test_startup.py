@@ -38,6 +38,29 @@ def _template() -> str:
     return body
 
 
+def test_env_template_text_values_are_the_defaults() -> None:
+    """A text setting the template fills in carries the code's default.
+
+    An operator copies this file to `.env`, so a value written here is a value set on the box. Through
+    0.27 it set `REGISTRY_ENSEMBL_REFERENCE` to the 0.7 repo, the default moved to the split repo in
+    0.28, and a copied `.env` would have stamped the retired name into every manifest the sweep publishes
+    (found on a staging box before its 0.28 deploy). Text settings only: a number or a flag here is an
+    example of the knob, while a repo or a mode written here is an identity."""
+    body = _template()
+    fields = Settings.model_fields
+    prefix = Settings.model_config.get("env_prefix", "")
+    differing, checked = [], 0
+    for _comment, name, value in re.findall(r"^(#?)\s*([A-Z0-9_]+)=(.*)$", body, re.MULTILINE):
+        key = name[len(prefix):].lower() if name.startswith(prefix) else None
+        if key not in fields or not value.strip() or not isinstance(fields[key].default, str):
+            continue
+        checked += 1
+        if value.strip() != fields[key].default:
+            differing.append(f"{name}={value.strip()} (default {fields[key].default})")
+    assert checked >= 5, f"only {checked} text settings read from the template: the parse is broken"
+    assert not differing, differing
+
+
 def test_env_template_documents_every_setting() -> None:
     """Every `Settings` field appears in `.env.template`, under a name that actually resolves.
 

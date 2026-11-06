@@ -16,6 +16,11 @@ server (if `REGISTRY_ENSEMBL_CACHE` is set, export its value as `JUST_DNA_ENSEMB
 uv run just-dna-enricher cache pull --only ensembl
 ```
 
+**Check the box's `.env` for `REGISTRY_ENSEMBL_REFERENCE` first.** The template set it to the 0.7 repo
+(`just-dna-seq/ensembl_variations`) through 0.27, so a `.env` copied from it still does, and 0.28 would stamp
+that retired name into every manifest it publishes, the sweep's successors included, which are immutable.
+Comment the line out so the default applies (`grep -n ENSEMBL .env`). Found on the staging box before its deploy.
+
 The development box's cache was pulled this way (its `pull-record.json`, written 2026-11-04, names
 `datasets/just-dna-seq/ensembl_variations_split/data`). Upstream says a cache whose pull record names the
 old repo is pulled again and a file is kept only where the new manifest attests it. **`registry
