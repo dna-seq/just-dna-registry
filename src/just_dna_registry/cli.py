@@ -1108,6 +1108,11 @@ def warm_caches(
     beside itself and swapped in, the previous build kept as `<lane>.pre-<version>`. Without it an
     upstream correction to a derivation (RM293) never reaches a box that built the lane once.
 
+    **And a present *pulled* lane whose pull record names another repo, or none, is handed to the
+    provisioner** (0.28.1). Format 0.8 moved Ensembl to a new repo under the same file names, so a 0.7
+    cache reads as present; upstream re-pulls it, or checks a record-less one against the published
+    files once. The dry run marks these `⟳`, and `--apply` reads each record back afterwards.
+
     Groups, because they gate different things. **Resolution** (ensembl, clinvar) decides whether a
     publish works. **PGx** (cpic, clinpgx, pharmvar — `--pgx`) is what makes a *hosted* `?pgx=` check
     legitimate rather than merely possible: without a snapshot the alternatives are fetching a source
@@ -1137,9 +1142,11 @@ def warm_caches(
         gated_lanes,
         lane_destinations,
         lane_presence,
+        lanes_to_repull,
         provisionable_lanes,
         pullable_lanes,
         rebuild_derived_lane,
+        repull_left_undone,
     )
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
@@ -1212,6 +1219,8 @@ def warm_caches(
     # it is already here, so the operator chose to have it, and `prepare_lane` alone would keep the
     # old derivation forever. See `LaneAge` for why only derived lanes.
     ages = {age.lane: age for age in derived_lane_ages(settings)}
+    # A present pulled lane whose record names another repo, or no repo (`lanes_to_repull`).
+    repull = lanes_to_repull(present, selected)
 
     typer.secho("lanes:", bold=True)
     missing: list[str] = []
@@ -1222,7 +1231,10 @@ def warm_caches(
         read_here = grouped.get(name)
         tag = f"[{read_here}]" if read_here else "[not read here]"
         age = ages.get(name)
-        if where is not None and age is not None and age.stale:
+        if where is not None and name in repull:
+            typer.secho(f"  ⟳ {name} {tag}: {where} — {repull[name]}", fg=typer.colors.YELLOW)
+            missing.append(name)
+        elif where is not None and age is not None and age.stale:
             typer.secho(
                 f"  ⟳ {name} {tag}: {where} — built by enricher {age.built_by}, {age.installed} is "
                 f"installed; rebuild",
@@ -1270,7 +1282,7 @@ def warm_caches(
     if not apply:
         if missing:
             typer.echo(
-                f"\n{len(missing)} lane(s) to provision: {', '.join(missing)}. "
+                f"\n{len(missing)} lane(s) to provision or re-pull: {', '.join(missing)}. "
                 f"Re-run with --apply (this takes a while and a lot of disk)."
             )
         if stale:
@@ -1346,7 +1358,20 @@ def warm_caches(
     )
     failures = fetch_failures
     for outcome in outcomes:
-        if outcome.ready is True:
+        # Read back, never taken from the route: `prepare_lane` answers `present` both for a lane it
+        # checked and kept and for one it would not touch (a cache outside the lane's own directory).
+        undone = (
+            repull_left_undone(outcome.lane, lane_presence(settings).get(outcome.lane))
+            if outcome.lane in repull and outcome.ready is True
+            else None
+        )
+        if undone is not None:
+            typer.secho(
+                f"✗ {outcome.lane}: not re-pulled, {undone} — {outcome.detail}",
+                fg=typer.colors.RED, err=True,
+            )
+            failures += 1
+        elif outcome.ready is True:
             typer.secho(f"✓ {outcome.lane}: {outcome.route} — {outcome.detail}", fg=typer.colors.GREEN)
         elif outcome.ready is None:
             # Tri-state, and this arm is the reason it is not a bool: a lane that cannot run

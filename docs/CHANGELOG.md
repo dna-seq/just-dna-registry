@@ -8,6 +8,16 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry warm-caches` re-pulls an Ensembl cache of the old release
+
+Format 0.8 moved the Ensembl snapshot to a new repo under the same file names, so a 0.7 cache reads as
+present, and 0.28.0's `warm-caches` left every present lane alone: the upgrade guide had to send
+operators to `just-dna-enricher cache pull`. Now a present pulled lane whose pull record names another
+repo is marked `⟳` and re-pulled by `--apply`, one with no pull record is checked against the published
+files once, and each record is read back afterwards, so a re-pull that did not take is a failure rather
+than a green line. `registry upgrade`'s refusal names `registry warm-caches --apply` as the fix.
+UPGRADE.md's 0.28 step 1 also covers two servers sharing one cache directory.
+
 ### `.env.template` no longer sets the 0.7 Ensembl repo
 
 Through 0.27 the template set `REGISTRY_ENSEMBL_REFERENCE=just-dna-seq/ensembl_variations`, and a `.env` copied

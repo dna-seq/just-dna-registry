@@ -9,24 +9,44 @@ yet**; the tests drive them against a fixture catalog.
 **1. Re-pull the Ensembl cache before deploying** (upstream RM372). Format 0.8 reads
 `just-dna-seq/ensembl_variations_split` (dbSNP 157 / VEP 116), about 14.5 GB, into the same
 `ensembl_variations` directory, and a cache holding files from both releases resolves to nothing, with a
-warning. Use the enricher's own pull, from the deploy's checkout so it reads the same `.env` as the
-server (if `REGISTRY_ENSEMBL_CACHE` is set, export its value as `JUST_DNA_ENSEMBL_CACHE` first):
-
-```
-uv run just-dna-enricher cache pull --only ensembl
-```
+warning.
 
 **Check the box's `.env` for `REGISTRY_ENSEMBL_REFERENCE` first.** The template set it to the 0.7 repo
 (`just-dna-seq/ensembl_variations`) through 0.27, so a `.env` copied from it still does, and 0.28 would stamp
 that retired name into every manifest it publishes, the sweep's successors included, which are immutable.
 Comment the line out so the default applies (`grep -n ENSEMBL .env`). Found on the staging box before its deploy.
 
-The development box's cache was pulled this way (its `pull-record.json`, written 2026-11-04, names
-`datasets/just-dna-seq/ensembl_variations_split/data`). Upstream says a cache whose pull record names the
-old repo is pulled again and a file is kept only where the new manifest attests it. **`registry
-warm-caches` will not do this**: a 0.7 cache still reads as present under 0.8, and warm-caches leaves a
-present lane alone. **`registry upgrade` does check it**: it reads the pull record before re-deriving
-anything, and holds every module that would re-derive while the record names the old repo or no repo.
+**Two servers sharing one cache directory cannot move one at a time.** The pull replaces the files a 0.27
+server reads, and it then finds no Ensembl answer until it is upgraded too. Where the polygon and
+production share `JUST_DNA_PIPELINES_CACHE_DIR` (they do on the OVH box), give the one upgrading first its
+own Ensembl directory in its `.env`, pull there, and point the second at the same directory when it
+upgrades, which then needs no pull of its own:
+
+```
+REGISTRY_ENSEMBL_CACHE=<a new directory>/ensembl_variations
+```
+
+From 0.28.1, from the deploy's checkout so it reads the server's `.env`:
+
+```
+uv run registry warm-caches                 # ⟳ ensembl: pulled from …/ensembl_variations/data …; re-pull
+uv run registry warm-caches --apply
+```
+
+It hands a present cache whose pull record names the old repo to upstream, which re-pulls it, and checks
+one with no pull record against the published files, replacing any they do not attest; then it reads the
+record back. On 0.28.0, `warm-caches` leaves a present lane alone, so use the enricher's own pull
+instead, exporting the directory it reads (the enricher knows `JUST_DNA_ENSEMBL_CACHE`, not the
+`REGISTRY_` name):
+
+```
+JUST_DNA_ENSEMBL_CACHE=<the same directory> uv run just-dna-enricher cache pull --only ensembl
+```
+
+The development box's cache was pulled that way (its `pull-record.json`, written 2026-11-04, names
+`datasets/just-dna-seq/ensembl_variations_split/data`). **`registry upgrade` checks it either way**: it
+reads the pull record before re-deriving anything, and holds every module that would re-derive while the
+record names the old repo or no repo.
 
 **2. Deploy 0.28, then read which `.env` it loaded.** From 0.28 the server reads the `.env` nearest its
 **working directory**; through 0.27 it read the one found walking up from the installed package, which in

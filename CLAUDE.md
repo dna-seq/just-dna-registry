@@ -105,8 +105,10 @@ by member, with *cannot say* for anything else**: `agreement_is_evidence` maps `
 `self_consistent` and answers `None` for an unstated value or a member added later, never a guess;
 `QUIET_DRIFT` is the same rule from the other side (an arm we do not name holds). **A snapshot can be
 present and still wrong**: 0.8's Ensembl lane moved repositories (RM372), a 0.7 cache still reads as
-present, and `warm-caches` leaves a present lane alone, so the operator pulls it (UPGRADE.md step 1) and
-`registry upgrade` checks the pull record before re-deriving anything.
+present, so `warm-caches` hands a present pulled lane whose record names another repo (or none) to
+upstream's `prepare_caches` and reads the record back (0.28.1; 0.28.0 left it alone and the guide sent
+operators to the enricher's own pull), and `registry upgrade` checks the pull record before re-deriving
+anything. **When the format moves a lane, our provisioning command moves with it in the same release.**
 
 **And having read one, be willing to say it is not load-bearing. `0.6.4` is the first enricher floor
 here that is *not* hard** — one fix in upstream's ClinVar drafter, no public symbol moved, nothing this

@@ -320,7 +320,7 @@ def test_the_sweep_refuses_to_re_derive_against_anything_but_the_new_snapshot(
         assert answer is None
     else:
         assert answer is not None and refused in answer
-        assert "cache pull --only ensembl" in answer
+        assert "warm-caches --apply" in answer
 
 
 def test_no_snapshot_at_all_refuses(settings: Settings, monkeypatch) -> None:

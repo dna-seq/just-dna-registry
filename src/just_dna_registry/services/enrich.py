@@ -550,6 +550,59 @@ def _builder_version(path: Path) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def lanes_to_repull(present: Mapping[str, Path | None], selected: set[str]) -> dict[str, str]:
+    """Present pulled lanes whose pull record does not name the repo the lane publishes from now, and why.
+
+    **`warm-caches` handed upstream only the lanes that were absent, so a present cache never met the
+    check upstream already makes** (0.28.1). `prepare_lane` re-pulls a cache whose record names another
+    repo (RM372: Ensembl moved to `ensembl_variations_split` under the same file names, so a 0.7 cache
+    resolves as present) and checks a record-less one against the published manifest once, replacing what
+    it does not attest (RM339). The 0.28 upgrade guide sent operators around this command to
+    `just-dna-enricher cache pull` instead. Two arms:
+
+    - **pulled from elsewhere**: re-pulled whether or not the lane was selected, as a stale derived lane
+      is rebuilt, because it is already here and the operator chose to have it.
+    - **no repo recorded**: only for a selected lane, since checking it hashes every file of unknown
+      origin once. `registry upgrade` refuses a record-less Ensembl cache (`snapshot_not_current`), so
+      this is the route that clears it.
+
+    The decision stays upstream's: this only chooses which present lanes to hand `prepare_caches`, and
+    the caller reads the record back afterwards rather than trusting the outcome's route.
+    """
+    from just_dna_enricher.download import pulled_from_elsewhere
+    from just_dna_enricher.locations import pull_record_repo
+
+    pullable = pullable_lanes()
+    reasons: dict[str, str] = {}
+    for name, where in present.items():
+        if where is None or name not in pullable:
+            continue
+        elsewhere = pulled_from_elsewhere(name, where)
+        if elsewhere is not None:
+            reasons[name] = f"pulled from {elsewhere}, which this lane no longer publishes from; re-pull"
+        elif name in selected and pull_record_repo(where) is None:
+            reasons[name] = (
+                "no pull record says which release it holds; check it against the published files "
+                "(replaces any file they do not attest)"
+            )
+    return reasons
+
+
+def repull_left_undone(name: str, where: Path | None) -> str | None:
+    """Why a lane `lanes_to_repull` named is still not a recorded pull of its current repo, or `None`."""
+    from just_dna_enricher.download import pulled_from_elsewhere
+    from just_dna_enricher.locations import pull_record_repo
+
+    if where is None:
+        return "it no longer resolves"
+    elsewhere = pulled_from_elsewhere(name, where)
+    if elsewhere is not None:
+        return f"its pull record still names {elsewhere}"
+    if pull_record_repo(where) is None:
+        return "it still carries no pull record"
+    return None
+
+
 def derived_lane_ages(settings: Settings) -> list[LaneAge]:
     """Every **present** lane with parents, and which enricher built it."""
     present = lane_presence(settings)
@@ -915,7 +968,7 @@ def snapshot_not_current(settings: Settings) -> str | None:
     from just_dna_enricher.download import pulled_from_elsewhere
     from just_dna_enricher.locations import pull_record_repo
 
-    pull = "just-dna-enricher cache pull --only ensembl"
+    pull = "registry warm-caches --apply"
     cache = available_references(settings)["ensembl"]
     if cache is None:
         return f"no Ensembl snapshot is provisioned on this box; run `{pull}` first"
