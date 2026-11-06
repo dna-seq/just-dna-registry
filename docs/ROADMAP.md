@@ -743,8 +743,8 @@ serve it, is unblocked earlier. Rejected: the cut waits for the whole list below
 
 **0.28.0 cut, 2026-11-06** (the lead): every item above built on branch `0.28`; version + lock c5a7840; full suite
 on the release head 687 passed, 10 skipped; main fast-forwarded to it and pushed. Dists in
-`/data/sources/just-dna-registry.wt/0.28/dist/`. **Publishing waits on the person: `blocked: desk #215`**; the lead
-tags `v0.28.0` after. Deploying follows `docs/UPGRADE.md`, 0.28 (Ensembl pull first) and is the person's.
+`/data/sources/just-dna-registry.wt/0.28/dist/`. **Published** to PyPI by the person 2026-11-06 (desk #215); tagged
+`v0.28.0` and pushed. Deploying follows `docs/UPGRADE.md`, 0.28 (Ensembl pull first) and is the person's.
 
 **Filed while building the facet** (the lead, 2026-11-06; **done** c551799 on main, 0.28.1 material): `?gene=` and `?category=` match a
 module with **any** non-yanked version carrying the value, while `search_modules`' docstring, the fact-table

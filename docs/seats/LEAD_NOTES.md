@@ -39,9 +39,8 @@ The 0.27.x patches, all unattended, each in its own worktree, on a maintenance b
 
 **0.27.1 is prepared** (2026-11-05): version + lock (release-0.27.x, merged into main 33bee26), changelog
 dated, docs/UPGRADE.md 0.27.1 note, dists built in `/data/sources/just-dna-registry.wt/relprep/dist/`
-(wheel carries the console). Full suite on the branch: 596 passed. **Waits on the person: publishing to
-PyPI**, `blocked: desk #202` (`uv publish` from that worktree), then the lead tags `v0.27.1` on release-0.27.x's head and
-deploys stay theirs. C5 + C13 + C15 move to 0.27.2.
+(wheel carries the console). Full suite on the branch: 596 passed. **Published** by the person 2026-11-06 (desk #202 answered);
+PyPI files match the local build; the lead tagged `v0.27.1` (0d001b8) and pushed it. Deploys stay theirs. C5 + C13 + C15 move to 0.27.2.
 
 The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, C10, the column-release
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
@@ -73,7 +72,8 @@ suite 621 passed. duckdb 2 waits for upstream's RM344 (roadmap 3d4d850).
 PyPI (c809c09), full suite on the published wheels 621 passed, 10 skipped. 0.28 depends on nothing unpublished now.
 **M12 done** (cfba29b, 68aed3d; full suite 639 passed). **0.28.0 is cut** (2026-11-06): the whole list built, the ClinVar-tier facet last (fef4ba1); version + lock c5a7840;
 release-head suite 687 passed; main fast-forwarded to it and pushed. Dists in `/data/sources/just-dna-registry.wt/0.28/dist/`.
-**Waits on the person: publishing, `blocked: desk #215`**; then the lead tags `v0.28.0`. 0.27.1 still `blocked: desk #202`.
+**Published** by the person 2026-11-06 (desk #215 answered); PyPI files match the local build; `v0.28.0` tagged (c5a7840) and pushed.
+**Waits on the person: deploying both boxes**, per docs/UPGRADE.md 0.28 (Ensembl pull first); the boxes serve 0.27 until then.
 The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
