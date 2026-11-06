@@ -1275,7 +1275,9 @@ A version whose `owner` names the account but which another account published is
 `conflicts` and left alone. A storage failure on one version lists it under `failed`; sending the
 same request again (or `{"name": <the current handle>}`) finishes it, because the amend set is every
 manifest that still names an old handle. A JWT session issued before the rename acts under the new
-handle: the handle is read from the account row on every request.
+handle: the handle is read from the account row on every request. On the HuggingFace storage backend
+each amended version is one dataset commit, so an account with many versions may meet the Hub's commit
+pacing; the versions it refuses land in `failed` and a second run finishes them.
 
 Rate bucket `rename` (5/h); a dry run and a refusal are refunded. An org is renamed by a site admin
 (endpoint 40). A self-service rename refuses once the account would hold more than
