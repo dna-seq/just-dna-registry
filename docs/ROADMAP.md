@@ -626,7 +626,13 @@ Rejected: waiting idle for the cut, which would put a whole minor's build after 
 `c90e6d98` the branch already builds on). Re-read against this scope by the liaison (ee22dc6): one row
 corrected (M3, item 3), nothing added or dropped. **All three are on PyPI at 0.8.0 and `v0.8.0` is tagged**
 (checked 2026-11-05), so nothing upstream holds 0.28 any longer: the branch swaps its git source for the
-published floors, then M12's decision, M3's recompile and the operator steps, then the release.
+published floors, then M12's decision, M3's recompile and the operator steps, then the release. The git
+source is out (c809c09; full suite on the published wheels 621 passed, 10 skipped).
+
+**The bundle stands** (asked again 2026-11-06, the maintainer: "Keep full 0.28"). The lead proposed cutting
+0.28 lean, as the 0.8 adoption alone (M12, the operator docs, release prep) with the rename and the rest
+moved to 0.29, so both boxes reach 0.8 sooner and just-module-creator, which moves its floor only once both
+serve it, is unblocked earlier. Rejected: the cut waits for the whole list below.
 
 **Holds, hardest first.**
 
