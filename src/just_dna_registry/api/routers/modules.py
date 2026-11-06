@@ -123,7 +123,8 @@ def list_modules(
         category=category,
         gene=gene,
         genome_build=genome_build,
-        owner=owner,
+        # A retired handle lists the account's modules under its current one (0.28): old links work.
+        owner=repo.current_handle(owner) if owner else None,
         license=license,
         namespace=namespace,
         featured=featured,

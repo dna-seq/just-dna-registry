@@ -1138,6 +1138,33 @@ class RegistryClient:
             self._http.post(f"/admin/accounts/{source}/merge", json={"into": into, "apply": apply})
         )
 
+    def rename_account(
+        self, name: str, *, dry_run: bool = False, allow_test_data: bool = False
+    ) -> dict:
+        """Rename the caller's own handle to `name` (0.28; an org asks a site admin). The old handle
+        stays reserved to the account, and `owner` is amended on every manifest naming it; nothing
+        published changes identity. Returns the `AccountRename` report; `dry_run` changes nothing.
+        Running the same rename again finishes any version listed under `failed`."""
+        return self._json(
+            self._http.post(
+                "/auth/rename",
+                json={"name": name, "dry_run": dry_run, "allow_test_data": allow_test_data},
+            )
+        )
+
+    def admin_rename_account(
+        self, account: str, name: str, *, apply: bool = False, allow_test_data: bool = False
+    ) -> dict:
+        """**Site admins only.** Rename any account's handle (an org's too) to `name`; `account`
+        may be a retired handle. Reports what it would do unless `apply=True`. Not capped by the
+        server's `max_handle_aliases`."""
+        return self._json(
+            self._http.post(
+                f"/admin/accounts/{account}/rename",
+                json={"name": name, "apply": apply, "allow_test_data": allow_test_data},
+            )
+        )
+
     # ── Orgs (0.9.0) ────────────────────────────────────────────────────────────
 
     def create_org(self, name: str) -> dict:

@@ -67,6 +67,9 @@ class PurgePlan:
     modules_in_prod: list[tuple[str, str, str]] = field(default_factory=list)
     #: Accounts (users *and* orgs) whose handle is prefixed.
     accounts: list[tuple[int, str]] = field(default_factory=list)
+    #: Retired handles per listed account (0.28). Listed because an account renamed *into* `test-` on
+    #: production is selected by its current handle, and its old one is what an operator recognises.
+    account_aliases: dict[int, list[str]] = field(default_factory=dict)
     #: Production versions authored by an account being deleted. The module survives; only
     #: `versions.published_by` is set to NULL. Called out separately because it is the one case where a
     #: purge *mutates a production row* rather than removing test data, and an operator must see it.
@@ -85,8 +88,10 @@ class PurgePlan:
             lines.append(f"namespace   {ns} (freed)")
         for ns, name in self.modules:
             lines.append(f"module      {ns}/{name} + artifacts")
-        for _id, name in self.accounts:
-            lines.append(f"account     {name} (keys, memberships, org links)")
+        for account_id, name in self.accounts:
+            was = self.account_aliases.get(account_id)
+            renamed = f"; renamed from {', '.join(was)}" if was else ""
+            lines.append(f"account     {name} (keys, memberships, org links, retired handles{renamed})")
         for ns, name, version in self.disowned_versions:
             lines.append(
                 f"disown      {ns}/{name}@{version} — kept, `published_by` cleared (production row)"
@@ -128,6 +133,9 @@ def plan_purge(
             plan.modules_in_prod.append((*key, f"name starts with {prefix!r}, namespace does not"))
 
     plan.accounts = [(int(r["id"]), r["name"]) for r in repo.accounts_with_prefix(prefix)]
+    plan.account_aliases = {
+        account_id: held for account_id, _ in plan.accounts if (held := repo.aliases_of(account_id))
+    }
 
     # Modules a test account owns via a namespace grant, and versions it published anywhere. An owned
     # namespace that is not prefixed is still that account's, so its modules are production data.

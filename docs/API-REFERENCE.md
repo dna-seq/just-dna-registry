@@ -184,6 +184,8 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 36 | DELETE | `/api/v1/modules/{ns}/{name}` | bearer | Hard-delete every version — **test instance only** (0.12) |
 | 37 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/readme` | bearer | Replace the card's readme prose (metadata, out of digest) (0.14) |
 | 38 | POST | `/api/v1/admin/accounts/{account}/merge` | site admin | Fold a lost-key account into its owner's new one (unreleased) |
+| 39 | POST | `/api/v1/auth/rename` | bearer | Rename the caller's own handle; the old one stays reserved to it (unreleased) |
+| 40 | POST | `/api/v1/admin/accounts/{account}/rename` | site admin | Rename any account's handle, an org's included (unreleased) |
 
 ---
 
@@ -1259,6 +1261,44 @@ name.
 "org_memberships", "versions", "stars_moved", "stars_collapsed", "reviews_moved",
 "reviews_kept_on_source", "keys_revoked", "snapshot"}`. Errors: `401`, `403 site_admin_required`,
 `404 account_not_found`, `422 same_account`, `422 not_a_user_account` (org accounts do not merge).
+
+### 39. `POST /api/v1/auth/rename`  *(bearer)*
+Rename the caller's own handle. Body `{"name": "new-handle", "dry_run": false, "allow_test_data":
+false}`. The old handle stays reserved to the account for good: registration, org creation,
+`registry issue-key` and `registry import-keys` all refuse it, and wherever a handle is looked up
+(`GET /modules?owner=`, `/orgs/{org}/…`, the admin route below) it resolves to the account under its
+current name. `owner` is then amended on every stored manifest that names any handle of the account,
+in storage and in the catalog. `owner` is outside `artifact.digest`, `content_signature` and the
+signature, so nothing published changes identity and every download still verifies.
+
+A version whose `owner` names the account but which another account published is listed under
+`conflicts` and left alone. A storage failure on one version lists it under `failed`; sending the
+same request again (or `{"name": <the current handle>}`) finishes it, because the amend set is every
+manifest that still names an old handle. A JWT session issued before the rename acts under the new
+handle: the handle is read from the account row on every request.
+
+Rate bucket `rename` (5/h); a dry run and a refusal are refunded. An org is renamed by a site admin
+(endpoint 40). A self-service rename refuses once the account would hold more than
+`max_handle_aliases` (default 3) retired handles; renaming back to one of them is always allowed.
+On production a `test-` handle is refused unless `allow_test_data` is true, and then the response
+carries a warning: `registry purge-test-data` deletes accounts whose **current** handle starts
+`test-`, so an account renamed into one is an account a routine purge removes.
+
+`200 → AccountRename {"account", "name", "applied", "aliases": [...], "versions": [...],
+"versions_unattributed": [...], "conflicts": [...], "modules": [...], "namespaces_kept": [...],
+"amended", "failed": [...], "warnings": [...], "snapshot"}`. `versions_unattributed` are the versions
+with no recorded publisher (successors `registry upgrade` minted, versions from before 0.9). A
+namespace is never renamed; `namespaces_kept` names the ones spelled like a handle of the account.
+Errors: `401`, `403 org_rename_is_admin_only`, `409 {"error": "account_taken"}` (somebody's current
+or retired handle), `409 {"error": "alias_limit_reached"}`, `422 {"error": "invalid_account"}`,
+`422 {"error": "test_data_on_prod"}`, `429`.
+
+### 40. `POST /api/v1/admin/accounts/{account}/rename`  *(site admin)*
+Endpoint 39 for any account, an org's included; `{account}` may be a retired handle. Body
+`{"name": "new-handle", "apply": false, "allow_test_data": false}`: **`apply` defaults to false**, as
+merge's does. Not held to `max_handle_aliases`. An applied rename takes a DB snapshot first. Same
+`AccountRename` response; additionally `403 site_admin_required`, `404 account_not_found`. The ops
+CLI is `registry rename-account OLD NEW [--apply] [--allow-test-data]`.
 
 ---
 

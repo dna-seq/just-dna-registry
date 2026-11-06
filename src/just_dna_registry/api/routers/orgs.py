@@ -21,7 +21,7 @@ from just_dna_registry.api.deps import (
     settings_dep,
 )
 from just_dna_registry.config import Settings
-from just_dna_registry.db.repository import Repository
+from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.models.api import (
     AddMemberRequest,
     CreateOrgRequest,
@@ -44,16 +44,20 @@ class ClaimBody(BaseModel):
 
 
 def _org_id(repo: Repository, org: str) -> int:
-    """Resolve an org handle to its account id, 404 unless it exists and is a `type='org'` account."""
-    row = repo.account_by_name(org)
+    """Resolve an org handle to its account id, 404 unless it exists and is a `type='org'` account.
+    A handle the org renamed away from still resolves (0.28), so an old link keeps working."""
+    row = repo.resolve_handle(org)
     if row is None or repo.account_type(int(row["id"])) != "org":
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="org_not_found")
     return int(row["id"])
 
 
 def _roster(repo: Repository, org: str, org_id: int) -> OrgMemberList:
+    # The org's current handle from its row, not the path string: reached through a retired handle,
+    # the roster still names the org as it is called now (an alias is never shown as current).
+    row = repo.get_account(org_id)
     return OrgMemberList(
-        org=org,
+        org=row["name"] if row else org,
         members=[MemberEntry(account=r["account"], role=r["role"]) for r in repo.list_org_members(org_id)],
     )
 
@@ -65,9 +69,12 @@ def create_org(repo: RepoDep, account: AccountDep, body: CreateOrgRequest) -> di
     name = body.name
     if not is_valid_namespace(name):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="invalid_org_name")
-    if repo.account_by_name(name) is not None:
+    if repo.handle_taken(name) is not None:  # a current handle or a retired one (0.28)
         raise HTTPException(status.HTTP_409_CONFLICT, detail="name_taken")
-    org_id = repo.create_account(name)
+    try:
+        org_id = repo.create_account(name)
+    except HandleReserved as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="name_taken") from exc
     repo.set_account_type(org_id, "org")
     repo.add_org_member(org_id, account.id, "owner")
     return {"org": name, "owner": account.name}

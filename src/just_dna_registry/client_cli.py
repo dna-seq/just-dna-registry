@@ -420,6 +420,85 @@ def merge_accounts(
     typer.echo(f"✓ merged {source} into {into}")
 
 
+#: What each refusal of a rename means at the terminal, keyed on the server's `error` code.
+_RENAME_REFUSALS: dict[str, str] = {
+    "site_admin_required": "renaming another account needs a site-admin token",
+    "account_not_found": "no account answers to that handle",
+    "org_rename_is_admin_only": "an org is renamed by a site admin; ask one (--account ORG)",
+    "account_taken": "that handle is taken, now or as somebody's retired handle",
+    "invalid_account": "that is not a valid handle (lowercase letters, digits and hyphens)",
+    "alias_limit_reached": "this account already holds the most retired handles self-service allows",
+    "test_data_on_prod": "production refuses a test- handle; pass --allow-test-data if you mean it",
+}
+
+
+def _rename_error(exc: RegistryError) -> str | None:
+    detail = exc.detail
+    code = detail.get("error") if isinstance(detail, dict) else detail
+    reason = _RENAME_REFUSALS.get(code) if isinstance(code, str) else None
+    if reason is not None and isinstance(detail, dict) and detail.get("errors"):
+        reason += f" ({detail['errors'][0]})"
+    return reason
+
+
+def _echo_rename(report: dict) -> None:
+    typer.echo(f"  {report['account']} → {report['name']}")
+    for field in ("aliases", "versions", "versions_unattributed", "conflicts", "modules",
+                  "namespaces_kept", "failed", "warnings"):
+        value = report.get(field) or []
+        if value:
+            typer.echo(f"  {field:<22} {len(value)}: {', '.join(value[:8])}"
+                       + (f" (+{len(value) - 8} more)" if len(value) > 8 else ""))
+
+
+@app.command("rename-account")
+def rename_account(
+    name: str = typer.Argument(..., help="The new handle"),
+    account: str | None = typer.Option(
+        None, "--account", help="Rename this account instead of your own (site-admin token)"
+    ),
+    apply: bool = typer.Option(False, "--apply", help="Act; without it, report only"),
+    allow_test_data: bool = typer.Option(False, "--allow-test-data"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Rename your handle (or, with --account and a site-admin token, any account's) to NAME. The
+    old handle stays reserved to the account, and every manifest naming it is amended. Reports only
+    unless --apply; running it again finishes any version a storage error left behind."""
+
+    def call(c: RegistryClient, act: bool) -> dict:
+        if account is None:
+            return c.rename_account(name, dry_run=not act, allow_test_data=allow_test_data)
+        return c.admin_rename_account(account, name, apply=act, allow_test_data=allow_test_data)
+
+    with _client(url, token, need_token=True) as c:
+        try:
+            plan = call(c, False)
+        except RegistryError as exc:
+            reason = _rename_error(exc)
+            if reason is None:
+                raise
+            typer.secho(f"✗ cannot rename to {name}: {reason}", fg=typer.colors.RED)
+            raise typer.Exit(code=1) from exc
+        _echo_rename(plan)
+        if not apply:
+            typer.echo("dry run: nothing changed (pass --apply to act)")
+            return
+        if not yes:
+            typer.confirm(
+                f"Rename {plan['account']} to {name}? {plan['account']} stays reserved to the "
+                f"account and cannot be given to anyone else.",
+                abort=True,
+            )
+        done = call(c, True)
+    _echo_rename(done)
+    if done.get("failed"):
+        typer.secho(f"! {len(done['failed'])} version(s) not amended; run the same command again",
+                    fg=typer.colors.YELLOW)
+    typer.echo(f"✓ {done['account']} is now {done['name']} ({done['amended']} manifest(s) amended)")
+
+
 @app.command("find-by-hash")
 def find_by_hash(
     digest: str | None = typer.Argument(None, help="sha256:… artifact digest"),

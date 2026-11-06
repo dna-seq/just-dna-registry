@@ -3,6 +3,7 @@ Data-access layer over the SQLite catalog. Raw SQL lives here; higher layers map
 models. Everything is a projection of `manifest.json`, so ingest rebuilds rows from a manifest.
 """
 
+import json
 import sqlite3
 from typing import Any
 
@@ -21,6 +22,22 @@ _SORT_SQL: dict[str, str] = {
 }
 
 
+class HandleReserved(ValueError):
+    """A handle an account gave up by renaming (0.28). It stays that account's for good, so a door
+    that would hand it to anyone else, or mint it afresh, refuses and names the current handle."""
+
+    def __init__(self, name: str, current: str) -> None:
+        super().__init__(f"{name!r} was renamed to {current!r}")
+        self.name = name
+        self.current = current
+
+
+#: The guard every door that writes `accounts.name` puts on its own statement: no constraint spans
+#: `accounts` and `account_aliases`, so the check and the write are one statement, never a read and
+#: a later write another thread can slip between.
+_NOT_AN_ALIAS = "NOT EXISTS (SELECT 1 FROM account_aliases WHERE name = ?)"
+
+
 class Repository:
     """Thin repository around a SQLite connection."""
 
@@ -30,21 +47,157 @@ class Repository:
     # ── Accounts / namespaces / keys ────────────────────────────────────────
 
     def create_account(self, name: str) -> int:
+        """The account named `name`, created if no account holds it. An existing name returns its
+        id (that is how `issue-key` mints a second key); a retired one raises `HandleReserved`."""
         cur = self.conn.execute(
-            "INSERT OR IGNORE INTO accounts(name) VALUES (?)", (name,)
+            f"INSERT OR IGNORE INTO accounts(name) SELECT ? WHERE {_NOT_AN_ALIAS}", (name, name)
         )
         self.conn.commit()
-        if cur.lastrowid:
-            return cur.lastrowid
+        if cur.rowcount:
+            return int(cur.lastrowid)
         row = self.conn.execute("SELECT id FROM accounts WHERE name = ?", (name,)).fetchone()
+        if row is None:
+            raise self._reserved(name)
         return int(row["id"])
 
     def create_account_with_install_id(self, name: str, install_id: str) -> int:
         cur = self.conn.execute(
-            "INSERT INTO accounts(name, install_id) VALUES (?, ?)", (name, install_id)
+            f"INSERT INTO accounts(name, install_id) SELECT ?, ? WHERE {_NOT_AN_ALIAS}",
+            (name, install_id, name),
         )
         self.conn.commit()
+        if not cur.rowcount:
+            raise self._reserved(name)
         return int(cur.lastrowid)
+
+    def _reserved(self, name: str) -> HandleReserved:
+        row = self.conn.execute(
+            "SELECT a.name FROM account_aliases x JOIN accounts a ON a.id = x.account_id "
+            "WHERE x.name = ?",
+            (name,),
+        ).fetchone()
+        return HandleReserved(name, row["name"] if row else "?")
+
+    def handle_taken(self, name: str) -> int | None:
+        """The account holding `name`, as its current handle or as one it renamed away from."""
+        row = self.conn.execute(
+            "SELECT id FROM accounts WHERE name = ? "
+            "UNION ALL SELECT account_id FROM account_aliases WHERE name = ? LIMIT 1",
+            (name, name),
+        ).fetchone()
+        return int(row[0]) if row else None
+
+    def resolve_handle(self, name: str) -> sqlite3.Row | None:
+        """`account_by_name`, following a retired handle to the account that holds it now. For the
+        places a handle is *looked up* (an old link, `?owner=`, an admin route), never for a door
+        that creates one."""
+        row = self.account_by_name(name)
+        if row is not None:
+            return row
+        return self.conn.execute(
+            "SELECT a.id, a.name, a.install_id FROM account_aliases x "
+            "JOIN accounts a ON a.id = x.account_id WHERE x.name = ?",
+            (name,),
+        ).fetchone()
+
+    def aliases_of(self, account_id: int) -> list[str]:
+        """The handles this account renamed away from, oldest first."""
+        return [
+            r["name"] for r in self.conn.execute(
+                "SELECT name FROM account_aliases WHERE account_id = ? ORDER BY rowid",
+                (account_id,),
+            ).fetchall()
+        ]
+
+    def current_handle(self, name: str) -> str:
+        """`name` if it is nobody's retired handle, else the current handle of the account that
+        retired it. What `_finalize` stamps as `manifest.owner`, so neither a request that read the
+        handle before a rename landed nor `registry upgrade` carrying a predecessor's `owner` can
+        mint a retired name onto a new version."""
+        row = self.conn.execute(
+            "SELECT a.name FROM account_aliases x JOIN accounts a ON a.id = x.account_id "
+            "WHERE x.name = ?",
+            (name,),
+        ).fetchone()
+        return row["name"] if row else name
+
+    def rename_handle(self, account_id: int, new: str, *, retired_at: str) -> str:
+        """Give account `account_id` the handle `new` and keep the old one as its alias; returns the
+        old handle. One transaction, so run it on a connection of its own (as `merge_accounts` is).
+
+        Renaming back to one of the account's own aliases reclaims it (the alias row goes, the name
+        it held becomes an alias in its place). Another account's alias raises `HandleReserved`;
+        another account's current handle raises `sqlite3.IntegrityError` from `accounts.name UNIQUE`.
+        """
+        c = self.conn
+        c.commit()
+        row = c.execute("SELECT name FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        if row is None:
+            raise LookupError(account_id)
+        old = row["name"]
+        try:
+            c.execute(
+                "DELETE FROM account_aliases WHERE name = ? AND account_id = ?", (new, account_id)
+            )
+            cur = c.execute(
+                f"UPDATE accounts SET name = ? WHERE id = ? AND {_NOT_AN_ALIAS}",
+                (new, account_id, new),
+            )
+            if not cur.rowcount:
+                raise self._reserved(new)
+            c.execute(
+                "INSERT INTO account_aliases(name, account_id, retired_at) VALUES (?, ?, ?)",
+                (old, account_id, retired_at),
+            )
+        except (sqlite3.IntegrityError, HandleReserved):
+            c.rollback()
+            raise
+        c.commit()
+        return old
+
+    def versions_owned_as(self, names: list[str]) -> list[dict[str, Any]]:
+        """Every version whose stored manifest's `owner` is one of `names`, with `published_by`
+        beside it. Read from `manifest_json`, which is the only place `owner` lives per version.
+
+        Keyed on the manifest and not on `published_by` because `registry upgrade` publishes with
+        no `published_by`: every successor a sweep mints has it `NULL`, and after a recompile that
+        is the latest version of nearly every module."""
+        wanted = set(names)
+        out: list[dict[str, Any]] = []
+        for r in self.conn.execute(
+            "SELECT m.namespace, m.name, v.version, v.published_by, v.manifest_json "
+            "FROM versions v JOIN modules m ON m.id = v.module_id "
+            "ORDER BY m.namespace, m.name, v.version"
+        ):
+            owner = json.loads(r["manifest_json"]).get("owner")
+            if owner in wanted:
+                out.append({
+                    "namespace": r["namespace"], "name": r["name"], "version": r["version"],
+                    "published_by": r["published_by"], "owner": owner,
+                })
+        return out
+
+    def modules_owned_as(self, names: list[str]) -> list[str]:
+        """`ns/name` of every module whose `modules.owner` projection is one of `names`."""
+        marks = ",".join("?" * len(names))
+        return [
+            f"{r['namespace']}/{r['name']}" for r in self.conn.execute(
+                f"SELECT namespace, name FROM modules WHERE owner IN ({marks}) "
+                "ORDER BY namespace, name",
+                names,
+            ).fetchall()
+        ]
+
+    def set_modules_owner(self, names: list[str], new: str) -> int:
+        """Point `modules.owner` at `new` wherever it names one of `names`. Direct rather than a
+        re-ingest: the column is the latest manifest's `owner` by construction, and `upsert_module`
+        would also move `updated_at`, which a rename is not."""
+        marks = ",".join("?" * len(names))
+        cur = self.conn.execute(
+            f"UPDATE modules SET owner = ? WHERE owner IN ({marks})", (new, *names)
+        )
+        self.conn.commit()
+        return cur.rowcount
 
     def account_by_install_id(self, install_id: str) -> sqlite3.Row | None:
         return self.conn.execute(
@@ -334,12 +487,24 @@ class Repository:
             "namespaces": rows("SELECT name, account_id, featured, blacklisted FROM namespaces"),
             "members": rows("SELECT namespace, account_id, role FROM namespace_members"),
             "org_members": rows("SELECT org_id, account_id, role FROM org_members"),
+            # 0.28: a restore that dropped these would free every retired handle for the taking.
+            "aliases": rows("SELECT name, account_id, retired_at FROM account_aliases"),
         }
 
     def import_auth(self, data: dict[str, list[dict]]) -> dict[str, int]:
         """Restore an `export_auth()` payload (idempotent upsert; preserves account ids). Returns
         per-table counts. Existing rows with the same id/key are overwritten (accounts/namespaces)
-        or ignored (keys/members)."""
+        or ignored (keys/members/aliases).
+
+        Refuses, before writing anything, an account whose name the target holds as **another**
+        account's retired handle (`HandleReserved`): importing it would hand the name to somebody
+        new, which is the one thing an alias exists to prevent."""
+        for a in data.get("accounts", []):
+            held = self.conn.execute(
+                "SELECT account_id FROM account_aliases WHERE name = ?", (a["name"],)
+            ).fetchone()
+            if held is not None and int(held["account_id"]) != int(a["id"]):
+                raise self._reserved(a["name"])
         for a in data.get("accounts", []):
             self.conn.execute(
                 "INSERT OR REPLACE INTO accounts(id, name, email, display_name, avatar_url, "
@@ -370,10 +535,16 @@ class Repository:
                 "VALUES (:org_id, :account_id, :role)",
                 om,
             )
+        for al in data.get("aliases", []):  # after accounts: the FK names them
+            self.conn.execute(
+                "INSERT OR IGNORE INTO account_aliases(name, account_id, retired_at) "
+                "VALUES (:name, :account_id, :retired_at)",
+                al,
+            )
         self.conn.commit()
         return {
             key: len(data.get(key, []))
-            for key in ("accounts", "api_keys", "namespaces", "members", "org_members")
+            for key in ("accounts", "api_keys", "namespaces", "members", "org_members", "aliases")
         }
 
     def reset_catalog(self, *, keep_auth: bool = True) -> None:
@@ -385,7 +556,8 @@ class Repository:
         for table in catalog:
             self.conn.execute(f"DELETE FROM {table}")
         if not keep_auth:
-            for table in ("org_members", "namespace_members", "api_keys", "namespaces", "accounts"):
+            for table in ("org_members", "namespace_members", "api_keys", "namespaces",
+                          "account_aliases", "accounts"):
                 self.conn.execute(f"DELETE FROM {table}")
         self.conn.commit()
 

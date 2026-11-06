@@ -800,10 +800,27 @@ running server, and one direction arms a delete endpoint on production data.
   leaked admin key can yank but cannot destroy: hard delete stays the ops CLI with its backup guard.
   The flag is read from the row per request, never from a JWT claim, so a revocation binds live
   sessions.
-  The one act no role can answer, **merging accounts**, is the one site-admin route
-  (`api/routers/admin.py`, logic in `services/accounts.py`, shared with `registry merge-accounts`).
-  It moves and deletes nothing except the lost account's keys, and its dry run is the same statements
-  rolled back, so a report can never disagree with the apply it predicts.
+  The acts no role can answer, **merging accounts** and **renaming another account's handle**, are the
+  site-admin routes (`api/routers/admin.py`, logic in `services/accounts.py`, shared with
+  `registry merge-accounts` / `rename-account`). The merge moves and deletes nothing except the lost
+  account's keys, and its dry run is the same statements rolled back, so a report can never disagree
+  with the apply it predicts.
+- **A handle is a name with a history (0.28).** An account renames itself (`POST /auth/rename`), a
+  site admin renames any, and the old name goes into `account_aliases` for good. Four things keep that
+  true, and a fifth door would have to keep them too. **Every door that creates a handle refuses an
+  alias** (register, org create on the route and the CLI, `issue-key`, `import-keys`), and the check is
+  inside the write statement (`_NOT_AN_ALIAS`), because no constraint spans the two tables and a read
+  followed by an insert is a race. **Every place a handle is looked up follows one** (`resolve_handle`:
+  `?owner=`, `/orgs/{org}`, the admin route), and never shows it as current. **The handle is read from
+  the row per request**, as `site_admin` is, so a JWT's `sub` is the name it was issued under and
+  nothing reads it for identity. And **`_finalize` stamps `owner` through the aliases**, because two
+  callers hand it a name that may have been retired since: a route that read the handle at request
+  start, and `registry upgrade`, which carries the predecessor's stored `owner`. The amendment of
+  stored manifests is keyed on `manifest.owner`, never on `published_by`, because `upgrade_version`
+  publishes with no `published_by` and its successors are the latest version of nearly every module;
+  that key is also what makes re-running a rename finish one a storage error interrupted. Not done
+  here, said so it is not assumed: `merge-accounts` moves `published_by` and leaves the lost account's
+  handle in `owner` on its manifests, and a namespace is never renamed (identity is immutable).
 - **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
   guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
 

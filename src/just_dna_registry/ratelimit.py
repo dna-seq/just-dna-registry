@@ -91,7 +91,7 @@ class RateLimiter:
 #: Every bucket the service defines. Named here (rather than only inside `default_limiter`) so a
 #: test can assert the set matches what the routes actually ask for.
 CATEGORIES: frozenset[str] = frozenset(
-    {"publish", "download", "search", "social", "validate", "enrich", "draft", "hint"}
+    {"publish", "download", "search", "social", "validate", "enrich", "draft", "hint", "rename"}
 )
 
 
@@ -99,7 +99,7 @@ def default_limiter(settings) -> RateLimiter:
     """Build a limiter from settings.
 
     Defaults: publish 10/h, download 1000/h, search 60/min, social 30/min, validate 60/h, enrich 5/h,
-    draft 10/h, hint 600/h.
+    draft 10/h, hint 600/h, rename 5/h.
 
     The two pre-flight buckets are sized by who pays. `validate` costs server CPU — cheaper than a
     publish, since nothing is stored, but not free: it runs the real compiler over uploaded CSVs.
@@ -126,6 +126,8 @@ def default_limiter(settings) -> RateLimiter:
             # this dict exactly, which is why the guard that pinned the two to each other never
             # noticed; it now reads the route side off the app.
             "hint": (settings.rate_hint_per_hour, settings.rate_hint_per_hour / 3600.0),
+            # A self-service rename rewrites one manifest per version the account published.
+            "rename": (settings.rate_rename_per_hour, settings.rate_rename_per_hour / 3600.0),
         },
         enabled=settings.rate_limit_enabled,
     )

@@ -60,11 +60,19 @@ def pagination(
     return Pagination(page=page, per_page=min(resolved, settings.max_per_page))
 
 
-def _account(repo: Repository, account_id: int, name: str) -> Account:
-    """The one place a credential becomes an `Account`. `site_admin` is read from the row on every
-    request, for a static key and a JWT alike, so revoking it does not wait for a session to expire."""
+def _account(repo: Repository, account_id: int) -> Account | None:
+    """The one place a credential becomes an `Account`, or `None` when its account is gone.
+
+    Everything is read from the row on every request, for a static key and a JWT alike: `site_admin`,
+    so revoking it does not wait for a session to expire, and since 0.28 the **handle**, so a session
+    minted before a rename publishes under the new one. A JWT's `sub` still carries the handle it was
+    issued under and nothing reads it for identity; `account_id` is the claim."""
+    row = repo.get_account(account_id)
+    if row is None:
+        return None
     return Account(
-        account_id, name, repo.namespaces_for_account(account_id), repo.is_site_admin(account_id)
+        account_id, row["name"], repo.namespaces_for_account(account_id),
+        repo.is_site_admin(account_id),
     )
 
 
@@ -87,14 +95,14 @@ def require_account(
     token = authorization.split(" ", 1)[1].strip()
 
     row = repo.account_for_key(token)  # static API key
-    if row is not None:
-        return _account(repo, int(row["id"]), row["name"])
-
-    claims = decode_jwt(settings, token)  # optional JWT session
-    if claims is not None:
-        return _account(repo, int(claims["account_id"]), claims["sub"])
-
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
+    found = _account(repo, int(row["id"])) if row is not None else None
+    if found is None:
+        claims = decode_jwt(settings, token)  # optional JWT session
+        if claims is not None:
+            found = _account(repo, int(claims["account_id"]))
+    if found is None:  # an unknown token, or a session whose account no longer exists
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
+    return found
 
 
 def optional_account(
@@ -112,10 +120,10 @@ def optional_account(
     token = authorization.split(" ", 1)[1].strip()
     row = repo.account_for_key(token)
     if row is not None:
-        return _account(repo, int(row["id"]), row["name"])
+        return _account(repo, int(row["id"]))
     claims = decode_jwt(settings, token)
     if claims is not None:
-        return _account(repo, int(claims["account_id"]), claims["sub"])
+        return _account(repo, int(claims["account_id"]))
     return None
 
 

@@ -523,6 +523,65 @@ class AccountMerge(BaseModel):
     )
 
 
+class RenameSelfRequest(BaseModel):
+    """Body for `POST /auth/rename`: the caller's new handle. `dry_run` reports without acting."""
+
+    name: str
+    dry_run: bool = False
+    allow_test_data: bool = False
+
+
+class RenameAccountRequest(BaseModel):
+    """Body for `POST /admin/accounts/{account}/rename`. `apply` defaults to false, as merge's does:
+    a request that forgets it reports, and the listing is the moment to notice a wrong name."""
+
+    name: str
+    apply: bool = False
+    allow_test_data: bool = False
+
+
+class AccountRename(BaseModel):
+    """What renaming a handle changed (or, on a dry run, would change).
+
+    `owner` is outside `artifact.digest`, `content_signature` and the signature, so amending it on a
+    published manifest moves no identity and breaks no verification."""
+
+    account: str = Field(description="The handle before this request")
+    name: str = Field(description="The handle after it")
+    applied: bool
+    aliases: list[str] = Field(
+        description="Retired handles the account holds after the rename; each stays reserved to it"
+    )
+    versions: list[str] = Field(
+        description="`ns/name@version` whose manifest `owner` is (or would be) amended to `name`"
+    )
+    versions_unattributed: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Of `versions`, those with no recorded publisher (`registry upgrade` successors, and "
+            "versions from before 0.9): amended because their `owner` names this account"
+        ),
+    )
+    conflicts: list[str] = Field(
+        default_factory=list,
+        description="Versions whose `owner` names this account but another account published: left as they are",
+    )
+    modules: list[str] = Field(description="`ns/name` whose card `owner` changes")
+    namespaces_kept: list[str] = Field(
+        default_factory=list,
+        description="Namespaces spelled like a handle of this account: a namespace is never renamed",
+    )
+    amended: int = Field(0, description="Versions amended by this request (0 on a dry run)")
+    failed: list[str] = Field(
+        default_factory=list,
+        description="Versions whose amendment failed; running the same rename again finishes them",
+    )
+    warnings: list[str] = Field(default_factory=list)
+    snapshot: str | None = Field(
+        default=None, description="Backup file name taken before an applied rename (name only)"
+    )
+
+
 class CreateOrgRequest(BaseModel):
     """Body for `POST /orgs` — create an org account and seed the caller as its owner."""
 

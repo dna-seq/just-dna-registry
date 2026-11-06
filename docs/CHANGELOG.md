@@ -8,8 +8,21 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-**Client surface:** unchanged. `whoami()` gains a `site_admin` field and `merge_accounts()` is
-new; no existing method moves.
+**Client surface:** unchanged. `whoami()` gains a `site_admin` field; `merge_accounts()`,
+`rename_account()` and `admin_rename_account()` are new; no existing method moves.
+
+### An account can rename its handle, and keeps the old one
+
+`POST /auth/rename` (`RegistryClient.rename_account`, `registry-client rename-account NEW`) renames the
+caller's handle; a site admin renames any account, an org's included, through
+`POST /admin/accounts/{account}/rename` (`admin_rename_account`, `registry rename-account OLD NEW`). The
+old handle stays reserved to the account at every door that creates one, and old links (`?owner=`, an
+org's routes) follow it to the current name. `owner` is amended on every stored manifest naming the
+account; it is outside the digest and the signature, so every published version still verifies. A
+session issued before a rename acts under the new handle, and a version published after it, by an old
+session or by `registry upgrade`, carries the new one. Running the same rename again finishes a sweep a
+storage error interrupted. Self-service is capped at three retired handles. `export-keys` and
+`import-keys` carry the retired handles, and an import that would hand one to another account refuses.
 
 ### Format 0.8's six new spec tables are carried (pre-built against upstream's 0.8 branch)
 

@@ -17,11 +17,11 @@ from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_registry.backup import create_backup, list_backups, restore_backup
 from just_dna_registry.config import DEFAULT_PORTS, VALID_MODES, Settings, get_settings
-from just_dna_registry.db.repository import Repository
+from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect, init_db
-from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
+from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
-from just_dna_registry.services.accounts import merge_accounts
+from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.publish import PublishError
@@ -219,7 +219,12 @@ def issue_key(
     conn = connect(settings.db_path)
     init_db(conn)
     repo = Repository(conn)
-    account_id = repo.create_account(account)
+    try:
+        account_id = repo.create_account(account)
+    except HandleReserved as exc:
+        # Never a new account wearing the old name: the operator almost certainly meant the person.
+        typer.echo(f"{account} was renamed to {exc.current}; issue the key to {exc.current}")
+        raise typer.Exit(code=1) from exc
     repo.set_account_type(account_id, account_type)
     if email is not None or display_name is not None or avatar_url is not None:
         repo.set_account_profile(
@@ -300,6 +305,63 @@ def merge_accounts_command(
     typer.echo(f"merged {source} into {into}")
 
 
+@app.command("rename-account")
+def rename_account_command(
+    account: str = typer.Argument(..., help="The account's handle (a retired one resolves)"),
+    new: str = typer.Argument(..., help="The new handle"),
+    apply: bool = typer.Option(False, "--apply", help="Act; without it, report only"),
+    allow_test_data: bool = typer.Option(
+        False, "--allow-test-data", help="Give a test- handle on production deliberately"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Rename ACCOUNT to NEW: the old handle stays reserved to it, and `owner` is amended on every
+    stored manifest naming any handle of the account (outside the digest; nothing changes identity).
+    Reports only unless --apply; snapshots the DB first. Running it again finishes a sweep that a
+    storage error interrupted. Not capped by `max_handle_aliases` (that is the self-service limit)."""
+    settings = get_settings()
+    _echo_mode(settings)
+    repo = _open_existing_db(settings)
+    storage = _storage(settings)
+
+    def run(act: bool) -> AccountRename:
+        try:
+            return rename_account(
+                repo, storage, settings, account, new,
+                apply=act, allow_test_data=allow_test_data, by_admin=True,
+            )
+        except LookupError as exc:
+            typer.echo(f"account not found: {account}")
+            raise typer.Exit(code=1) from exc
+        except RenameRefused as exc:
+            typer.echo(f"cannot rename {account} to {new}: {exc.code}: {exc}")
+            raise typer.Exit(code=1) from exc
+
+    plan = run(False)
+    for field, value in plan.model_dump(
+        exclude={"account", "name", "applied", "amended", "snapshot"}
+    ).items():
+        typer.echo(f"  {field:<22} {value}")
+    if not apply:
+        typer.echo(f"dry run: nothing changed (pass --apply to rename {plan.account} to {new})")
+        return
+    if not yes:
+        typer.confirm(
+            f"Rename {plan.account} to {new}? {plan.account} stays reserved to the account.",
+            abort=True,
+        )
+    done = run(True)
+    if done.snapshot is None:
+        typer.secho("! no pre-flight snapshot taken (auto-backup disabled)", fg=typer.colors.YELLOW)
+    else:
+        typer.secho(f"snapshot: {done.snapshot}", fg=typer.colors.GREEN)
+    for line in done.failed:
+        typer.secho(f"✗ {line}", fg=typer.colors.RED)
+    if done.failed:
+        typer.echo("run the same command again to finish the versions above")
+    typer.echo(f"renamed {done.account} to {done.name}: {done.amended} manifest(s) amended")
+
+
 @app.command("export-keys")
 def export_keys(
     out: Path = typer.Option(None, "--out", "-o", help="Write JSON here (default: stdout)"),
@@ -326,7 +388,12 @@ def import_keys(path: Path = typer.Argument(..., help="JSON file produced by exp
     settings = get_settings()
     conn = connect(settings.db_path)
     init_db(conn)  # ensure tables exist before importing
-    counts = Repository(conn).import_auth(json.loads(path.read_text(encoding="utf-8")))
+    try:
+        counts = Repository(conn).import_auth(json.loads(path.read_text(encoding="utf-8")))
+    except HandleReserved as exc:
+        typer.echo(f"refused, nothing imported: {exc} on this registry, so the export would hand "
+                   f"that handle to another account")
+        raise typer.Exit(code=1) from exc
     typer.echo("imported " + ", ".join(f"{n} {k}" for k, n in counts.items()))
 
 
@@ -425,7 +492,7 @@ def create_org(name: str) -> None:
     """Create an org account (ops). Add members with `add-org-member`."""
     settings = get_settings()
     repo = Repository(connect(settings.db_path))
-    if repo.account_by_name(name) is not None:
+    if repo.handle_taken(name) is not None:  # a current handle or a retired one (0.28)
         typer.echo(f"name already taken: {name}")
         raise typer.Exit(code=1)
     org_id = repo.create_account(name)

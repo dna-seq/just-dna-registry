@@ -768,7 +768,10 @@ def _finalize(
             manifest.identity.namespace = namespace
             manifest.identity.version = version
             manifest.identity.canonical_id = canonical_id(namespace, name, version)
-            manifest.owner = owner
+            # Through the aliases (0.28): a route that read the handle before a rename landed, and
+            # `registry upgrade` carrying a predecessor's stored `owner`, both hand over a name that
+            # may be retired by now, and a version published today must carry the current one.
+            manifest.owner = repo.current_handle(owner)
             manifest.published_at = now_iso()
             if settings.signing_key is not None:
                 # Sign the byte identity (SPEC §5); clients pin the pubkey served at /pubkey.

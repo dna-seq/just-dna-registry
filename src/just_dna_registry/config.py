@@ -339,6 +339,10 @@ class Settings(BaseSettings):
     allow_self_register: bool = True
     install_id_difficulty: int = 20
     namespaces_per_account: int = 5
+    # A rename keeps the old handle reserved to the account for good (0.28), so an uncapped rename
+    # is a way to hoard handles. A self-service rename refuses once the account would hold more than
+    # this many retired handles; a site admin is not capped.
+    max_handle_aliases: int = 3
     lookup_batch_max: int = 256  # cap on digests per batch /modules/lookup
 
     # Rate limiting (SPEC §7), per caller (API key or IP) × category. In-memory token buckets.
@@ -360,6 +364,9 @@ class Settings(BaseSettings):
     # The hint proxy (0.25). Burst control only — the real bound on egress is the per-upstream pace
     # ledger below, because a request bucket caps one caller and is unbounded in the number of them.
     rate_hint_per_hour: float = 600
+    # Self-service handle renames (0.28). Each one rewrites every manifest the account published,
+    # one storage commit per version, so it is priced like a publish rather than like a profile edit.
+    rate_rename_per_hour: float = 5
 
     # --- The hint proxy -------------------------------------------------------------------------
     # **The anonymous tier is the product, not a consolation prize.** A thin client with no Ensembl

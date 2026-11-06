@@ -22,6 +22,16 @@ CREATE TABLE IF NOT EXISTS accounts (
     name       TEXT NOT NULL UNIQUE
 );
 
+-- A handle's history (0.28): every name an account gave up by renaming. A name is taken while it
+-- is in `accounts.name` **or** here, and nothing frees it short of deleting the account, so an old
+-- link, an old `owner` string and a stale session can never come to mean somebody else. No
+-- constraint spans the two tables; the doors check both in one guarded statement.
+CREATE TABLE IF NOT EXISTS account_aliases (
+    name       TEXT PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    retired_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS api_keys (
     key        TEXT PRIMARY KEY,
     account_id INTEGER NOT NULL REFERENCES accounts(id)
@@ -133,6 +143,7 @@ CREATE INDEX IF NOT EXISTS idx_version_categories ON version_categories(category
 CREATE INDEX IF NOT EXISTS idx_namespace_members_account ON namespace_members(account_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_account ON org_members(account_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_module ON reviews(module_id);
+CREATE INDEX IF NOT EXISTS idx_account_aliases_account ON account_aliases(account_id);
 """
 
 
