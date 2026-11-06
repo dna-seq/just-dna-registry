@@ -701,8 +701,18 @@ serve it, is unblocked earlier. Rejected: the cut waits for the whole list below
 5. **Publish recovery in the client** (*Decouple a large publish from its connection*, the client-side
    candidate): on a dropped connection, compare the server's stored `inputs[].sha256` with what was sent,
    with a stated deadline. Additive; the job route stays the later, real fix.
+   **Built on `0.28` (43dac96, 2026-11-06).** `publish(recover_within=600)`: authored tables compared
+   strictly, `module_spec.yaml` not required (the server rewrites its `module:` block on all 27 sample
+   specs in `data/input/`); connect and write errors re-raise at once; `import_module` left out, since a
+   parquet-only archive has no inputs to compare.
 6. **The server reads the `.env` where it runs** (*`config.py` loads the `.env` above the installed
    package*): lands only with its `docs/UPGRADE.md` step checking each box's launch directory first.
+   **Built on `0.28` (c84ec69, 2026-11-06), by a different route than that line asked.** The working
+   directory's `.env` wins, and the package walk stays as a fallback when the working directory has none,
+   logged at boot (`.env: fallback`). So no box can lose its configuration, and the check moves to after
+   the deploy (UPGRADE.md step 2: read the boot line) instead of before it, which needed access to the boxes
+   this seat does not have. Rejected: flipping to `usecwd=True` outright (silent defaults on a box that
+   relied on the walk). The fallback retires when neither box logs it.
 7. **Rename an account's handle**, as filed (self-service and site admin).
 8. **Verification records name their witness** (M5): carry `independence`, and say beside each check
    whether its agreement counts as evidence. Fits the strategy's "not a judge of the science".
