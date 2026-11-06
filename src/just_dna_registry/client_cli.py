@@ -19,11 +19,12 @@ from dotenv import find_dotenv, load_dotenv
 from just_dna_format.identity import parse_version
 from just_dna_format.manifest import read_manifest, write_manifest
 
-from just_dna_registry.client import RegistryClient, RegistryError
+from just_dna_registry import columns
+from just_dna_registry.client import RegistryClient, RegistryError, sent_input_hashes
 from just_dna_registry.installid import generate_install_id
 from just_dna_registry.specfiles import DERIVED_NOTE_FILE, DRAFT_REPORT_FILE
 from just_dna_registry.ui import standalone
-from just_dna_registry.version import compatibility_error
+from just_dna_registry.version import VersionInfo, compatibility_error
 
 # Pick up REGISTRY_URL / REGISTRY_TOKEN from the `.env` where the command runs. `usecwd=True` is the
 # whole point: a bare `load_dotenv()` walks up from *this file*, so through 0.27.0 it found the `.env`
@@ -723,7 +724,35 @@ if __name__ == "__main__":
 # ── Pre-flight (0.11) ─────────────────────────────────────────────────────────
 
 
-def _echo_findings(report) -> None:
+def _echo_columns_added(report, spec_dir: Path) -> None:
+    """Under the advisory, the columns the caller's tables could carry that the instance's format does
+    not know yet (C3): computed here, from the schema and the two versions, never from a finding."""
+    client_format = VersionInfo.local().format
+    if not columns.available():
+        typer.secho(
+            "    (install the compiler extra to list the columns added between the two formats)",
+            fg=typer.colors.BRIGHT_BLACK,
+        )
+        return
+    added = columns.columns_added_between(
+        report.format_version, client_format,
+        [n for n in sent_input_hashes(spec_dir) if n.endswith(".csv")],
+    )
+    if not added:
+        typer.secho(
+            f"    none of your tables has a column added after {report.format_version}: "
+            f"a refused column is not explained by the skew",
+            fg=typer.colors.BRIGHT_BLACK,
+        )
+        return
+    typer.secho(f"    columns this instance ({report.format_version}) does not know yet:",
+                fg=typer.colors.YELLOW)
+    for csv, fields in added.items():
+        listed = ", ".join(f"{field} ({release})" for field, release in fields.items())
+        typer.secho(f"      {csv}: {listed}", fg=typer.colors.YELLOW)
+
+
+def _echo_findings(report, spec_dir: Path | None = None) -> None:
     # A finding the author cannot clear is marked, not hidden. `carried` (format 0.7) is the subset
     # no edit to the spec directory removes — a limit of the tier, or a fact of a source — and a
     # publisher shown twelve yellow lines with no way to tell which four are theirs goes looking for
@@ -750,6 +779,8 @@ def _echo_findings(report) -> None:
     # `check`, which is the whole reason the two call one renderer.
     if report.format_advisory:
         typer.secho(f"  ! {report.format_advisory}", fg=typer.colors.YELLOW)
+        if spec_dir is not None:
+            _echo_columns_added(report, spec_dir)
 
 
 @app.command()
@@ -770,7 +801,7 @@ def validate(
     """
     with _client(url, token, need_token=True) as c:
         report = c.validate(namespace, name, spec_dir, strict=strict, pack=pack)
-    _echo_findings(report)
+    _echo_findings(report, spec_dir)
     typer.echo(
         f"  {report.stats.variant_count} variant(s), {report.stats.gene_count} gene(s)"
         f"  signature={(report.content_signature or 'n/a')[:23]}…"
@@ -1226,7 +1257,7 @@ def check(
             )
             raise typer.Exit(code=1) from None
 
-    _echo_findings(report.validation)
+    _echo_findings(report.validation, spec_dir)
     if report.skipped_reason:
         typer.secho(f"  enrichment skipped: {report.skipped_reason}", fg=typer.colors.YELLOW)
     e = report.enrichment

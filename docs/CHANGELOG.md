@@ -13,6 +13,15 @@ now return the version that landed instead of raising, after waiting up to that 
 gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
 new; no other method moves.
 
+### `registry-client validate` and `check` name the columns a behind instance does not know
+
+When the server's `format_advisory` says your `just-dna-format` is newer within one minor, the CLI now lists,
+for each table you sent, the columns that first appeared after the server's format (S18, S21, C3): for a
+0.6.1 instance and a 0.6.6 client, `studies.csv: curator (0.6.5)`. A refused column in the list means the
+instance is behind; one in no list is a typo. Computed on the client from upstream's schema
+(`field_first_seen`, `model_for`), never from the error text; it needs the compiler extra, and says so
+when it is missing.
+
 ### A verification check says whether its agreement counts
 
 Format 0.8's verification records name their witness (RM292). The module detail carries
