@@ -96,6 +96,18 @@ member a break. Keep no copy of any of them here. On the enricher the floor is a
 rather than a symbol we import: `caches.CACHE_LANES` is upstream's list of every snapshot lane and
 `prepare_caches` is how they are provisioned — see *Cache lanes* below.
 
+**0.8 is a coordinated cut too, and what it adds to carry is reading a vocabulary by member and a cache
+that is present but from the wrong release.** All three tiers floor at 0.8.0 (the reasons are beside the
+pins in `pyproject.toml`): a 0.7 reader refuses 0.8 output, through new warning codes, a `toolchain`
+change kind, four new `VerificationRecord` fields and new `resolution.csv` columns, so the server,
+`registry-client` and the console move together. Two habits it asked for. **Read an upstream vocabulary
+by member, with *cannot say* for anything else**: `agreement_is_evidence` maps `independent` and
+`self_consistent` and answers `None` for an unstated value or a member added later, never a guess;
+`QUIET_DRIFT` is the same rule from the other side (an arm we do not name holds). **A snapshot can be
+present and still wrong**: 0.8's Ensembl lane moved repositories (RM372), a 0.7 cache still reads as
+present, and `warm-caches` leaves a present lane alone, so the operator pulls it (UPGRADE.md step 1) and
+`registry upgrade` checks the pull record before re-deriving anything.
+
 **And having read one, be willing to say it is not load-bearing. `0.6.4` is the first enricher floor
 here that is *not* hard** — one fix in upstream's ClinVar drafter, no public symbol moved, nothing this
 service runs behaving differently, and a deployment left on 0.6.3 is not broken. It is the floor
