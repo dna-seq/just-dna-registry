@@ -190,6 +190,44 @@ class VerificationCheck(BaseModel):
     source: str | None = None
     release: str | None = None
     checked_at: str | None = None
+    # Format 0.8 (RM292): the check names its witness. All four are upstream's, carried verbatim and
+    # null on a record written before 0.8.
+    checked_source: str | None = Field(
+        default=None,
+        description="Where the values the check read came from: `authored`, or the source they were "
+        "copied from. null when nothing established it.",
+    )
+    witness_source: str | None = Field(
+        default=None, description="The source(s) the values were compared against, `+`-joined."
+    )
+    independence: str | None = Field(
+        default=None,
+        description="Upstream's `independent` | `self_consistent`, derived from the two fields above; "
+        "null when either is unstated. A string, not our copy of the vocabulary: a member added "
+        "upstream must not fail this response.",
+    )
+    undecided: int | None = Field(
+        default=None,
+        description="Rows the check's tolerance left without a verdict: outside `subjects`, so an "
+        "abstention does not read as agreement. null for a check with no tolerance class.",
+    )
+    agreement_is_evidence: bool | None = Field(
+        default=None,
+        description="Ours, read off `independence`: true when the witness is independent of where the "
+        "values came from, so agreement supports them; false when the check compared a value with the "
+        "source it was copied from (`self_consistent`), where agreement proves nothing about the value "
+        "and only a disagreement says something (that the source moved); null when it cannot be said.",
+    )
+
+
+#: `independence` members whose agreement this service reports as evidence, or not. Any other value,
+#: today or added upstream later, is *cannot say*, never a guess.
+_AGREEMENT_IS_EVIDENCE: dict[str, bool] = {"independent": True, "self_consistent": False}
+
+
+def agreement_is_evidence(independence: str | None) -> bool | None:
+    """Whether a check's agreement counts as evidence for the value, from upstream's `independence`."""
+    return _AGREEMENT_IS_EVIDENCE.get(independence) if independence is not None else None
 
 
 class VerificationInfo(BaseModel):

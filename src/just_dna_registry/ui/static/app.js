@@ -1651,6 +1651,14 @@
     table.append(tb);
     return table;
   }
+  function agreementCell(c) {
+    const witness = [c.checked_source && `read ${c.checked_source}`, c.witness_source && `against ${c.witness_source}`].filter(Boolean).join(", ");
+    const undecided = c.undecided ? ` · ${fmtInt(c.undecided)} undecided` : "";
+    if (c.agreement_is_evidence === true) return h("span", {}, badge("good", "independent", witness), undecided);
+    if (c.agreement_is_evidence === false)
+      return h("span", {}, badge("muted", "self-consistent", `${witness}. Agreement with the source a value was copied from proves nothing about the value.`), undecided);
+    return h("span", { class: "faint" }, (c.independence ?? "not stated") + undecided);
+  }
   function signatureCell(signature) {
     if (!signature) return h("span", { class: "faint" }, "none (compiled before format 0.5)");
     return h(
@@ -1782,7 +1790,7 @@
             v.checks.length ? h(
               "table",
               { class: "grid small" },
-              h("thead", {}, h("tr", {}, ["check", "subjects", "findings", "skipped", "source"].map((x) => h("th", {}, x)))),
+              h("thead", {}, h("tr", {}, ["check", "subjects", "findings", "skipped", "source", "agreement"].map((x) => h("th", {}, x)))),
               h("tbody", {}, v.checks.map((c2) => h(
                 "tr",
                 {},
@@ -1790,7 +1798,8 @@
                 h("td", {}, fmtInt(c2.subjects)),
                 h("td", {}, fmtInt(c2.findings)),
                 h("td", {}, c2.skipped ? badge("warn", c2.skipped, c2.detail ?? "") : h("span", { class: "faint" }, "—")),
-                h("td", { class: "small" }, [c2.source, c2.release].filter(Boolean).join(" "))
+                h("td", { class: "small" }, [c2.source, c2.release].filter(Boolean).join(" ")),
+                h("td", { class: "small" }, agreementCell(c2))
               )))
             ) : h("p", { class: "faint small" }, "no checks recorded")
           ) : h("p", { class: "faint small" }, "This version carries no verification block.")

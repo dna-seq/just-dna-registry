@@ -8,7 +8,7 @@ import { jsonTree } from "./json";
 import { managePanel } from "./manage";
 import { renderMarkdown } from "./markdown";
 import { canPublish, isTestInstance, state } from "./state";
-import type { FileDescriptor, FilesListing, LogsListing, ModuleDetail, ModuleManifest, Review, StarStatus } from "./types";
+import type { FileDescriptor, FilesListing, LogsListing, ModuleDetail, ModuleManifest, Review, StarStatus, VerificationCheck } from "./types";
 
 type TabKey = "readme" | "versions" | "trust" | "files" | "manifest" | "reviews" | "manage";
 
@@ -125,6 +125,18 @@ function versionsTable(m: ModuleDetail, ns: string, name: string): HTMLTableElem
   return table;
 }
 
+/** Whether a check's agreement counts (format 0.8, RM292). `self_consistent` compared a value with the
+ * source it was copied from: agreement proves nothing about it. Unstated is shown as unstated. */
+function agreementCell(c: VerificationCheck): Child {
+  const witness = [c.checked_source && `read ${c.checked_source}`, c.witness_source && `against ${c.witness_source}`]
+    .filter(Boolean).join(", ");
+  const undecided = c.undecided ? ` · ${fmtInt(c.undecided)} undecided` : "";
+  if (c.agreement_is_evidence === true) return h("span", {}, badge("good", "independent", witness), undecided);
+  if (c.agreement_is_evidence === false)
+    return h("span", {}, badge("muted", "self-consistent", `${witness}. Agreement with the source a value was copied from proves nothing about the value.`), undecided);
+  return h("span", { class: "faint" }, (c.independence ?? "not stated") + undecided);
+}
+
 function signatureCell(signature: string | null): Child {
   if (!signature) return h("span", { class: "faint" }, "none (compiled before format 0.5)");
   return h("span", { class: "mono", title: signature }, shortHash(signature, 24),
@@ -196,10 +208,11 @@ function trustPanel(m: ModuleDetail): HTMLDivElement {
         v ? h("div", { class: "stack" },
           kv([["closed", yesNo(v.closed)], ["closed by", v.closed_by], ["closed at", v.closed_at], ["producer", v.producer], ["produced at", v.produced_at]]),
           v.checks.length
-            ? h("table", { class: "grid small" }, h("thead", {}, h("tr", {}, ["check", "subjects", "findings", "skipped", "source"].map((x) => h("th", {}, x)))),
+            ? h("table", { class: "grid small" }, h("thead", {}, h("tr", {}, ["check", "subjects", "findings", "skipped", "source", "agreement"].map((x) => h("th", {}, x)))),
               h("tbody", {}, v.checks.map((c) => h("tr", {}, h("td", { class: "mono" }, c.check), h("td", {}, fmtInt(c.subjects)), h("td", {}, fmtInt(c.findings)),
                 h("td", {}, c.skipped ? badge("warn", c.skipped, c.detail ?? "") : h("span", { class: "faint" }, "—")),
-                h("td", { class: "small" }, [c.source, c.release].filter(Boolean).join(" "))))))
+                h("td", { class: "small" }, [c.source, c.release].filter(Boolean).join(" ")),
+                h("td", { class: "small" }, agreementCell(c))))))
             : h("p", { class: "faint small" }, "no checks recorded"))
           : h("p", { class: "faint small" }, "This version carries no verification block.")),
       h("div", {}, h("h3", {}, "Genes"), chipList(m.stats.genes, (gene) => { location.hash = `#/${qs({ gene })}`; })),

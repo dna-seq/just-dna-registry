@@ -25,6 +25,7 @@ from just_dna_registry.models.api import (
     VerificationInfo,
     VersionSummary,
     WeightingInfo,
+    agreement_is_evidence,
 )
 
 _CARD_GENES: int = 3  # genes shown on a card; the full list lives in the manifest
@@ -222,6 +223,11 @@ def _verification(manifest: ModuleManifest | None) -> VerificationInfo | None:
                 source=record.source,
                 release=record.release,
                 checked_at=record.checked_at,
+                checked_source=record.checked_source,
+                witness_source=record.witness_source,
+                independence=record.independence,
+                undecided=record.undecided,
+                agreement_is_evidence=agreement_is_evidence(record.independence),
             )
             for record in block.checks
         ],

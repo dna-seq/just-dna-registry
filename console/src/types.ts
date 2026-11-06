@@ -73,6 +73,11 @@ export interface VerificationCheck {
   source: string | null;
   release: string | null;
   checked_at: string | null;
+  checked_source: string | null;
+  witness_source: string | null;
+  independence: string | null;
+  undecided: number | null;
+  agreement_is_evidence: boolean | null;
 }
 
 export interface VerificationInfo {

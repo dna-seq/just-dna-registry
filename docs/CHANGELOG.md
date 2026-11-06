@@ -13,6 +13,14 @@ now return the version that landed instead of raising, after waiting up to that 
 gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
 new; no other method moves.
 
+### A verification check says whether its agreement counts
+
+Format 0.8's verification records name their witness (RM292). The module detail carries
+`checked_source`, `witness_source`, `independence` and `undecided` on each check, and
+`agreement_is_evidence` beside them: `false` for a check that compared a value with the source it was
+copied from, where agreeing proves nothing about the value. The console's verification table has an
+agreement column. Records written before 0.8 show these as not stated.
+
 ### The server reads the `.env` where it runs
 
 Through 0.27 the server and the admin CLI read the `.env` found by walking up from the installed package,

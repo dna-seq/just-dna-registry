@@ -1386,9 +1386,18 @@ reads as confidence, which is why it is never rendered alone.
 
 `verification: {closed, closed_at, closed_by, producer, produced_at, checks[]} | null` — whether
 anything the module asserts was ever *checked* (RM45). Each entry of `checks` is
-`{check, subjects, findings, skipped, detail, source, release, checked_at}`, where `skipped: null`
-means the check ran; `subjects: 0` beside a reason is *not* the same statement as `subjects: 0`
-without one.
+`{check, subjects, findings, skipped, detail, source, release, checked_at, checked_source,
+witness_source, independence, undecided, agreement_is_evidence}`, where `skipped: null` means the check
+ran; `subjects: 0` beside a reason is *not* the same statement as `subjects: 0` without one.
+
+The four witness fields are format 0.8's (RM292), carried verbatim and `null` on a record written before
+it: `checked_source` is where the values came from (`authored`, or the source they were copied from),
+`witness_source` what they were compared against, `independence` upstream's reading of the two, and
+`undecided` the rows a tolerance left without a verdict, outside `subjects`. `agreement_is_evidence` is
+ours, read off `independence` (unreleased): `true` for `independent`; `false` for `self_consistent`, a
+value compared with the source it was copied from, where agreement proves nothing about the value and
+only a disagreement says something (the source moved); `null` when it cannot be said, which includes a
+member upstream adds later.
 
 **How much of this block is the registry's word, measured rather than asserted.** A check *this
 server runs* cannot be forged — publish runs enrichment itself and its record displaces whatever
