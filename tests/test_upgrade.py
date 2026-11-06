@@ -37,6 +37,7 @@ from just_dna_registry.services.upgrade import (
     GAP_NONE,
     GAP_PATCH,
     GAP_UNKNOWN,
+    UpgradeHeld,
     _describe_variants_rewrite,
     contract_gap,
     is_latest_version,
@@ -469,7 +470,7 @@ def test_the_0_5_4_corpus_needs_force_for_the_digest_rebaseline(
     repo, storage = app.state.repo, app.state.storage
     repo.add_namespace("just-dna-seq", repo.create_account("ops"))
 
-    skipped_without_force, acted_without_force = [], []
+    skipped_without_force, acted_without_force, held = [], [], []
     for spec_dir in _v054_specs(tmp_path):
         name = _declared_name(spec_dir)
         files = {f.name: f.read_bytes() for f in spec_dir.iterdir() if f.is_file()}
@@ -477,10 +478,17 @@ def test_the_0_5_4_corpus_needs_force_for_the_digest_rebaseline(
             repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
             version="1.0.0", changelog="0.5.4-era", owner="just-dna-seq", files=files,
         )
-        plain = upgrade_version(
-            repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
-            version="1.0.0", manifest=manifest,
-        )
+        # Since 0.28 (M12) a 0.5.4 `resolution.csv` is a pre-0.8 table and is re-derived; one carrying
+        # an indel needs the network, which a test does not have. Held, counted apart, and the claim
+        # below is made over the rest.
+        try:
+            plain = upgrade_version(
+                repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+                version="1.0.0", manifest=manifest,
+            )
+        except UpgradeHeld:
+            held.append(name)
+            continue
         (acted_without_force if plain is not None else skipped_without_force).append(name)
 
         if plain is None:
@@ -501,6 +509,7 @@ def test_the_0_5_4_corpus_needs_force_for_the_digest_rebaseline(
         "if the latter, UPGRADE.md § 0.17 step 2 can drop --force"
     )
     assert acted_without_force, "no module had back-population — the 0.3 half of step 2 is untested"
+    assert len(held) < len(skipped_without_force) + len(acted_without_force), "the corpus was mostly held"
 
 
 def test_back_population_moves_the_content_signature(
@@ -526,10 +535,13 @@ def test_back_population_moves_the_content_signature(
         status, _ = revalidate_version(
             storage, "just-dna-seq", name, "1.0.0", manifest, settings=settings,
         )
-        out = upgrade_version(
-            repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
-            version="1.0.0", manifest=manifest,
-        )
+        try:
+            out = upgrade_version(
+                repo=repo, storage=storage, settings=settings, namespace="just-dna-seq", name=name,
+                version="1.0.0", manifest=manifest,
+            )
+        except UpgradeHeld:
+            continue  # an indel module's re-derivation needs the network since 0.28 (M12)
         if out is None:
             assert status != "upgradable", f"{name}: revalidate said upgradable and upgrade did nothing"
             continue
