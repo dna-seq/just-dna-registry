@@ -8,10 +8,18 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-**Client surface:** `publish()` gains `recover_within=600.0`: a publish whose response was lost may
+**Client surface:** `catalog_stats()` keeps its signature and keys and makes one request to the new
+`GET /stats` (paging the listing only against an older server). `publish()` gains `recover_within=600.0`: a publish whose response was lost may
 now return the version that landed instead of raising, after waiting up to that long. `whoami()`
 gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
 new; no other method moves.
+
+### Catalog totals in one request
+
+`GET /api/v1/stats?namespace=&group=` returns the totals `catalog_stats()` used to compute by paging the
+whole listing: modules, namespaces, downloads, stars, views, reviews, curated modules, variants, studies,
+genes, over exactly what the listing would show. `catalog_stats()` uses it and returns the same keys.
+Paging also counted a search hit against every module it listed; the route does not.
 
 ### `registry-client validate` and `check` name the columns a behind instance does not know
 

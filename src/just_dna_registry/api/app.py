@@ -26,6 +26,7 @@ from just_dna_registry.api.routers import (
     orgs,
     publish,
     reviews,
+    stats,
 )
 from just_dna_registry.config import API_PREFIX, Settings, get_settings
 from just_dna_registry.db.repository import Repository
@@ -147,6 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(drafts.router, prefix=API_PREFIX)
     app.include_router(hints.router, prefix=API_PREFIX)
     app.include_router(modules.router, prefix=API_PREFIX)
+    app.include_router(stats.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)
     app.include_router(publish.router, prefix=API_PREFIX)
     # The polygon's delete verb, and *only* there (0.12). Conditional mounting rather than a guard in

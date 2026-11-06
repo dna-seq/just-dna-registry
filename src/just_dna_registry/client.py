@@ -1397,16 +1397,27 @@ class RegistryClient:
         return self._json(self._http.get("/modules/groups"))
 
     def catalog_stats(self, namespace: str | None = None, *, group: str | None = None) -> dict:
-        """Aggregate catalog stats by paging the listing — there is no dedicated stats endpoint, so
-        this rolls up the card fields (`get_module`/`list_modules`). Optionally scoped to a namespace
-        or a group. Returns totals across the matched modules.
+        """Catalog totals (`modules`, `namespaces`, `downloads`, `stars`, `views`, `reviews`,
+        `curated`, `variants`, `studies`, `genes`) over the modules the listing shows for the same
+        `namespace` / `group`. One request to `GET /stats` since 0.28; against an older server that
+        has no such route it falls back to paging the listing, as every release before did.
 
         **It inherits whatever the default listing shows, which is a server-side policy** — until
         registry 0.21.1 that meant every total came back zero against the polygon, whose namespaces
-        are all test/sandbox ones the listing excluded (S17). Nothing here changed and nothing here
-        was wrong: this method has no way to notice it is being filtered, which is exactly why the
-        repair belonged on the server. Pass `group="test"` when talking to an older test instance.
+        are all test/sandbox ones the listing excluded (S17). Pass `group="test"` when talking to an
+        older test instance.
         """
+        resp = self._http.get(
+            "/stats",
+            params={k: v for k, v in {"namespace": namespace, "group": group}.items() if v},
+        )
+        if resp.status_code != 404:
+            return self._json(resp)
+        return self._paged_catalog_stats(namespace, group=group)
+
+    def _paged_catalog_stats(self, namespace: str | None, *, group: str | None) -> dict:
+        """The pre-0.28 roll-up over the card fields, for a server with no `/stats`. It charges each
+        listed module a search hit, which the route does not."""
         agg = {
             "modules": 0, "namespaces": 0, "downloads": 0, "stars": 0, "views": 0,
             "reviews": 0, "curated": 0, "variants": 0, "studies": 0, "genes": 0,

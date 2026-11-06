@@ -561,6 +561,26 @@ class AccountMerge(BaseModel):
     )
 
 
+class CatalogStats(BaseModel):
+    """Totals over the modules a listing with the same `namespace` / `group` would show (0.28).
+
+    The keys `RegistryClient.catalog_stats()` has always returned, computed by the server in one
+    request rather than by the client paging the whole listing. Per-module figures are the card's:
+    `variants`, `studies`, `genes` sum each module's latest-version counts, so a gene two modules
+    carry is counted twice."""
+
+    modules: int
+    namespaces: int
+    downloads: int
+    stars: int
+    views: int
+    reviews: int
+    curated: int = Field(description="Modules with at least one highlighted review")
+    variants: int
+    studies: int
+    genes: int
+
+
 class RenameSelfRequest(BaseModel):
     """Body for `POST /auth/rename`: the caller's new handle. `dry_run` reports without acting."""
 

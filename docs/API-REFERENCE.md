@@ -186,6 +186,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 38 | POST | `/api/v1/admin/accounts/{account}/merge` | site admin | Fold a lost-key account into its owner's new one (unreleased) |
 | 39 | POST | `/api/v1/auth/rename` | bearer | Rename the caller's own handle; the old one stays reserved to it (unreleased) |
 | 40 | POST | `/api/v1/admin/accounts/{account}/rename` | site admin | Rename any account's handle, an org's included (unreleased) |
+| 41 | GET | `/api/v1/stats?namespace=&group=` | — | Catalog totals over what the listing shows (unreleased) |
 
 ---
 
@@ -1261,6 +1262,15 @@ name.
 "org_memberships", "versions", "stars_moved", "stars_collapsed", "reviews_moved",
 "reviews_kept_on_source", "keys_revoked", "snapshot"}`. Errors: `401`, `403 site_admin_required`,
 `404 account_not_found`, `422 same_account`, `422 not_a_user_account` (org accounts do not merge).
+
+### 41. `GET /api/v1/stats`
+Totals over exactly the modules `GET /modules` lists with the same `namespace` and `group` (the same group
+presets and the same per-instance test-space policy). `200 → CatalogStats {"modules", "namespaces",
+"downloads", "stars", "views", "reviews", "curated", "variants", "studies", "genes"}`, each summed from the
+card's figures, so `genes` counts a gene two modules carry twice. Anonymous, on the `search` bucket.
+Asking charges no module a search hit, which paging the listing does. `RegistryClient.catalog_stats()`
+calls it and falls back to paging against a server without it. Errors: `422` on an unknown `group`,
+`429`. Kept off `/health`, which stays cheap.
 
 ### 39. `POST /api/v1/auth/rename`  *(bearer)*
 Rename the caller's own handle. Body `{"name": "new-handle", "dry_run": false, "allow_test_data":

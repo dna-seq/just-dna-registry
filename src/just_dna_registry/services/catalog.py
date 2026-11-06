@@ -13,6 +13,7 @@ from just_dna_registry.db.facets import is_trusted, version_facets
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.models.api import (
     CardStats,
+    CatalogStats,
     ClinSigConcordanceInfo,
     FactTablesInfo,
     GwasEffectsInfo,
@@ -462,3 +463,40 @@ def get_manifest(
 ) -> ModuleManifest | None:
     raw = repo.get_manifest_json(namespace, name, version)
     return ModuleManifest.model_validate_json(raw) if raw else None
+
+
+def catalog_stats(
+    repo: Repository,
+    *,
+    namespace: str | None = None,
+    group: str | None = None,
+    test_pattern: str,
+    is_test_instance: bool = False,
+) -> CatalogStats:
+    """Totals over exactly the modules `list_modules` would page through with the same `namespace`
+    and `group` (the same preset, the same test-space policy per instance), summed the way the card
+    computes each figure. Unlike paging the listing, it charges no module a search hit."""
+    preset = groups.group_filters(group, repo, test_pattern, is_test_instance=is_test_instance)
+    if namespace:
+        preset.pop("exclude_namespaces", None)
+    filters: dict[str, object] = {"namespace": namespace, **preset}
+    _, total = repo.search_modules(limit=1, offset=0, **filters)  # type: ignore[arg-type]
+    rows, _ = repo.search_modules(limit=max(total, 1), offset=0, **filters)  # type: ignore[arg-type]
+    agg = dict.fromkeys(
+        ("downloads", "stars", "views", "reviews", "curated", "variants", "studies", "genes"), 0
+    )
+    for row in rows:
+        manifest = _latest_manifest(repo, row)
+        reviews = repo.review_summary(int(row["id"]))
+        agg["downloads"] += row["downloads"]
+        agg["stars"] += row["stars"]
+        agg["views"] += row["views"]
+        agg["reviews"] += reviews["review_count"]
+        agg["curated"] += 1 if reviews["highlighted_count"] > 0 else 0
+        if manifest is not None and manifest.stats is not None:
+            agg["variants"] += manifest.stats.variant_count
+            agg["studies"] += manifest.stats.study_count
+            agg["genes"] += manifest.stats.gene_count
+    return CatalogStats(
+        modules=len(rows), namespaces=len({row["namespace"] for row in rows}), **agg
+    )
