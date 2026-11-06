@@ -37,6 +37,7 @@ from just_dna_registry.services.enrich import EnrichmentGate, close_lookup_clien
 from just_dna_registry.services.hints import observed_intervals
 from just_dna_registry.startup import (
     export_enricher_credentials,
+    report_dotenv,
     validate_db_path,
     validate_enrichment_caches,
     validate_hf_access,
@@ -63,6 +64,7 @@ def _build_storage(settings: Settings) -> StorageBackend:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
+    report_dotenv()  # which .env was read: the working directory's, or the 0.27 fallback
     warn_obsolete_env()  # a stale .env key that no longer does anything must not pass in silence
     export_enricher_credentials(settings)  # keys, contact email, retry floor -> os.environ
     validate_hf_access(settings)  # exits(1) if hf backend + missing/read-only token; no-op for local

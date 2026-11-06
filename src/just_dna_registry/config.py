@@ -1,10 +1,12 @@
 """
 Service configuration (Pydantic settings).
 
-Loads `.env` before reading the environment (per project rules). All runtime knobs live here;
+Loads `.env` before reading the environment (per project rules): the working directory's since
+0.28, see `choose_dotenv`. All runtime knobs live here;
 nothing is hardcoded elsewhere.
 """
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -22,7 +24,56 @@ VALID_MODES = frozenset({VALID_MODES_PROD, VALID_MODES_TEST})
 #: gets a connection refusal rather than the wrong catalog answering on the right port.
 DEFAULT_PORTS: dict[str, int] = {VALID_MODES_PROD: 8000, VALID_MODES_TEST: 8100}
 
-load_dotenv()
+@dataclass(frozen=True)
+class DotenvChoice:
+    """Which `.env` this process loaded, and which it passed over. Reported at boot (`startup`)."""
+
+    #: The file loaded, or `None` when there was none to load.
+    loaded: Path | None
+    #: `"cwd"`: the working directory's, the rule since 0.28. `"package"`: the fallback, found by
+    #: walking up from the installed package as every release through 0.27 did, used only when the
+    #: working directory has none.
+    source: str | None
+    #: A `.env` above the installed package that 0.27 would have loaded and this process did not.
+    passed_over: Path | None = None
+
+
+def _nearest_dotenv(start: Path) -> Path | None:
+    for directory in (start, *start.parents):
+        candidate = directory / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def choose_dotenv(cwd: Path, package_dir: Path) -> DotenvChoice:
+    """The `.env` the server reads: the one nearest the **working directory** (0.28).
+
+    Through 0.27 a bare `load_dotenv()` walked up from this file, so a container with the package in
+    `site-packages` and its `.env` beside the compose file read nothing, while the enricher (which
+    looks from the working directory) read the right file: two settings sources in one process
+    (S27). The fix could not simply flip the rule, because nothing in this repo can see how either
+    box is launched, and a box whose configuration only the old walk found would boot on defaults
+    and look healthy until a rule fired. So the old walk stays as a **fallback**, taken only when
+    the working directory has no `.env`, and `startup.report_dotenv` says at boot which was read.
+
+    The fallback retires when no box's boot log says `.env: fallback` any more; the query is
+    `journalctl -u <unit> | grep -c '.env: fallback'` on each box (unrun here: the boxes are the
+    operator's), and it is the operator's answer, not a release's.
+    """
+    here = _nearest_dotenv(cwd)
+    walked = _nearest_dotenv(package_dir)
+    if here is not None:
+        other = walked if walked is not None and walked.resolve() != here.resolve() else None
+        return DotenvChoice(here, "cwd", other)
+    if walked is not None:
+        return DotenvChoice(walked, "package")
+    return DotenvChoice(None, None)
+
+
+DOTENV: DotenvChoice = choose_dotenv(Path.cwd(), Path(__file__).resolve().parent)
+if DOTENV.loaded is not None:
+    load_dotenv(DOTENV.loaded)
 
 API_PREFIX: str = "/api/v1"
 

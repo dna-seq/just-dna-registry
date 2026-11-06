@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from just_dna_registry.config import Settings
+from just_dna_registry.config import DOTENV, DotenvChoice, Settings
 
 logger = logging.getLogger("registry.startup")
 
@@ -50,6 +50,28 @@ def validate_db_path(settings: Settings) -> None:
     if message is not None:
         logger.error(message)
         sys.exit(1)
+
+
+def report_dotenv(choice: DotenvChoice = DOTENV) -> None:
+    """Say at boot which `.env` the process read (0.28). A path in the server's own log only; the
+    line an operator greps for before the package-walk fallback in `config.choose_dotenv` retires."""
+    if choice.source == "cwd":
+        logger.info(".env: working directory (%s)", choice.loaded)
+        if choice.passed_over is not None:
+            logger.warning(
+                ".env: %s above the installed package is no longer read; through 0.27 it was. "
+                "Move any setting it holds that the working directory's .env lacks.",
+                choice.passed_over,
+            )
+    elif choice.source == "package":
+        logger.warning(
+            ".env: fallback: read %s, found above the installed package, because the working "
+            "directory has none. From 0.28 the working directory's .env is the one read; start the "
+            "server where its .env is, or set the variables in the unit or compose file.",
+            choice.loaded,
+        )
+    else:
+        logger.info(".env: none found; settings come from the environment only")
 
 
 def warn_obsolete_env() -> None:

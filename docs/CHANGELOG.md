@@ -13,6 +13,15 @@ now return the version that landed instead of raising, after waiting up to that 
 gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
 new; no other method moves.
 
+### The server reads the `.env` where it runs
+
+Through 0.27 the server and the admin CLI read the `.env` found by walking up from the installed package,
+so in a container (package in `site-packages`, `.env` beside the compose file) they read none while the
+enricher read the right one (S27). From 0.28 the working directory's `.env` is read. When the working
+directory has none, the old walk is the fallback, so no box loses its configuration; the boot log says
+which file was read (`.env: working directory`, `.env: fallback`), and names a `.env` the old walk would
+have read and this one did not. `docs/UPGRADE.md` step 2 says what to check after deploying.
+
 ### A publish whose response was lost returns the version that landed
 
 A large publish holds one connection through the whole enrich and compile, and a proxy can close it

@@ -23,7 +23,24 @@ warm-caches` will not do this**: a 0.7 cache still reads as present under 0.8, a
 present lane alone. **`registry upgrade` does check it**: it reads the pull record before re-deriving
 anything, and holds every module that would re-derive while the record names the old repo or no repo.
 
-**2. Deploy 0.28.**
+**2. Deploy 0.28, then read which `.env` it loaded.** From 0.28 the server reads the `.env` nearest its
+**working directory**; through 0.27 it read the one found walking up from the installed package, which in
+a container is not the one beside the compose file (S27). Nothing is dropped on the way: a box whose
+working directory has no `.env` still reads the old one, and says so. Right after the restart, the boot
+log has one of these lines:
+
+```
+journalctl -u <the registry unit> -b | grep '\.env:'      # or: docker compose logs registry | grep '\.env:'
+```
+
+- `.env: working directory (<path>)`: the intended state.
+- `.env: fallback: read <path> ...`: the box runs from a directory with no `.env`. It works as before;
+  start it where its `.env` is (or move the variables into the unit or compose file) and check again.
+- `.env: <path> above the installed package is no longer read`: two files existed and the old one lost.
+  Compare them; a setting only the old one held is now at its default.
+
+Not run against either box (they are the operator's). The fallback is removed once neither box logs
+`fallback`.
 
 **3. Dry run the sweep.** 0.7 → 0.8 is a contract gap, so the sweep acts on every latest version without
 `--force`, unless upstream's 0.8.0 release record says the interval moved nothing for it:

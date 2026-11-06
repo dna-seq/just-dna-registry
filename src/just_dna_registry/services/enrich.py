@@ -442,10 +442,11 @@ def available_references(settings: Settings) -> dict[str, Path | None]:
 
     What it would have changed is a report that no longer predicts its own run. `enrich()` calls
     `resolve_*_reference` with the default, so the run still loads the `.env`; only the reporting
-    caller would have stopped. The two loads do not search the same place: `config.py` uses
-    python-dotenv's frame-walking `find_dotenv()`, which starts from wherever *this package* is
-    installed, while the enricher uses `usecwd=True` and starts from the process CWD. In a checkout
-    those are the same tree. In a container — package in `site-packages`, `.env` beside the compose
+    caller would have stopped. Through 0.27 the two loads did not search the same place: `config.py`
+    used python-dotenv's frame-walking `find_dotenv()`, which starts from wherever *this package* is
+    installed, while the enricher uses `usecwd=True` and starts from the process CWD (since 0.28
+    `config.choose_dotenv` starts from the CWD too, keeping the package walk only as a reported
+    fallback). In a checkout those are the same tree. In a container — package in `site-packages`, `.env` beside the compose
     file in the working directory — they are not, and the old docstring's "`config.py` loads `.env` at
     import" is simply false there. Measured rather than reasoned, in the test below: the
     frame-walking load returns nothing while the enricher's finds the file. And the result is worse
