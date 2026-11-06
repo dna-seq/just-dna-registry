@@ -47,7 +47,8 @@ The 0.28 minor (pm's scope, waits on format 0.8): the rename, C8's fields half, 
 item (C3 folded in), the rest of the pm's list. C14 canceled (both proxies gzip, checked 2026-11-04).
 After 0.28: the variant-level catalog with a gene facet; design first.
 
-Kit pin at v0.1.136 (2026-11-05). On main (shared clone) commit by path: `git commit --only -- <paths>` (kit #286).
+Kit pin at v0.1.137 (2026-11-06). Since v0.1.137 an in-house upstream release's mechanical half (floors, git source
+out, lock, suite) is the liaison's; the API half and the talk before the cut stay the lead's. On main (shared clone) commit by path: `git commit --only -- <paths>` (kit #286).
 
 **Pushes are the lead's** (LEAD.md grant, "all pushes"): push main and `release-0.27.x` after each landed block,
 peers' commits included. Holding them for desk #193 was wrong (the person, 2026-11-05: "why noone pushes?");
