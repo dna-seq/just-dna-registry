@@ -3,9 +3,11 @@ Catalog service: reads the projection and builds API models (cards, detail, vers
 Card stats are pulled from each module's latest-version manifest (the source of truth).
 """
 
+import json
 import sqlite3
 
-from just_dna_format.manifest import ModuleManifest
+from just_dna_format.identity import parse_version
+from just_dna_format.manifest import ModuleManifest, toolchains_differ
 
 from just_dna_registry import groups
 from just_dna_registry.config import API_PREFIX
@@ -347,7 +349,25 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> 
     )
 
 
-def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSummary:
+def _toolchain_moves(rows: list[sqlite3.Row]) -> dict[str, bool | None]:
+    """Per version, whether a toolchain change explains a digest that moved while the content did
+    not, against the previous version by semver. Read through upstream's `toolchains_differ`, which is
+    three-valued: a side that recorded no toolchain (anything compiled before 0.8) is *cannot say*."""
+    ordered = sorted(rows, key=lambda r: parse_version(r["version"]))
+    out: dict[str, bool | None] = {}
+    for before, after in zip(ordered, ordered[1:], strict=False):
+        same_content = bool(before["content_hash"]) and before["content_hash"] == after["content_hash"]
+        if not same_content or before["digest"] == after["digest"]:
+            continue
+        out[after["version"]] = toolchains_differ(
+            json.loads(before["manifest_json"]), json.loads(after["manifest_json"])
+        )
+    return out
+
+
+def _version_summary(
+    row: sqlite3.Row, namespace: str, name: str, moves: dict[str, bool | None] | None = None
+) -> VersionSummary:
     # One parse per row, shared. `signed` has always needed the manifest; since 0.19 the two payload
     # fields of `resolution` do too, and parsing twice to read two parts of one document would be
     # the actual waste. Through 0.18 this parsed once and spent it on a single boolean.
@@ -370,6 +390,8 @@ def _version_summary(row: sqlite3.Row, namespace: str, name: str) -> VersionSumm
         created_at=row["created_at"],
         changelog=row["changelog"],
         manifest_url=_manifest_url(namespace, name, row["version"]),
+        toolchain=manifest.compilation.toolchain if manifest is not None else None,
+        digest_moved_by_toolchain=(moves or {}).get(row["version"]),
     )
 
 
@@ -421,6 +443,7 @@ def module_detail(
         return None
     card = _card(repo, row, starred_by)
     versions = repo.get_versions(row["id"])
+    moves = _toolchain_moves(versions)
     manifest = _latest_manifest(repo, row)
     data = card.model_dump()
     if manifest is not None:
@@ -429,7 +452,7 @@ def module_detail(
     return ModuleDetail(
         **data,
         readme=row["readme"],
-        versions=[_version_summary(v, namespace, name) for v in versions],
+        versions=[_version_summary(v, namespace, name, moves) for v in versions],
         latest_manifest=manifest,
         verification=_verification(manifest),
         weighting=_weighting(manifest),
@@ -450,8 +473,9 @@ def version_page(
     all_versions = repo.get_versions(row["id"])
     start = (page - 1) * per_page
     window = all_versions[start : start + per_page]
+    moves = _toolchain_moves(all_versions)  # over every version: a window's first one has a predecessor
     return Page[VersionSummary](
-        items=[_version_summary(v, namespace, name) for v in window],
+        items=[_version_summary(v, namespace, name, moves) for v in window],
         total=len(all_versions),
         page=page,
         per_page=per_page,

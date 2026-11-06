@@ -419,6 +419,20 @@ class VersionSummary(BaseModel):
     created_at: str
     changelog: str
     manifest_url: str
+    toolchain: dict[str, str] | None = Field(
+        default=None,
+        description="The library releases that wrote this version's bytes (`compilation.toolchain`, "
+        "format 0.8): `python` and `polars` today. null for a version compiled before 0.8, which "
+        "recorded nothing: unknown, never an empty toolchain.",
+    )
+    digest_moved_by_toolchain: bool | None = Field(
+        default=None,
+        description="Against the previous version by semver, when the two carry the same "
+        "`content_signature` and different `artifact_digest`s: true when a different toolchain wrote "
+        "them (a polars release moves parquet bytes with the data unchanged), false when the same "
+        "toolchain did (something else moved the bytes). null when there is no previous version, the "
+        "content differs, the digests agree, or either side recorded no toolchain.",
+    )
 
 
 class ModuleDetail(ModuleCard):

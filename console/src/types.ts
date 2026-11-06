@@ -155,6 +155,8 @@ export interface VersionSummary {
   created_at: string;
   changelog: string;
   manifest_url: string;
+  toolchain: Record<string, string> | null;
+  digest_moved_by_toolchain: boolean | null;
 }
 
 export interface ModuleDetail extends ModuleCard {

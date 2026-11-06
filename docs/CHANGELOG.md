@@ -14,6 +14,15 @@ now return the version that landed instead of raising, after waiting up to that 
 gains a `site_admin` field; `merge_accounts()`, `rename_account()` and `admin_rename_account()` are
 new; no other method moves.
 
+### A version list says when a toolchain moved the digest
+
+Format 0.8 records the library releases that wrote a version's bytes (`compilation.toolchain`, RM342).
+Each entry of a version list now carries `toolchain`, and `digest_moved_by_toolchain` beside it: against
+the previous version, when the content is the same and the digest is not, `true` if a different toolchain
+wrote the two (a polars release moves parquet bytes with the data unchanged) and `false` if the same one
+did. Anything compiled before 0.8 recorded no toolchain and reads as not known. The console marks such a
+version `toolchain`.
+
 ### Catalog totals in one request
 
 `GET /api/v1/stats?namespace=&group=` returns the totals `catalog_stats()` used to compute by paging the

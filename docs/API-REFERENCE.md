@@ -1336,8 +1336,12 @@ is truncated to 3; in detail/manifest it's the full list.
 
 ### VersionSummary
 `version, artifact_digest, content_signature, compile_success, yanked, signed, needs_upgrade,
-downloads, created_at, changelog, manifest_url, resolution: ResolutionInfo`. `downloads` is the
-per-version download count.
+downloads, created_at, changelog, manifest_url, resolution: ResolutionInfo, toolchain,
+digest_moved_by_toolchain`. `downloads` is the per-version download count. `toolchain` is
+`compilation.toolchain` (format 0.8: `{"python": …, "polars": …}`), `null` before 0.8.
+`digest_moved_by_toolchain` (unreleased) reads the version against the previous one by semver: when the
+two carry the same `content_signature` and different digests, `true` if different toolchains wrote them
+and `false` if the same one did; otherwise, or when either side recorded no toolchain, `null`.
 
 `artifact_digest` and `content_signature` are the identity pair and answer different questions.
 The digest names the compiled **bytes** and moves whenever a recompile restamps a timestamp, so two
