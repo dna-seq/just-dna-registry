@@ -74,7 +74,8 @@ PyPI (c809c09), full suite on the published wheels 621 passed, 10 skipped. 0.28 
 **M12 done** (cfba29b, 68aed3d; full suite 639 passed). **0.28.0 is cut** (2026-11-06): the whole list built, the ClinVar-tier facet last (fef4ba1); version + lock c5a7840;
 release-head suite 687 passed; main fast-forwarded to it and pushed. Dists in `/data/sources/just-dna-registry.wt/0.28/dist/`.
 **Waits on the person: publishing, `blocked: desk #215`**; then the lead tags `v0.28.0`. 0.27.1 still `blocked: desk #202`.
-**Next, unattended**: the `?gene=`/`?category=` scoping fix (roadmap, filed 2026-11-06), on main as 0.28.1 material.
+The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
+**Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
 indels, so it needs an online setting and an egress budget for the run; then UPGRADE.md's 0.28 procedure

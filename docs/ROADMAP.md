@@ -746,7 +746,7 @@ on the release head 687 passed, 10 skipped; main fast-forwarded to it and pushed
 `/data/sources/just-dna-registry.wt/0.28/dist/`. **Publishing waits on the person: `blocked: desk #215`**; the lead
 tags `v0.28.0` after. Deploying follows `docs/UPGRADE.md`, 0.28 (Ensembl pull first) and is the person's.
 
-**Filed while building the facet** (the lead, 2026-11-06; `unattended`, a patch): `?gene=` and `?category=` match a
+**Filed while building the facet** (the lead, 2026-11-06; **done** c551799 on main, 0.28.1 material): `?gene=` and `?category=` match a
 module with **any** non-yanked version carrying the value, while `search_modules`' docstring, the fact-table
 paragraph in API-REFERENCE and the list route all say they match the current version. One of the two is wrong;
 the current-version reading is what every newer facet does (`clin_sig`, the fact tables). Fix: scope both joins to
