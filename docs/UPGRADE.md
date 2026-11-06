@@ -1,11 +1,12 @@
 # Contract upgrades & the stale-module procedure
 
-## 0.28 — format 0.8 (operator note — a coordinated cut; being written ahead of upstream's cut)
+## 0.28 — format 0.8 (operator note — a coordinated cut)
 
-The floors, the lock and the catalog recompile are added here when upstream cuts 0.8.0. One step is
-known now and does not depend on them.
+All three tiers move to 0.8.0 together (`>=0.8.0`). Five steps, in order, on each box (the polygon first,
+with `registry --mode test`). Steps 3–5 are new commands and **have not been run against a real catalog
+yet**; the tests drive them against a fixture catalog.
 
-**Re-pull the Ensembl cache on each box before deploying 0.28** (upstream RM372). Format 0.8 reads
+**1. Re-pull the Ensembl cache before deploying** (upstream RM372). Format 0.8 reads
 `just-dna-seq/ensembl_variations_split` (dbSNP 157 / VEP 116), about 14.5 GB, into the same
 `ensembl_variations` directory, and a cache holding files from both releases resolves to nothing, with a
 warning. Use the enricher's own pull, from the deploy's checkout so it reads the same `.env` as the
@@ -15,10 +16,63 @@ server (if `REGISTRY_ENSEMBL_CACHE` is set, export its value as `JUST_DNA_ENSEMB
 uv run just-dna-enricher cache pull --only ensembl
 ```
 
-Not run here yet (it needs 0.8 installed and moves 14.5 GB). Upstream says a cache whose pull record
-names the old repo is pulled again and a file is kept only where the new manifest attests it.
-**`registry warm-caches` will not do this**: a 0.7 cache still reads as present under 0.8, and warm-caches
-leaves a present lane alone, so its dry run shows the Ensembl lane `✓` while it holds the old release.
+The development box's cache was pulled this way (its `pull-record.json`, written 2026-11-04, names
+`datasets/just-dna-seq/ensembl_variations_split/data`). Upstream says a cache whose pull record names the
+old repo is pulled again and a file is kept only where the new manifest attests it. **`registry
+warm-caches` will not do this**: a 0.7 cache still reads as present under 0.8, and warm-caches leaves a
+present lane alone. **`registry upgrade` does check it**: it reads the pull record before re-deriving
+anything, and holds every module that would re-derive while the record names the old repo or no repo.
+
+**2. Deploy 0.28.**
+
+**3. Dry run the sweep.** 0.7 → 0.8 is a contract gap, so the sweep acts on every latest version without
+`--force`, unless upstream's 0.8.0 release record says the interval moved nothing for it:
+
+```
+uv run registry upgrade --dry-run
+```
+
+**What is new is how it enriches.** A stored `resolution.csv` written before 0.8 names no
+`source_release` on its rows, and the sweep **re-derives** it (`enrich(rederive=True)`) instead of
+carrying it. Upstream's upgrade order requires this: carried, a 0.7 table keeps its old placements, and
+one that gains a second placement set for an rsID refuses under strict (`rsid_placements_disagree`). The
+dry run prints, per acting version, `re-derive N recorded subject(s) from the snapshot` or `... online`,
+and lists what it will hold:
+
+- `needs --online`: the module carries an indel. Offline 0.8 cannot left-align one (upstream RM385, fixed
+  in 0.9), so it re-derives only with the network.
+- a snapshot reason: step 1 has not happened on this box.
+
+**4. Apply from the snapshot, then online.**
+
+```
+uv run registry upgrade --apply
+uv run registry upgrade --apply --online
+```
+
+The first publishes every module that needs no network and egresses nothing. The second re-derives the
+modules held for an indel against live sources. It prints how many recorded subjects it re-asks, and its
+pacing is this process's own, not shared with the running server: run it in a quiet window.
+
+**5. Read the drift the sweep held.** A re-derivation reports each subject whose answer changed, in one of
+upstream's seven arms. `respelled`, `gained_allele` and `gained_rsid` publish and are counted in the
+successor's changelog. Every other arm (`moved`, `lost_allele`, `renamed`, `undecided`) refuses that
+module as `rederive_drift_needs_reading`, listing each subject before → after, and publishes nothing,
+because the successor is immutable. Read them, and for each module you accept:
+
+```
+uv run registry upgrade --apply -m <module> --accept-drift          # add --online if it was held for an indel
+```
+
+That re-runs the module's whole re-derivation, so an online module's requests are spent twice.
+
+**What moves on a successor, and is not a fault.** `artifact.digest` on every one. `content_signature`
+only where a module wrote `chr`-prefixed contigs on its positional tables (upstream RM363, guide § 1.22).
+A re-derived `resolution.csv` can be **shorter**: 0.8 drops a pre-0.8 `not_found` row, and a subject no
+source answer can host gets no row (§ 1.36). A `resolution`-layer licence row no resolution row names is
+retired (§ 1.37), so `manifest.sources` and the licensing facets can move. Each successor's changelog
+says the resolutions were re-derived, online or offline, and counts the drift by arm.
+
 ## 0.27.1 — no dependency moves (operator note — no sweep)
 
 Nothing upstream moves and the catalog needs nothing; upgrade with `uv sync` from the tag. Two behaviours

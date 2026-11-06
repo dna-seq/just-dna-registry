@@ -22,13 +22,16 @@ from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
 from just_dna_registry.services.accounts import merge_accounts
+from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.pmid_check import verify_pmids
+from just_dna_registry.services.publish import PublishError
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
 from just_dna_registry.services.rebuild import UNPROBED_SURFACES
 from just_dna_registry.services.revalidate import gather_pmids, revalidate_version
 from just_dna_registry.services.upgrade import (
     GAP_PATCH,
     GAP_UNKNOWN,
+    UpgradeHeld,
     VersionUpgradePlan,
     is_latest_version,
     prepare_version_upgrade,
@@ -675,6 +678,14 @@ def revalidate(
     )
 
 
+def _describe_rederive(prep: VersionUpgradePlan) -> str:
+    """The dry run's note on how an acting re-publish enriches (M12): empty when it carries its table."""
+    if not prep.rederive:
+        return ""
+    where = "online" if prep.needs_online else "from the snapshot"
+    return f"; re-derive {prep.rederive_subjects} recorded subject(s) {where}"
+
+
 def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
     """One-line summary of what a re-publish of this version would change."""
     bits: list[str] = []
@@ -724,6 +735,16 @@ def upgrade(
     limit: int = typer.Option(
         0, "--limit", help="Stop after this many versions (0 = no limit). Batch a large migration."
     ),
+    online: bool = typer.Option(
+        False, "--online",
+        help="Let a re-derivation that needs the network (a module carrying an indel) ask live sources. "
+             "Without it such a module is held; every other module re-derives from the snapshot",
+    ),
+    accept_drift: bool = typer.Option(
+        False, "--accept-drift",
+        help="Publish a re-derivation whose drift wants reading (moved, lost_allele, renamed, "
+             "undecided) after you have read it. Aim it with -m",
+    ),
 ) -> None:
     """Migrate published versions to the current `just-dna-format` contract and re-publish as a PATCH.
 
@@ -743,16 +764,43 @@ def upgrade(
     `--trim` drops columns 0.4 now forbids (old schemas only warned) so a stale spec compiles — LOSSY,
     so it requires `--force`. A version with such columns and no `--trim` is reported *blocked*.
     Re-publish runs the full server-side compile path; the predecessor is never mutated. Dry-run by
-    default. See docs/UPGRADE.md."""
+    default. See docs/UPGRADE.md.
+
+    **A stored `resolution.csv` written before format 0.8 is re-derived, not carried** (M12): detected
+    from its rows, never a flag. It needs the new Ensembl snapshot on the box (checked before anything
+    re-derives), the network for a module with an indel (`--online`), and a person to read drift that
+    moved an answer (`--accept-drift`, after reading). A held or refused module is reported and the
+    sweep goes on."""
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
     _echo_mode(settings)
+    # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
+    typer.echo(
+        "re-derive: online where a module carries an indel, snapshot only elsewhere" if online
+        else "re-derive: snapshot only; a module carrying an indel is held (pass --online)"
+    )
+    # Asked once, up front, and before any PATCH is minted: re-deriving against the old release reads
+    # the old answers back into a permanent successor (`snapshot_not_current`).
+    snapshot_problem = (
+        snapshot_not_current(settings) if enricher_available()
+        else "just-dna-enricher is not installed (install the `server` extra)"
+    )
+    if snapshot_problem:
+        typer.secho(f"re-derive refused for every module that needs it: {snapshot_problem}",
+                    fg=typer.colors.YELLOW)
     conn = connect(settings.db_path)
     init_db(conn)
     repo = Repository(conn)
     storage = _storage(settings)
     planned = upgraded = blocked = 0
+    #: Versions this run will not re-publish under its switches, and versions whose publish refused.
+    #: Both are reported per module and the sweep goes on: one module's refusal is no reason to leave
+    #: the rest of the catalog on the old contract.
+    held: list[str] = []
+    refused: list[str] = []
+    drift_to_read = False
+    online_subjects = 0
     # Counted rather than merely skipped. A version this planner cannot date is the one shape that
     # reads identically to "already current", which is the confusion that made `--force` the normal
     # path in the first place — so it gets its own number in the summary and a name an operator can
@@ -797,15 +845,37 @@ def upgrade(
             elif prep.gap.scale == GAP_PATCH:
                 patch_gap.append(f"{ns}/{name}@{ver}")
             continue
+        label = f"{ns}/{name}@{ver}"
+        if prep.rederive and snapshot_problem:
+            held.append(f"{label}: {snapshot_problem}")
+            continue
+        if prep.needs_online and not online:
+            held.append(f"{label}: carries an indel, which offline 0.8 cannot left-align; needs --online")
+            continue
+        if prep.needs_online:
+            online_subjects += prep.rederive_subjects
         if not apply:
             planned += 1
-            typer.echo(f"⇧ {ns}/{name}@{ver}: {_describe_upgrade(prep, recompile=force)} → next PATCH")
+            typer.echo(
+                f"⇧ {label}: {_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)} → next PATCH"
+            )
             continue
-        result = upgrade_version(
-            repo=repo, storage=storage, settings=settings,
-            namespace=ns, name=name, version=ver, manifest=manifest,
-            recompile=force, trim=trim, prepared=prep,
-        )
+        try:
+            result = upgrade_version(
+                repo=repo, storage=storage, settings=settings,
+                namespace=ns, name=name, version=ver, manifest=manifest,
+                recompile=force, trim=trim, prepared=prep, online=online, accept_drift=accept_drift,
+            )
+        except UpgradeHeld as exc:
+            held.append(f"{label}: {exc}")
+            continue
+        except PublishError as exc:
+            refused.append(label)
+            drift_to_read = drift_to_read or exc.detail == "rederive_drift_needs_reading"
+            typer.secho(f"✗ {label}: {exc.detail}", fg=typer.colors.RED)
+            for line in exc.errors:
+                typer.echo(f"    {line}")
+            continue
         if result is not None:
             new_version, _ = result
             upgraded += 1
@@ -815,11 +885,27 @@ def upgrade(
             typer.echo(f"    digest {manifest.artifact.digest[:23]}… → {result[1].artifact.digest[:23]}…")
 
     blocked_note = f", {blocked} blocked (need --trim --force)" if blocked else ""
+    if refused:
+        blocked_note += f", {len(refused)} refused (above)"
+    if held:
+        blocked_note += f", {len(held)} held"
     if apply:
         typer.echo(f"\n{upgraded} version(s) upgraded and re-published{blocked_note}")
     else:
         typer.echo(
             f"\n{planned} version(s) would upgrade{blocked_note}  (dry-run; pass --apply to publish)"
+        )
+    if online_subjects:
+        typer.echo(
+            f"online re-derivation re-asks {online_subjects} recorded subject(s) from this process's own "
+            "pacing, which a running server does not share: run it in a quiet window"
+        )
+    for line in held:
+        typer.secho(f"… held {line}", fg=typer.colors.YELLOW)
+    if drift_to_read:
+        typer.echo(
+            "A `rederive_drift_needs_reading` refusal lists each subject before → after; once read, "
+            "re-run with -m <module> --accept-drift."
         )
     # **An anomaly is not a gap and is not actionable, so it prints on its own.** Drift measured
     # against the identical compiler cannot be repaired by recompiling — the recompile derives the same

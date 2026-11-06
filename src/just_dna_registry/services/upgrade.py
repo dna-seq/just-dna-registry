@@ -28,11 +28,13 @@ import io
 
 import yaml
 from just_dna_compiler.compiler import _FACT_TABLES, _TABLE_KINDS, AUTHORED_NON_KIND_TABLES
+from just_dna_format.alleles import split_genotype
 from just_dna_format.identity import parse_version
 from just_dna_format.layout import sidecar_spellings
 from just_dna_format.manifest import Contribution, GenePanelSpec, ModuleManifest
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import Defaults, ModuleInfo, ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.vrs import is_substitution
 from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
@@ -51,6 +53,7 @@ from just_dna_registry.services.rebuild import (
 from just_dna_registry.specfiles import (
     PROVENANCE_FILE,
     RECOGNIZED_SPEC_FILES,
+    RESOLUTION_CSV,
     SPEC_YAML,
     has_spec_data,
 )
@@ -470,6 +473,17 @@ class VersionUpgradePlan(BaseModel):
     #: reproduce the stored bytes. See `DeclaredMovement.refutes_a_contract_gap`.
     declared: DeclaredMovement = Field(default_factory=DeclaredMovement)
 
+    #: Whether the re-publish re-derives its resolutions rather than carrying them (M12): the stored
+    #: `resolution.csv` holds a row that names no `source_release`, which no 0.8 run writes. See
+    #: `resolution_needs_rederive`. Never a reason to act on its own; it says *how* an acting re-publish
+    #: enriches.
+    rederive: bool = False
+    #: Whether that re-derivation needs the network: the module carries an allele that is not a
+    #: single-base substitution, and offline 0.8 cannot left-align one (upstream RM385, until 0.9).
+    needs_online: bool = False
+    #: Recorded subjects the re-derivation re-asks: the run's size, and online its request budget.
+    rederive_subjects: int = 0
+
     @property
     def contract_acts(self) -> bool:
         """The contract gap's own verdict, after the record has had its say.
@@ -503,6 +517,60 @@ class VersionUpgradePlan(BaseModel):
             or self.verdict.acts_by_default
             or recompile
         )
+
+
+def _rows(text: str) -> list[dict[str, str]]:
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def resolution_needs_rederive(resolution_csv_text: str) -> bool:
+    """Whether a stored `resolution.csv` predates the snapshot switch, so the sweep re-derives it (M12).
+
+    Detected, never flagged (*a migration detects its own trigger*): since format 0.8 (RM373) every row a
+    run answers names the release that answered it in `source_release`, so a row naming none was
+    written by a 0.7 run, against the old Ensembl repo. Upstream's upgrade order, step 5: an ordinary
+    enrich fills gaps and leaves such a row as it was, and a table holding both releases' placements
+    for one rsID refuses under `strict` (`rsid_placements_disagree`, RM374).
+
+    **Half of the trigger, and the other half is a condition:** a row naming a release *other than the
+    snapshot's* is the same staleness after the next snapshot move, and this does not see it. It
+    matters when `just-dna-enricher cache status` reports an Ensembl release newer than the one a
+    published `resolution.csv` names; until then every non-blank row is the current release's.
+    """
+    return any(not (row.get("source_release") or "").strip() for row in _rows(resolution_csv_text))
+
+
+def _not_substitutions(ref: str | None, alts: list[str]) -> bool:
+    return any(not is_substitution(ref, alt) for alt in alts if alt)
+
+
+def needs_online_rederive(files: dict[str, bytes]) -> bool:
+    """Whether a module carries an allele offline 0.8 cannot place: anything but a single-base
+    substitution (upstream's `vrs.is_substitution`, the class it mints without a reference).
+
+    Offline an indel is trimmed but not proven leftmost, and its authored-event verdict is `undecided`
+    (upstream RM385, open until 0.9; guide § 2 step 5: "Run it online"). Read from both sides, the
+    resolved `ref`/`alts` and the authored `ref`/`alt` and genotype, since an rsID-only row has no
+    resolved alleles yet. Errs towards online: a multi-base substitution or a symbolic allele asks the
+    network too, which costs requests and never a wrong placement.
+    """
+    if RESOLUTION_CSV in files:
+        for row in _rows(files[RESOLUTION_CSV].decode("utf-8")):
+            if row.get("ref") and _not_substitutions(row["ref"], (row.get("alts") or "").split(",")):
+                return True
+    if "variants.csv" in files:
+        for row in _rows(files["variants.csv"].decode("utf-8")):
+            if row.get("ref") and row.get("alt") and _not_substitutions(row["ref"], [row["alt"]]):
+                return True
+            if any(len(allele) != 1 for allele in split_genotype(row.get("genotype") or "")):
+                return True
+    return False
+
+
+def rederive_subjects(resolution_csv_text: str) -> int:
+    """How many recorded subjects a re-derivation re-asks: distinct `variant_key`s (one subject can
+    expand to several loci, RM381, and is asked once)."""
+    return len({row.get("variant_key") for row in _rows(resolution_csv_text)})
 
 
 def prepare_version_upgrade(
@@ -609,6 +677,8 @@ def prepare_version_upgrade(
         identical_compiler=gap.scale == GAP_NONE,
         declared=declared,
     )
+    resolution = files[RESOLUTION_CSV].decode("utf-8") if RESOLUTION_CSV in files else ""
+    rederive = bool(resolution) and resolution_needs_rederive(resolution)
     return VersionUpgradePlan(
         variants_plan=plan,
         dropped=dropped,
@@ -616,6 +686,9 @@ def prepare_version_upgrade(
         gap=gap,
         verdict=verdict,
         declared=declared,
+        rederive=rederive,
+        needs_online=rederive and needs_online_rederive(files),
+        rederive_subjects=rederive_subjects(resolution) if rederive else 0,
     )
 
 
@@ -717,6 +790,14 @@ def _next_free_patch(repo: Repository, namespace: str, name: str, version: str) 
     return f"{v.major}.{v.minor}.{patch}"
 
 
+class UpgradeHeld(Exception):
+    """A version the sweep will not re-publish under this run's switches, with the reason (M12).
+
+    Not a `PublishError`: nothing was attempted, so no publish refused. The sweep reports it per module
+    and goes on.
+    """
+
+
 def upgrade_version(
     *,
     repo: Repository,
@@ -730,6 +811,8 @@ def upgrade_version(
     recompile: bool = False,
     trim: bool = False,
     prepared: VersionUpgradePlan | None = None,
+    online: bool = False,
+    accept_drift: bool = False,
 ) -> tuple[str, ModuleManifest] | None:
     """Re-publish a version's spec as the next PATCH after migrating it to the current contract.
 
@@ -742,7 +825,13 @@ def upgrade_version(
     **blocked** by columns the contract rejects (needs `trim`), or it is already on-contract and no
     `recompile` was requested. Pass `recompile=True` to re-emit an on-contract module in the current
     parquet schema anyway (a non-lossy schema migration). `prepared` reuses a plan already computed
-    by `prepare_version_upgrade` (same `trim`), avoiding a second storage read."""
+    by `prepare_version_upgrade` (same `trim`), avoiding a second storage read.
+
+    A plan that re-derives (M12) passes `rederive=True` to the publish, which refuses unread drift as
+    `rederive_drift_needs_reading` unless `accept_drift`. One that also `needs_online` raises
+    `UpgradeHeld` unless `online` permits egress, and then runs that one publish with
+    `enrich_offline=False`: the shared clients and their pacing are untouched, and every module that
+    does not need the network still re-derives from the snapshot alone."""
     if not is_latest_version(repo, namespace, name, version):
         return None
     prep = prepared or prepare_version_upgrade(
@@ -750,6 +839,13 @@ def upgrade_version(
     )
     if prep is None or not prep.would_act(recompile=recompile):
         return None
+    if prep.needs_online and not online:
+        raise UpgradeHeld(
+            "its re-derivation needs the network: it carries an indel, and offline 0.8 cannot left-align "
+            "one (upstream RM385); re-run with --online"
+        )
+    if prep.needs_online:
+        settings = settings.model_copy(update={"enrich_offline": False})
 
     new_version = _next_free_patch(repo, namespace, name, version)
     new_manifest = publish_version(
@@ -773,5 +869,7 @@ def upgrade_version(
         # override's own warning still fires and is still logged, so production holding test-prefixed
         # data remains as findable as it was before this re-publish.
         allow_test_data=True,
+        rederive=prep.rederive,
+        accept_drift=accept_drift,
     )
     return new_version, new_manifest

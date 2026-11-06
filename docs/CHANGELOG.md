@@ -27,6 +27,17 @@ so an unset one is never found on its own somewhere on the host. It is optional 
 The test that guards this now fails on any snapshot the enricher takes that has no setting here, rather
 than only checking the ones it already knew.
 
+### `registry upgrade` re-derives resolutions written before format 0.8
+
+A published version whose stored `resolution.csv` predates 0.8 (its rows name no `source_release`) is
+re-derived on re-publish, not carried: carried across the Ensembl switch, a 0.7 table keeps its old
+placements and can refuse under strict. Modules carrying an indel re-derive only with `--online`, since
+offline 0.8 cannot left-align one; the rest egress nothing. A re-derivation that moved, lost or renamed an
+answer, or could not decide one, publishes nothing until the operator reads it and passes
+`--accept-drift`. Before re-deriving anything the sweep checks that the box's Ensembl snapshot is the new
+release. One module's refusal no longer stops the sweep. Each successor's changelog says it was
+re-derived and counts what moved. The procedure is in `docs/UPGRADE.md`.
+
 ### The Ensembl reference is format 0.8's split snapshot
 
 `REGISTRY_ENSEMBL_REFERENCE` defaults to `just-dna-seq/ensembl_variations_split` (dbSNP 157 / VEP 116), the

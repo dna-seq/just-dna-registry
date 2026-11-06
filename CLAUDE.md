@@ -144,6 +144,25 @@ symbolic-allele drop (`compiler.py:3822` vs `:4131`), so a disagreeing `variant_
 comparison to `cannot_say` rather than reporting drift; and probe only fields with a *reason* — one
 added because a field merely exists is how a detector starts crying wolf.
 
+**A sweep across a snapshot switch re-derives, and only the sweep does (0.28, M12).** Carrying a stored
+`resolution.csv` into the re-publish was right while the snapshot stood still: the enricher merges rather
+than clobbers, so a carried table made the sweep cheap and deterministic. Across format 0.8's Ensembl
+switch it is wrong, because the merge leaves a 0.7 row as it was and a table holding both releases'
+placements for one rsID refuses under strict. Five rules. **The trigger is read off the table**: a row
+naming no `source_release` was written before 0.8 (RM373), so `prepare_version_upgrade` sets `rederive`;
+a row naming an *older* release is the same staleness after the next switch and is not detected yet (the
+condition is in `resolution_needs_rederive`). **Only `registry upgrade` passes `rederive`**: an author's
+uploaded table is theirs, and it is a parameter, never a setting. **The network only where offline cannot
+answer**: a module with an allele that is not a single-base substitution is held without `--online`,
+since offline 0.8 cannot left-align an indel (RM385). **Drift a person must read holds the module**:
+`QUIET_DRIFT` names the arms that publish (written as the quiet set, so an arm upstream adds later
+holds), and the rest refuse as `rederive_drift_needs_reading` until `--accept-drift`, because the
+successor is immutable. **The snapshot is checked before the first PATCH**, through upstream's
+`download.pulled_from_elsewhere`; the pull record spells the repo as its fsspec prefix, so comparing it
+with `ensembl_reference` would refuse every correctly pulled cache. It converges: a re-derived table
+names its release on every row, so the next sweep carries it. And one module's refusal no longer ends
+the sweep: through 0.27 an uncaught `PublishError` stopped `--apply` at the first refusal.
+
 **A version-gap check belongs to the thing that has versions.** Most of 0.6.3 is upstream's ClinVar and
 ClinPGx *drafters*, and the honest answer for this service was that it has none — drafting is
 authoring-side, so "modules published before this need a re-draft" is a message for module authors and

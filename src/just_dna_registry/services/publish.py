@@ -56,7 +56,12 @@ from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
-from just_dna_registry.services.enrich import enrich_spec, enricher_available, unresolved_hint
+from just_dna_registry.services.enrich import (
+    enrich_spec,
+    enricher_available,
+    rederive_changelog,
+    unresolved_hint,
+)
 from just_dna_registry.services.ingest import ingest_manifest, now_iso
 from just_dna_registry.specfiles import (
     README_FILE,
@@ -468,11 +473,16 @@ def publish_version(
     published_by: int | None = None,
     gate: Any | None = None,
     allow_test_data: bool = False,
+    rederive: bool = False,
+    accept_drift: bool = False,
 ) -> ModuleManifest:
     """Publish from individually-uploaded spec files.
 
     `gate` is an already-acquired `EnrichmentGate` permit, released here in the worker's own
     `finally` — see `import_archive` for why the release cannot live on the caller's side.
+
+    `rederive` and `accept_drift` are `registry upgrade`'s (M12) and no router passes them; see
+    `_finalize`.
     """
     try:
         missing = [f for f in REQUIRED_SPEC_FILES if f not in files]
@@ -493,6 +503,7 @@ def publish_version(
                 repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
                 version=version, changelog=changelog, owner=owner, published_by=published_by,
                 spec_dir=spec_dir, allow_test_data=allow_test_data,
+                rederive=rederive, accept_drift=accept_drift,
             )
     finally:
         if gate is not None:
@@ -566,11 +577,19 @@ def _finalize(
     spec_dir: Path,
     published_by: int | None = None,
     allow_test_data: bool = False,
+    rederive: bool = False,
+    accept_drift: bool = False,
 ) -> ModuleManifest:
     """Validate, enrich, recompile a prepared spec dir, store the version, and index it.
 
     `allow_test_data` waves a `test-`/`test_`prefixed identifier onto production deliberately (0.14).
     Off by default, so the guard still catches the typo it was built for.
+
+    `rederive` re-asks every recorded resolution (M12; only `registry upgrade` sets it). The successor
+    is immutable, so drift a person has to read (`enrich.QUIET_DRIFT`'s complement) refuses here, after
+    the enrich and before the compile, as `rederive_drift_needs_reading` naming each subject, unless
+    `accept_drift` says somebody read it. Whatever publishes, its changelog says what the re-derivation
+    moved: the drift is permanent, so its record is too.
     """
     with start_action(
         action_type="publish_finalize", namespace=namespace, name=name, version=version
@@ -643,7 +662,15 @@ def _finalize(
 
         # The network tier, as a separate step ahead of the compile (CONSTITUTION Principle 2).
         # Writes `resolution.csv` into the spec dir; the compiler reads it from there.
-        enriched = enrich_spec(spec_dir, settings, action=action)
+        enriched = enrich_spec(spec_dir, settings, action=action, rederive=rederive)
+        if enriched.rederived:
+            if enriched.drift_to_read and not accept_drift:
+                raise PublishError(
+                    "rederive_drift_needs_reading",
+                    errors=enriched.drift_to_read,
+                    extra={"drift": enriched.drift},
+                )
+            changelog = changelog + rederive_changelog(enriched)
 
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp) / "out"

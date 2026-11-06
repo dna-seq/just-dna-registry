@@ -27,6 +27,7 @@ import os
 import tempfile
 import threading
 import time
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -230,6 +231,22 @@ class EnrichOutcome:
     #: The enricher's own `MintResult` (0.5.1 / RM40), or `None` when minting did not run — which is
     #: not the same as a coverage of zero, and the reason this is not two integers.
     vrs: Any = None
+    #: Whether this run re-derived (`enrich(rederive=True)`, M12): re-asked every recorded subject
+    #: instead of filling gaps. Only `registry upgrade` asks for it; see `enrich_spec`.
+    rederived: bool = False
+    #: Under `rederived`, how many re-asked subjects moved, per upstream `DRIFT_CASES` arm (RM394).
+    drift: dict[str, int] = field(default_factory=dict)
+    #: Under `rederived`, the drift a person has to read before the change is published: one line per
+    #: subject in an arm outside `QUIET_DRIFT`, upstream's own rendering (`str(SubjectDrift)`).
+    drift_to_read: list[str] = field(default_factory=list)
+
+
+#: The re-derivation arms that publish without a person reading them (upstream's guide § 2 step 5:
+#: `respelled` "nothing to do", `gained_allele` and `gained_rsid` the source naming more of the same
+#: events). Written as the quiet set rather than the holding one, so an arm upstream adds later holds
+#: until somebody reads what it means: `moved`, `lost_allele` and `renamed` want reading, and
+#: `undecided` asks for an online re-run.
+QUIET_DRIFT: frozenset[str] = frozenset({"respelled", "gained_allele", "gained_rsid"})
 
 
 _shared_clients: Any = None
@@ -880,8 +897,61 @@ def _render_notes(result: Any) -> list[str]:
     return notes
 
 
+def snapshot_not_current(settings: Settings) -> str | None:
+    """Why this box's Ensembl snapshot is not the release a re-derivation must read, or `None`.
+
+    Asked once, before `registry upgrade` re-derives anything (M12). Re-deriving against the old
+    release reads the old answers back, and every module it re-publishes is a PATCH that has to be
+    re-done (upstream's guide § 2 step 5: "pull the lane first ... re-deriving against it repeats the
+    line"). The lane moved repos under the same file names (RM372), so only its pull record tells the
+    two apart, and upstream's `download.pulled_from_elsewhere` is the one reading of it (the record
+    spells the repo as its fsspec prefix, `datasets/<org>/<repo>/data`, so comparing it with a repo id
+    here would refuse every correctly pulled cache). It reads an unfinished switch as the old repo. A
+    cache whose record names no repo is not evidence either way upstream, and **refuses here**: the
+    sweep's PATCHes are permanent, and the pull that settles it costs nothing on a box that already
+    holds the new release.
+    """
+    from just_dna_enricher.download import pulled_from_elsewhere
+    from just_dna_enricher.locations import pull_record_repo
+
+    pull = "just-dna-enricher cache pull --only ensembl"
+    cache = available_references(settings)["ensembl"]
+    if cache is None:
+        return f"no Ensembl snapshot is provisioned on this box; run `{pull}` first"
+    if pull_record_repo(cache) is None:
+        return (
+            f"the Ensembl snapshot at {cache} records no repo it was pulled from, so it cannot be told "
+            f"from the old release; run `{pull}` first"
+        )
+    elsewhere = pulled_from_elsewhere("ensembl", cache)
+    if elsewhere is not None:
+        return f"the Ensembl snapshot at {cache} was pulled from {elsewhere}, the old release; run `{pull}` first"
+    return None
+
+
+def rederive_changelog(outcome: EnrichOutcome) -> str:
+    """The paragraph a re-derived successor's changelog carries (M12), from what the run reported.
+
+    Counted by upstream's arm and in upstream's words for the arm, so the record says what moved
+    without restating the enricher's judgement. A table that answered identically says that too: an
+    absent paragraph would read the same as a sweep that never re-derived.
+    """
+    where = "offline, from this registry's snapshots" if outcome.offline else "online"
+    if not outcome.drift:
+        moved = "no recorded resolution answers differently"
+    else:
+        moved = ", ".join(f"{count} {case}" for case, count in sorted(outcome.drift.items()))
+        moved = f"re-asked subjects that answer differently: {moved}"
+    accepted = (
+        f" {len(outcome.drift_to_read)} of them were read and accepted by the operator before publishing."
+        if outcome.drift_to_read
+        else ""
+    )
+    return f"\n\nResolutions re-derived ({where}) against the current reference snapshot; {moved}.{accepted}"
+
+
 def enrich_spec(
-    spec_dir: Path, settings: Settings, *, action: Any | None = None
+    spec_dir: Path, settings: Settings, *, action: Any | None = None, rederive: bool = False
 ) -> EnrichOutcome:
     """Produce `resolution.csv` in `spec_dir`, ahead of the compile. Never raises on findings.
 
@@ -897,6 +967,11 @@ def enrich_spec(
 
     Raises `PublishError("enrich_failed")` only when the enricher itself refuses (a withdrawn rsID,
     an unreadable CSV) — never for unresolved variants, which ride on the outcome.
+
+    `rederive` re-asks every recorded subject rather than filling gaps (M12, upstream's guide § 2
+    step 5), and is the sweep's alone: an ordinary publish keeps merge-not-clobber, because the
+    `resolution.csv` an author uploads is theirs and a publish is not the place to re-open it. Not a
+    setting for the same reason: a setting is one edit away from re-deriving every publish.
     """
     from just_dna_registry.services.publish import PublishError
 
@@ -960,6 +1035,7 @@ def enrich_spec(
             verify_rsids=settings.enrich_verify_rsids,
             verify_datasets=settings.enrich_verify_datasets,  # unpaced probes; see config
             keep_par_twin=settings.enrich_keep_par_twin,
+            rederive=rederive,
         )
     except EnrichmentError as exc:
         # In best-effort the reachable causes are an invalid CSV (which validation should already
@@ -983,6 +1059,9 @@ def enrich_spec(
         sources=list(result.sources),
         notes=_render_notes(result),
         vrs=result.vrs,
+        rederived=rederive,
+        drift=dict(Counter(d.case for d in result.rederived or [])),
+        drift_to_read=[str(d) for d in result.rederived or [] if d.case not in QUIET_DRIFT],
     )
     if action is not None:
         action.add_success_fields(
