@@ -23,9 +23,20 @@ logger = logging.getLogger("registry.auth")
 
 
 def merge_accounts(
-    repo: Repository, settings: Settings, source: str, into: str, *, apply: bool
+    repo: Repository,
+    settings: Settings,
+    source: str,
+    into: str,
+    *,
+    apply: bool,
+    storage: StorageBackend | None = None,
 ) -> AccountMerge:
     """Fold `source` into `into` (see `Repository.merge_accounts`), snapshotting first on apply.
+
+    Then, with `storage`, amend `owner` from any of `source`'s handles to `into` on the manifests it
+    published (0.28): the merge moves `published_by`, and without this the cards kept naming an account
+    nobody uses. The rename's sweep, so a re-run of an applied merge's amendment converges the same way.
+    Without `storage` the versions are listed and not amended.
 
     Raises `LookupError` for an unknown account and `ValueError` for a pair that cannot merge."""
     source_row, into_row = repo.account_by_name(source), repo.account_by_name(into)
@@ -51,9 +62,20 @@ def merge_accounts(
         report = Repository(own).merge_accounts(source_id, into_id, apply=apply)
     finally:
         own.close()
+    names = [source_row["name"], *repo.aliases_of(source_id)]
+    owned = [
+        v for v in repo.versions_owned_as(names) if v["published_by"] in (None, source_id, into_id)
+    ]
+    amended, failed = 0, []
     if apply:
         logger.warning("merged account %s into %s: %s", source, into, report)
-    return AccountMerge(source=source, into=into, applied=apply, snapshot=snapshot, **report)
+        if storage is not None:
+            amended, failed = amend_owner(repo, storage, owned, into_row["name"])
+    return AccountMerge(
+        source=source, into=into, applied=apply, snapshot=snapshot, **report,
+        owner_versions=[f"{v['namespace']}/{v['name']}@{v['version']}" for v in owned],
+        owner_amended=amended, owner_failed=failed,
+    )
 
 
 class RenameRefused(ValueError):
@@ -160,24 +182,40 @@ def rename_account(
             own.close()
         logger.warning("renamed account %s (id %s) to %s", current, account_id, new)
 
-    for v in mine:
+    report.amended, report.failed = amend_owner(repo, storage, mine, new)
+    return report
+
+
+def amend_owner(
+    repo: Repository, storage: StorageBackend, versions: list[dict], new: str
+) -> tuple[int, list[str]]:
+    """Set `manifest.owner = new` on each listed version, in storage and in the projection, then
+    refresh `modules.owner` from each touched module's latest manifest. Returns `(amended, failed)`.
+
+    Storage first, then the projection: the amend set is read from the projection, so a storage
+    failure leaves the row naming the old handle and the next run picks it up again. The card's
+    `owner` is re-read from the latest manifest rather than rewritten in bulk, so a module whose latest
+    version was published by somebody else keeps naming them."""
+    amended, failed = 0, []
+    touched: set[tuple[str, str]] = set()
+    for v in versions:
+        where = f"{v['namespace']}/{v['name']}@{v['version']}"
         raw = repo.get_manifest_json(v["namespace"], v["name"], v["version"])
         if raw is None:  # deleted since the listing
             continue
         manifest = ModuleManifest.model_validate_json(raw)
         manifest.owner = new
         body = manifest.model_dump_json(indent=2).encode("utf-8") + b"\n"
-        # Storage first, then the projection: the amend set is read from the projection, so a
-        # storage failure leaves the row naming the old handle and the next run picks it up again.
         try:
             storage.store_module(version_key(v["namespace"], v["name"], v["version"]),
                                  {"manifest.json": body})
         except Exception as exc:  # noqa: BLE001 - any backend failure is one version's, reported
-            logger.warning("rename %s -> %s: %s not amended: %s", current, new, label(v), exc)
-            report.failed.append(f"{label(v)}: {type(exc).__name__}")
+            logger.warning("owner -> %s: %s not amended: %s", new, where, exc)
+            failed.append(f"{where}: {type(exc).__name__}")
             continue
         repo.set_version_manifest(v["namespace"], v["name"], v["version"], manifest)
-        report.amended += 1
-    if names:
-        repo.set_modules_owner(names, new)
-    return report
+        touched.add((v["namespace"], v["name"]))
+        amended += 1
+    for namespace, name in sorted(touched):
+        repo.refresh_module_owner(namespace, name)
+    return amended, failed

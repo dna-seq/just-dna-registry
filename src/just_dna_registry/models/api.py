@@ -573,6 +573,15 @@ class AccountMerge(BaseModel):
     snapshot: str | None = Field(
         default=None, description="Backup file name taken before an applied merge (name only)"
     )
+    owner_versions: list[str] = Field(
+        default_factory=list,
+        description="Versions whose manifest `owner` names `source` and is (or would be) amended to "
+        "`into` (0.28); outside the digest, so nothing changes identity",
+    )
+    owner_amended: int = 0
+    owner_failed: list[str] = Field(
+        default_factory=list, description="Versions whose amendment failed; the merge itself stands"
+    )
 
 
 class CatalogStats(BaseModel):

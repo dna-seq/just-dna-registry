@@ -437,3 +437,46 @@ def test_purge_lists_an_account_renamed_into_test_with_its_old_handle(repo: Repo
     ]
     apply_purge(repo, None, plan)
     assert repo.handle_taken("person") is None and repo.handle_taken("test-was") == other
+
+
+def test_a_conflicts_card_keeps_naming_its_publisher(app, repo: Repository, seed: Callable) -> None:
+    """The card's `owner` is re-read from each touched module's latest manifest, not rewritten in bulk:
+    a module whose latest version another account published keeps naming that account's handle as
+    its manifest does."""
+    repo.create_account("antonkulaga")
+    publisher = repo.create_account("someone")
+    seed("ns1", "modul", "1.0.0", genes=["G"], categories=["x"], created_at="2026-01-01T00:00:00Z",
+         owner="antonkulaga")
+    seed("ns1", "modul", "1.0.1", genes=["G"], categories=["x"], created_at="2026-01-02T00:00:00Z",
+         owner="antonkulaga")
+    repo.conn.execute(
+        "UPDATE versions SET published_by = ? WHERE version = '1.0.1'", (publisher,)
+    )
+    repo.conn.commit()
+    report = rename_account(repo, app.state.storage, app.state.settings, "antonkulaga", "anton", apply=True)
+    assert report.versions == ["ns1/modul@1.0.0"] and report.conflicts == ["ns1/modul@1.0.1"]
+    assert repo.get_module_row("ns1", "modul")["owner"] == "antonkulaga"  # the latest's, untouched
+
+
+def test_a_merge_amends_owner_from_the_lost_handle_to_the_kept_one(
+    app, client: TestClient, repo: Repository, seed: Callable
+) -> None:
+    lost = repo.create_account("old-handle")
+    repo.add_namespace("nam1", lost)
+    seed("nam1", "modul", "1.0.0", genes=["G"], categories=["x"], created_at="2026-01-01T00:00:00Z",
+         owner="old-handle")
+    repo.conn.execute("UPDATE versions SET published_by = ?", (lost,))
+    repo.conn.commit()
+    _user(repo, "name2")
+    admin = _user(repo, "ops", admin=True)
+
+    dry = client.post("/api/v1/admin/accounts/old-handle/merge", json={"into": "name2"}, headers=_auth(admin))
+    assert dry.json()["owner_versions"] == ["nam1/modul@1.0.0"] and dry.json()["owner_amended"] == 0
+    assert _projected_owner(app, "nam1", "modul", "1.0.0") == "old-handle"
+
+    done = client.post(
+        "/api/v1/admin/accounts/old-handle/merge", json={"into": "name2", "apply": True}, headers=_auth(admin)
+    ).json()
+    assert (done["owner_amended"], done["owner_failed"]) == (1, [])
+    assert _stored_owner(app, "nam1", "modul", "1.0.0") == ("name2", "name2")
+    assert client.get("/api/v1/modules/nam1/modul").json()["owner"] == "name2"

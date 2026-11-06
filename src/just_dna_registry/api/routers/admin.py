@@ -40,13 +40,18 @@ StorageDep = Annotated[StorageBackend, Depends(get_storage)]
 
 @router.post("/accounts/{account}/merge", response_model=AccountMerge)
 def merge(
-    repo: RepoDep, settings: SettingsDep, caller: AccountDep, account: str, body: MergeAccountsRequest
+    repo: RepoDep,
+    storage: StorageDep,
+    settings: SettingsDep,
+    caller: AccountDep,
+    account: str,
+    body: MergeAccountsRequest,
 ) -> AccountMerge:
     """Fold `account` into `body.into`: namespaces, roles, authored versions, stars and reviews
     move, and `account`'s API keys are revoked. A dry run unless `apply` is true. Site admins only."""
     require_site_admin(caller)
     try:
-        return merge_accounts(repo, settings, account, body.into, apply=body.apply)
+        return merge_accounts(repo, settings, account, body.into, apply=body.apply, storage=storage)
     except LookupError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="account_not_found") from exc
     except ValueError as exc:

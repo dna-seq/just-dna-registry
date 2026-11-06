@@ -818,9 +818,11 @@ running server, and one direction arms a delete endpoint on production data.
   start, and `registry upgrade`, which carries the predecessor's stored `owner`. The amendment of
   stored manifests is keyed on `manifest.owner`, never on `published_by`, because `upgrade_version`
   publishes with no `published_by` and its successors are the latest version of nearly every module;
-  that key is also what makes re-running a rename finish one a storage error interrupted. Not done
-  here, said so it is not assumed: `merge-accounts` moves `published_by` and leaves the lost account's
-  handle in `owner` on its manifests, and a namespace is never renamed (identity is immutable).
+  that key is also what makes re-running a rename finish one a storage error interrupted.
+  `merge-accounts` reuses the same sweep (`services/accounts.amend_owner`) to move `owner` from the
+  lost handle to the kept one. The card's `owner` is re-read from each touched module's latest
+  manifest, never rewritten in bulk, so a module another account published last keeps naming them.
+  Not done, said so it is not assumed: a namespace is never renamed (identity is immutable).
 - **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
   guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
 

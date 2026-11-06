@@ -290,14 +290,18 @@ def merge_accounts_command(
     except ValueError as exc:
         typer.echo(f"cannot merge {source} into {into}: {exc}")
         raise typer.Exit(code=1) from exc
-    for field, value in plan.model_dump(exclude={"source", "into", "applied", "snapshot"}).items():
+    for field, value in plan.model_dump(
+        exclude={"source", "into", "applied", "snapshot", "owner_amended", "owner_failed"}
+    ).items():
         typer.echo(f"  {field:<24} {value}")
     if not apply:
         typer.echo("dry run: nothing changed (pass --apply to act)")
         return
     if not yes:
         typer.confirm(f"Merge {source} into {into} and revoke {source}'s keys?", abort=True)
-    done = merge_accounts(repo, settings, source, into, apply=True)
+    done = merge_accounts(repo, settings, source, into, apply=True, storage=_storage(settings))
+    for line in done.owner_failed:
+        typer.secho(f"✗ owner not amended: {line}", fg=typer.colors.RED)
     if done.snapshot is None:
         typer.secho("! no pre-flight snapshot taken (auto-backup disabled)", fg=typer.colors.YELLOW)
     else:

@@ -1260,7 +1260,10 @@ name.
 
 `200 → {"source", "into", "applied", "namespaces": [...], "namespace_memberships",
 "org_memberships", "versions", "stars_moved", "stars_collapsed", "reviews_moved",
-"reviews_kept_on_source", "keys_revoked", "snapshot"}`. Errors: `401`, `403 site_admin_required`,
+"reviews_kept_on_source", "keys_revoked", "snapshot", "owner_versions": [...], "owner_amended",
+"owner_failed": [...]}`. The last three (unreleased): an applied merge amends `owner` from `{account}`'s
+handles to `into` on the manifests it published, as a rename does; a failed amendment leaves the merge
+standing and is listed. Errors: `401`, `403 site_admin_required`,
 `404 account_not_found`, `422 same_account`, `422 not_a_user_account` (org accounts do not merge).
 
 ### 41. `GET /api/v1/stats`

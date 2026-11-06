@@ -188,16 +188,19 @@ class Repository:
             ).fetchall()
         ]
 
-    def set_modules_owner(self, names: list[str], new: str) -> int:
-        """Point `modules.owner` at `new` wherever it names one of `names`. Direct rather than a
-        re-ingest: the column is the latest manifest's `owner` by construction, and `upsert_module`
-        would also move `updated_at`, which a rename is not."""
-        marks = ",".join("?" * len(names))
-        cur = self.conn.execute(
-            f"UPDATE modules SET owner = ? WHERE owner IN ({marks})", (new, *names)
+    def refresh_module_owner(self, namespace: str, name: str) -> None:
+        """Re-read `modules.owner` from the module's latest manifest. Direct rather than a re-ingest:
+        `upsert_module` would also move `updated_at`, which an owner amendment is not."""
+        row = self.get_module_row(namespace, name)
+        if row is None or not row["latest_version"]:
+            return
+        raw = self.get_manifest_json(namespace, name, row["latest_version"])
+        if raw is None:
+            return
+        self.conn.execute(
+            "UPDATE modules SET owner = ? WHERE id = ?", (json.loads(raw).get("owner"), row["id"])
         )
         self.conn.commit()
-        return cur.rowcount
 
     def account_by_install_id(self, install_id: str) -> sqlite3.Row | None:
         return self.conn.execute(

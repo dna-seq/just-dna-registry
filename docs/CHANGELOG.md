@@ -200,7 +200,9 @@ stars and reviews to the new account, and revokes the lost account's keys. Nothi
 apart from those keys. A star both accounts gave collapses to one, and a review both wrote on one
 version stays under the old handle. The request is a dry run unless `apply` is true. The dry run
 runs the same statements and rolls them back. An applied merge snapshots the DB first. Org
-accounts do not merge, and `site_admin` never moves.
+accounts do not merge, and `site_admin` never moves. It then amends `owner` from the lost handle to
+the new one on every manifest the lost account published (`owner_versions`, `owner_amended`), as a
+rename does, so the cards name the account the person uses.
 
 The flag is read from the account row on every request, never from a JWT claim, so a revocation
 binds sessions that were already issued. Every elevated answer logs a WARNING on
