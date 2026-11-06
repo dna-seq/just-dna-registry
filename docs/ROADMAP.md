@@ -803,6 +803,19 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
   name; `purge-test-data` lists an account renamed into `test-` and deletes its aliases with it.
   Found while planning, filed apart: `merge-accounts` moves `published_by` but leaves the lost account's
   name in `owner` on its manifests; the same amendment fixes it.
+  **Built on `0.28` (eb70aca, 2026-11-06).** As planned, with three differences: there were five doors,
+  not four (`registry create-org` is one too); the client command is `registry-client rename-account NEW
+  [--account OTHER]`, flat like `merge-accounts`, rather than `account rename`; and `AccountRename` is not
+  in the console's `types.ts`, because the page reads it nowhere (as with `AccountMerge`). The self route
+  costs a `rename` bucket token (5/h) and refunds a dry run and a refusal. Verified: digest, content
+  signature and signature unchanged after an amend, and `verify_manifest` passes on the downloaded copy.
+
+- **`merge-accounts` amends `owner` too** (filed by the lead 2026-11-06 while planning the rename;
+  `unattended`, after the rename; owner: lead). A merge moves `published_by` to the account kept and leaves
+  the lost account's handle in `owner` on every manifest it published, so the cards keep naming an account
+  nobody uses. The rename's amendment (`services/accounts.rename_account`'s sweep) is the fix: after the
+  merge, amend `owner` from the lost account's handles to the kept one's. Sizing: patch-sized inside the
+  0.28 minor, since merge ships in it.
 
 - ✅ **done** (a96e8ac on `release-0.27.x`, in 0.27.1). **Derive `registry upgrade`'s row-model roster from upstream's** (**severity medium, unattended, first of
   the liaison's items**, owner: lead; the liaison's **C4** in `docs/UPSTREAM_COMPILER.md`). `services/upgrade.py`
