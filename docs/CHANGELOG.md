@@ -8,6 +8,16 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### An online enrichment hands the enricher the shared GRCh37 client
+
+`enrich()` takes a `grch37_client` for its wrong-build diagnosis, and neither call site (publish and
+`/check`) passed the one the shared bundle already holds, so every online run built its own with a
+fresh pacing gate. Both pass it now, and a test reads every client `enrich()` accepts off its signature
+and requires the bundle's own on both paths, so the next client upstream adds fails a test rather than
+pacing per call.
+
+**Client surface:** unchanged.
+
 ## [0.28.1] — 2026-11-07
 
 ### Every maintenance command is logged, snapshotted first, and revertible

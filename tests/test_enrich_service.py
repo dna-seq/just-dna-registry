@@ -245,7 +245,7 @@ def test_every_cache_enrich_takes_is_handed_the_configured_path(
 
 
 def _enrich_kwargs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str, settings: Settings
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str, settings: Settings, *, offline: bool = True
 ) -> dict[str, object]:
     """The keyword arguments one of the two call sites hands `enrich()`, captured before it runs."""
     import just_dna_enricher.enrich as upstream
@@ -266,11 +266,46 @@ def _enrich_kwargs(
             enrich_service.enrich_spec(spec, settings)
         else:
             enrich_service._run_enrichment_passes(
-                settings=settings, spec_dir=spec, offline=True,
+                settings=settings, spec_dir=spec, offline=offline,
                 caches=configured_caches(settings), frequencies=False, literature=False,
                 identifiers=False, acmg=False,
             )
     return seen
+
+
+def _enrich_client_parameters() -> list[str]:
+    """Every client `enrich()` accepts, read off its signature: `resolver` and each `*_client`."""
+    from just_dna_enricher.enrich import enrich
+
+    names = [n for n in inspect.signature(enrich).parameters if n == "resolver" or n.endswith("_client")]
+    # Floor: resolver, gnomad_client and grch37_client as of enricher 0.8.
+    assert len(names) >= 3, names
+    return names
+
+
+@pytest.mark.parametrize("path", ["publish", "dry_run"])
+def test_every_client_enrich_accepts_is_the_shared_bundles_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """Online, both call sites hand `enrich()` the shared bundle's member for every client it takes.
+
+    An omitted client is `None`, and `enrich()` then builds its own with a fresh `PacingGate`, so the
+    pace is per call and N concurrent runs egress at N times the interval. `grch37_client` was omitted
+    on both paths through 0.28.1 while the bundle held one; a `--jobs` sweep is N concurrent runs.
+    """
+    from just_dna_registry.services.enrich import close_lookup_clients, shared_lookup_clients
+
+    parameters = _enrich_client_parameters()  # read before the stand-in replaces `enrich`
+    close_lookup_clients()
+    try:
+        seen = _enrich_kwargs(tmp_path, monkeypatch, path, Settings(enrich_offline=False), offline=False)
+        bundle = shared_lookup_clients()
+        members = [getattr(bundle, field) for field in vars(bundle)]
+        for name in parameters:
+            assert seen.get(name) is not None, f"{name} is not passed, so enrich() builds an unpaced one"
+            assert any(seen[name] is member for member in members), f"{name} is not the bundle's client"
+    finally:
+        close_lookup_clients()
 
 
 @pytest.mark.parametrize("path", ["publish", "dry_run"])

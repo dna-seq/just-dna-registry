@@ -1064,6 +1064,11 @@ def enrich_spec(
             offline=offline,
             resolver=clients.ensembl if clients else None,
             gnomad_client=clients.gnomad if clients else None,
+            # The wrong-build diagnosis asks the GRCh37 service. Left out through 0.28.1, so every
+            # online run built its own `Grch37Client` with a fresh `PacingGate` beside the bundle's:
+            # the "fill every field" hole one level down, at the call rather than the construction,
+            # and N concurrent runs (a `--jobs` sweep) egressed at N times the interval.
+            grch37_client=clients.grch37 if clients else None,
             ensembl_cache=caches["ensembl"],
             clinvar_cache=caches["clinvar"],
             # Every lane `enrich()` takes, never one left to its default: an omitted `*_cache` is
@@ -1648,6 +1653,7 @@ def _run_enrichment_passes(
             offline=offline,
             resolver=clients.ensembl if clients else None,
             gnomad_client=clients.gnomad if clients else None,
+            grch37_client=clients.grch37 if clients else None,  # as in `enrich_spec`
             ensembl_cache=caches["ensembl"],
             clinvar_cache=caches["clinvar"],
             pubmind_cache=caches["pubmind"],  # as in `enrich_spec`: never omit a lane
