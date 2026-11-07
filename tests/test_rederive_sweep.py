@@ -15,6 +15,8 @@ import csv
 import dataclasses
 import io
 import json
+import shutil
+import threading
 from pathlib import Path
 
 import just_dna_enricher.enrich as enricher
@@ -28,7 +30,10 @@ from typer.testing import CliRunner
 
 from just_dna_registry import cli
 from just_dna_registry.config import Settings, get_settings
+from just_dna_registry.db.repository import Repository
+from just_dna_registry.db.schema import connect
 from just_dna_registry.maintenance import db_digest
+from just_dna_registry.replay import SweepLines
 from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services.enrich import QUIET_DRIFT, snapshot_not_current
 from just_dna_registry.services.publish import PublishError
@@ -418,6 +423,133 @@ def test_the_sweep_writes_its_own_log(
     assert body.rstrip().splitlines()[-1].startswith("# ok") and "nothing changed" in body
     assert not (runs[0] / "db.sqlite").exists()
     assert json.loads((runs[0] / "run.json").read_text())["changed"] is False
+
+
+_JOB_MODULES = {"coronary": "-0.8", "coronary_two": "-0.7", "coronary_three": "-0.6", "coronary_four": "-0.5"}
+
+
+def _successors(db: Path, storage: Path) -> dict[str, tuple]:
+    """Each module's PATCH as a sweep left it: its version, content identity, changelog and stored files.
+
+    Not the digest: an enrich stamps `fetched_at` into `sources.csv`, so two compiles of one spec name
+    different bytes whenever they straddle a second (see CLAUDE.md, *Manifest & integrity*)."""
+    conn = connect(db)
+    try:
+        repo = Repository(conn)
+        out = {}
+        for name in _JOB_MODULES:
+            row = repo.get_module_row(_NS, name)
+            version = row["latest_version"]
+            manifest = ModuleManifest.model_validate_json(
+                (storage / version_key(_NS, name, version) / "manifest.json").read_text()
+            )
+            files = sorted(
+                p.relative_to(storage / version_key(_NS, name, version)).as_posix()
+                for p in (storage / version_key(_NS, name, version)).rglob("*") if p.is_file()
+            )
+            out[name] = (version, manifest.content_signature, repo.get_version_changelog(_NS, name, version), files)
+        return out
+    finally:
+        conn.close()
+
+
+def test_jobs_publish_what_one_worker_publishes_and_revert_to_the_byte(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
+) -> None:
+    """`upgrade --apply --jobs 3` over four modules leaves the catalog `--jobs 1` leaves, and reverts.
+
+    Two copies of one catalog, one per worker count: every module gets the same PATCH with the same
+    content signature, changelog and stored files, and each run's journal names exactly the files it
+    added. The parallel run is then reverted, and its catalog and storage read back to the byte. The
+    first two re-publishes meet at a barrier, so the parallel run is shown to have overlapped rather
+    than assumed to.
+    """
+    for name, weight in _JOB_MODULES.items():
+        resp = client.post(
+            f"/api/v1/modules/{_NS}/{name}/versions",
+            data={"version": "1.0.0"},
+            files=[
+                ("files", ("module_spec.yaml", _YAML.replace("coronary", name).encode(), "text/yaml")),
+                ("files", ("variants.csv", _VARIANTS.replace("-0.8", weight).encode(), "text/csv")),
+                ("files", ("studies.csv", _STUDIES.encode(), "text/csv")),
+            ],
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        assert resp.status_code == 201, resp.text
+        _as_0_7_table(app, name=name)
+    app.state.repo.conn.commit()
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+
+    boxes = {}
+    for jobs in (1, 3):
+        box = tmp_path / f"jobs{jobs}"
+        box.mkdir()
+        shutil.copyfile(settings.db_path, box / "registry.db")
+        shutil.copytree(settings.local_storage_dir, box / "artifacts")
+        boxes[jobs] = box
+
+    real = cli.upgrade_version
+    meet = threading.Barrier(2, timeout=60)
+    entered: list[str] = []
+
+    def overlapping(**kwargs):
+        entered.append(kwargs["name"])
+        if len(entered) <= 2:
+            meet.wait()  # both of the first two are inside at once, or this raises
+        return real(**kwargs)
+
+    outputs, journals = {}, {}
+    for jobs, box in boxes.items():
+        monkeypatch.setattr(cli, "upgrade_version", overlapping if jobs > 1 else real)
+        monkeypatch.setenv("REGISTRY_DB_PATH", str(box / "registry.db"))
+        monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(box / "artifacts"))
+        monkeypatch.setenv("REGISTRY_RUN_DIR", str(box / "runs"))
+        get_settings.cache_clear()
+        try:
+            result = CliRunner().invoke(cli.app, ["upgrade", "--apply", "--jobs", str(jobs)])
+        finally:
+            get_settings.cache_clear()
+        assert result.exit_code == 0, result.output
+        outputs[jobs] = result.output
+        (run,) = (box / "runs").glob("*-upgrade")
+        journals[jobs] = run
+    assert sorted(entered) == sorted(_JOB_MODULES)
+
+    for out in outputs.values():
+        assert f"{len(_JOB_MODULES)} version(s) upgraded and re-published" in out, out
+        published = SweepLines.parse(out).published
+        assert set(published) == {f"{_NS}/{name}@1.0.0" for name in _JOB_MODULES}, out
+        assert all(len(block) == 2 and block[1].startswith("    digest ") for block in published.values()), out
+
+    one, many = (_successors(boxes[j] / "registry.db", boxes[j] / "artifacts") for j in (1, 3))
+    assert {name: s[0] for name, s in one.items()} == dict.fromkeys(_JOB_MODULES, "1.0.1")
+    assert many == one
+
+    for run in journals.values():
+        journal = [json.loads(line) for line in (run / "journal.jsonl").read_text().splitlines()]
+        assert {e["op"] for e in journal} == {"add"}
+        assert {(e["key"], e["name"]) for e in journal} == {
+            (version_key(_NS, name, "1.0.1"), file) for name, (_, _, _, files) in one.items() for file in files
+        }
+
+    # Revert the parallel run and read back the catalog and the storage tree it started from.
+    box = boxes[3]
+    seed_db, seed_tree = db_digest(settings.db_path), _tree_of(settings.local_storage_dir)
+    monkeypatch.setenv("REGISTRY_DB_PATH", str(box / "registry.db"))
+    monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(box / "artifacts"))
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(box / "runs"))
+    get_settings.cache_clear()
+    try:
+        result = CliRunner().invoke(cli.app, ["revert-run", journals[3].name, "--yes"])
+    finally:
+        get_settings.cache_clear()
+    assert result.exit_code == 0, result.output
+    assert db_digest(box / "registry.db") == seed_db
+    assert _tree_of(box / "artifacts") == seed_tree
+
+
+def _tree_of(root: Path) -> dict[str, bytes]:
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
 
 
 def test_a_sweep_that_publishes_kept_the_catalog_as_it_was_before(

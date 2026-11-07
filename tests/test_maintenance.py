@@ -8,6 +8,7 @@ import json
 import logging
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
 import click
@@ -209,3 +210,44 @@ def test_a_failed_run_that_changed_nothing_keeps_no_snapshot(tmp_path: Path) -> 
     with pytest.raises(click.exceptions.Exit), maintenance_run(settings, "revert-run", "x") as run:
         raise click.exceptions.Exit(1)
     assert (run.path / "run.log").is_file() and not (run.path / "db.sqlite").exists()
+
+
+def test_a_journal_written_from_many_threads_stays_whole_and_reverts_to_the_byte(tmp_path: Path) -> None:
+    """`upgrade --jobs` publishes from several threads, and the journal must hold up on its own.
+
+    A capture file is named by the entry's index, so two unsynchronized writers can take the same
+    index and one prior state is lost: the revert then restores the wrong bytes to one of the two
+    files. Many writers overwrite distinct files at once; every entry must have its own capture, the
+    journal file must agree with the run's entries, and the revert must put back every byte.
+    """
+    settings = _settings(tmp_path)
+    store = LocalStorage(settings.local_storage_dir)
+    writers, rounds = 12, 15
+    for w in range(writers):
+        store.store_module(f"ns/m{w}/1.0.0", {f"f{r}.csv": f"old {w} {r}".encode() for r in range(rounds)})
+    tree_before = _tree(store.root)
+    start = threading.Barrier(writers)
+
+    with maintenance_run(settings, "upgrade", "registry upgrade --apply --jobs 12") as run:
+        storage = journaled(store)
+
+        def write(w: int) -> None:
+            start.wait()
+            for r in range(rounds):
+                storage.store_module(f"ns/m{w}/1.0.0", {f"f{r}.csv": f"new {w} {r}".encode()})
+
+        threads = [threading.Thread(target=write, args=(w,)) for w in range(writers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    journal = [json.loads(line) for line in (run.path / "journal.jsonl").read_text().splitlines()]
+    assert len(journal) == len(run.entries) == writers * rounds
+    captures = [e["before"] for e in journal]
+    assert len(set(captures)) == len(captures), "two entries share one capture file"
+    assert {e["op"] for e in journal} == {"overwrite"}
+
+    with maintenance_run(settings, "revert-run", "registry revert-run"):
+        revert_run(settings, run.id, journaled(store))
+    assert _tree(store.root) == tree_before

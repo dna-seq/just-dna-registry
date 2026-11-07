@@ -489,6 +489,14 @@ Four rules that each cost a bug to learn:
   answers staleness — check with
   `uv run python -c "import inspect,just_dna_enricher.caches as c; print('builder_version' in inspect.getsource(c.prepare_lane))"`
   (run 2026-09-27: `False`, nothing upstream reads the stamp; a `True` is a prompt to read `prepare_lane`, not proof).
+- **`upgrade --jobs` is a concurrent caller of `enrich()`, so every client it can reach must be shared
+  or serialized (0.28.2).** The bundle covers `resolver`, `gnomad_client` and `grch37_client`, and a test
+  reads every client `enrich()` accepts off its signature. What `enrich()` builds per run with no way to
+  hand it one (`check_rsids`' `EutilsClient`, the dataset-currency probes) runs under `_UNSHARED_EGRESS`
+  while its setting is on; ask upstream for the parameter rather than widening that lock. The workers'
+  speed-up is overlapped waiting, never rate. And **a shorter timeout is not faster against Ensembl**:
+  measured, a cold `/variation` lookup is 7-18 s at the server and an abandoned request leaves it cold, so
+  `enrich_http_timeout_seconds` defaults to upstream's values and the measured direction is longer.
 - **Nice values are one-way.** Raising a thread's nice is unprivileged, lowering it back is not, and
   anyio reuses its workers — so anything niced runs on a thread we create and discard
   (`lowpriority.py`). A `finally: restore()` here does not work and cannot be made to.

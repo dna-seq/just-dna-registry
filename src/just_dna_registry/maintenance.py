@@ -37,6 +37,7 @@ import re
 import shutil
 import sqlite3
 import sys
+import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
@@ -179,22 +180,29 @@ class Run:
     entries: list[dict[str, Any]] = field(default_factory=list)
     #: Fields the command adds to `run.json` (a revert names the run it reverted).
     extra: dict[str, Any] = field(default_factory=dict)
+    #: Held across each journal entry, and by `JournaledStorage` from a read of prior bytes to the write.
+    #: A capture file is named by the entry's index, so two threads recording at once would take the
+    #: same name and one capture would overwrite the other; `upgrade --jobs` publishes from N threads.
+    #: Those publishes also serialize on the publish path's commit lock, but the journal must not
+    #: depend on who calls it. Re-entrant, because `JournaledStorage` holds it around `record`.
+    lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
     def record(self, op: str, key: str, name: str, *, before: bytes | None, after: bytes | None) -> None:
         """Journal one stored file, capturing its prior bytes, before the write that changes it."""
-        captured: str | None = None
-        if before is not None:
-            captured = f"{CAPTURE_DIR}/{len(self.entries):06d}"
-            target = self.path / captured
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(before)
-        entry = {
-            "op": op, "key": key, "name": name, "before": captured,
-            "after_sha256": _sha256(after) if after is not None else None,
-        }
-        self.entries.append(entry)
-        with (self.path / JOURNAL_FILE).open("a", encoding="utf-8") as journal:
-            journal.write(json.dumps(entry) + "\n")
+        with self.lock:
+            captured: str | None = None
+            if before is not None:
+                captured = f"{CAPTURE_DIR}/{len(self.entries):06d}"
+                target = self.path / captured
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(before)
+            entry = {
+                "op": op, "key": key, "name": name, "before": captured,
+                "after_sha256": _sha256(after) if after is not None else None,
+            }
+            self.entries.append(entry)
+            with (self.path / JOURNAL_FILE).open("a", encoding="utf-8") as journal:
+                journal.write(json.dumps(entry) + "\n")
 
 
 _ACTIVE: list[Run] = []
@@ -206,29 +214,36 @@ def active_run() -> Run | None:
 
 
 class JournaledStorage:
-    """A storage backend whose every write and removal is journaled, prior bytes first."""
+    """A storage backend whose every write and removal is journaled, prior bytes first.
+
+    Each write holds the run's lock from the read of the prior bytes to the write itself, so a
+    concurrent writer cannot change a file between its capture and the write it was captured for.
+    """
 
     def __init__(self, inner: StorageBackend, run: Run) -> None:
         self.inner = inner
         self._run = run
 
     def store_module(self, key: str, files: Mapping[str, bytes]) -> None:
-        for name, data in files.items():
-            if self.inner.exists(key, name):
-                self._run.record("overwrite", key, name, before=self.inner.read_file(key, name), after=data)
-            else:
-                self._run.record("add", key, name, before=None, after=data)
-        self.inner.store_module(key, files)
+        with self._run.lock:
+            for name, data in files.items():
+                if self.inner.exists(key, name):
+                    self._run.record("overwrite", key, name, before=self.inner.read_file(key, name), after=data)
+                else:
+                    self._run.record("add", key, name, before=None, after=data)
+            self.inner.store_module(key, files)
 
     def remove(self, key: str) -> None:
-        for name in self.inner.list_files(key):
-            self._run.record("remove", key, name, before=self.inner.read_file(key, name), after=None)
-        self.inner.remove(key)
+        with self._run.lock:
+            for name in self.inner.list_files(key):
+                self._run.record("remove", key, name, before=self.inner.read_file(key, name), after=None)
+            self.inner.remove(key)
 
     def remove_file(self, key: str, name: str) -> None:
-        if self.inner.exists(key, name):
-            self._run.record("remove", key, name, before=self.inner.read_file(key, name), after=None)
-        self.inner.remove_file(key, name)
+        with self._run.lock:
+            if self.inner.exists(key, name):
+                self._run.record("remove", key, name, before=self.inner.read_file(key, name), after=None)
+            self.inner.remove_file(key, name)
 
     def exists(self, key: str, name: str) -> bool:
         return self.inner.exists(key, name)

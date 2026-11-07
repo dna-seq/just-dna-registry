@@ -251,6 +251,9 @@ QUIET_DRIFT: frozenset[str] = frozenset({"respelled", "gained_allele", "gained_r
 
 _shared_clients: Any = None
 _clients_lock = threading.Lock()
+#: Held around a publish's online `enrich()` while a pass that builds its own paced client is on; see
+#: `enrich_spec`. Process-wide, for the reason the shared bundle is.
+_UNSHARED_EGRESS = threading.Lock()
 
 
 def shared_lookup_clients(settings: Settings | None = None) -> Any:
@@ -1067,6 +1070,15 @@ def enrich_spec(
     # gnomAD sells no key to raise. Only constructed online: offline the enricher builds neither a
     # resolver nor a gnomAD client, so there is nothing to share and nothing to pace.
     clients = None if offline else shared_lookup_clients()
+    # **A pass that builds its own paced client runs one enrichment at a time.** The dbSNP check
+    # (`verify_rsids`, through `identifiers.check_rsids`) builds a fresh `EutilsClient`, and the
+    # dataset-currency probes (`verify_datasets`) their own clients; `enrich()` accepts no client for
+    # either, so their pacing is per run, and N concurrent publishes (`upgrade --jobs`, or a server's
+    # threadpool) would ask NCBI at N times its rate. Held only online with one of those passes on:
+    # with the defaults every live request paces through the shared bundle and nothing waits here.
+    serialized = not offline and (settings.enrich_verify_rsids or settings.enrich_verify_datasets)
+    if serialized:
+        _UNSHARED_EGRESS.acquire()
 
     try:
         result = enrich(
@@ -1114,6 +1126,9 @@ def enrich_spec(
         raise PublishError(
             "enrich_failed", errors=[part.strip() for part in str(exc).split(";")]
         ) from exc
+    finally:
+        if serialized:
+            _UNSHARED_EGRESS.release()
 
     outcome = EnrichOutcome(
         ran=True,

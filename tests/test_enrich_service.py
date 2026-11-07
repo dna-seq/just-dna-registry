@@ -684,6 +684,49 @@ def test_the_shared_bundle_actually_holds_clients() -> None:
         close_lookup_clients()
 
 
+@pytest.mark.parametrize(
+    ("over", "held"),
+    [
+        ({}, False),
+        ({"enrich_verify_rsids": True}, True),
+        ({"enrich_verify_datasets": True}, True),
+        ({"enrich_verify_rsids": True, "enrich_offline": True}, False),
+    ],
+)
+def test_a_publish_with_an_unshared_paced_pass_enriches_one_at_a_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, over: dict[str, bool], held: bool
+) -> None:
+    """`enrich()` builds the dbSNP check's `EutilsClient` and the dataset probes' clients per run, so
+    concurrent publishes (`upgrade --jobs`) would each pace on their own. Online with either pass on,
+    the publish's `enrich()` runs under one process lock; otherwise it does not wait, and the lock is
+    released however the call ends."""
+    import just_dna_enricher.enrich as upstream
+
+    from just_dna_registry.services import enrich as enrich_service
+
+    seen: list[bool] = []
+
+    def capture(_spec_dir: Path, **_kwargs: object) -> None:
+        seen.append(enrich_service._UNSHARED_EGRESS.locked())
+        raise _Captured
+
+    monkeypatch.setattr(upstream, "enrich", capture)
+    monkeypatch.setattr(enrich_service, "shared_lookup_clients", lambda: _NoClients())
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    with pytest.raises(_Captured):
+        enrich_service.enrich_spec(spec, Settings(**{"enrich_offline": False, **over}))
+    assert seen == [held]
+    assert not enrich_service._UNSHARED_EGRESS.locked()
+
+
+class _NoClients:
+    """A bundle whose every member is `None`, so the stand-in `enrich()` is reached with no egress."""
+
+    def __getattr__(self, _name: str) -> None:
+        return None
+
+
 def _client_timeout(client: object) -> float | None:
     """The per-request timeout a client hands httpx: its own `timeout`, or its settings' one."""
     own = getattr(client, "timeout", None)

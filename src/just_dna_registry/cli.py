@@ -7,6 +7,9 @@ import json
 import os
 import secrets
 import shlex
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
@@ -826,6 +829,11 @@ def upgrade(
         help="Publish a re-derivation whose drift wants reading (moved, lost_allele, renamed, "
              "undecided) after you have read it. Aim it with -m",
     ),
+    jobs: int = typer.Option(
+        None, "--jobs", "-j", min=1,
+        help="Modules re-published at once under --apply (default REGISTRY_UPGRADE_JOBS, 4). Overlaps "
+             "their waits; live requests still pace through one shared client bundle",
+    ),
 ) -> None:
     """Migrate published versions to the current `just-dna-format` contract and re-publish as a PATCH.
 
@@ -851,7 +859,10 @@ def upgrade(
     from its rows, never a flag. It needs the new Ensembl snapshot on the box (checked before anything
     re-derives), the network for a module with an indel (`--online`), and a person to read drift that
     moved an answer (`--accept-drift`, after reading). A held or refused module is reported and the
-    sweep goes on."""
+    sweep goes on.
+
+    **`--apply` re-publishes `--jobs` modules at once** (default 4). Planning stays in order on one
+    thread; each module's report is printed whole when it finishes, so the order is completion order."""
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
@@ -860,7 +871,83 @@ def upgrade(
     _upgrade_sweep(
         settings, Repository(conn), _storage(settings), namespace=namespace, module=module,
         apply=apply, force=force, trim=trim, limit=limit, online=online, accept_drift=accept_drift,
+        jobs=jobs or settings.upgrade_jobs,
     )
+
+
+@dataclass
+class _Republished:
+    """What one module's re-publish came to, reported by the sweep's main thread when it finishes.
+
+    `lines` is the module's whole block in the shapes `replay.SweepLines` reads (`✓ <label> …` or
+    `✗ <label>: …`, then four-space continuations), each with its colour, so a block is printed in one
+    piece however many workers are running."""
+
+    label: str
+    published: bool = False
+    refused: bool = False
+    held: str | None = None
+    drift_to_read: bool = False
+    lines: list[tuple[str, str | None]] = dataclass_field(default_factory=list)
+
+
+def _sweep_db_file(repo: Repository) -> str | None:
+    """The file behind `repo`'s connection, for a worker to open its own, or `None` to share it.
+
+    A worker gets a connection of its own so no thread reads or commits on another's. Shared instead
+    when there is no file (an in-memory catalog) or the caller holds an open transaction, which a
+    second connection would wait on until sqlite's busy timeout."""
+    if repo.conn.in_transaction:
+        return None
+    for row in repo.conn.execute("PRAGMA database_list").fetchall():
+        if row[1] == "main" and row[2]:
+            return row[2]
+    return None
+
+
+def _republish(
+    settings: Settings,
+    repo: Repository,
+    db_file: str | None,
+    storage: StorageBackend,
+    *,
+    label: str,
+    prep: VersionUpgradePlan,
+    manifest: ModuleManifest,
+    namespace: str,
+    name: str,
+    version: str,
+    force: bool,
+    trim: bool,
+    online: bool,
+    accept_drift: bool,
+) -> _Republished:
+    """One module's `upgrade_version`, on a worker thread, as a block for the main thread to print."""
+    own = Repository(connect(Path(db_file))) if db_file else repo
+    try:
+        result = upgrade_version(
+            repo=own, storage=storage, settings=settings,
+            namespace=namespace, name=name, version=version, manifest=manifest,
+            recompile=force, trim=trim, prepared=prep, online=online, accept_drift=accept_drift,
+        )
+    except UpgradeHeld as exc:
+        return _Republished(label, held=f"{label}: {exc}")
+    except PublishError as exc:
+        return _Republished(
+            label, refused=True,
+            drift_to_read=exc.detail == "rederive_drift_needs_reading",
+            lines=[(f"✗ {label}: {exc.detail}", typer.colors.RED), *((f"    {line}", None) for line in exc.errors)],
+        )
+    finally:
+        if own is not repo:
+            own.conn.close()
+    if result is None:
+        return _Republished(label)
+    new_version, new_manifest = result
+    return _Republished(label, published=True, lines=[
+        (f"✓ {label} → {new_version} ({_describe_upgrade(prep, recompile=force)})", None),
+        (f"    digest {manifest.artifact.digest[:23]}… → {new_manifest.artifact.digest[:23]}…", None),
+    ])
 
 
 def _upgrade_sweep(
@@ -876,11 +963,20 @@ def _upgrade_sweep(
     limit: int,
     online: bool,
     accept_drift: bool,
+    jobs: int = 1,
 ) -> None:
     """The sweep `registry upgrade` runs, over a given catalog and storage.
 
     Separate from the command so `replay-upgrade` runs the same code over a scratch copy of the
     catalog and a storage overlay, which is what makes its report the one the lost run printed.
+
+    **Planned on this thread, re-published on `jobs` workers.** The plan (which version acts, which is
+    held or blocked) is read in catalog order here; under `--apply` each acting version is handed to a
+    worker, at most `jobs` at once so at most that many modules' files are in memory, and its block is
+    printed here when it finishes. Workers share the storage backend (the publish path commits one at
+    a time, and the run's journal is thread-safe) and open their own catalog connection. The waits
+    they overlap are the enrichment's and the compile's; live egress is paced by the shared client
+    bundle whatever the worker count. `--limit` counts versions attempted.
     """
     _echo_mode(settings)
     # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
@@ -918,75 +1014,103 @@ def _upgrade_sweep(
     #: acting would mint a PATCH per sweep forever — reported instead, in red, because it means
     #: something other than a compiler upgrade put a stale value into a published manifest.
     anomalies: list[str] = []
-    # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
-    # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
-    for row in repo.list_all_versions(namespace):
-        if limit and (planned + upgraded) >= limit:
-            typer.echo(f"\n(stopping at --limit {limit}; re-run to continue)")
-            break
-        ns, name, ver = row["namespace"], row["name"], row["version"]
-        if module is not None and name != module:
-            continue
-        # Only the latest version is upgrade-eligible — a superseded older version is immutable and
-        # already replaced, so re-upgrading it would just mint an endless chain of patches.
-        if not is_latest_version(repo, ns, name, ver):
-            continue
-        manifest = ModuleManifest.model_validate_json(row["manifest_json"])
-        prep = prepare_version_upgrade(storage, ns, name, ver, manifest, trim=trim)
-        if prep is None:  # spec inputs not retrievable (legacy import)
-            continue
-        if prep.blocked:
-            detail = "; ".join(f"{f}: {', '.join(c)}" for f, c in prep.blocked.items())
-            typer.echo(f"✗ {ns}/{name}@{ver}: contract rejects ({detail}) — "
-                       f"re-run with --trim --force to drop them")
-            blocked += 1
-            continue
-        if not prep.would_act(recompile=force):
-            if prep.verdict.anomaly:
-                anomalies.append(f"{ns}/{name}@{ver}: {prep.verdict.describe()}")
-            elif prep.gap.scale == GAP_UNKNOWN:
-                unidentifiable.append(f"{ns}/{name}@{ver}")
-            elif prep.gap.scale == GAP_PATCH:
-                patch_gap.append(f"{ns}/{name}@{ver}")
-            continue
-        label = f"{ns}/{name}@{ver}"
-        if prep.rederive and snapshot_problem:
-            held.append(f"{label}: {snapshot_problem}")
-            continue
-        if prep.needs_online and not online:
-            held.append(f"{label}: carries an indel, which offline 0.8 cannot left-align; needs --online")
-            continue
-        if prep.needs_online:
-            online_subjects += prep.rederive_subjects
-        if not apply:
-            planned += 1
-            typer.echo(
-                f"⇧ {label}: {_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)} → next PATCH"
-            )
-            continue
-        try:
-            result = upgrade_version(
-                repo=repo, storage=storage, settings=settings,
-                namespace=ns, name=name, version=ver, manifest=manifest,
-                recompile=force, trim=trim, prepared=prep, online=online, accept_drift=accept_drift,
-            )
-        except UpgradeHeld as exc:
-            held.append(f"{label}: {exc}")
-            continue
-        except PublishError as exc:
-            refused.append(label)
-            drift_to_read = drift_to_read or exc.detail == "rederive_drift_needs_reading"
-            typer.secho(f"✗ {label}: {exc.detail}", fg=typer.colors.RED)
-            for line in exc.errors:
-                typer.echo(f"    {line}")
-            continue
-        if result is not None:
-            new_version, _ = result
-            upgraded += 1
-            typer.echo(
-                f"✓ {ns}/{name}@{ver} → {new_version} ({_describe_upgrade(prep, recompile=force)})"
-            )
-            typer.echo(f"    digest {manifest.artifact.digest[:23]}… → {result[1].artifact.digest[:23]}…")
+    attempted = 0
+    workers = max(1, jobs)
+    db_file = _sweep_db_file(repo)
+    pending: set[Future[_Republished]] = set()
+
+    def report(outcome: _Republished) -> None:
+        """Count one finished re-publish and print its block, on this thread only."""
+        nonlocal upgraded, drift_to_read
+        if outcome.held is not None:
+            held.append(outcome.held)
+        if outcome.refused:
+            refused.append(outcome.label)
+            drift_to_read = drift_to_read or outcome.drift_to_read
+        upgraded += outcome.published
+        for text, colour in outcome.lines:
+            typer.secho(text, fg=colour)
+
+    def collect(at_most: int) -> None:
+        """Report every finished worker, waiting until no more than `at_most` are still running."""
+        while pending:
+            done = {f for f in pending if f.done()}
+            if not done and len(pending) <= at_most:
+                return
+            if not done:
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                pending.discard(future)
+                report(future.result())
+
+    pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="upgrade") if apply else None
+    try:
+        # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
+        # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
+        for row in repo.list_all_versions(namespace):
+            if limit and (planned + attempted) >= limit:
+                typer.echo(f"\n(stopping at --limit {limit}; re-run to continue)")
+                break
+            ns, name, ver = row["namespace"], row["name"], row["version"]
+            if module is not None and name != module:
+                continue
+            # Only the latest version is upgrade-eligible — a superseded older version is immutable and
+            # already replaced, so re-upgrading it would just mint an endless chain of patches.
+            if not is_latest_version(repo, ns, name, ver):
+                continue
+            manifest = ModuleManifest.model_validate_json(row["manifest_json"])
+            prep = prepare_version_upgrade(storage, ns, name, ver, manifest, trim=trim)
+            if prep is None:  # spec inputs not retrievable (legacy import)
+                continue
+            if prep.blocked:
+                detail = "; ".join(f"{f}: {', '.join(c)}" for f, c in prep.blocked.items())
+                typer.echo(f"✗ {ns}/{name}@{ver}: contract rejects ({detail}) — "
+                           f"re-run with --trim --force to drop them")
+                blocked += 1
+                continue
+            if not prep.would_act(recompile=force):
+                if prep.verdict.anomaly:
+                    anomalies.append(f"{ns}/{name}@{ver}: {prep.verdict.describe()}")
+                elif prep.gap.scale == GAP_UNKNOWN:
+                    unidentifiable.append(f"{ns}/{name}@{ver}")
+                elif prep.gap.scale == GAP_PATCH:
+                    patch_gap.append(f"{ns}/{name}@{ver}")
+                continue
+            label = f"{ns}/{name}@{ver}"
+            if prep.rederive and snapshot_problem:
+                held.append(f"{label}: {snapshot_problem}")
+                continue
+            if prep.needs_online and not online:
+                held.append(f"{label}: carries an indel, which offline 0.8 cannot left-align; needs --online")
+                continue
+            if prep.needs_online:
+                online_subjects += prep.rederive_subjects
+            if not apply:
+                planned += 1
+                typer.echo(
+                    f"⇧ {label}: {_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)} → next PATCH"
+                )
+                continue
+            # At most `workers` running: their files are in memory until they finish.
+            collect(at_most=workers - 1)
+            attempted += 1
+            pending.add(pool.submit(
+                _republish, settings, repo, db_file, storage, label=label, prep=prep, manifest=manifest,
+                namespace=ns, name=name, version=ver, force=force, trim=trim, online=online,
+                accept_drift=accept_drift,
+            ))
+        collect(at_most=0)
+    finally:
+        if pool is not None:
+            # Reached early only by an error: what has not started is dropped, what is running
+            # finishes (a thread cannot be stopped), and whatever finished still published, so it
+            # is still reported. A worker's own error is not raised over the one unwinding.
+            for future in pending:
+                future.cancel()
+            pool.shutdown(wait=True)
+            for future in list(pending):
+                if not future.cancelled() and future.exception() is None:
+                    report(future.result())
 
     blocked_note = f", {blocked} blocked (need --trim --force)" if blocked else ""
     if refused:
@@ -1117,6 +1241,10 @@ def replay_upgrade_command(
     ),
     namespace: str = typer.Option(None, "--namespace", "-n"),
     module: str = typer.Option(None, "--module", "-m"),
+    jobs: int = typer.Option(
+        None, "--jobs", "-j", min=1,
+        help="Modules replayed at once (default REGISTRY_UPGRADE_JOBS, 4), as `upgrade --jobs`",
+    ),
 ) -> None:
     """Recover a lost `upgrade --apply` report by replaying the sweep from the published successors'
     predecessors, on a scratch copy of the catalog and a storage overlay. Writes nothing to the live
@@ -1134,6 +1262,7 @@ def replay_upgrade_command(
         replay_upgrade(
             settings, _storage(settings), sweep=_upgrade_sweep, since=since, compiler=compiler,
             online=online, namespace=namespace, module=module, workdir=workdir,
+            jobs=jobs or settings.upgrade_jobs,
         )
     except ReplayRefused as exc:
         typer.secho(f"refused: {exc}", fg=typer.colors.RED)

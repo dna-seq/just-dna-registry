@@ -86,6 +86,7 @@ class Sweep(Protocol):
         limit: int,
         online: bool,
         accept_drift: bool,
+        jobs: int,
     ) -> None: ...
 
 
@@ -399,6 +400,7 @@ def replay_upgrade(
     namespace: str | None,
     module: str | None,
     workdir: Path,
+    jobs: int = 1,
 ) -> ReplayReport:
     """Run the upgrade sweep again from the predecessors of the successors it published, on a copy.
 
@@ -473,7 +475,7 @@ def replay_upgrade(
         sweep(
             scratch_settings, repo, overlay,
             namespace=namespace, module=module, apply=True, force=False, trim=False, limit=0,
-            online=online, accept_drift=False,
+            online=online, accept_drift=False, jobs=jobs,
         )
     lines = SweepLines.parse(capture.buffer_text.getvalue())
 

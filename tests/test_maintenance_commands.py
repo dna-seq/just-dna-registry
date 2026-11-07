@@ -177,6 +177,8 @@ ROWS: tuple[Row, ...] = (
     Row("revalidate/set-flag", ("revalidate", "--set-flag"), True),
     Row("revalidate/report", ("revalidate",), False),
     Row("upgrade/apply", ("upgrade", "--apply", "--force", "-n", NS, "-m", MOD), True),
+    # Every module at once on three workers: the journal of a parallel run reverts to the byte too.
+    Row("upgrade/apply/jobs", ("upgrade", "--apply", "--force", "--jobs", "3"), True),
     Row("upgrade/dry", ("upgrade", "--dry-run"), False),
     Row("revoke-key", ("revoke-key", CAROL_KEY), True),
     Row("revoke-account", ("revoke-account", "carol", "--yes"), True),

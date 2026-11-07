@@ -343,6 +343,15 @@ class Settings(BaseSettings):
     # the direction the measurement points; try it on a sweep and compare the timed-out count.
     enrich_http_timeout_seconds: float | None = None
 
+    # How many modules `registry upgrade --apply` (and `replay-upgrade`) re-publishes at once; the
+    # `--jobs` flag overrides it per run. A module's re-publish is mostly waiting (a cold Ensembl lookup
+    # is 7-18 s, asked one rsID at a time) or CPU (snapshot read, compile), so N workers overlap those
+    # instead of queueing them. It does not multiply the egress rate: every live request still goes
+    # through the one shared client bundle and its pacing gates, an online enrichment that would build
+    # an unshared paced client (`enrich_verify_rsids`, `enrich_verify_datasets`) takes a process lock,
+    # and publishes still commit one at a time.
+    upgrade_jobs: int = 4
+
     # Upload bounds, applied to every spec upload (publish, import, validate, check).
     #
     # Two numbers because there are two costs, and conflating them is what let the ClinVar panels be

@@ -8,6 +8,21 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry upgrade --apply` re-publishes several modules at once (`--jobs`)
+
+`upgrade` and `replay-upgrade` take `--jobs N` (default `REGISTRY_UPGRADE_JOBS`, 4). The plan is still read
+in catalog order on one thread; each acting version is re-published on a worker, at most N at once, and its
+report block is printed whole when it finishes, so the output is in completion order and `replay-upgrade`
+still reads every block. A module's re-publish is mostly waiting (an online module's cold Ensembl lookups
+at 7-18 s each, the compile), so the workers overlap the waits; they do not raise the request rate, since
+every live client paces through the one shared bundle, and an online enrichment with `enrich_verify_rsids`
+or `enrich_verify_datasets` on (whose clients `enrich()` builds per run) takes a process lock. Each worker
+opens its own catalog connection, publishes still commit one at a time, and the run's storage journal is
+now thread-safe on its own: a capture file was named by the entry count, so two writers could take one
+name. `--limit` now counts versions attempted rather than versions published.
+
+**Client surface:** unchanged.
+
 ### `REGISTRY_ENRICH_HTTP_TIMEOUT_SECONDS` sets the live clients' per-request timeout
 
 Every client in the shared lookup bundle (Ensembl, GRCh37, gnomAD, NCBI eutils, OLS4/HGNC, Europe PMC,

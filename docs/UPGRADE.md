@@ -105,6 +105,14 @@ The first publishes every module that needs no network and egresses nothing. The
 modules held for an indel against live sources. It prints how many recorded subjects it re-asks, and its
 pacing is this process's own, not shared with the running server: run it in a quiet window.
 
+Both re-publish four modules at once (`--jobs N`, default `REGISTRY_UPGRADE_JOBS`); each module's report
+prints whole when it finishes, so the order is completion order. More workers overlap the waits and do not
+raise the request rate, which every live client paces through one shared bundle. Where an online module
+spends its time, measured 2026-11-07: a cold Ensembl lookup is 7-18 s at the server and they are asked one
+rsID at a time, so a module whose snapshot answers fall through to live Ensembl costs minutes (660 s for
+38 lookups, 26 of them timing out at 15 s). `REGISTRY_ENRICH_HTTP_TIMEOUT_SECONDS=30` lets the slow tail
+answer once instead of timing out and retrying cold; a shorter timeout makes it worse.
+
 **5. Read the drift the sweep held.** A re-derivation reports each subject whose answer changed, in one of
 upstream's seven arms. `respelled`, `gained_allele` and `gained_rsid` publish and are counted in the
 successor's changelog. Every other arm (`moved`, `lost_allele`, `renamed`, `undecided`) refuses that
