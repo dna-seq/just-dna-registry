@@ -51,6 +51,9 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   whose route is not `pull` (`services/cache_drop.py:170`), so a pulled Open Targets lane drops without it once
   shipped. At its publish, one sentence goes stale: `services/cache_drop.py:19` ("OpenTargets a long build"); the
   lead's to change with the floor, if the floor moves.
+  **RM411** (`01600ee`): `cache rebuild --dry-run` fetches and builds nothing; `rebuild_lane` is split, its behaviour
+  unchanged, and we call neither (`prepare_caches` only). **RM413** (`e7befd8`): their cut gate, no lane with a
+  repository left unpublished; tests and docs only. Nothing here moves for either. Read through `e7befd8`.
 
 ## What the registry uses
 
