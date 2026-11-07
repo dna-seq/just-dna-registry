@@ -826,6 +826,9 @@ def upgrade(
         help="Publish a re-derivation whose drift wants reading (moved, lost_allele, renamed, "
              "undecided) after you have read it. Aim it with -m",
     ),
+    backup: bool = typer.Option(
+        True, "--backup/--no-backup", help="Snapshot the DB before an --apply (the default)"
+    ),
 ) -> None:
     """Migrate published versions to the current `just-dna-format` contract and re-publish as a PATCH.
 
@@ -871,6 +874,11 @@ def upgrade(
     if snapshot_problem:
         typer.secho(f"re-derive refused for every module that needs it: {snapshot_problem}",
                     fg=typer.colors.YELLOW)
+    # Before the first PATCH, as every other command that changes the catalog does (0.28.1; through
+    # 0.28.0 the operator had to remember `registry backup`). The snapshot is the index only: an
+    # undo also removes the successors' stored files (`remove-version`, polygon), see UPGRADE.md.
+    if apply:
+        _guard(settings, reason="upgrade", backup=backup)
     conn = connect(settings.db_path)
     init_db(conn)
     repo = Repository(conn)

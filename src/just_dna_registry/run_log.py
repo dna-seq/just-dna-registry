@@ -81,7 +81,12 @@ def run_log(settings: Settings, command: str, invocation: str) -> Iterator[Path]
     directory = run_log_dir(settings)
     directory.mkdir(parents=True, exist_ok=True)
     started = _stamp()
-    path = directory / f"{command}-{settings.mode}-{started.replace(':', '').replace('-', '')}.log"
+    stem = f"{command}-{settings.mode}-{started.replace(':', '').replace('-', '')}"
+    path = directory / f"{stem}.log"
+    serial = 1
+    while path.exists():  # two runs in one second; `open("x")` below still refuses a race
+        serial += 1
+        path = directory / f"{stem}-{serial}.log"
     live_out, live_err = sys.stdout, sys.stderr
     root = logging.getLogger()
     previous_level = root.level

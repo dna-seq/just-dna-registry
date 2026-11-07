@@ -45,3 +45,10 @@ def test_a_stream_captured_during_the_run_still_works_after_it(tmp_path: Path) -
     captured.stream.write("after the run\n")
     captured.flush()
     assert "after the run" not in path.read_text()
+
+
+def test_two_runs_in_one_second_get_two_files(tmp_path: Path) -> None:
+    settings = Settings(db_path=tmp_path / "r.db", run_log_dir=tmp_path / "runs")
+    with run_log(settings, "upgrade", "a") as first, run_log(settings, "upgrade", "b") as second:
+        pass
+    assert first != second and first.read_text().startswith("# a") and second.read_text().startswith("# b")

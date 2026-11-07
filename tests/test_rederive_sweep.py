@@ -414,3 +414,17 @@ def test_the_sweep_writes_its_own_log(
     assert body.startswith("# registry --mode prod upgrade ") and "apply=True" in body.splitlines()[0]
     assert body.rstrip().splitlines()[-1].startswith("# ended")
     assert f"log: {logs[0]}" in out
+
+
+def test_apply_snapshots_the_catalog_first_and_a_dry_run_does_not(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
+) -> None:
+    _publish(client, api_key)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: "pulled from the old release")
+    monkeypatch.setenv("REGISTRY_BACKUP_DIR", str(tmp_path / "snaps"))
+    _sweep(settings, monkeypatch, "--dry-run")
+    assert not list((tmp_path / "snaps").glob("*.db"))
+
+    out = _sweep(settings, monkeypatch, "--apply")
+    taken = list((tmp_path / "snaps").glob("*-upgrade.db"))
+    assert len(taken) == 1 and f"snapshot: {taken[0]}" in out

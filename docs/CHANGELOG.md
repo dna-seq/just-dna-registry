@@ -16,6 +16,12 @@ and how it ended. The path is printed first and last. Through 0.28.0 the sweep p
 only, so the list of held modules, the output an operator acts on next, was lost with the session.
 New setting `REGISTRY_RUN_LOG_DIR`.
 
+### `registry upgrade --apply` snapshots the catalog first
+
+As every other command that changes the catalog already did. Through 0.28.0 the operator had to run
+`registry backup` by hand, and a sweep run without one could be undone only by removing its successors.
+`--no-backup` opts out, announced. The snapshot covers the database, not stored files.
+
 ### `registry warm-caches` re-pulls an Ensembl cache of the old release
 
 Format 0.8 moved the Ensembl snapshot to a new repo under the same file names, so a 0.7 cache reads as
