@@ -6,22 +6,34 @@ DB, and issue API keys / namespaces for the static-key auth model.
 import json
 import os
 import secrets
+import shlex
 from pathlib import Path
 from typing import Any
 
+import click
 import httpx
 import typer
 import uvicorn
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.vocab import VALID_DECLARED_USE
+from typer.core import TyperGroup
 
 from just_dna_registry.backup import create_backup, list_backups, restore_backup
 from just_dna_registry.config import DEFAULT_PORTS, VALID_MODES, Settings, get_settings
 from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect, init_db
+from just_dna_registry.maintenance import (
+    NOT_A_RUN,
+    RevertRefused,
+    journaled,
+    list_runs,
+    maintenance_run,
+    read_record,
+    revert_run,
+    run_root,
+)
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
-from just_dna_registry.run_log import run_log
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.pmid_check import verify_pmids
@@ -43,7 +55,16 @@ from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
 from just_dna_registry.testdata import accepted_anyway, test_data_refusal
 
-app = typer.Typer(help="just-dna-registry admin CLI", no_args_is_help=True)
+
+class _MaintenanceGroup(TyperGroup):
+    """Keeps the subcommand's raw arguments for the run's log, before the group consumes them."""
+
+    def invoke(self, ctx: click.Context) -> object:
+        ctx.meta["argv"] = [*getattr(ctx, "_protected_args", []), *ctx.args]
+        return super().invoke(ctx)
+
+
+app = typer.Typer(help="just-dna-registry admin CLI", no_args_is_help=True, cls=_MaintenanceGroup)
 
 
 def _apply_mode(mode: str | None) -> None:
@@ -65,6 +86,7 @@ def _apply_mode(mode: str | None) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     mode: str = typer.Option(
         None, "--mode", help="prod | test — overrides REGISTRY_MODE for this invocation"
     ),
@@ -81,6 +103,17 @@ def main(
     `serve --mode` still works and means the same thing; it predates this and is documented.
     """
     _apply_mode(mode)
+    # **Every command is a maintenance run** (0.28.1, `maintenance.py`): logged, the catalog
+    # snapshotted before the command acts, its storage writes journaled, and `revert-run` able to undo
+    # it. Opened here, in the dispatch, so a new command is one without doing anything.
+    command = ctx.invoked_subcommand
+    asked_for_help = any(arg in {"--help", "-h"} for arg in ctx.meta.get("argv", []))
+    if command is not None and command not in NOT_A_RUN and not asked_for_help:
+        settings = get_settings()
+        argv = " ".join(shlex.quote(arg) for arg in ctx.meta.get("argv", []))
+        ctx.with_resource(
+            maintenance_run(settings, command, f"registry --mode {settings.mode} {argv}".rstrip())
+        )
 
 
 def _echo_mode(settings: Settings) -> None:
@@ -92,12 +125,6 @@ def _echo_mode(settings: Settings) -> None:
     test-prefixed module. A line up front costs nothing and turns that into a self-diagnosis.
     """
     typer.echo(f"mode={settings.mode} db={settings.db_path}")
-
-
-def _invocation(ctx: typer.Context) -> str:
-    """The command and the options it ran with, for the head of a run log."""
-    options = " ".join(f"{name}={value!r}" for name, value in sorted(ctx.params.items()))
-    return f"registry --mode {get_settings().mode} {ctx.info_name} {options}"
 
 
 def _open_existing_db(settings: Settings) -> Repository:
@@ -123,30 +150,12 @@ def _open_existing_db(settings: Settings) -> Repository:
 
 def _storage(settings: Settings) -> StorageBackend:
     if settings.storage_backend == "local":
-        return LocalStorage(settings.local_storage_dir)
+        return journaled(LocalStorage(settings.local_storage_dir))
     if settings.storage_backend == "hf":
         from just_dna_registry.storage.hf import HfStorage  # imports huggingface_hub lazily
 
-        return HfStorage(settings.hf_repo_id, token=settings.hf_token)
+        return journaled(HfStorage(settings.hf_repo_id, token=settings.hf_token))
     raise typer.BadParameter(f"unsupported storage_backend {settings.storage_backend!r}")
-
-
-def _guard(settings: Settings, *, reason: str, backup: bool) -> None:
-    """Snapshot the catalog before a destructive op, and say where it went.
-
-    Called *after* the confirmation prompt and *before* the first mutation, so an aborted command
-    leaves no snapshot and an applied one always has exactly one. `backup=False` (per-command
-    `--no-backup`, or `REGISTRY_AUTO_BACKUP=false`) is honoured but announced — a silent opt-out of the
-    only undo in this CLI is not something an operator should discover afterwards from a diff.
-    """
-    if not (backup and settings.auto_backup):
-        typer.secho("! no pre-flight snapshot taken (auto-backup disabled)", fg=typer.colors.YELLOW)
-        return
-    snapshot = create_backup(settings, reason=reason)
-    if snapshot is None:
-        typer.echo("no existing DB to snapshot")
-    else:
-        typer.secho(f"snapshot: {snapshot}", fg=typer.colors.GREEN)
 
 
 @app.command()
@@ -414,7 +423,6 @@ def reset_db(
         True, "--keep-keys/--wipe-keys",
         help="Keep accounts + API keys (default), or wipe them too",
     ),
-    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Wipe the catalog projection (modules, versions, stars, reviews) — a fresh start. Accounts +
     API keys are **kept** by default (so you don't lock yourself out); `--wipe-keys` clears them too.
@@ -424,7 +432,6 @@ def reset_db(
     typer.echo(f"This will permanently delete {scope} in {settings.db_path.resolve()}. Artifacts are untouched.")
     if typer.prompt("Type RESET to confirm") != "RESET":
         raise typer.Abort()
-    _guard(settings, reason="reset-db", backup=backup)
     conn = connect(settings.db_path)
     init_db(conn)
     Repository(conn).reset_catalog(keep_auth=keep_keys)
@@ -576,7 +583,6 @@ def set_funding(account: str, url: str = typer.Argument(..., help="Donation link
 @app.command("remove-module")
 def remove_module(
     namespace: str, name: str, yes: bool = typer.Option(False, "--yes", "-y"),
-    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Hard-delete a module (all versions + artifacts). Ops-only; not reversible, not yank."""
     settings = get_settings()
@@ -584,7 +590,6 @@ def remove_module(
     storage = _storage(settings)
     if not yes:
         typer.confirm(f"Hard-delete {namespace}/{name} and ALL its artifacts?", abort=True)
-    _guard(settings, reason=f"remove-module-{namespace}-{name}", backup=backup)
     versions = repo.delete_module(namespace, name)
     storage.remove(f"{namespace}/{name}")
     typer.echo(f"removed {namespace}/{name} ({len(versions)} version(s): {versions})")
@@ -593,7 +598,6 @@ def remove_module(
 @app.command("remove-version")
 def remove_version(
     namespace: str, name: str, version: str, yes: bool = typer.Option(False, "--yes", "-y"),
-    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Hard-delete a single version + its artifacts (not yank). Frees it for re-upload."""
     settings = get_settings()
@@ -601,7 +605,6 @@ def remove_version(
     storage = _storage(settings)
     if not yes:
         typer.confirm(f"Hard-delete {namespace}/{name}@{version} and its artifacts?", abort=True)
-    _guard(settings, reason=f"remove-version-{namespace}-{name}", backup=backup)
     if not repo.delete_version(namespace, name, version):
         typer.echo(f"not found: {namespace}/{name}@{version}")
         raise typer.Exit(code=1)
@@ -612,7 +615,6 @@ def remove_version(
 @app.command("remove-namespace")
 def remove_namespace(
     namespace: str, yes: bool = typer.Option(False, "--yes", "-y"),
-    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
 ) -> None:
     """Hard-delete every module under a namespace + its artifacts, and free the namespace so a new
     key can claim it. Ops-only; nothing resurfaces."""
@@ -626,7 +628,6 @@ def remove_namespace(
             "and free the namespace?",
             abort=True,
         )
-    _guard(settings, reason=f"remove-namespace-{namespace}", backup=backup)
     for module in modules:
         repo.delete_module(namespace, module["name"])
     repo.delete_namespace_grant(namespace)
@@ -671,7 +672,6 @@ def unblacklist(namespace: str) -> None:
 
 @app.command()
 def revalidate(
-    ctx: typer.Context,
     namespace: str = typer.Option(None, "--namespace", "-n", help="Limit to one namespace"),
     set_flag: bool = typer.Option(
         False, "--set-flag/--report-only",
@@ -701,7 +701,6 @@ def revalidate(
     publishers. `--strict-check` is the cheap approximation: it catches the mode-ladder findings but
     not the unresolved-position gate, which only a real compile can see."""
     settings = get_settings()
-    ctx.with_resource(run_log(settings, "revalidate", _invocation(ctx)))
     _echo_mode(settings)
     conn = connect(settings.db_path)
     init_db(conn)  # idempotent: ensures the needs_upgrade column exists on a pre-0.5.0 DB
@@ -796,7 +795,6 @@ def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
 
 @app.command()
 def upgrade(
-    ctx: typer.Context,
     namespace: str = typer.Option(None, "--namespace", "-n", help="Limit to one namespace"),
     module: str = typer.Option(None, "--module", "-m", help="Limit to one module name"),
     apply: bool = typer.Option(
@@ -825,9 +823,6 @@ def upgrade(
         False, "--accept-drift",
         help="Publish a re-derivation whose drift wants reading (moved, lost_allele, renamed, "
              "undecided) after you have read it. Aim it with -m",
-    ),
-    backup: bool = typer.Option(
-        True, "--backup/--no-backup", help="Snapshot the DB before an --apply (the default)"
     ),
 ) -> None:
     """Migrate published versions to the current `just-dna-format` contract and re-publish as a PATCH.
@@ -858,7 +853,33 @@ def upgrade(
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
-    ctx.with_resource(run_log(settings, "upgrade", _invocation(ctx)))
+    conn = connect(settings.db_path)
+    init_db(conn)
+    _upgrade_sweep(
+        settings, Repository(conn), _storage(settings), namespace=namespace, module=module,
+        apply=apply, force=force, trim=trim, limit=limit, online=online, accept_drift=accept_drift,
+    )
+
+
+def _upgrade_sweep(
+    settings: Settings,
+    repo: Repository,
+    storage: StorageBackend,
+    *,
+    namespace: str | None,
+    module: str | None,
+    apply: bool,
+    force: bool,
+    trim: bool,
+    limit: int,
+    online: bool,
+    accept_drift: bool,
+) -> None:
+    """The sweep `registry upgrade` runs, over a given catalog and storage.
+
+    Separate from the command so `replay-upgrade` runs the same code over a scratch copy of the
+    catalog and a storage overlay, which is what makes its log the log the lost run would have written.
+    """
     _echo_mode(settings)
     # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
     typer.echo(
@@ -874,15 +895,6 @@ def upgrade(
     if snapshot_problem:
         typer.secho(f"re-derive refused for every module that needs it: {snapshot_problem}",
                     fg=typer.colors.YELLOW)
-    # Before the first PATCH, as every other command that changes the catalog does (0.28.1; through
-    # 0.28.0 the operator had to remember `registry backup`). The snapshot is the index only: an
-    # undo also removes the successors' stored files (`remove-version`, polygon), see UPGRADE.md.
-    if apply:
-        _guard(settings, reason="upgrade", backup=backup)
-    conn = connect(settings.db_path)
-    init_db(conn)
-    repo = Repository(conn)
-    storage = _storage(settings)
     planned = upgraded = blocked = 0
     #: Versions this run will not re-publish under its switches, and versions whose publish refused.
     #: Both are reported per module and the sweep goes on: one module's refusal is no reason to leave
@@ -1038,6 +1050,55 @@ def upgrade(
             + ". Re-run with --force to recompile them anyway.",
             fg=typer.colors.YELLOW,
         )
+
+
+@app.command("list-runs")
+def list_runs_command() -> None:
+    """Maintenance runs, oldest first: what each command changed and whether it was reverted."""
+    settings = get_settings()
+    runs = list_runs(settings)
+    if not runs:
+        typer.echo(f"no runs under {run_root(settings)}")
+        return
+    for path in runs:
+        record = read_record(path)
+        if record.get("reverted_by"):
+            state = f"reverted by {record['reverted_by']}"
+        elif record.get("changed"):
+            state = "changed"
+        else:
+            state = "no change"
+        typer.echo(f"{record['id']}\t{record.get('outcome')}\t{state}\t{record.get('invocation')}")
+
+
+@app.command("revert-run")
+def revert_run_command(
+    run_id: str = typer.Argument(..., help="A run id from `list-runs`"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Restore even over later runs or changes made since (destroys them)",
+    ),
+) -> None:
+    """Undo a maintenance run: its stored files back as they were, then its catalog snapshot.
+
+    Newest first: a run with a later unreverted change is refused, as is one whose catalog or stored
+    files moved since it ended (a server's write, another command), unless --force. Stop the server
+    before reverting; the revert itself is a run, so it can be reverted in turn."""
+    settings = get_settings()
+    if not yes:
+        typer.confirm(f"Revert run {run_id} in {settings.db_path.resolve()}?", abort=True)
+    try:
+        report = revert_run(settings, run_id, _storage(settings), force=force)
+    except RevertRefused as exc:
+        typer.secho(f"refused: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"reverted {report.run_id}: {report.files_restored} stored file(s) restored, "
+        f"{report.files_removed} removed, catalog "
+        + ("restored from its snapshot" if report.db_restored else "removed (none existed before)"),
+        fg=typer.colors.GREEN,
+    )
 
 
 @app.command("revoke-key")
@@ -1659,7 +1720,6 @@ def purge_test_data(
         False, "--include-prod-namespaces",
         help="Also remove prefix-matching modules that live in NON-test namespaces (dangerous)",
     ),
-    backup: bool = typer.Option(True, "--backup/--no-backup", help="Snapshot the DB first"),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
     """Remove test accounts, namespaces and modules (+ orphans under them). Dry run by default.
@@ -1701,7 +1761,6 @@ def purge_test_data(
             f"and {len(plan.accounts)} account(s) + their artifacts?",
             abort=True,
         )
-    _guard(settings, reason=f"purge-{prefix.strip('-') or 'test'}", backup=backup)
     apply_purge(repo, _storage(settings), plan)
     typer.secho(
         f"purged {len(plan.modules)} module(s), {len(plan.namespaces)} namespace(s), "

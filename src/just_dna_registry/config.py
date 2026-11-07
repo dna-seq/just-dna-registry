@@ -111,9 +111,10 @@ class Settings(BaseSettings):
     # up and never overwrites (see `backup.next_index`), so this directory grows until an operator
     # prunes it deliberately — pick a volume where that is fine.
     backup_dir: Path | None = None
-    # Where `registry upgrade` and `revalidate` write their run log (one file per run: everything printed,
-    # colour stripped, and log records at INFO+). Default `logs/` beside `db_path`, as backups are.
-    run_log_dir: Path | None = None
+    # Where maintenance runs live (`maintenance.py`): one directory per `registry` command, holding its
+    # log, the catalog snapshot taken before it acted, and its storage journal. Default `runs/` beside
+    # `db_path`. Never pruned for you: a run is what `revert-run` undoes.
+    run_dir: Path | None = None
     # Snapshot the DB before every destructive admin op. Off is supported (`--no-backup` per command,
     # or this globally) for a scripted teardown where the DB is disposable anyway, but the default is
     # on: the ops that call it are the irreversible ones.

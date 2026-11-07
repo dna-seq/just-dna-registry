@@ -8,29 +8,35 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-### `registry upgrade` and `revalidate` write their own log
+### Every maintenance command is logged, snapshotted first, and revertible
 
-Each run writes `logs/upgrade-<mode>-<utc>.log` (or `revalidate-…`) beside the DB: everything it printed,
-colour stripped, the log records at INFO and above (the enricher's among them), the options it ran with,
-and how it ended. The path is printed first and last. Through 0.28.0 the sweep printed to the terminal
-only, so the list of held modules, the output an operator acts on next, was lost with the session.
-New setting `REGISTRY_RUN_LOG_DIR`.
+Every `registry` command except `serve` is now a **run**: a directory under `runs/` beside the DB
+(`REGISTRY_RUN_DIR` moves it) holding its log (everything it printed, colour stripped, and log records at
+INFO and above), the catalog as it was before the command acted, and a journal of every stored file it
+added, overwrote or removed, with the bytes they had. `registry list-runs` lists them and
+`registry revert-run <id>` undoes one: the stored files back first, then the catalog, each read back
+afterwards, so nothing the run wrote is left behind. A revert goes newest first, refuses when the catalog
+or a journaled file changed since the run (a server's write, another command) unless `--force`, and is a
+run itself, so it can be undone too. A run that changed nothing is deleted, except for the commands whose
+report is the point (`upgrade`, `revalidate`, `merge-accounts`, `rename-account`, `purge-test-data`,
+`rederive-signatures`, `warm-caches`, `replay-upgrade`, `revert-run`), which keep their log.
 
-### `registry upgrade --apply` snapshots the catalog first
+Through 0.28.0 four commands took a database snapshot through their own `--backup` flag and the rest took
+none: `upgrade --apply`, which mints immutable versions, had none, no command kept a log, and no snapshot
+covered stored files, so undoing an upgrade or a removal left storage behind. The `--backup/--no-backup`
+flags on `reset-db`, `remove-module`, `remove-version`, `remove-namespace` and `purge-test-data` are gone;
+the run's snapshot replaces them and cannot be switched off. `registry backup`, `list-backups` and
+`restore-backup` stay, for a snapshot taken outside any command.
 
-As every other command that changes the catalog already did. Through 0.28.0 the operator had to run
-`registry backup` by hand, and a sweep run without one could be undone only by removing its successors.
-`--no-backup` opts out, announced. The snapshot covers the database, not stored files.
+**Client surface:** unchanged.
 
-### `registry warm-caches` re-pulls an Ensembl cache of the old release
+### `registry replay-upgrade` recovers a sweep's lost report
 
-Format 0.8 moved the Ensembl snapshot to a new repo under the same file names, so a 0.7 cache reads as
-present, and 0.28.0's `warm-caches` left every present lane alone: the upgrade guide had to send
-operators to `just-dna-enricher cache pull`. Now a present pulled lane whose pull record names another
-repo is marked `⟳` and re-pulled by `--apply`, one with no pull record is checked against the published
-files once, and each record is read back afterwards, so a re-pull that did not take is a failure rather
-than a green line. `registry upgrade`'s refusal names `registry warm-caches --apply` as the fix.
-UPGRADE.md's 0.28 step 1 also covers two servers sharing one cache directory.
+Replays `registry upgrade --apply` from the predecessors of the versions an earlier sweep published, on a
+copy of the catalog and over a storage overlay, so the real catalog and storage are not touched. It prints
+the report the lost run would have printed (held modules and why, each re-derivation, drift) and compares
+each replayed successor with the published one. Online lookups answer as they do today, so an `--online`
+replay can differ from the original where a live source changed since.
 
 ### `.env.template` no longer sets the 0.7 Ensembl repo
 

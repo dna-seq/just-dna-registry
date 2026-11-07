@@ -14,6 +14,7 @@ for real, offline against this box's snapshot, and the drift a hold test needs i
 import csv
 import dataclasses
 import io
+import json
 from pathlib import Path
 
 import just_dna_enricher.enrich as enricher
@@ -27,6 +28,7 @@ from typer.testing import CliRunner
 
 from just_dna_registry import cli
 from just_dna_registry.config import Settings, get_settings
+from just_dna_registry.maintenance import db_digest
 from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services.enrich import QUIET_DRIFT, snapshot_not_current
 from just_dna_registry.services.publish import PublishError
@@ -392,39 +394,47 @@ def test_one_refusal_does_not_end_the_sweep(
 def test_the_sweep_writes_its_own_log(
     client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
 ) -> None:
-    """Everything the sweep printed is in its log file, the held module included, without colour codes.
+    """Everything the sweep printed is in its run's log, the held module included, without colour codes.
 
     Through 0.28.0 the sweep wrote only to the terminal, so the list of held modules (the output the
-    operator acts on next) was as durable as a scroll-back buffer.
+    operator acts on next) was as durable as a scroll-back buffer. A sweep that published nothing
+    changed nothing, so its run keeps the log and drops the snapshot.
     """
     _publish(client, api_key)
     _as_0_7_table(app)
     monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: "pulled from the old release")
-    monkeypatch.setenv("REGISTRY_RUN_LOG_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(tmp_path / "runs"))
     out = _sweep(settings, monkeypatch, "--apply")
 
-    logs = sorted((tmp_path / "runs").glob("upgrade-*.log"))
-    assert len(logs) == 1, logs
-    body = logs[0].read_text()
+    runs = sorted((tmp_path / "runs").glob("*-upgrade"))
+    assert len(runs) == 1, runs
+    body = (runs[0] / "run.log").read_text()
     printed = [line for line in out.splitlines() if line.strip()]
     assert len(printed) >= 4, out
     assert [line for line in printed if line not in body] == []
     assert f"held {_NS}/{_NAME}@1.0.0: pulled from the old release" in body
     assert "\x1b[" not in body
-    assert body.startswith("# registry --mode prod upgrade ") and "apply=True" in body.splitlines()[0]
-    assert body.rstrip().splitlines()[-1].startswith("# ended")
-    assert f"log: {logs[0]}" in out
+    assert body.splitlines()[0] == "# registry --mode prod upgrade --apply"
+    assert body.rstrip().splitlines()[-1].startswith("# ok") and "nothing changed" in body
+    assert not (runs[0] / "db.sqlite").exists()
+    assert json.loads((runs[0] / "run.json").read_text())["changed"] is False
 
 
-def test_apply_snapshots_the_catalog_first_and_a_dry_run_does_not(
+def test_a_sweep_that_publishes_kept_the_catalog_as_it_was_before(
     client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
 ) -> None:
+    """The run's snapshot is the catalog before the first PATCH, and its journal names the successor's files."""
     _publish(client, api_key)
-    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: "pulled from the old release")
-    monkeypatch.setenv("REGISTRY_BACKUP_DIR", str(tmp_path / "snaps"))
-    _sweep(settings, monkeypatch, "--dry-run")
-    assert not list((tmp_path / "snaps").glob("*.db"))
+    _as_0_7_table(app)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(tmp_path / "runs"))
+    before = db_digest(settings.db_path)
+    _sweep(settings, monkeypatch, "--apply")
 
-    out = _sweep(settings, monkeypatch, "--apply")
-    taken = list((tmp_path / "snaps").glob("*-upgrade.db"))
-    assert len(taken) == 1 and f"snapshot: {taken[0]}" in out
+    (run,) = sorted((tmp_path / "runs").glob("*-upgrade"))
+    record = json.loads((run / "run.json").read_text())
+    assert record["changed"] is True and record["db_before"] == before
+    assert db_digest(run / "db.sqlite") == before != db_digest(settings.db_path)
+    journal = [json.loads(line) for line in (run / "journal.jsonl").read_text().splitlines()]
+    assert journal and {e["key"] for e in journal} == {f"{_NS}/{_NAME}/1.0.1"}
+    assert {e["op"] for e in journal} == {"add"}

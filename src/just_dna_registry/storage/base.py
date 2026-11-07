@@ -41,6 +41,16 @@ class StorageBackend(Protocol):
         """
         ...
 
+    def list_files(self, key: str) -> list[str]:
+        """Every file stored under `key` (a version key or a prefix), as names relative to `key`,
+        sorted. Empty when nothing is there. A maintenance run reads it to capture what a removal
+        is about to delete, so the removal can be reverted (`maintenance.JournaledStorage`)."""
+        ...
+
+    def remove_file(self, key: str, name: str) -> None:
+        """Delete one file under `key`. Idempotent. Used to revert a file a maintenance run added."""
+        ...
+
     def remove(self, key: str) -> None:
         """Hard-delete everything stored under `key` (a version key or a `{ns}/{name}` / `{ns}`
         prefix). Used only by the ops removal CLI, never the public API. Idempotent."""

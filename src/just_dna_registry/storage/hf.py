@@ -74,3 +74,24 @@ class HfStorage:
                 repo_type="dataset",
                 revision=self.revision,
             )
+
+    def list_files(self, key: str) -> list[str]:
+        base = f"datasets/{self.repo_id}/{self.prefix}/{key}"
+        try:
+            found = self._fs.find(base, detail=False)
+        except FileNotFoundError:
+            return []
+        return sorted(path[len(base) + 1 :] for path in found if path.startswith(base + "/"))
+
+    def remove_file(self, key: str, name: str) -> None:
+        # Unlike `remove`, not suppressed: a revert reads its result back, and an error it cannot see
+        # would read as a file restored. An absent file is the one failure that means "done".
+        if not self.exists(key, name):
+            return
+        self._api.delete_file(
+            path_in_repo=self._repo_path(key, name),
+            repo_id=self.repo_id,
+            repo_type="dataset",
+            revision=self.revision,
+            commit_message=f"revert {key}/{name}",
+        )

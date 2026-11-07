@@ -805,8 +805,17 @@ running server, and one direction arms a delete endpoint on production data.
   `valid: true` for a name the claim then refused (S6). It now carries `requires_allow_test_data` and
   a warning instead — *not* `valid: false`, because the name is genuinely claimable with the flag, and
   flipping the field would be the same contradiction rewritten backwards.
-- **Anything destructive snapshots first** (`backup._guard` in the CLI). The rolling index only counts
-  up and never overwrites — it is not a ring buffer, and taking a backup must be the one safe act here.
+- **Every `registry` command is a maintenance run** (0.28.1, `maintenance.py`), opened in the CLI's
+  dispatch so a new command inherits it: its log, the catalog snapshot taken before it acts (sqlite's
+  backup API), and a journal of every stored file it adds, overwrites or removes, with prior bytes.
+  `revert-run` undoes one newest-first and reads the DB and every journaled file back; it refuses
+  over a change made since (a server's write) unless `--force`, and is a run itself. Three rules
+  keep it whole. **Storage goes through `_storage()`**, which journals inside a run: a backend built
+  any other way writes files no revert can see. **`serve` is the one exclusion** (`NOT_A_RUN`): its
+  writes are requests. **`test_maintenance_commands.py` enumerates every command** and reverts each
+  changing one to the byte, DB and storage tree both, so a new command without a row fails. Hard
+  delete stays CLI-only and production still mounts no delete. `registry backup` stays for a
+  snapshot outside any command, and its index still only counts up.
 - **A site admin is an elevated *role*, never an extra *route*.** `accounts.site_admin` makes
   `deps.effective_role` answer `owner` on every namespace that exists, and it does that in one place
   so no router learns about it. Keep both limits. An unclaimed namespace stays `403`, or the flag
