@@ -75,6 +75,7 @@ release-head suite 687 passed; main fast-forwarded to it and pushed. Dists in `/
 **Published** by the person 2026-11-06 (desk #215 answered); PyPI files match the local build; `v0.28.0` tagged (c5a7840) and pushed.
 **Waits on the person: deploying both boxes**, per docs/UPGRADE.md 0.28 (Ensembl pull first); the boxes serve 0.27 until then.
 The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
+**0.28.1 on main, not cut** (2026-11-07): warm-caches re-pulls an old-release Ensembl cache; .env.template Ensembl line; every `registry` command is a maintenance run (log, snapshot, storage journal, `revert-run`; 932542e); `replay-upgrade` recovers a lost sweep report (4157216). Polygon deployed 0.28 and ran the sweep (34 published, 12 refused, --online) without snapshot or log; the person replays it. Full suite before the cut.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
