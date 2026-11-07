@@ -61,7 +61,14 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   refused. We pass no pin (`warm-caches` goes through `prepare_caches`), and `constraint` is only in
   `METRICS_REFERENCES` (`services/enrich.py:81`). Nothing moves.
   **RM417** (`19b3634`): rows from the live gnomAD constraint API are labelled `gnomad_api_constraint`, no longer
-  `gnomad_v2.1.1_constraint`; old rows are not rewritten. Nothing here reads either label. Read through `19b3634`.
+  `gnomad_v2.1.1_constraint`; old rows are not rewritten. Nothing here reads either label.
+- **Cut as `v0.8.2`** (`b98f7e9` on their `main`, 2026-11-07; not yet tagged or on PyPI): all three packages to
+  0.8.2, their inter-package floors `>=0.8.2`. Carries RM408, RM410, RM411, RM413-RM417, each read above: no public
+  name, field, table, flag or warning code. Release record `0.8.2` (from 0.8.0, 22 reference modules): only
+  `compilation.warnings` moved, in 2, **declared as an addition**, so `declared_movement` does not act and no sweep
+  follows. **Not a hard floor here**: our floors may stay (`>=0.8.0`, enricher `>=0.8.1`); a lock that takes enricher
+  0.8.2 takes format and compiler 0.8.2 with it. It rides the weekly bump once on PyPI (a patch, the liaison's under
+  its grant), with the `services/cache_drop.py:19` sentence (RM408) fixed in the same patch.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
