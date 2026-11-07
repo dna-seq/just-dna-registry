@@ -8,6 +8,14 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry upgrade` and `revalidate` write their own log
+
+Each run writes `logs/upgrade-<mode>-<utc>.log` (or `revalidate-…`) beside the DB: everything it printed,
+colour stripped, the log records at INFO and above (the enricher's among them), the options it ran with,
+and how it ended. The path is printed first and last. Through 0.28.0 the sweep printed to the terminal
+only, so the list of held modules, the output an operator acts on next, was lost with the session.
+New setting `REGISTRY_RUN_LOG_DIR`.
+
 ### `registry warm-caches` re-pulls an Ensembl cache of the old release
 
 Format 0.8 moved the Ensembl snapshot to a new repo under the same file names, so a 0.7 cache reads as

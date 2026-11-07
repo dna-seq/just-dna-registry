@@ -21,6 +21,7 @@ from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
+from just_dna_registry.run_log import run_log
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.pmid_check import verify_pmids
@@ -91,6 +92,12 @@ def _echo_mode(settings: Settings) -> None:
     test-prefixed module. A line up front costs nothing and turns that into a self-diagnosis.
     """
     typer.echo(f"mode={settings.mode} db={settings.db_path}")
+
+
+def _invocation(ctx: typer.Context) -> str:
+    """The command and the options it ran with, for the head of a run log."""
+    options = " ".join(f"{name}={value!r}" for name, value in sorted(ctx.params.items()))
+    return f"registry --mode {get_settings().mode} {ctx.info_name} {options}"
 
 
 def _open_existing_db(settings: Settings) -> Repository:
@@ -664,6 +671,7 @@ def unblacklist(namespace: str) -> None:
 
 @app.command()
 def revalidate(
+    ctx: typer.Context,
     namespace: str = typer.Option(None, "--namespace", "-n", help="Limit to one namespace"),
     set_flag: bool = typer.Option(
         False, "--set-flag/--report-only",
@@ -693,6 +701,7 @@ def revalidate(
     publishers. `--strict-check` is the cheap approximation: it catches the mode-ladder findings but
     not the unresolved-position gate, which only a real compile can see."""
     settings = get_settings()
+    ctx.with_resource(run_log(settings, "revalidate", _invocation(ctx)))
     _echo_mode(settings)
     conn = connect(settings.db_path)
     init_db(conn)  # idempotent: ensures the needs_upgrade column exists on a pre-0.5.0 DB
@@ -787,6 +796,7 @@ def _describe_upgrade(prep: VersionUpgradePlan, *, recompile: bool) -> str:
 
 @app.command()
 def upgrade(
+    ctx: typer.Context,
     namespace: str = typer.Option(None, "--namespace", "-n", help="Limit to one namespace"),
     module: str = typer.Option(None, "--module", "-m", help="Limit to one module name"),
     apply: bool = typer.Option(
@@ -845,6 +855,7 @@ def upgrade(
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
+    ctx.with_resource(run_log(settings, "upgrade", _invocation(ctx)))
     _echo_mode(settings)
     # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
     typer.echo(

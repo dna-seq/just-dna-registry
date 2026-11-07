@@ -16,7 +16,7 @@ from eliot import add_destinations
 from just_dna_registry.config import Settings
 
 # Third-party loggers that are too chatty at DEBUG — pinned to WARNING.
-_NOISY: tuple[str, ...] = (
+NOISY_LOGGERS: tuple[str, ...] = (
     "polars", "duckdb", "httpx", "httpcore", "multipart", "python_multipart",
     # huggingface-hub 2.0 sends its requests through these two, under their own logger names.
     "httpx2", "httpcore2",
@@ -44,7 +44,7 @@ def configure_logging(settings: Settings) -> None:
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
         force=True,
     )
-    for name in _NOISY:
+    for name in NOISY_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
 
     global _eliot_wired

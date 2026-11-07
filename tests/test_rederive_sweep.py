@@ -387,3 +387,30 @@ def test_one_refusal_does_not_end_the_sweep(
     assert out.count("✗ just-dna-seq/") == 2
     assert "2 refused" in out
     assert "--accept-drift" in out
+
+
+def test_the_sweep_writes_its_own_log(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
+) -> None:
+    """Everything the sweep printed is in its log file, the held module included, without colour codes.
+
+    Through 0.28.0 the sweep wrote only to the terminal, so the list of held modules (the output the
+    operator acts on next) was as durable as a scroll-back buffer.
+    """
+    _publish(client, api_key)
+    _as_0_7_table(app)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: "pulled from the old release")
+    monkeypatch.setenv("REGISTRY_RUN_LOG_DIR", str(tmp_path / "runs"))
+    out = _sweep(settings, monkeypatch, "--apply")
+
+    logs = sorted((tmp_path / "runs").glob("upgrade-*.log"))
+    assert len(logs) == 1, logs
+    body = logs[0].read_text()
+    printed = [line for line in out.splitlines() if line.strip()]
+    assert len(printed) >= 4, out
+    assert [line for line in printed if line not in body] == []
+    assert f"held {_NS}/{_NAME}@1.0.0: pulled from the old release" in body
+    assert "\x1b[" not in body
+    assert body.startswith("# registry --mode prod upgrade ") and "apply=True" in body.splitlines()[0]
+    assert body.rstrip().splitlines()[-1].startswith("# ended")
+    assert f"log: {logs[0]}" in out

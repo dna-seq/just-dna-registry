@@ -67,6 +67,11 @@ journalctl -u <the registry unit> -b | grep '\.env:'      # or: docker compose l
 Not run against either box (they are the operator's). The fallback is removed once neither box logs
 `fallback`.
 
+**Every `registry upgrade` and `revalidate` run writes its own log** (0.28.1): everything it printed,
+colour stripped, and log records at INFO and above, in `logs/` beside the DB (`REGISTRY_RUN_LOG_DIR` moves
+it), one file per run named `upgrade-<mode>-<utc>.log`. The path is printed first and last. Read the held
+modules out of it before `--accept-drift`. On 0.28.0, `tee` the output yourself.
+
 **3. Dry run the sweep.** 0.7 → 0.8 is a contract gap, so the sweep acts on every latest version without
 `--force`, unless upstream's 0.8.0 release record says the interval moved nothing for it:
 
