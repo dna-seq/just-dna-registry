@@ -53,7 +53,9 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   lead's to change with the floor, if the floor moves.
   **RM411** (`01600ee`): `cache rebuild --dry-run` fetches and builds nothing; `rebuild_lane` is split, its behaviour
   unchanged, and we call neither (`prepare_caches` only). **RM413** (`e7befd8`): their cut gate, no lane with a
-  repository left unpublished; tests and docs only. Nothing here moves for either. Read through `e7befd8`.
+  repository left unpublished; tests and docs only. Nothing here moves for either. 
+  **RM414/RM415** (`89610c3`, module-creator's S136/S137): two repeat-bin warnings reworded; codes, firing and the
+  published fragments unchanged, and a compiler patch is no recompile gap here. Read through `89610c3`.
 
 ## What the registry uses
 
