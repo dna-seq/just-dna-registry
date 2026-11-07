@@ -1,5 +1,23 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.28.3 — enricher 0.8.1 (operator note — re-measure, then the held modules)
+
+No schema moves and no sweep is triggered by the bump itself: the compiler is unchanged, so nothing
+compiled needs recompiling. What changes is how an online re-derivation answers (RM400, RM398, RM401),
+which is exactly the state of the polygon's 12 held modules.
+
+1. Deploy 0.28.3 (`uv sync` pulls enricher 0.8.1). No cache moves: no HuggingFace snapshot changed.
+2. Re-measure on a scratch copy, which also shows what the held modules now do:
+   `uv run registry --mode test replay-upgrade --compiler 0.8 --online`
+   Its run is readable afterwards at `GET /api/v1/admin/runs?command=replay-upgrade` (site admin).
+3. Read the replay. The four that refused on `lost_allele` should now publish with nothing to accept; the
+   eight with drift to read still need `--accept-drift`, each read first. A module the dbSNP witness
+   now withholds a row of, or refuses over a withdrawn rsID, is new information: read it before acting.
+4. Apply per module, as in the 0.28 note below.
+
+Online modules enrich one at a time under `--jobs` (the dbSNP check paces per run); offline modules still
+overlap. Set `NCBI_API_KEY` to raise NCBI's pace from 3 to 10 requests a second.
+
 ## 0.28 — format 0.8 (operator note — a coordinated cut)
 
 All three tiers move to 0.8.0 together (`>=0.8.0`). Five steps, in order, on each box (the polygon first,

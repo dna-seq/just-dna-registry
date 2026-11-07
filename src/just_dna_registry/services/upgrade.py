@@ -851,7 +851,14 @@ def upgrade_version(
             code=HELD_NEEDS_ONLINE,
         )
     if prep.needs_online:
-        settings = settings.model_copy(update={"enrich_offline": False})
+        # Online, the dbSNP merge check is on for this publish whatever the server's setting: since
+        # enricher 0.8.1 (RM398) it is also the third placement witness, read from the record it
+        # fetches, where 0.8.0 asked live REST unconditionally. Left at the setting (off by default),
+        # the same command would check an indel's placement less than it did on 0.8.0, and S117's
+        # misanchored ABO insertion is the case it exists for. Through `settings`, so the publish path
+        # takes `_UNSHARED_EGRESS` for it and a `--jobs` sweep stays inside NCBI's pace. A withdrawn
+        # rsID it finds refuses the module (`enrich_failed`), never a successor that names nothing.
+        settings = settings.model_copy(update={"enrich_offline": False, "enrich_verify_rsids": True})
 
     new_version = _next_free_patch(repo, namespace, name, version)
     new_manifest = publish_version(

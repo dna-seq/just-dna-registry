@@ -86,6 +86,8 @@ FAILURE_TYPE_OF: dict[str, str] = {
 
 #: A logged warning's type by its logger's top-level package.
 LOGGER_TYPE_OF: dict[str, str] = {
+    # The enricher's retry lines (RM403, 0.8.1): one WARNING per retried attempt and per give-up.
+    "just_dna_enricher.net": "network",
     "just_dna_enricher": "enrichment",
     "just_dna_compiler": "compile",
     "just_dna_format": "format",
@@ -95,6 +97,15 @@ LOGGER_TYPE_OF: dict[str, str] = {
     "urllib3": "network",
     "huggingface_hub": "storage",
 }
+
+
+def logger_type(name: str) -> str:
+    """The type a logger's records count under: its longest dotted prefix in `LOGGER_TYPE_OF`, else `other`."""
+    parts = name.split(".")
+    for end in range(len(parts), 0, -1):
+        if (kind := LOGGER_TYPE_OF.get(".".join(parts[:end]))) is not None:
+            return kind
+    return "other"
 
 
 @dataclass
@@ -177,8 +188,7 @@ class SweepResult:
         if self.logged_warnings:
             by_type: dict[str, Counter[str]] = {}
             for name, n in self.logged_warnings.items():
-                top = name.split(".", 1)[0]
-                by_type.setdefault(LOGGER_TYPE_OF.get(top, "other"), Counter())[name] += n
+                by_type.setdefault(logger_type(name), Counter())[name] += n
             ordered = sorted(by_type.items(), key=lambda kv: (-sum(kv[1].values()), kv[0]))
             lines.append(
                 "logged warnings: " + "; ".join(

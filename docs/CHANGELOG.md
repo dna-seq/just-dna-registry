@@ -8,6 +8,26 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### Enricher 0.8.1: what an upgrade sweep re-derives is corrected, and it asks dbSNP
+
+The enricher floor is `>=0.8.1`, hard; format and compiler stay 0.8.0 (upstream cut the enricher alone).
+It is hard for what an online re-derivation **writes** into an immutable successor: on 0.8.0 a locus live
+REST had mapped on a GRCh38 patch or alt contig re-derived as `lost_allele` (upstream RM400), which is
+why four polygon modules were held, and they should now re-derive with nothing to accept. Live Ensembl is
+asked 20 rsIDs per request (RM401), the slow part of S133's measurement, and every retry now writes a
+WARNING on `just_dna_enricher.net`, which the sweep's summary counts as `network` (RM403).
+
+**`registry upgrade --online` turns the dbSNP merge check on for the modules it takes online**, whatever
+`REGISTRY_ENRICH_VERIFY_RSIDS` says. Since 0.8.1 the third placement witness for an indel is dbSNP's own
+record, which that check fetches (RM398); 0.8.0 asked live REST instead, unconditionally, so leaving the
+check at its default (off) would have made the same command check less. Two consequences: those modules'
+enrichments take the unshared-egress lock, so they run one at a time under `--jobs`, and a module carrying
+an rsID dbSNP has withdrawn is refused (`enrich_failed`) rather than re-published. New `resolution.csv`
+rows name `dbsnp` as `placement_witness`, and `sources.csv` gains a `dbsnp` row (public domain). Publish
+and `/check` keep the setting as it is.
+
+**Client surface:** unchanged.
+
 ### Upgrade logs over REST, for site admins
 
 `GET /api/v1/admin/runs` lists the maintenance runs of the commands that exercise the enricher (`upgrade`,

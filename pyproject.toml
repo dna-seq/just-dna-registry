@@ -315,8 +315,18 @@ server = [
     # base did not come back and says so only in a log line, so it reached `unresolved` with the
     # authoring remedy attached. `unresolved_hint` now names it on an online run; the field
     # (`unanchored_rsids`) arrives with 0.8.
+    #
+    # **0.8.1 (upstream `v0.8.1`, the enricher alone) is a hard floor, for what a re-derivation writes.**
+    # Format and compiler stay 0.8.0: neither changed. Nothing public moved (RM401's and RM403's names are
+    # private), so it is not a symbol floor; it is the 0.6.2 kind, where meaning changes at the number.
+    # RM400: an online 0.8.0 re-derivation reads a locus REST mapped on a GRCh38 patch or alt contig as
+    # `lost_allele`, so `registry upgrade` would mint a successor missing those rows, permanently (four
+    # polygon modules were held on exactly this). RM398: the third placement witness is dbSNP's record,
+    # fetched by the merge check, which the sweep therefore turns on online (`upgrade_version`). Also in
+    # it: RM401 batches live Ensembl 20 rsIDs per request, RM403 logs every retry at WARNING on
+    # `just_dna_enricher.net` (counted as `network` in a sweep's summary), RM407.
     "just-dna-compiler>=0.8.0",  # lockstep with the format floor above (0.28)
-    "just-dna-enricher>=0.8.0",  # lockstep (0.28)
+    "just-dna-enricher>=0.8.1",  # hard: RM400 and RM398, see the 0.8.1 note above
 ]
 
 [build-system]

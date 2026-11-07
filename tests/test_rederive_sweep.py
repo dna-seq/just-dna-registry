@@ -288,6 +288,12 @@ def test_an_indel_module_is_held_offline_and_goes_online_only_when_allowed(
         pass
 
     def record(spec_dir, **kwargs):
+        # Held while the enrich runs: an unshared `EutilsClient` paces per run, so a `--jobs` sweep
+        # must take one at a time.
+        free = enrich_service._UNSHARED_EGRESS.acquire(blocking=False)
+        if free:
+            enrich_service._UNSHARED_EGRESS.release()
+        kwargs["serialized"] = not free
         seen.append(kwargs)
         raise Stop
 
@@ -295,8 +301,10 @@ def test_an_indel_module_is_held_offline_and_goes_online_only_when_allowed(
     with pytest.raises(Stop):
         upgrade_version(**args, online=True)
     assert seen[0]["offline"] is False and seen[0]["rederive"] is True
+    # RM398: online, the dbSNP witness is asked, and so the run is serialized.
+    assert seen[0]["verify_rsids"] is True and seen[0]["serialized"] is True
     # The process's own settings are untouched: only that one publish went online.
-    assert settings.enrich_offline is True
+    assert settings.enrich_offline is True and settings.enrich_verify_rsids is False
 
 
 # ── The snapshot check ───────────────────────────────────────────────────────────────────────────────
@@ -424,6 +432,8 @@ def test_the_terminal_gets_one_line_per_module_and_the_log_gets_the_rest(
 
     def upgrade_version(**kwargs):
         logging.getLogger("just_dna_enricher.enrich").warning("Re-derivation: 1 of 2 re-asked subject(s) moved")
+        # RM403's retry line (0.8.1): its own logger, counted as network, not as the enricher's.
+        logging.getLogger("just_dna_enricher.net").warning("_rest_rsid(rs1): attempt 1 of 3 failed; retrying")
         if kwargs["name"] == "coronary_two":
             raise PublishError("rederive_drift_needs_reading", errors=["rs1 moved: the source names a different event"])
         return real(**kwargs)
@@ -439,7 +449,7 @@ def test_the_terminal_gets_one_line_per_module_and_the_log_gets_the_rest(
     assert f"✗ {_NS}/coronary_two@1.0.0: rederive_drift_needs_reading" in module_lines
     assert "rs1 moved" not in out and "digest sha256:" not in out
     assert "Re-derivation: 1 of 2" not in out
-    assert "logged warnings: enrichment 2 (just_dna_enricher.enrich 2)" in out
+    assert "logged warnings: enrichment 2 (just_dna_enricher.enrich 2); network 2 (just_dna_enricher.net 2)" in out
     assert "1 version(s) upgraded and re-published, 1 refused (above)" in out
 
     body = _run_log(tmp_path)
