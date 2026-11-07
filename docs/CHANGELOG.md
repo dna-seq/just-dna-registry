@@ -8,6 +8,17 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### The server keeps a log file of its own (`REGISTRY_LOG_FILE`)
+
+`registry serve` logged only to stdout, and it is the one command that is not a maintenance run, so a
+server that stopped answering left nothing on the box unless whatever ran it kept its output (the polygon
+answered 502 for hours on 2026-11-07 with nothing to read). Set `REGISTRY_LOG_FILE` and the app's records
+and uvicorn's own (start-up, an app that fails to import, access lines) also go to that file, plain text,
+API keys redacted as in a run's log, rotated at `REGISTRY_LOG_FILE_MAX_BYTES` (10 MiB) keeping
+`REGISTRY_LOG_FILE_BACKUPS` (5). Unset, nothing changes.
+
+**Client surface:** unchanged.
+
 ## [0.28.3] — 2026-11-07
 
 ### Enricher 0.8.1: what an upgrade sweep re-derives is corrected, and it asks dbSNP

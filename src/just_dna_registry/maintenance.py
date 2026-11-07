@@ -43,7 +43,6 @@ import hashlib
 import io
 import json
 import logging
-import re
 import shutil
 import sqlite3
 import sys
@@ -58,7 +57,7 @@ from typing import Any, TextIO
 import click
 
 from just_dna_registry.config import Settings
-from just_dna_registry.logging_setup import NOISY_LOGGERS
+from just_dna_registry.logging_setup import LOG_FORMAT, NOISY_LOGGERS, RedactingFormatter, redact
 from just_dna_registry.storage.base import StorageBackend
 
 RUN_DIRNAME = "runs"
@@ -175,19 +174,6 @@ def _copy_db(source: Path, dest: Path) -> None:
             shutil.copyfileobj(raw, packed)
     finally:
         plain.unlink(missing_ok=True)
-
-
-_API_KEY = re.compile(r"\bmk_(live|test)_[A-Za-z0-9_-]+")
-
-
-def redact(text: str) -> str:
-    """A run log outlives the terminal and sits beside the catalog, so an API key never enters it."""
-    return _API_KEY.sub(lambda m: f"mk_{m.group(1)}_…(redacted)", text)
-
-
-class _RedactingFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        return redact(super().format(record))
 
 
 def _stamp(precise: bool = False) -> str:
@@ -403,7 +389,7 @@ def maintenance_run(settings: Settings, command: str, invocation: str) -> Iterat
     log = (path / LOG_FILE).open("x", encoding="utf-8")
     log.write(f"# {invocation}\n# started {record['started']}\n")
     handler = logging.StreamHandler(log)
-    handler.setFormatter(_RedactingFormatter("%(asctime)s %(levelname)-7s %(name)s | %(message)s"))
+    handler.setFormatter(RedactingFormatter(LOG_FORMAT))
     handler.setLevel(logging.INFO)
     # With no handler on the root a WARNING reached the terminal through `logging.lastResort`; adding
     # ours would silence that, so the terminal gets a handler of its own at the same level.

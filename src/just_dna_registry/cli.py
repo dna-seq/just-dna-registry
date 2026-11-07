@@ -25,6 +25,7 @@ from just_dna_registry.backup import create_backup, list_backups, restore_backup
 from just_dna_registry.config import DEFAULT_PORTS, VALID_MODES, Settings, get_settings
 from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect, init_db
+from just_dna_registry.logging_setup import uvicorn_log_config
 from just_dna_registry.maintenance import (
     LOG_FILE,
     NOT_A_RUN,
@@ -222,7 +223,12 @@ def serve(
             "and mounts DELETE on modules/versions.",
             fg=typer.colors.YELLOW,
         )
-    uvicorn.run("just_dna_registry.api.app:app", host=host, port=resolved, reload=reload)
+    if settings.log_file is not None:
+        typer.echo(f"logging to {settings.log_file} as well as stdout")
+    uvicorn.run(
+        "just_dna_registry.api.app:app", host=host, port=resolved, reload=reload,
+        log_config=uvicorn_log_config(settings),
+    )
 
 
 @app.command("init-db")

@@ -504,6 +504,12 @@ class Settings(BaseSettings):
 
     debug: bool = False
     log_level: str = "INFO"
+    #: The server's own log file (0.28.4), beside stdout: what `serve` and uvicorn log, API keys
+    #: redacted, rotated at `log_file_max_bytes` keeping `log_file_backups` old files. Unset = stdout
+    #: only. `serve` is not a maintenance run, so this is its only log that outlives the process's output.
+    log_file: Path | None = None
+    log_file_max_bytes: int = 10 * 1024 * 1024
+    log_file_backups: int = 5
 
 
     @property

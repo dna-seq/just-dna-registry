@@ -822,7 +822,7 @@ running server, and one direction arms a delete endpoint on production data.
   over a change made since (a server's write) unless `--force`, and is a run itself. Three rules
   keep it whole. **Storage goes through `_storage()`**, which journals inside a run: a backend built
   any other way writes files no revert can see. **`serve` is the one exclusion that runs** (`NOT_A_RUN`):
-  its writes are requests. **`test_maintenance_commands.py` enumerates every command** and reverts each
+  its writes are requests, so its log is stdout plus `REGISTRY_LOG_FILE` (0.28.4), whose handler goes on uvicorn's own loggers too (`uvicorn_log_config`): they do not propagate, and a worker that fails to import the app logs only there. **`test_maintenance_commands.py` enumerates every command** and reverts each
   changing one to the byte, DB and storage tree both, so a new command without a row fails. **Runs
   are pruned** (0.28.2): every run ends with `plan_prune` per `REGISTRY_RUN_KEEP` (default 2, `0` off),
   keeping the newest N revertible runs and the newest N replays whole and leaving every other run its
