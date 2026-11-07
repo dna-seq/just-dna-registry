@@ -77,7 +77,7 @@ REPLAY_DIR = "replay"
 #: exists to end.
 ALWAYS_LOG: frozenset[str] = frozenset({
     "upgrade", "revalidate", "replay-upgrade", "rederive-signatures", "purge-test-data",
-    "merge-accounts", "rename-account", "warm-caches", "revert-run",
+    "merge-accounts", "rename-account", "warm-caches", "drop-caches", "revert-run",
 })
 
 #: Commands that are not maintenance runs. `serve` runs the API until stopped; its writes are

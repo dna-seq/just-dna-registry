@@ -8,6 +8,27 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry drop-caches` removes a snapshot lane from this box
+
+The inverse of `warm-caches`, one lane at a time. With no flags it lists every lane on the box, largest
+first, with its size and path. `--lane NAME` (repeatable) removes the directory the running server would
+read, resolved the same way `warm-caches` and `GET /caches` resolve it, never a path you type; a `partial`
+directory (one `warm-caches` refuses to overwrite) is removable too. `--leftovers` removes what no
+resolver reads: `<lane>.pre-<version>` builds kept by a derived-lane rebuild, failed rebuild staging, and
+an interrupted removal. Dry run by default; `--apply` deletes.
+
+Two kinds of lane need `--force`: one a pass here reads (`ensembl` and `clinvar` decide whether a publish
+works, the PGx and ACMG lanes feed opt-in checks), and one nothing publishes, which comes back only by a
+local build (PharmVar, ACMG, MANE, OpenTargets). A directory that contains anything else (another lane,
+the shared cache base, the catalog, its storage or its runs) is refused whatever the flags say, and one
+refused or unforced lane stops the whole selection. Each path is renamed aside before it is deleted, so
+no resolver reads it half-gone. The dry run prints the restore line beside each pulled lane, and names
+the derived lanes built from a parent (they keep working; their next rebuild needs it back).
+
+It is a maintenance run that always keeps its log, so the removal is on record; `revert-run` does not
+bring a lane back, since the disk is the point and the restore is the pull. A server that has one of the
+files open keeps that space until it restarts.
+
 ## [0.28.2] — 2026-11-07
 
 ### `registry upgrade --apply` re-publishes several modules at once (`--jobs`)

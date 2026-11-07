@@ -802,6 +802,15 @@ Tests: a row in `test_maintenance_commands.py`; keep-2 over five runs leaves thr
 two revertible to the byte; a revert of a pruned run refuses; auto-prune at `REGISTRY_RUN_KEEP=0` keeps all.
 About 45 minutes with tests; selected tests in the background, full suite at the cut.
 
+## 0.28.3 — `drop-caches`: give one snapshot lane's disk back (built 2026-11-07, the lead)
+
+**done** on main, unreleased. The person, 2026-11-07: "build an option to remove cache selectively if we don't
+have one yet. I'm going to remove alphagenome from server, due to lack of space". There was none: provisioning
+never deletes, and upstream's `cache prune` cleans a published repo, not a local snapshot. `registry
+drop-caches` lists the lanes by size, removes a named lane at the path the server resolves, `--leftovers` takes
+the `.pre-<version>` builds, `--force` for a lane read here or one with no pull route, and a directory holding
+anything else is refused outright. A run with its log kept; not revertible (the restore is `warm-caches`).
+
 ## Next registry version (post-0.11)
 
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's

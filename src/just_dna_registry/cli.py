@@ -1826,6 +1826,125 @@ def warm_caches(
         raise typer.Exit(code=1)
 
 
+@app.command("drop-caches")
+def drop_caches(
+    lane: list[str] = typer.Option(
+        [], "--lane", help="A lane to remove from this box, by name, repeatable"
+    ),
+    leftovers: bool = typer.Option(
+        False, "--leftovers",
+        help="Also remove what no resolver reads: `<lane>.pre-<version>` builds a derived-lane rebuild "
+             "kept, failed rebuild staging, and interrupted removals",
+    ),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Remove a lane a pass here reads, or one with no published snapshot to pull back",
+    ),
+    apply: bool = typer.Option(False, "--apply/--dry-run", help="Delete (default: list what would go)"),
+) -> None:
+    """Give a snapshot lane's disk back: the inverse of `warm-caches`, one lane at a time.
+
+    With no `--lane` and no `--leftovers` it lists every lane on this box with its size, which is the
+    question to answer first. The path removed is the one the running server would read, never one you
+    type, and a lane whose directory contains anything else (another lane, the shared cache base, the
+    catalog, its storage or its runs) is refused whatever the flags say.
+
+    `--force` is needed for a lane a pass here reads (`ensembl` and `clinvar` decide whether a publish
+    works; the PGx and ACMG lanes feed opt-in checks) and for one nothing publishes, which comes back
+    only by a local build (PharmVar's personal key, ACMG's workbook). A pulled lane comes back with
+    `registry warm-caches --lane NAME --apply`; the dry run prints that line beside each one.
+
+    A maintenance run, like `warm-caches`, and always keeps its log, so the removal is on record. It
+    is not revertible by `revert-run`: the point is the disk, and the restore is the pull. A server
+    that has a file of the lane open keeps that space until it restarts.
+    """
+    settings = get_settings()
+    from just_dna_registry.services.cache_drop import drop, path_bytes, plan_drops
+    from just_dna_registry.services.enrich import (
+        LANE_GROUPS,
+        cache_lanes,
+        enricher_available,
+        lane_presence,
+    )
+
+    if not enricher_available():
+        typer.secho(
+            "just-dna-enricher is not installed — run `uv sync --extra server`.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    lanes = cache_lanes()
+    unknown = sorted(name for name in lane if name not in lanes)
+    if unknown:
+        typer.secho(
+            f"unknown lane(s): {', '.join(unknown)}. This enricher knows {', '.join(lanes)}.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
+
+    if not lane and not leftovers:
+        present = {name: where for name, where in lane_presence(settings).items() if where is not None}
+        if not present:
+            typer.echo("no lane is present on this box")
+            return
+        sizes = {name: path_bytes(Path(where)) for name, where in present.items()}
+        for name in sorted(present, key=lambda n: -sizes[n]):
+            tag = f"[{LANE_GROUPS[name]}]" if name in LANE_GROUPS else "[not read here]"
+            typer.echo(f"  {name} {tag}\t{human_size(sizes[name])}\t{present[name]}")
+        typer.echo(
+            f"{len(present)} lane(s), {human_size(sum(sizes.values()))}. Remove one with "
+            f"`registry drop-caches --lane NAME --apply`."
+        )
+        return
+
+    plan = plan_drops(settings, list(dict.fromkeys(lane)), leftovers=leftovers)
+    for name in plan.absent:
+        typer.echo(f"  – {name}: nothing on this box")
+    for item in plan.drops:
+        tag = f"[{item.group}]" if item.group else "[not read here]"
+        line = f"  {item.lane} {tag} {item.state}: {item.path} — {human_size(item.size)}"
+        if item.refused:
+            typer.secho(f"  ✗ {line[2:]}\n      refused: {item.refused}", fg=typer.colors.RED)
+            continue
+        typer.secho(line, fg=typer.colors.YELLOW if item.needs_force else None)
+        for reason in item.needs_force:
+            typer.echo(f"      needs --force: {reason}")
+        if item.feeds:
+            typer.echo(
+                f"      {', '.join(item.feeds)} were built from it: they keep working, their next "
+                f"rebuild needs it back"
+            )
+        if item.state == "present" and item.route == "pull":
+            typer.echo(f"      restore: registry warm-caches --lane {item.lane} --apply")
+
+    if not plan.drops:
+        typer.echo("nothing to remove")
+        return
+    blocked = [item for item in plan.drops if item.blocked(force)]
+    if blocked:
+        typer.secho(
+            f"\n{len(blocked)} path(s) refused or needing --force; nothing removed. Drop them from the "
+            f"selection or pass --force where it applies.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    if not apply:
+        typer.echo(
+            f"\ndry run: {len(plan.drops)} path(s), {human_size(plan.size)} would be freed. "
+            f"Re-run with --apply."
+        )
+        return
+    freed = 0
+    for item in plan.drops:
+        freed += drop(item)
+        typer.echo(f"  removed {item.path} ({item.lane}, {human_size(item.size)})")
+    typer.secho(
+        f"removed {len(plan.drops)} path(s), {human_size(freed)} freed. A server that has one of "
+        f"these files open keeps its space until it restarts.",
+        fg=typer.colors.GREEN,
+    )
+
+
 def _lane_pairs(pairs: list[str], flag: str, lanes: dict[str, Any]) -> dict[str, Any]:
     """`<lane>=<value>` options, parsed and checked against the lane registry.
 

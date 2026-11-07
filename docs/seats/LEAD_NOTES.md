@@ -76,7 +76,9 @@ release-head suite 687 passed; main fast-forwarded to it and pushed. Dists in `/
 **Waits on the person: deploying both boxes**, per docs/UPGRADE.md 0.28 (Ensembl pull first); the boxes serve 0.27 until then.
 The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
 **0.28.1 published and tagged** (efa6055). Replay on the polygon reproduced the sweep exactly (34 same, 12 refused); the 12 are on desk #218 (publish 8 = moved insertions dbSNP confirms + respellings; hold 4 lost_allele for upstream RM400). Upstream: S132 answered (819553ea), S133 filed (timeouts/batching). Real-HF revert: desk #216 (default skip).
-**0.28.2 cutting** (2026-11-07): gzipped run backups, terse per-module sweep output with counts by type, `prune-runs` + auto-prune (REGISTRY_RUN_KEEP=2; first command after deploy prunes older 0.28.1 runs), `--jobs` parallel re-publish (default 4), shared GRCh37 client, REGISTRY_ENRICH_HTTP_TIMEOUT_SECONDS (unset). Open: the sweep runs with upstream retry defaults (Ensembl 3) while the server exports http_retry_attempts=5; left as is.
+**0.28.2 published and tagged** (2026-11-07, v0.28.2 on b5b0043; desk #219 answered "published"): gzipped run backups, terse sweep, `prune-runs` + auto-prune (REGISTRY_RUN_KEEP=2), `--jobs`. Open: the sweep runs with upstream retry defaults (Ensembl 3) while the server exports http_retry_attempts=5; left as is.
+
+**0.28.3 building** (unreleased on main): `registry drop-caches`, the person wanting AlphaGenome (30 GB, nothing here reads it) off the server for space.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for

@@ -829,7 +829,12 @@ running server, and one direction arms a delete endpoint on production data.
   `run.log` and `run.json`, marked `pruned`, which `revert_run` refuses by name. `prune-runs` is the
   second `NOT_A_RUN`: a run of it would copy the catalog to delete catalog copies. Hard
   delete stays CLI-only and production still mounts no delete. `registry backup` stays for a
-  snapshot outside any command, and its index still only counts up.
+  snapshot outside any command, and its index still only counts up. **A snapshot lane is not the
+  catalog**: `drop-caches` (`services/cache_drop.py`) is a run, logged, and `revert-run` does not bring
+  a lane back, because the disk is the point and the restore is `warm-caches`. It removes only the
+  path the server resolves, never a typed one, and refuses a directory holding anything else (another
+  lane, the cache base, the catalog, storage, runs) whatever the flags; "provisioning never deletes"
+  stays true of `warm-caches`, which is why removal is its own verb.
 - **A long command's terminal is one line per item; the run's log is the detail** (0.28.2,
   `sweep_report.py`). `upgrade`'s sweep builds a `SweepItem` per module (a head carrying a status and a
   code, and the detail lines), prints the head whole once the module is done, and logs the block as one

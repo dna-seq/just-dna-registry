@@ -85,6 +85,8 @@ REPORT_ONLY: dict[str, str] = {
     "backup": "writes a snapshot file beside the catalog, never into it",
     "warm-caches": "--apply provisions enricher snapshots over the network into the cache directories; "
                    "it touches neither the catalog DB nor storage, and pulling tens of GB is not a test",
+    "drop-caches": "--apply removes enricher snapshots from the cache directories; it touches neither the "
+                   "catalog DB nor storage, and refuses a lane directory that contains either",
     "replay-upgrade": "read-only on the real catalog by contract (it replays into a scratch copy)",
 }
 
@@ -185,6 +187,7 @@ ROWS: tuple[Row, ...] = (
     Row("revoke-key", ("revoke-key", CAROL_KEY), True),
     Row("revoke-account", ("revoke-account", "carol", "--yes"), True),
     Row("warm-caches/dry", ("warm-caches", "--dry-run"), False, exits=frozenset({0, 1})),
+    Row("drop-caches/list", ("drop-caches",), False),
     Row("rederive-signatures/apply", ("rederive-signatures", "--apply"), True),
     Row("rederive-signatures/dry", ("rederive-signatures", "--dry-run"), False),
     Row("backup", ("backup", "--reason", "enumeration"), False),

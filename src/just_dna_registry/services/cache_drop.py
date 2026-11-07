@@ -1,0 +1,207 @@
+"""Removing a snapshot lane from this box, selectively: the inverse of `registry warm-caches`.
+
+Provisioning never deletes (`rebuild_derived_lane` renames the old build aside; `prepare_lane` refuses a
+partial directory rather than overwrite it), so before 0.28.3 the only way to give a lane's disk back
+was an `rm -rf` on a path the operator had to work out. Upstream's `just-dna-enricher cache prune` is a
+different thing: it deletes stray files from a *published* repo, never a local snapshot.
+
+Four rules, each of which a hand `rm` gets wrong somewhere:
+
+* **The path is the one the running server would read**, resolved through `lane_presence` and, for a
+  lane that does not resolve, the same configured-or-default directory `lane_status` reports as
+  `partial`. Never a path the operator types: a removal that misses the directory the server opens
+  frees nothing and leaves the operator believing it did.
+* **A path that contains anything else is never removed.** A lane variable pointed at the shared cache
+  base (or at `/`, or at the catalog's own directory) would otherwise take every other lane, the catalog
+  or the run backups with it. Refused outright, `--force` or not.
+* **Two kinds of lane need `--force`**: one a pass here reads (removing `ensembl` makes publishing an
+  rsID-authored module refuse), and one with no published snapshot to pull back (PharmVar needs a
+  personal key, ACMG a workbook, OpenTargets a long build). Both are recoverable; neither is cheap.
+* **Leftovers are offered separately** (`stale`): `<lane>.pre-<version>` builds that a derived-lane
+  rebuild kept, `.<lane>.rebuild-*` staging that a failed one left, and `.<lane>.dropping-*` from an
+  interrupted removal. No resolver reads any of them.
+
+The enricher is imported lazily through `services.enrich`, as everywhere: a client install has none.
+"""
+
+import os
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from just_dna_registry.config import Settings
+from just_dna_registry.maintenance import run_root
+from just_dna_registry.services.enrich import (
+    LANE_GROUPS,
+    RESOLUTION_REFERENCES,
+    _lane_directory,
+    cache_lanes,
+    lane_destinations,
+    lane_presence,
+)
+
+#: Sibling names that no resolver reads, by the prefix each writer gives them.
+LEFTOVER_PATTERNS: tuple[str, ...] = ("{name}.pre-*", ".{name}.rebuild-*", ".{name}.dropping-*")
+
+
+@dataclass(frozen=True)
+class LaneDrop:
+    """One path this command would remove, and everything an operator needs to decide about it."""
+
+    lane: str
+    path: Path
+    #: `present` (a readable snapshot), `partial` (a directory that is not one), `leftover`.
+    state: str
+    size: int
+    #: The group of passes here that reads the lane, or `None` for a lane nothing here opens.
+    group: str | None
+    #: How it comes back: `pull`, `build`, or `none`.
+    route: str
+    #: Why this removal needs `--force`. Empty when it does not.
+    needs_force: tuple[str, ...] = ()
+    #: Why this removal is refused whatever the flags say, or `None`.
+    refused: str | None = None
+    #: Present derived lanes built from this one: they keep working, their next rebuild will not.
+    feeds: tuple[str, ...] = ()
+
+    def blocked(self, force: bool) -> bool:
+        return self.refused is not None or (bool(self.needs_force) and not force)
+
+
+@dataclass
+class DropPlan:
+    drops: list[LaneDrop] = field(default_factory=list)
+    #: Selected lanes with nothing on disk.
+    absent: list[str] = field(default_factory=list)
+
+    @property
+    def size(self) -> int:
+        return sum(drop.size for drop in self.drops)
+
+
+def path_bytes(path: Path) -> int:
+    """Bytes on disk under `path` — every regular file, symlinks not followed, or the file itself."""
+    if path.is_symlink():
+        return 0
+    if path.is_file():
+        return path.stat().st_size
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            child = Path(root) / name
+            if not child.is_symlink():
+                total += child.stat().st_size
+    return total
+
+
+def _route(lane: Any) -> str:
+    if lane.ensure is not None:
+        return "pull"
+    return "build" if lane.rebuild is not None else "none"
+
+
+def _lane_directories(settings: Settings) -> dict[str, Path]:
+    """Every lane's directory on this box: where it resolves, else where it would be provisioned."""
+    present = lane_presence(settings)
+    configured = lane_destinations(settings)
+    out: dict[str, Path] = {}
+    for name, lane in cache_lanes().items():
+        where = present.get(name) or _lane_directory(lane, configured.get(name))
+        if where is not None:
+            out[name] = Path(where)
+    return out
+
+
+def _protected(settings: Settings, directories: dict[str, Path], own: str) -> list[tuple[str, Path]]:
+    """Paths no removal may contain: the catalog, its storage and runs, and every *other* lane."""
+    paths = [
+        ("the catalog", settings.db_path),
+        ("local artifact storage", settings.local_storage_dir),
+        ("the maintenance runs", run_root(settings)),
+    ]
+    paths += [(f"lane {name}", where) for name, where in directories.items() if name != own]
+    return [(label, Path(path).resolve()) for label, path in paths]
+
+
+def refusal(path: Path, settings: Settings, directories: dict[str, Path], own: str) -> str | None:
+    """Why removing `path` would take something else with it, or `None` when it would not."""
+    if path.is_symlink():
+        return f"{path} is a symlink; remove its target by hand if that is what you mean"
+    resolved = path.resolve()
+    if resolved == Path(resolved.anchor) or resolved == Path.home().resolve() or len(resolved.parts) < 3:
+        return f"{resolved} is too close to the filesystem root to be one lane's directory"
+    for label, other in _protected(settings, directories, own):
+        if other == resolved or resolved in other.parents:
+            return f"{resolved} contains {label} ({other}); point the lane at a directory of its own"
+    return None
+
+
+def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> DropPlan:
+    """What removing `names` (and, with `leftovers`, every lane's leftovers) would delete.
+
+    Reads only. `names` must be lane names `cache_lanes()` knows; the CLI checks before calling.
+    """
+    lanes = cache_lanes()
+    present = lane_presence(settings)
+    directories = _lane_directories(settings)
+    plan = DropPlan()
+    for name in names:
+        lane = lanes[name]
+        where = directories.get(name)
+        if where is None or not (where.exists() or where.is_symlink()):
+            plan.absent.append(name)
+            continue
+        if present.get(name) is not None:
+            state = "present"
+        elif where.is_dir() and any(where.iterdir()):
+            state = "partial"
+        else:
+            plan.absent.append(name)
+            continue
+        group = LANE_GROUPS.get(name)
+        route = _route(lane)
+        force: list[str] = []
+        if group is not None:
+            consequence = (
+                "publishing an rsID-authored module refuses without it"
+                if name in RESOLUTION_REFERENCES else f"the `{group}` checks skip themselves without it"
+            )
+            force.append(f"read here ({group}): {consequence}")
+        if route != "pull" and state == "present":
+            why = lane.unpublished if route == "build" else lane.unbuilt
+            force.append(f"no published snapshot to pull back ({why or route})")
+        feeds = tuple(
+            other for other, other_lane in lanes.items()
+            if name in other_lane.parents and present.get(other) is not None
+        )
+        plan.drops.append(LaneDrop(
+            lane=name, path=where, state=state, size=path_bytes(where), group=group, route=route,
+            needs_force=tuple(force), refused=refusal(where, settings, directories, name), feeds=feeds,
+        ))
+    if leftovers:
+        for name, where in directories.items():
+            for pattern in LEFTOVER_PATTERNS:
+                for found in sorted(where.parent.glob(pattern.format(name=where.name))):
+                    plan.drops.append(LaneDrop(
+                        lane=name, path=found, state="leftover", size=path_bytes(found),
+                        group=None, route=_route(lanes[name]),
+                        refused=refusal(found, settings, directories, name),
+                    ))
+    return plan
+
+
+def drop(target: LaneDrop) -> int:
+    """Remove one planned path, renaming it aside first so no resolver ever reads it half-deleted."""
+    path = target.path
+    if path.is_symlink():
+        raise OSError(f"{path} is a symlink; refusing")
+    # An interrupted removal's own leftover is already aside.
+    aside = path if ".dropping-" in path.name else path.with_name(f".{path.name}.dropping-{os.getpid()}")
+    if aside != path:
+        path.rename(aside)
+    if aside.is_dir():
+        shutil.rmtree(aside)
+    else:
+        aside.unlink()
+    return target.size

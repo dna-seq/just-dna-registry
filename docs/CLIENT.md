@@ -588,6 +588,8 @@ If the server has no reference snapshot provisioned you get a clear message nami
 ```bash
 registry warm-caches --dry-run          # what the running server can read (health check)
 registry warm-caches --apply            # provision the snapshots from HuggingFace (slow, large)
+registry drop-caches                    # every lane on this box, largest first, with its size
+registry drop-caches --lane NAME --apply  # give one lane's disk back (dry run without --apply)
 registry rederive-signatures --dry-run  # the one-time 0.11 content-hash migration; read the report
 registry revalidate --recompile-check   # which modules would a strict publish refuse?
 registry upgrade --apply --limit 20     # batch the catalog migration
