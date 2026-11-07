@@ -14,7 +14,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
 read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0 since registry 0.28.0 (`c5a7840`,
-2026-11-06; `>=0.8.0` floors, resolved from PyPI). Both servers stay on 0.27 until deployed (`docs/UPGRADE.md`, 0.28). Past the tag, `main` holds RM397
+2026-11-06; `>=0.8.0` floors, resolved from PyPI); 0.28.0 to 0.28.2 published (`v0.28.2`, 2026-11-07). Past the tag, `main` holds RM397
 (`3f2dac4`, the enricher wheel drops its Atlas `.proto` sources; packaging only, nothing we import) and docs.
 
 ## Backlog
@@ -37,7 +37,7 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   timeout (120 s) are private constants until 0.9's RM404, so there is nothing for us to pass, and our
   `enrich_http_timeout_seconds` (`services/enrich.py:325`, `EnsemblSettings(timeout=...)`) does not bound a batch
   read in 0.8.x. At the publish: the enricher floor rises to `>=0.8.1`, a hard floor (the four modules held for
-  RM400 must not be re-derived below it); format and compiler stay `>=0.8.0`.
+  RM400 must not be re-derived below it); format and compiler stay `>=0.8.0`. It ships in registry 0.28.3 (the lead's, held by the person meanwhile).
 - **The patch after 0.8.1** (their `main` past `f38d677`, 2026-11-07): **RM407**, an indel's VRS mint reads the
   reference once per locus instead of per normalize step (2,472 seqrepo reads, ~354 s, in the lead's replay; no id
   moves), and **RM398** unparked as the next patch (dbSNP's SPDI, already fetched by the merge check, replaces the
