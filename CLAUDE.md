@@ -838,7 +838,11 @@ running server, and one direction arms a delete endpoint on production data.
   `lane_readers`** (0.28.4), assembled from the tuples the call sites pass (`ENRICH_LANES`, which
   `enrich_spec` spreads into `enrich()`; `HINT_LANES`; `DRAFT_SOURCES`; `LANE_GROUPS`), never a list of
   names: the first version read `LANE_GROUPS` alone and called five lanes the proxy and every enrichment
-  open "not read here". A route that starts opening a lane adds it to its own tuple, and the tag follows.
+  open "not read here". A route that starts opening a lane adds it to its own tuple, and the tag follows. `GET /caches`
+  serves the same answer as `readers` (0.28.5), with `read_here` defined as "has one"; `lane_status`
+  takes it as an argument because `lane_readers` imports `enrich`, and `REFERENCE_NAMES` stays the
+  narrower set the boot check reads. The tag renders through `lane_tags.reader_tag`, outside
+  `services/`, so `registry-client caches` prints it too.
   **Runs are readable over REST by site admins** (0.28.3, `services/runs.py`, `GET /admin/runs…`), for
   the enricher-facing commands only (`DIAGNOSTIC_COMMANDS`); any other run is a `404`, never a `403`, so
   the listing cannot probe for one. Every sweep keeps `sweep.json` (`SweepResult.to_json`) beside its

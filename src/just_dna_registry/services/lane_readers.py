@@ -13,16 +13,15 @@ assembled from the tuples the call sites themselves use:
   `proxy: derived` — `ENRICH_LANES` again, since that route is an enrichment.
 * `builds: <lane>` — a parent of a derived lane something here reads (`mitomap` for `mitomap_miss`).
 
-A lane with none is read by nothing in this server. That is a statement about this server only: the
+The same answer reaches `GET /caches` as each lane's `readers` (0.28.5), and both render through
+`lane_tags.reader_tag`. A lane with none is read by nothing in this server. That is a statement about this server only: the
 same box may run `just-dna-enricher` by hand, which is why `warm-caches --all` still offers every lane.
 """
 
+from just_dna_registry.lane_tags import PROXY_PREFIX, PUBLISH
 from just_dna_registry.services.drafting import DRAFT_SOURCES
 from just_dna_registry.services.enrich import ENRICH_LANES, LANE_GROUPS, cache_lanes
 from just_dna_registry.services.hints import HINT_LANES
-
-PUBLISH = "publish"
-PROXY_PREFIX = "proxy: "
 
 
 def lane_readers() -> dict[str, tuple[str, ...]]:
@@ -58,13 +57,3 @@ def proxy_lanes() -> frozenset[str]:
     direct = {name for name, found in readers.items() if any(r.startswith(PROXY_PREFIX) for r in found)}
     lanes = cache_lanes()
     return frozenset(direct | {parent for name in direct for parent in lanes[name].parents})
-
-
-def reader_tag(readers: tuple[str, ...]) -> str:
-    """`[publish; check: resolution; proxy: derived, hints, drafts]`, or `[nothing here]`."""
-    if not readers:
-        return "[nothing here]"
-    proxy = [r.removeprefix(PROXY_PREFIX) for r in readers if r.startswith(PROXY_PREFIX)]
-    rest = [r for r in readers if not r.startswith(PROXY_PREFIX)]
-    parts = rest + ([f"proxy: {', '.join(proxy)}"] if proxy else [])
-    return f"[{'; '.join(parts)}]"

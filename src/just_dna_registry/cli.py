@@ -1580,6 +1580,7 @@ def warm_caches(
     of gating at acquisition. Ensembl, ClinVar and gnomAD never ask.
     """
     settings = get_settings()
+    from just_dna_registry.lane_tags import reader_tag
     from just_dna_registry.services.enrich import (
         CHECK_REFERENCES,
         METRICS_REFERENCES,
@@ -1598,7 +1599,7 @@ def warm_caches(
         rebuild_derived_lane,
         repull_left_undone,
     )
-    from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes, reader_tag
+    from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
     # `huggingface_hub` reads `HF_TOKEN` and knows nothing of the `REGISTRY_` prefix, and the two
@@ -1890,9 +1891,10 @@ def drop_caches(
     that has a file of the lane open keeps that space until it restarts.
     """
     settings = get_settings()
+    from just_dna_registry.lane_tags import reader_tag
     from just_dna_registry.services.cache_drop import drop, path_bytes, plan_drops
     from just_dna_registry.services.enrich import cache_lanes, enricher_available, lane_presence
-    from just_dna_registry.services.lane_readers import lane_readers, reader_tag
+    from just_dna_registry.services.lane_readers import lane_readers
 
     if not enricher_available():
         typer.secho(

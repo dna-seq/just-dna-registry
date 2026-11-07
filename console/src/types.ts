@@ -463,6 +463,7 @@ export interface CacheLaneStatus {
   licence_gated: boolean;
   licence_skip: string | null;
   read_here: boolean;
+  readers: string[] | null;
   group: string | null;
   configured: boolean;
   parents: string[];

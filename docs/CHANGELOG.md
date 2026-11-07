@@ -8,6 +8,18 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `GET /caches` says what reads each lane, and `read_here` is right for five more
+
+`read_here` followed the `/check` groups alone, so the API said nothing in the server reads `pubmind`,
+`civic` and `clinvar_gkm` (every enrichment opens them) or `strchive` and `mitomap_miss` (`POST /drafts`),
+while 0.28.4's `warm-caches` and `drop-caches` on the same box said otherwise. Each lane now carries
+`readers`, the same list those commands print, and `read_here` is true exactly when it is non-empty.
+`group` keeps its narrower `/check` meaning. `registry-client caches` prints the readers, and against a
+server before this one (`readers` is `null`) falls back to the group as before. The console's
+"N of M read here are missing" counts the wider set.
+
+**Client surface:** unchanged (`CacheLaneStatus` gains `readers`).
+
 ## [0.28.4] — 2026-11-07
 
 ### `warm-caches` and `drop-caches` say what reads each lane; `warm-caches --proxy` and `--exclude`
@@ -23,8 +35,7 @@ pass (`[publish; check: resolution; proxy: derived, hints, drafts]`, `[nothing h
 `warm-caches --proxy` provisions the caching proxy's lanes (`/hint/*`, `POST /drafts`, `POST
 .../derived`) and the parents they build from, without the rest of `--all`. `--exclude LANE`,
 repeatable, is applied last and overrides `--all`, `--proxy`, a group flag, `--lane` and the default
-`ensembl`/`clinvar` pair. The `/caches` API's `read_here` field is unchanged and still means "a `/check`
-or publish pass opens it".
+`ensembl`/`clinvar` pair. The `/caches` API's `read_here` field is unchanged here; 0.28.5 aligns it.
 
 ### The server keeps a log file of its own (`REGISTRY_LOG_FILE`)
 

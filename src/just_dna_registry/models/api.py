@@ -1533,14 +1533,28 @@ class CacheLaneStatus(BaseModel):
     read_here: bool = Field(
         default=False,
         description=(
-            "Whether a pass in *this service* opens the lane. Deliberately narrower than the set of "
-            "lanes an operator can provision: the same box often runs authoring commands, and a "
-            "lane nothing here reads is still worth reporting rather than hiding."
+            "Whether anything in *this service* opens the lane: true exactly when `readers` is "
+            "non-empty. Deliberately narrower than the set of lanes an operator can provision: the "
+            "same box often runs authoring commands, and a lane nothing here reads is still worth "
+            "reporting rather than hiding. Through 0.28.4 it covered the `/check` groups only and "
+            "answered false for five lanes every enrichment or the proxy opens."
+        ),
+    )
+    readers: list[str] | None = Field(
+        default=None,
+        description=(
+            "What in this service opens the lane (0.28.5): `publish` (every enrichment: publish, "
+            "`/check`, `POST .../derived`), `check: <group>`, `proxy: hints|drafts|derived`, "
+            "`builds: <lane>` for a parent of a derived lane something reads. `[]` means nothing "
+            "here reads it; `null` means the server predates the field, so read `group` instead."
         ),
     )
     group: str | None = Field(
         default=None,
-        description="Which group of passes reads it here (`resolution`, `pgx`, …); null if none do",
+        description=(
+            "Which `/check` group of passes reads it here (`resolution`, `pgx`, …); null if none "
+            "does. Narrower than `readers`: a lane only enrichment or the proxy opens has none."
+        ),
     )
     configured: bool = Field(
         default=False,

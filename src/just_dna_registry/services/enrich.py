@@ -697,7 +697,7 @@ def _lane_directory(lane: Any, configured: Path | None) -> Path | None:
         return None
 
 
-def lane_status(settings: Settings) -> CacheStatusReport:
+def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> CacheStatusReport:
     """Every snapshot lane, its state, and for an absent one the reason and the route it would take.
 
     The read-only projection behind `GET /caches` and `registry-client caches`. It reads only — no
@@ -721,6 +721,12 @@ def lane_status(settings: Settings) -> CacheStatusReport:
     that is a different instruction from "nobody has pulled it yet". Computed with the enricher's own
     `check_declared_use`, so the report agrees with the gate that will later refuse — the same reason
     `available_references` resolves through the lane's own resolver.
+
+    **`readers` is `lane_readers.lane_readers()`, passed in** because that module is assembled from
+    tuples defined here and in modules that import this one, so it cannot be imported back. It is a
+    required argument rather than a default: through 0.28.4 `read_here` came off `REFERENCE_NAMES`,
+    which names the `/check` groups only and answered false for every lane only enrichment or the
+    proxy opens. `REFERENCE_NAMES` stays what the boot check reads.
     """
     declared_use = settings.declared_use
     lanes = cache_lanes()
@@ -778,7 +784,8 @@ def lane_status(settings: Settings) -> CacheStatusReport:
             build_command=lane.build_command,
             licence_gated=lane.terms is not None,
             licence_skip=skip,
-            read_here=name in REFERENCE_NAMES,
+            read_here=bool(readers.get(name)),
+            readers=list(readers.get(name, ())),
             group=LANE_GROUPS.get(name),
             configured=configured.get(name) is not None,
             parents=list(lane.parents),

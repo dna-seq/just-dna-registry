@@ -15,6 +15,7 @@ from just_dna_registry.api.app import create_app
 from just_dna_registry.api.routers import caches as caches_router
 from just_dna_registry.config import Settings
 from just_dna_registry.services import enrich
+from just_dna_registry.services.lane_readers import lane_readers
 
 pytestmark = pytest.mark.skipif(
     not enrich.enricher_available(), reason="the network tier is not installed"
@@ -68,23 +69,35 @@ def test_no_filesystem_path_reaches_the_wire(client: TestClient, settings: Setti
     # catches a future field holding one this box happens not to have provisioned.
     assert '"/' not in raw.replace('"/api', "")
 
-    for lane in enrich.lane_status(settings).lanes:
+    for lane in enrich.lane_status(settings, lane_readers()).lanes:
         assert lane.name in raw
 
 
-def test_read_here_names_exactly_the_lanes_a_pass_here_opens(client: TestClient) -> None:
-    """`read_here` is a claim that something on this box opens the lane, so it tracks one tuple.
+def test_read_here_and_readers_say_what_in_this_service_opens_each_lane(client: TestClient) -> None:
+    """`readers` is `lane_readers()`, the answer `warm-caches` and `drop-caches` print, and
+    `read_here` is exactly "it has one".
 
-    A lane named there that nothing reads is how `constraint` came to trigger boot warnings about a
-    file no pass would open, so the set is asserted rather than spot-checked — and `group` has to
-    agree with it in both directions.
+    Through 0.28.4 `read_here` was `REFERENCE_NAMES`, the `/check` groups only, so `pubmind`, `civic`
+    and `clinvar_gkm` (every enrichment opens them) and `strchive` and `mitomap_miss` (`POST /drafts`)
+    read as unused over the API while the commands on the same box said otherwise. `group` stays the
+    narrower `/check` grouping, so it implies `read_here` and not the reverse.
     """
-    lanes = body(client)["lanes"]
+    lanes = {lane["name"]: lane for lane in body(client)["lanes"]}
+    expected = lane_readers()
+    assert len(expected) >= 10, "the lane registry came back nearly empty; this would prove nothing"
+    assert set(lanes) == set(expected)
 
-    assert {lane["name"] for lane in lanes if lane["read_here"]} == set(enrich.REFERENCE_NAMES)
-    assert {lane["name"] for lane in lanes if lane["group"]} == set(enrich.REFERENCE_NAMES)
-    for lane in lanes:
-        assert (lane["group"] is not None) == lane["read_here"]
+    for name, lane in lanes.items():
+        assert lane["readers"] == list(expected[name])
+        assert lane["read_here"] == bool(expected[name])
+        if lane["group"] is not None:
+            assert lane["read_here"]
+
+    assert {name for name, lane in lanes.items() if lane["group"]} == set(enrich.REFERENCE_NAMES)
+    # The widening is the point: lanes only enrichment opens are read here and carry no group.
+    beyond_groups = {name for name, lane in lanes.items() if lane["read_here"] and not lane["group"]}
+    assert set(enrich.ENRICH_LANES) - set(enrich.REFERENCE_NAMES) <= beyond_groups
+    assert beyond_groups, "every lane read here has a /check group, so the widening is untested"
 
 
 def test_the_route_a_lane_would_take_is_read_from_its_two_stages_independently(
@@ -127,7 +140,7 @@ def test_an_unreadable_directory_is_partial_and_not_absent(tmp_path) -> None:
         storage_root=tmp_path / "artifacts",
         clinvar_cache=junk,
     )
-    lanes = {lane.name: lane for lane in enrich.lane_status(settings).lanes}
+    lanes = {lane.name: lane for lane in enrich.lane_status(settings, lane_readers()).lanes}
 
     assert lanes["clinvar"].state == "partial"
     assert lanes["clinvar"].configured is True
@@ -145,7 +158,7 @@ def test_a_configured_but_empty_directory_is_absent(tmp_path) -> None:
         storage_root=tmp_path / "artifacts",
         clinvar_cache=empty,
     )
-    lanes = {lane.name: lane for lane in enrich.lane_status(settings).lanes}
+    lanes = {lane.name: lane for lane in enrich.lane_status(settings, lane_readers()).lanes}
 
     assert lanes["clinvar"].state == "absent"
     assert lanes["clinvar"].configured is True
@@ -176,7 +189,7 @@ def test_a_deployment_without_the_network_tier_says_so_once(monkeypatch, setting
     nothing to read them with.
     """
     monkeypatch.setattr(enrich, "cache_lanes", dict)
-    report = enrich.lane_status(settings)
+    report = enrich.lane_status(settings, lane_readers())
 
     assert report.enricher_available is False
     assert report.lanes == []

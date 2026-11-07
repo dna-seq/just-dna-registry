@@ -22,6 +22,7 @@ from just_dna_format.manifest import read_manifest, write_manifest
 from just_dna_registry import columns
 from just_dna_registry.client import RegistryClient, RegistryError, sent_input_hashes
 from just_dna_registry.installid import generate_install_id
+from just_dna_registry.lane_tags import reader_tag
 from just_dna_registry.specfiles import DERIVED_NOTE_FILE, DRAFT_REPORT_FILE
 from just_dna_registry.ui import standalone
 from just_dna_registry.version import VersionInfo, compatibility_error
@@ -172,7 +173,11 @@ def cache_status(
         if absent_only and lane.state == "present":
             continue
         shown += 1
-        tag = f"[{lane.group}]" if lane.group else "[not read there]"
+        # `readers` is null from a server before 0.28.5, whose `group` covered the `/check` passes only.
+        if lane.readers is not None:
+            tag = reader_tag(lane.readers, where="there")
+        else:
+            tag = f"[{lane.group}]" if lane.group else "[not read there]"
         if lane.state == "present":
             # The release is printed beside the state rather than instead of it, and an unreadable
             # `release.json` says so: present-and-unprovenanced is a real state, and it is not absent.

@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from just_dna_registry.config import Settings
+from just_dna_registry.lane_tags import PUBLISH, reader_tag
 from just_dna_registry.maintenance import run_root
 from just_dna_registry.services.enrich import (
     RESOLUTION_REFERENCES,
@@ -40,7 +41,7 @@ from just_dna_registry.services.enrich import (
     lane_destinations,
     lane_presence,
 )
-from just_dna_registry.services.lane_readers import PUBLISH, lane_readers, reader_tag
+from just_dna_registry.services.lane_readers import lane_readers
 
 #: Sibling names that no resolver reads, by the prefix each writer gives them.
 LEFTOVER_PATTERNS: tuple[str, ...] = ("{name}.pre-*", ".{name}.rebuild-*", ".{name}.dropping-*")

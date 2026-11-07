@@ -738,13 +738,17 @@ arrive by and the reason it has not.
      "release": "clinvar_2026-06-27", "release_unreadable": false,
      "route": "pullable", "route_reason": null, "build_command": "clinvar build",
      "licence_gated": false, "licence_skip": null,
-     "read_here": true, "group": "resolution", "configured": true, "parents": []},
+     "read_here": true,
+     "readers": ["publish", "check: resolution", "proxy: derived", "proxy: hints", "proxy: drafts",
+                 "builds: mitomap_miss"],
+     "group": "resolution", "configured": true, "parents": []},
     {"name": "pharmvar", "serves": "star-allele nomenclature", "state": "absent",
      "release": null, "route": "buildable",
      "route_reason": "bulk data comes down under a personal, non-transferable key",
      "build_command": "pharmvar build", "licence_gated": true,
      "licence_skip": "pharmvar forbids sale and no use was declared",
-     "read_here": true, "group": "pgx", "configured": false, "parents": []}
+     "read_here": true, "readers": ["check: pgx"], "group": "pgx", "configured": false,
+     "parents": []}
   ]
 }
 ```
@@ -769,9 +773,16 @@ question a publisher has after a `/check` reported a source skipped.
   `declared_use` that declines it will never arrive from a pull however many times one is run. That
   is a different instruction from *nobody has pulled it yet*, and it is computed with the enricher's
   own gate so the report agrees with the refusal it predicts.
-- **`read_here` and `group`** say whether a pass *in this service* opens the lane. Deliberately
-  narrower than the set an operator can provision: the same box often runs authoring commands, and a
-  lane nothing here reads is still worth reporting rather than hiding.
+- **`readers`, `read_here` and `group`** say what *in this service* opens the lane. `readers` (0.28.5)
+  names each: `publish` (every enrichment: publish, `/check`, `POST .../derived`), `check: <group>`,
+  `proxy: hints|drafts|derived`, and `builds: <lane>` for a parent of a derived lane something reads.
+  It is the same answer `registry warm-caches` and `drop-caches` print. `[]` means nothing here reads
+  the lane; `null` means a server before 0.28.5, where `group` is all there is. `read_here` is true
+  exactly when `readers` is non-empty; through 0.28.4 it followed the `/check` groups alone and was
+  false for five lanes every enrichment or the proxy opens (`pubmind`, `civic`, `clinvar_gkm`,
+  `strchive`, `mitomap_miss`). `group` is still the `/check` grouping only, so a lane can be read here
+  with no group. All three are narrower than the set an operator can provision: the same box often
+  runs authoring commands, and a lane nothing here reads is still worth reporting rather than hiding.
 - **`configured`** is whether this deployment pins the location or lets the lane's own ladder find
   it. **No filesystem path appears in this response and none may be added.** Lane presence is an
   operational fact of the same class `/health` already publishes unauthenticated; the server's

@@ -12,10 +12,11 @@ from just_dna_enricher.enrich import enrich
 from typer.testing import CliRunner
 
 from just_dna_registry import cli
+from just_dna_registry.lane_tags import reader_tag
 from just_dna_registry.services.drafting import DRAFT_SOURCES
 from just_dna_registry.services.enrich import ENRICH_LANES, LANE_GROUPS, cache_lanes
 from just_dna_registry.services.hints import HINT_LANES
-from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes, reader_tag
+from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes
 
 
 def test_enrich_lanes_are_every_cache_enrich_takes() -> None:
