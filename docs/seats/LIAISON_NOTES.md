@@ -61,6 +61,9 @@ reset").
 - reflect after 2026-11-14: classes/base/BASE.md as of v0.1.141 (sessions sent to the `kit-tools` skill before a step goes to the person or a helper is built).
 - reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137 ("An in-house release"; concern raised 2026-11-06 in `#just-dna-registry > seats`: the priming keeps a minor with the lead, a patch is the weekly bump's); amended in v0.1.138 (a priming may keep a minor with the lead; the liaison reports the publish). The `compiler` tag watcher hears in-house tags from v0.1.137 (#287); it was silent on `v0.8.0`.
 
+- **Desk #222** (2026-11-07, S4): the person pastes the newer auto-mode rules (1, 2, 3, 5, missing 13). Withdraw it
+  (`moot:`) once the digest's `[automode]` lines stop reporting the mismatch.
+
 ## Backlog, in order
 
 1. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.
