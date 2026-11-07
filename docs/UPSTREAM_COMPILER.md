@@ -29,6 +29,11 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   each shipped, then tell the lead, who holds four modules for RM400 and re-measures the sweep on RM401. Whether
   the floor must rise to it is read then: four modules are held for RM400, so a floor below it would let them
   be re-derived without the fix.
+  Built on their `main` by 2026-11-07, not yet pushed (their triage): RM401 batches Ensembl REST at
+  `EnsemblSettings.batch_size` 20 ids with its own `batch_timeout` of 120 s (`batch_size=1` restores one GET per
+  rsID). **To check at the tag**: `shared_lookup_clients` (`services/enrich.py:325`) passes our
+  `enrich_http_timeout_seconds` as `EnsemblSettings(timeout=...)` only, so a batch read would run under upstream's
+  120 s, not the operator's setting; whether to pass `batch_timeout` too is the lead's call.
 
 ## What the registry uses
 
