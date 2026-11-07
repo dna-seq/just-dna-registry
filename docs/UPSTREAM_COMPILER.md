@@ -13,8 +13,8 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
-read at the cut, is the read of the tag. Installed on `main`: still format 0.7.1, compiler 0.7.2, enricher 0.7.3
-(registry 0.27.0); the 0.28 branch is on 0.8.0 with `>=0.8.0` floors. Past the tag, `main` holds RM397
+read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0 since registry 0.28.0 (`c5a7840`,
+2026-11-06; `>=0.8.0` floors, resolved from PyPI). Both servers stay on 0.27 until deployed (`docs/UPGRADE.md`, 0.28). Past the tag, `main` holds RM397
 (`3f2dac4`, the enricher wheel drops its Atlas `.proto` sources; packaging only, nothing we import) and docs.
 
 ## Backlog
@@ -25,6 +25,10 @@ read at the cut, is the read of the tag. Installed on `main`: still format 0.7.1
   to the read mark is read.
 - ~~**`main` past `v0.7.3`** and **the `0.8` branch**~~: both reached `v0.8.0` (the main patches were merged into
   the cut; no `v0.7.4` was made). Read through the map below.
+- **The next patch on their `main` (0.8.1)** carries RM400, RM401 and RM403 (S132, S133 below). At its tag: check
+  each shipped, then tell the lead, who holds four modules for RM400 and re-measures the sweep on RM401. Whether
+  the floor must rise to it is read then: four modules are held for RM400, so a floor below it would let them
+  be re-derived without the fix.
 
 ## What the registry uses
 
@@ -358,6 +362,21 @@ lock (1.44.2, 1.5.5, 2.3.3).
   (`a617b4f3`): our read of `pgs._REQUEST_INTERVAL` stays the answer, and no patch renames it. Tell their triage
   to unpark it when we need a second client's pace (or `clingen_allele`'s), or a private name we read is about
   to be renamed.
+
+- **S132** (filed by the lead, 2026-11-06, from the 0.28 rederive sweep). **Answered** (their `819553ea`, unpushed):
+  the six moved insertions are RM267's class, fixed by 0.8's snapshot (dbSNP's SPDI matches the 0.8 spelling for all
+  six), so accepting them is ours; the 23 undecided are RM385 (0.9); the 11 `lost_allele` are their defect, **RM400**,
+  the next patch on `main`, both halves together, so the four refused modules should clear on a re-derivation under
+  it; (a)(b)(d) are **RM398**, parked (unparks when a release plans a snapshot move, or on a second report); (e) is
+  **RM399**, a release declaring a moved snapshot, in 0.9. The lead took it into desk #218: the six and the 23 for
+  `--accept-drift` now, the four held for RM400.
+- **S133** (filed by the lead, 2026-11-06, the sweep's live-lookup cost). **Answered** (their `ec7752a8`, unpushed):
+  **RM401** (batch the live link and the REST witness) and **RM403** (log every retry and give-up) in the next patch;
+  **RM402** (no live Ensembl ask for an rsID the snapshot answered and RM382 rejected) waits on RM401 and a
+  re-measure, likely superseded; **RM404** (`enrich()` takes the eutils client and the sequence proxy) in 0.9;
+  **RM405** (the offline floor) parked. Lowering the retry floor is declined until RM401 ships and is re-measured;
+  the lead re-measures then. On `multimorbidity_aging_v3`, enrich already warns that 38 rejected genotypes fit the
+  other strand; the lead passes that to its author.
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
