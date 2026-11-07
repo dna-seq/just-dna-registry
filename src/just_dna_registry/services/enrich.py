@@ -121,6 +121,13 @@ REFERENCE_NAMES: tuple[str, ...] = (
 )
 
 
+#: The snapshot lanes `enrich()` opens, by its `<lane>_cache` parameters: what every enrichment here
+#: reads (a publish, `/check`, `POST .../derived`). `enrich_spec` passes exactly these, and a test holds
+#: the tuple to `enrich()`'s signature, so a lane upstream adds fails a test rather than resolving
+#: ambiently.
+ENRICH_LANES: tuple[str, ...] = ("ensembl", "clinvar", "pubmind", "civic", "clinvar_gkm")
+
+
 def cache_lanes() -> dict[str, Any]:
     """`{name: CacheLane}` — upstream's registry of every snapshot lane, or `{}` with no enricher.
 
@@ -1092,15 +1099,12 @@ def enrich_spec(
             # the "fill every field" hole one level down, at the call rather than the construction,
             # and N concurrent runs (a `--jobs` sweep) egressed at N times the interval.
             grch37_client=clients.grch37 if clients else None,
-            ensembl_cache=caches["ensembl"],
-            clinvar_cache=caches["clinvar"],
             # Every lane `enrich()` takes, never one left to its default: an omitted `*_cache` is
             # `None`, and `None` is the ambient discovery the configured path exists to forbid.
-            # These two were omitted through 0.27.0, so a server's PubMind and CIViC came from
-            # wherever the enricher looked, into `published_refutation` and `verification.json`.
-            pubmind_cache=caches["pubmind"],
-            civic_cache=caches["civic"],
-            clinvar_gkm_cache=caches["clinvar_gkm"],
+            # PubMind and CIViC were omitted through 0.27.0, so a server's came from wherever the
+            # enricher looked, into `published_refutation` and `verification.json`. `ENRICH_LANES`
+            # is the list, and what `drop-caches` and `warm-caches --proxy` read as "publish opens".
+            **{f"{lane}_cache": caches[lane] for lane in ENRICH_LANES},
             use_clinvar=settings.enrich_use_clinvar,
             # Passed as configured, `offline` beside them. `enrich()` already gates both on it —
             # the gnomAD link and the dbSNP currency check are live-only — and an `and not offline`

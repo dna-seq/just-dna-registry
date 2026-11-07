@@ -14,7 +14,8 @@ Four rules, each of which a hand `rm` gets wrong somewhere:
 * **A path that contains anything else is never removed.** A lane variable pointed at the shared cache
   base (or at `/`, or at the catalog's own directory) would otherwise take every other lane, the catalog
   or the run backups with it. Refused outright, `--force` or not.
-* **Two kinds of lane need `--force`**: one a pass here reads (removing `ensembl` makes publishing an
+* **Two kinds of lane need `--force`**: one anything here reads (`lane_readers`: every enrichment, a
+  `/check` pass, a proxy route, or a build of one of those; removing `ensembl` makes publishing an
   rsID-authored module refuse), and one with no published snapshot to pull back (PharmVar needs a
   personal key, ACMG a workbook, OpenTargets a long build). Both are recoverable; neither is cheap.
 * **Leftovers are offered separately** (`stale`): `<lane>.pre-<version>` builds that a derived-lane
@@ -33,13 +34,13 @@ from typing import Any
 from just_dna_registry.config import Settings
 from just_dna_registry.maintenance import run_root
 from just_dna_registry.services.enrich import (
-    LANE_GROUPS,
     RESOLUTION_REFERENCES,
     _lane_directory,
     cache_lanes,
     lane_destinations,
     lane_presence,
 )
+from just_dna_registry.services.lane_readers import PUBLISH, lane_readers, reader_tag
 
 #: Sibling names that no resolver reads, by the prefix each writer gives them.
 LEFTOVER_PATTERNS: tuple[str, ...] = ("{name}.pre-*", ".{name}.rebuild-*", ".{name}.dropping-*")
@@ -54,8 +55,8 @@ class LaneDrop:
     #: `present` (a readable snapshot), `partial` (a directory that is not one), `leftover`.
     state: str
     size: int
-    #: The group of passes here that reads the lane, or `None` for a lane nothing here opens.
-    group: str | None
+    #: What in this server opens the lane (`lane_readers`); `()` for a lane nothing here opens.
+    readers: tuple[str, ...]
     #: How it comes back: `pull`, `build`, or `none`.
     route: str
     #: Why this removal needs `--force`. Empty when it does not.
@@ -145,6 +146,7 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
     lanes = cache_lanes()
     present = lane_presence(settings)
     directories = lane_directories(settings)
+    readers_of = lane_readers()
     plan = DropPlan()
     for name in names:
         lane = lanes[name]
@@ -159,15 +161,17 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
         else:
             plan.absent.append(name)
             continue
-        group = LANE_GROUPS.get(name)
+        readers = readers_of.get(name, ())
         route = _route(lane)
         force: list[str] = []
-        if group is not None:
-            consequence = (
-                "publishing an rsID-authored module refuses without it"
-                if name in RESOLUTION_REFERENCES else f"the `{group}` checks skip themselves without it"
-            )
-            force.append(f"read here ({group}): {consequence}")
+        if readers:
+            if name in RESOLUTION_REFERENCES:
+                consequence = "publishing an rsID-authored module refuses without it"
+            elif PUBLISH in readers:
+                consequence = "every enrichment (publish, /check, derived) runs without it"
+            else:
+                consequence = "those routes skip or refuse without it"
+            force.append(f"read here {reader_tag(readers)}: {consequence}")
         if route != "pull" and state == "present":
             why = lane.unpublished if route == "build" else lane.unbuilt
             force.append(f"no published snapshot to pull back ({why or route})")
@@ -176,7 +180,7 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
             if name in other_lane.parents and present.get(other) is not None
         )
         plan.drops.append(LaneDrop(
-            lane=name, path=where, state=state, size=path_bytes(where), group=group, route=route,
+            lane=name, path=where, state=state, size=path_bytes(where), readers=readers, route=route,
             needs_force=tuple(force), refused=refusal(where, settings, directories, name), feeds=feeds,
         ))
     if leftovers:
@@ -185,7 +189,7 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
                 for found in sorted(where.parent.glob(pattern.format(name=where.name))):
                     plan.drops.append(LaneDrop(
                         lane=name, path=found, state="leftover", size=path_bytes(found),
-                        group=None, route=_route(lanes[name]),
+                        readers=(), route=_route(lanes[name]),
                         refused=refusal(found, settings, directories, name),
                     ))
     return plan

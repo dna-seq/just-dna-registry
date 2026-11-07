@@ -1499,6 +1499,16 @@ def warm_caches(
     every: bool = typer.Option(
         False, "--all", help="Every lane the enricher knows about, not only the ones read here"
     ),
+    proxy: bool = typer.Option(
+        False, "--proxy",
+        help="The lanes the caching proxy's routes open (`/hint/*`, `POST /drafts`, `POST .../derived`) "
+             "and the parents they build from: the authoring surface, without `--all`'s rest",
+    ),
+    exclude: list[str] = typer.Option(
+        [], "--exclude",
+        help="Leave a lane out, repeatable. Applied last, so it overrides --all, --proxy, a group flag, "
+             "--lane and the default resolution pair",
+    ),
     source: list[str] = typer.Option(
         [], "--source",
         help="`<lane>=<path>` for a lane that builds from a file you hold (ACMG's workbook, a "
@@ -1547,6 +1557,12 @@ def warm_caches(
     cache reads as present; upstream re-pulls it, or checks a record-less one against the published
     files once. The dry run marks these `⟳`, and `--apply` reads each record back afterwards.
 
+    **Each lane is tagged with what in this server opens it** (`services/lane_readers.py`): `publish`
+    (every enrichment), `check: <group>`, `proxy: hints / drafts / derived`, `builds: <lane>`, or
+    `[nothing here]`. `--proxy` selects the caching proxy's lanes and their build parents, the
+    authoring surface without the rest of `--all`; `--exclude LANE` (repeatable) is applied last and
+    overrides every flag that adds, so `--all --exclude alphagenome_avi` is everything but that one.
+
     Groups, because they gate different things. **Resolution** (ensembl, clinvar) decides whether a
     publish works. **PGx** (cpic, clinpgx, pharmvar — `--pgx`) is what makes a *hosted* `?pgx=` check
     legitimate rather than merely possible: without a snapshot the alternatives are fetching a source
@@ -1582,6 +1598,7 @@ def warm_caches(
         rebuild_derived_lane,
         repull_left_undone,
     )
+    from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes, reader_tag
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
     # `huggingface_hub` reads `HF_TOKEN` and knows nothing of the `REGISTRY_` prefix, and the two
@@ -1612,7 +1629,7 @@ def warm_caches(
 
     lanes = cache_lanes()
     known = provisionable_lanes()
-    unknown = [name for name in lane if name not in lanes]
+    unknown = [name for name in [*lane, *exclude] if name not in lanes]
     if unknown:
         typer.secho(
             f"unknown lane(s): {', '.join(sorted(unknown))}. This enricher knows "
@@ -1632,6 +1649,8 @@ def warm_caches(
     selected: set[str] = set(lane)
     if every:
         selected |= set(known)
+    if proxy:
+        selected |= proxy_lanes()
     for _label, names, wanted in groups:
         if wanted:
             selected |= set(names)
@@ -1640,8 +1659,10 @@ def warm_caches(
         selected.discard("ensembl")
     if not clinvar:
         selected.discard("clinvar")
+    # Last, so it overrides every flag that adds: the one way to say "all of them but that 30 GB one".
+    selected -= set(exclude)
 
-    grouped = {name: label for label, names, _ in groups for name in names}
+    readers = lane_readers()
     # **Every lane, not the seven a pass here opens.** `available_references` is keyed by
     # `REFERENCE_NAMES` and is right to be — it feeds the boot gate and the `/check` notes — but a
     # report has a different job from a gate, and reading presence out of it gave `None` for the
@@ -1662,8 +1683,7 @@ def warm_caches(
     for name in known:
         lane_obj = lanes[name]
         where = present.get(name)
-        read_here = grouped.get(name)
-        tag = f"[{read_here}]" if read_here else "[not read here]"
+        tag = reader_tag(readers.get(name, ()))
         age = ages.get(name)
         if where is not None and name in repull:
             typer.secho(f"  ⟳ {name} {tag}: {where} — {repull[name]}", fg=typer.colors.YELLOW)
@@ -1682,6 +1702,8 @@ def warm_caches(
             )
         elif where is not None:
             typer.echo(f"  ✓ {name} {tag}: {where}")
+        elif name in exclude:
+            typer.echo(f"  – {name} {tag}: excluded")
         elif name not in selected:
             typer.echo(f"  – {name} {tag}: not selected")
         elif name in pullable:
@@ -1869,12 +1891,8 @@ def drop_caches(
     """
     settings = get_settings()
     from just_dna_registry.services.cache_drop import drop, path_bytes, plan_drops
-    from just_dna_registry.services.enrich import (
-        LANE_GROUPS,
-        cache_lanes,
-        enricher_available,
-        lane_presence,
-    )
+    from just_dna_registry.services.enrich import cache_lanes, enricher_available, lane_presence
+    from just_dna_registry.services.lane_readers import lane_readers, reader_tag
 
     if not enricher_available():
         typer.secho(
@@ -1897,8 +1915,9 @@ def drop_caches(
             typer.echo("no lane is present on this box")
             return
         sizes = {name: path_bytes(Path(where)) for name, where in present.items()}
+        readers = lane_readers()
         for name in sorted(present, key=lambda n: -sizes[n]):
-            tag = f"[{LANE_GROUPS[name]}]" if name in LANE_GROUPS else "[not read here]"
+            tag = reader_tag(readers.get(name, ()))
             typer.echo(f"  {name} {tag}\t{human_size(sizes[name])}\t{present[name]}")
         typer.echo(
             f"{len(present)} lane(s), {human_size(sum(sizes.values()))}. Remove one with "
@@ -1910,7 +1929,7 @@ def drop_caches(
     for name in plan.absent:
         typer.echo(f"  – {name}: nothing on this box")
     for item in plan.drops:
-        tag = f"[{item.group}]" if item.group else "[not read here]"
+        tag = reader_tag(item.readers)
         line = f"  {item.lane} {tag} {item.state}: {item.path} — {human_size(item.size)}"
         if item.refused:
             typer.secho(f"  ✗ {line[2:]}\n      refused: {item.refused}", fg=typer.colors.RED)

@@ -10,6 +10,22 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [0.28.4] — 2026-11-07
 
+### `warm-caches` and `drop-caches` say what reads each lane; `warm-caches --proxy` and `--exclude`
+
+Both commands tagged a lane with its `/check` group or `[not read here]`, and the second was wrong for
+five lanes: every enrichment (publish, `/check`, `POST .../derived`) opens `pubmind`, `civic` and
+`clinvar_gkm`, and `POST /drafts` opens `strchive` and `mitomap_miss` (built from `mitomap`). So
+`drop-caches` removed them without `--force` while saying nothing here used them (0.28.3, unpublished
+behaviour for most boxes). The tag now names the readers, read from the lists the call sites themselves
+pass (`[publish; check: resolution; proxy: derived, hints, drafts]`, `[nothing here]`), and
+`drop-caches` needs `--force` for any lane with one.
+
+`warm-caches --proxy` provisions the caching proxy's lanes (`/hint/*`, `POST /drafts`, `POST
+.../derived`) and the parents they build from, without the rest of `--all`. `--exclude LANE`,
+repeatable, is applied last and overrides `--all`, `--proxy`, a group flag, `--lane` and the default
+`ensembl`/`clinvar` pair. The `/caches` API's `read_here` field is unchanged and still means "a `/check`
+or publish pass opens it".
+
 ### The server keeps a log file of its own (`REGISTRY_LOG_FILE`)
 
 `registry serve` logged only to stdout, and it is the one command that is not a maintenance run, so a

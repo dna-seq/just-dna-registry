@@ -834,7 +834,11 @@ running server, and one direction arms a delete endpoint on production data.
   a lane back, because the disk is the point and the restore is `warm-caches`. It removes only the
   path the server resolves, never a typed one, and refuses a directory holding anything else (another
   lane, the cache base, the catalog, storage, runs) whatever the flags; "provisioning never deletes"
-  stays true of `warm-caches`, which is why removal is its own verb.
+  stays true of `warm-caches`, which is why removal is its own verb. **What reads a lane is
+  `lane_readers`** (0.28.4), assembled from the tuples the call sites pass (`ENRICH_LANES`, which
+  `enrich_spec` spreads into `enrich()`; `HINT_LANES`; `DRAFT_SOURCES`; `LANE_GROUPS`), never a list of
+  names: the first version read `LANE_GROUPS` alone and called five lanes the proxy and every enrichment
+  open "not read here". A route that starts opening a lane adds it to its own tuple, and the tag follows.
   **Runs are readable over REST by site admins** (0.28.3, `services/runs.py`, `GET /admin/runs…`), for
   the enricher-facing commands only (`DIAGNOSTIC_COMMANDS`); any other run is a `404`, never a `403`, so
   the listing cannot probe for one. Every sweep keeps `sweep.json` (`SweepResult.to_json`) beside its

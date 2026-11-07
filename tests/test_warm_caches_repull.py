@@ -74,7 +74,7 @@ def test_the_dry_run_marks_it_and_apply_repulls_it(
     ensure = _pulls_the_new_repo(cache, calls)
 
     code, out = _run(tmp_path, monkeypatch, ensure)
-    line = next(row for row in out.splitlines() if "ensembl [resolution]" in row)
+    line = next(row for row in out.splitlines() if row.lstrip().startswith(("⟳ ensembl [", "✓ ensembl [", "✗ ensembl [")))
     assert code == 1 and "⟳" in line and reason in line, out
     assert calls == [], "the dry run downloaded"
 

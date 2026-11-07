@@ -255,13 +255,13 @@ class HintAnswer:
     served_from: list[str]
 
 
+#: The snapshot lanes the `/hint/*` lookups are handed. Read by `lane_readers` as "proxy: hints".
+HINT_LANES: tuple[str, ...] = ("ensembl", "clinvar", "pubmind")
+
+
 def _caches(settings: Settings) -> dict[str, Path | None]:
     configured = configured_caches(settings)
-    return {
-        "ensembl_cache": configured.get("ensembl"),
-        "clinvar_cache": configured.get("clinvar"),
-        "pubmind_cache": configured.get("pubmind"),
-    }
+    return {f"{lane}_cache": configured.get(lane) for lane in HINT_LANES}
 
 
 def run_variant(

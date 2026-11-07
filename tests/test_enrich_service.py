@@ -805,9 +805,10 @@ def test_every_lane_the_enricher_knows_is_reported_by_warm_caches(
     still had the ACMG check falling back to a live page serving last year's list. A test naming the
     a number here would go stale the same way; this one fails the day upstream adds another.
 
-    The tag beside each lane is asserted too. `[not read here]` is a real answer — most lanes belong
-    to authoring commands this server does not run — and it is what keeps a complete list from
-    reading as a list of things this deployment owes.
+    The tag beside each lane is asserted too. `[nothing here]` is a real answer (AlphaGenome belongs
+    to authoring commands this server does not run), and it is what keeps a complete list from
+    reading as a list of things this deployment owes. Through 0.28.3 it was `[not read here]`, and
+    said it of lanes every enrichment and the draft route open (`lane_readers`).
     """
     from typer.testing import CliRunner
 
@@ -823,7 +824,8 @@ def test_every_lane_the_enricher_knows_is_reported_by_warm_caches(
     for name in provisionable_lanes():
         assert name in result.output, f"{name} is a lane and warm-caches never mentions it"
     assert set(provisionable_lanes()) == set(cache_lanes())
-    assert "[not read here]" in result.output
+    assert "alphagenome_avi [nothing here]" in result.output
+    assert "pubmind [publish; proxy: derived, hints, drafts]" in result.output, result.output
 
 
 def test_every_lane_a_pass_here_reads_is_configurable_and_resolvable() -> None:

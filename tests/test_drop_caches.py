@@ -14,7 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from just_dna_registry import cli
-from just_dna_registry.services import cache_drop, enrich
+from just_dna_registry.services import cache_drop, enrich, lane_readers
 
 
 def _lane(name: str, where: Path, route: str, parents: tuple[str, ...] = ()) -> SimpleNamespace:
@@ -36,7 +36,7 @@ def box(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     for name, where in dirs.items():
         (where / "data").mkdir(parents=True)
         (where / "data" / "part.parquet").write_bytes(b"x" * (1000 if name == "alphagenome_avi" else 10))
-    partial = base / "civic"
+    partial = base / "mane"
     partial.mkdir()
     (partial / "download.part").write_bytes(b"y" * 5)
     leftover = base / "mitomap_miss.pre-0.8.0"
@@ -49,7 +49,8 @@ def box(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         "pharmvar": _lane("pharmvar", dirs["pharmvar"], "build"),
         "mitomap": _lane("mitomap", dirs["mitomap"], "pull"),
         "mitomap_miss": _lane("mitomap_miss", dirs["mitomap_miss"], "build", parents=("mitomap", "clinvar")),
-        "civic": _lane("civic", partial, "pull"),
+        "mane": _lane("mane", partial, "pull"),
+        "civic": _lane("civic", base / "civic", "pull"),
     }
     state = {"present": dict(dirs)}
 
@@ -59,6 +60,7 @@ def box(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             for name in lanes
         }
 
+    monkeypatch.setattr(lane_readers, "cache_lanes", lambda: lanes)
     for module in (enrich, cache_drop):
         monkeypatch.setattr(module, "cache_lanes", lambda: lanes)
         monkeypatch.setattr(module, "lane_presence", presence)
@@ -89,7 +91,9 @@ def test_with_no_lane_it_lists_what_holds_the_disk_largest_first(box) -> None:
     rows = [line.split()[0] for line in out.splitlines() if line.startswith("  ")]
     assert code == 0, out
     assert set(rows) == set(box.dirs) and rows[0] == "alphagenome_avi", out
-    assert "[resolution]" in next(line for line in out.splitlines() if line.startswith("  clinvar"))
+    clinvar = next(line for line in out.splitlines() if line.startswith("  clinvar"))
+    assert "[publish; check: resolution; builds: mitomap_miss; proxy: derived, hints, drafts]" in clinvar, out
+    assert "alphagenome_avi [nothing here]" in out
     _intact(box)
 
 
@@ -116,7 +120,7 @@ def test_the_removal_is_in_the_run_log(box) -> None:
 
 def test_a_lane_read_here_needs_force(box) -> None:
     code, out = _run("--lane", "clinvar", "--apply")
-    assert code == 1 and "needs --force: read here (resolution)" in out, out
+    assert code == 1 and "needs --force: read here [publish; check: resolution;" in out, out
     _intact(box)
     code, out = _run("--lane", "clinvar", "--apply", "--force")
     assert code == 0, out
@@ -138,12 +142,21 @@ def test_one_blocked_lane_blocks_the_whole_selection(box) -> None:
 
 def test_a_parent_names_the_derived_lanes_built_from_it(box) -> None:
     code, out = _run("--lane", "mitomap")
-    assert code == 0 and "mitomap_miss were built from it" in out, out
+    assert code == 1 and "mitomap_miss were built from it" in out, out
+
+
+def test_a_lane_only_the_proxy_or_an_enrichment_reads_needs_force(box) -> None:
+    """Through 0.28.3 these read as "not read here" and went without --force: the drafts route opens
+    `mitomap_miss`, and every enrichment opens `civic`, and `mitomap_miss` is built from `mitomap`."""
+    for name, reader in (("mitomap_miss", "proxy: drafts"), ("mitomap", "builds: mitomap_miss")):
+        code, out = _run("--lane", name, "--apply")
+        assert code == 1 and reader in out and "needs --force" in out, out
+    _intact(box)
 
 
 def test_a_partial_directory_is_removable_and_says_so(box) -> None:
-    code, out = _run("--lane", "civic", "--apply")
-    assert code == 0 and "civic [not read here] partial" in out, out
+    code, out = _run("--lane", "mane", "--apply")
+    assert code == 0 and "mane [nothing here] partial" in out, out
     assert not box.partial.exists()
 
 
