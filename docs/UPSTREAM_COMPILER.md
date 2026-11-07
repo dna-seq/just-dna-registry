@@ -231,8 +231,8 @@ The third slice (2026-11-05): 0.7.1 to 0.7.3, 38 entries, read by a helper; each
   S123's misreading. Fifteen minutes once the patch is tagged. RM274 also makes C10 (`allele_mismatches`) fire
   more often.
 
-The 0.7.0 cut read for levers, first slice (2026-11-04): the two entries answering the registry's own filings
-(S88/S89 on 2026-09-03, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
+The 0.7.0 cut read for levers, first slice (2026-11-04): two entries answering filings about the registry
+(S88/S89 on 2026-09-03, filed by just-module-creator, not by us, both adopted: `lane.env_var` at `services/enrich.py:683`, `needs_recompile` with an
 unstamped compiler; S91-S95 on 2026-09-11, giving C5 and C6). The rest of 0.7.0 is unread for this purpose.
 
 **Done in registry 0.27.1 (the lead, 2026-11-05):** C1, C2 (narrowed), C4, C6, C8's patch half, C9, C11, C12,
@@ -402,4 +402,14 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 Before S129, upstream's inbox held nothing from the registry open. The
 registry's filings named in CLAUDE.md (S38, S81, S90, S92, S93) are answered in its history; S81, S90, S92 and S93
-shipped in 0.7.0. The rest of the registry's past filings are not yet audited here.
+shipped in 0.7.0.
+
+**Audit of the rest** (2026-11-07, read-only, over upstream's three history files): the registry filed 27 items (S1
+to S134; S9 sits under our 0.5.2 heading but was filed from just-dna-lite). 14 are tracked already (S129-S133 above;
+S7, S26, S37, S38, S62, S81, S90, S92, S93 in CLAUDE.md). Of the other 13: **adopted** S1 (RM17), S2, S8 (RM45),
+S13 (RM44), S14, S25 (`manifest.readme`), S65 (`dropped_rows`), S124 (RM301), S126 (RM339); **levers** S91 (RM204,
+`caches.lane_status()`, unused; ours at `services/enrich.py:693` still says `partial` where upstream says
+`occupied`) = C5, and S95 (RM203, `PacingGate.spent`) left unread by C6's decision; **parked** S94 (the
+peer-registry resolver rung, upstream's 0.7 idea-book, no RM: waits on serving answers from gated snapshots,
+unparks if a thin client asks); **noted** S134 (the admin runs routes). Nothing waiting, nothing unanswered.
+CLAUDE.md's S1, S2, S6, S17, S18 and S23 are our own inbox's ids, not upstream's.

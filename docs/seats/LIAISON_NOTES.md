@@ -66,4 +66,5 @@ reset").
 
 ## Backlog, in order
 
-1. An audit of the registry's past filings upstream beyond the five CLAUDE.md names.
+1. ~~An audit of the registry's past filings upstream~~: done 2026-11-07, in `UPSTREAM_COMPILER.md` Outbound (no new
+   lever beyond C5 and C6).
