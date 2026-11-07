@@ -231,6 +231,8 @@ class Run:
     entries: list[dict[str, Any]] = field(default_factory=list)
     #: Fields the command adds to `run.json` (a revert names the run it reverted).
     extra: dict[str, Any] = field(default_factory=dict)
+    #: The handler that puts WARNING records on the terminal, when the run added one (`quiet_console`).
+    console: logging.Handler | None = None
 
     def record(self, op: str, key: str, name: str, *, before: bytes | None, after: bytes | None) -> None:
         """Journal one stored file, capturing its prior bytes, before the write that changes it."""
@@ -296,6 +298,27 @@ class JournaledStorage:
         return self.inner.list_files(key)
 
 
+@contextmanager
+def quiet_console(*, enabled: bool = True) -> Iterator[None]:
+    """Keep upstream WARNING records off the terminal for a while; the run's log still takes them.
+
+    For a command whose terminal output is one line per item (`upgrade`'s sweep): an enricher warning
+    printed between those lines is what made them unreadable. ERROR records still reach the terminal.
+    Outside a run, or when the run added no terminal handler, there is nothing of ours to quieten.
+    """
+    run = active_run()
+    console = run.console if run is not None else None
+    if not enabled or console is None:
+        yield
+        return
+    level = console.level
+    console.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        console.setLevel(level)
+
+
 def journaled(storage: StorageBackend) -> StorageBackend:
     """`storage` journaled by the active run, or as it is outside one."""
     run = active_run()
@@ -356,6 +379,7 @@ def maintenance_run(settings: Settings, command: str, invocation: str) -> Iterat
     if console is not None:
         console.setLevel(logging.WARNING)
         root_logger.addHandler(console)
+    run.console = console
     root_logger.addHandler(handler)
     root_logger.setLevel(min(previous_level or logging.WARNING, logging.INFO))
     for name in NOISY_LOGGERS:

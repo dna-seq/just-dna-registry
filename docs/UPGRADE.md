@@ -88,12 +88,25 @@ uv run registry upgrade --dry-run
 `source_release` on its rows, and the sweep **re-derives** it (`enrich(rederive=True)`) instead of
 carrying it. Upstream's upgrade order requires this: carried, a 0.7 table keeps its old placements, and
 one that gains a second placement set for an rsID refuses under strict (`rsid_placements_disagree`). The
-dry run prints, per acting version, `re-derive N recorded subject(s) from the snapshot` or `... online`,
-and lists what it will hold:
+dry run prints, per acting version, `⇧ ns/name@1.0.0: would upgrade [contract_gap, rederive_snapshot]`
+(or `rederive_online`), and `run.log` (or `--verbose`) carries the sentence, `re-derive N recorded
+subject(s) from the snapshot`. It lists what it will hold, by code:
 
-- `needs --online`: the module carries an indel. Offline 0.8 cannot left-align one (upstream RM385, fixed
-  in 0.9), so it re-derives only with the network.
-- a snapshot reason: step 1 has not happened on this box.
+- `… held ns/name@1.0.0: needs_online`: the module carries an indel. Offline 0.8 cannot left-align one
+  (upstream RM385, fixed in 0.9), so it re-derives only with the network.
+- `… held ns/name@1.0.0: snapshot_not_current`: step 1 has not happened on this box (the reason is in
+  `run.log`, and printed once at the top).
+
+**What the terminal shows (0.28.2).** One line per module, written whole once that module is done:
+`✓ … → 1.0.1 [codes]` published, `✗ …: <refusal code>` refused, `… held …: <code>`, `· …: unchanged
+<bucket>` (`current`, `patch_gap`, `compiler_unidentifiable`, `no_spec_inputs`), `✗ …: failed <exception
+type>`, `! …: anomaly …`. Then the distribution line, `by type:` counts of the refusals, holds and
+failures (drift to read, network, snapshot, timeout, validation, …, each with its codes), the compile
+warnings in the published successors by upstream's warning code (actionable and carried kept apart), the
+upstream warnings logged during the sweep by logger, and `full detail: <run.log>`. Every drift subject,
+refusal reason, digest and enricher warning is in that `run.log`; `upgrade --verbose` prints them on the
+terminal too. A module that fails unexpectedly is one `failed` line (its traceback is in the log), the
+sweep goes on, and the command exits 1.
 
 **4. Apply from the snapshot, then online.**
 
@@ -109,7 +122,8 @@ pacing is this process's own, not shared with the running server: run it in a qu
 **5. Read the drift the sweep held.** A re-derivation reports each subject whose answer changed, in one of
 upstream's seven arms. `respelled`, `gained_allele` and `gained_rsid` publish and are counted in the
 successor's changelog. Every other arm (`moved`, `lost_allele`, `renamed`, `undecided`) refuses that
-module as `rederive_drift_needs_reading`, listing each subject before → after, and publishes nothing,
+module as `rederive_drift_needs_reading`, listing each subject before → after in `run.log` (or on the
+terminal with `--verbose`), and publishes nothing,
 because the successor is immutable. Read them, and for each module you accept:
 
 ```
@@ -323,12 +337,17 @@ upstream as **S62**.
 **Three outputs to expect from a sweep:**
 
 ```
-⇧ ns/name@1.0.1: stats.genes is stale: 1 gene(s) this compiler finds and the manifest does not (CYP2C19)
-· 3 version(s) sit on a different compiler patch (…). Every probed field was recomputed and is
-  current; what cannot be checked without recompiling is artifact.digest (the parquet bytes),
-  compilation.warnings.
-✗ ns/name@2.0.0: stats.genes disagrees with this compiler's own derivation — recompiling cannot fix it
+⇧ ns/name@1.0.1: would upgrade [output_drift] → next PATCH
+· ns/other@1.2.0: unchanged patch_gap
+! ns/name@2.0.0: anomaly identical_compiler_drift
+…
+3 version(s) sit on a different compiler patch (…). Every probed field was recomputed and is
+current; what cannot be checked without recompiling is artifact.digest (the parquet bytes),
+compilation.warnings.
 ```
+
+(Each line's sentence, such as `stats.genes is stale: 1 gene(s) this compiler finds and the manifest does
+not (CYP2C19)`, is in `run.log`, or on the terminal with `--verbose`.)
 
 The third is an **anomaly** and the sweep deliberately will not act on it: the version was compiled by
 the compiler now installed, so a recompile derives the same value again and acting would mint a fresh

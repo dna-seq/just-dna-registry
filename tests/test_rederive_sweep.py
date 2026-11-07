@@ -15,6 +15,7 @@ import csv
 import dataclasses
 import io
 import json
+import logging
 from pathlib import Path
 
 import just_dna_enricher.enrich as enricher
@@ -41,6 +42,7 @@ from just_dna_registry.services.upgrade import (
 )
 from just_dna_registry.specfiles import RESOLUTION_CSV
 from just_dna_registry.storage.base import version_key
+from just_dna_registry.sweep_report import HELD_SNAPSHOT
 
 _NS, _NAME = "just-dna-seq", "coronary"
 _YAML = """\
@@ -334,7 +336,7 @@ def test_no_snapshot_at_all_refuses(settings: Settings, monkeypatch) -> None:
 # ── The sweep ────────────────────────────────────────────────────────────────────────────────────────
 
 
-def _sweep(settings: Settings, monkeypatch, *args: str) -> str:
+def _sweep(settings: Settings, monkeypatch, *args: str, exit_code: int = 0) -> str:
     monkeypatch.setenv("REGISTRY_DB_PATH", str(settings.db_path))
     monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(settings.local_storage_dir))
     get_settings.cache_clear()
@@ -342,8 +344,13 @@ def _sweep(settings: Settings, monkeypatch, *args: str) -> str:
         result = CliRunner().invoke(cli.app, ["upgrade", *args])
     finally:
         get_settings.cache_clear()
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == exit_code, result.output
     return result.output
+
+
+def _run_log(tmp_path: Path) -> str:
+    (run,) = sorted((tmp_path / "runs").glob("*-upgrade"))
+    return (run / "run.log").read_text()
 
 
 def test_the_dry_run_states_how_each_module_re_derives(
@@ -354,8 +361,12 @@ def test_the_dry_run_states_how_each_module_re_derives(
     monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
     out = _sweep(settings, monkeypatch, "--dry-run")
     assert "re-derive: snapshot only" in out
-    assert "re-derive 2 recorded subject(s) from the snapshot" in out
+    # One line for the module, its reasons as codes; the sentence is the detail (log, or --verbose).
+    assert f"⇧ {_NS}/{_NAME}@1.0.0: would upgrade [" in out and "rederive_snapshot]" in out
+    assert "re-derive 2 recorded subject(s) from the snapshot" not in out
     assert "1 version(s) would upgrade" in out
+    verbose = _sweep(settings, monkeypatch, "--dry-run", "--verbose")
+    assert "    " in verbose and "re-derive 2 recorded subject(s) from the snapshot" in verbose
 
 
 def test_a_stale_snapshot_holds_every_re_derivation_and_publishes_none(
@@ -366,8 +377,9 @@ def test_a_stale_snapshot_holds_every_re_derivation_and_publishes_none(
     monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: "pulled from the old release")
     out = _sweep(settings, monkeypatch, "--apply")
     assert "re-derive refused for every module that needs it" in out
-    assert f"held {_NS}/{_NAME}@1.0.0: pulled from the old release" in out
+    assert f"… held {_NS}/{_NAME}@1.0.0: {HELD_SNAPSHOT}\n" in out
     assert "0 version(s) upgraded" in out
+    assert f"by type: snapshot 1 (held {HELD_SNAPSHOT} 1)" in out
     assert not app.state.repo.version_exists(_NS, _NAME, "1.0.1")
 
 
@@ -389,6 +401,69 @@ def test_one_refusal_does_not_end_the_sweep(
     assert out.count("✗ just-dna-seq/") == 2
     assert "2 refused" in out
     assert "--accept-drift" in out
+    assert "by type: drift to read 2 (refused rederive_drift_needs_reading 2)" in out
+
+
+def test_the_terminal_gets_one_line_per_module_and_the_log_gets_the_rest(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
+) -> None:
+    """0.28.2: per-module status and counts by type on the terminal; drift, digests and warnings in run.log.
+
+    A refusal's drift list and an upstream warning logged mid-module were printed between the module
+    lines through 0.28.1. Now each is one line, the warning is counted by its logger, and both are in
+    the run's log whole.
+    """
+    _publish(client, api_key, name="coronary")
+    _publish(client, api_key, name="coronary_two")
+    real = cli.upgrade_version
+
+    def upgrade_version(**kwargs):
+        logging.getLogger("just_dna_enricher.enrich").warning("Re-derivation: 1 of 2 re-asked subject(s) moved")
+        if kwargs["name"] == "coronary_two":
+            raise PublishError("rederive_drift_needs_reading", errors=["rs1 moved: the source names a different event"])
+        return real(**kwargs)
+
+    monkeypatch.setattr(cli, "upgrade_version", upgrade_version)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(tmp_path / "runs"))
+    out = _sweep(settings, monkeypatch, "--apply", "--force")
+
+    module_lines = [line for line in out.splitlines() if f" {_NS}/" in line]
+    assert len(module_lines) == 2, out
+    assert any(line.startswith(f"✓ {_NS}/coronary@1.0.0 → 1.0.1 [") for line in module_lines), out
+    assert f"✗ {_NS}/coronary_two@1.0.0: rederive_drift_needs_reading" in module_lines
+    assert "rs1 moved" not in out and "digest sha256:" not in out
+    assert "Re-derivation: 1 of 2" not in out
+    assert "logged warnings: enrichment 2 (just_dna_enricher.enrich 2)" in out
+    assert "1 version(s) upgraded and re-published, 1 refused (above)" in out
+
+    body = _run_log(tmp_path)
+    assert [line for line in out.splitlines() if line.strip() and line not in body] == []
+    assert "    rs1 moved: the source names a different event" in body
+    assert "    digest sha256:" in body
+    assert body.count("Re-derivation: 1 of 2 re-asked subject(s) moved") == 2
+
+
+def test_an_unexpected_failure_is_one_module_and_the_sweep_goes_on(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
+) -> None:
+    _publish(client, api_key, name="coronary")
+    _publish(client, api_key, name="coronary_two")
+    attempted: list[str] = []
+
+    def explode(**kwargs):
+        attempted.append(kwargs["name"])
+        raise TimeoutError("the snapshot volume stopped answering")
+
+    monkeypatch.setattr(cli, "upgrade_version", explode)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(tmp_path / "runs"))
+    out = _sweep(settings, monkeypatch, "--apply", "--force", exit_code=1)
+    assert sorted(attempted) == ["coronary", "coronary_two"]
+    assert out.count(": failed TimeoutError") == 2
+    assert "2 failed" in out and "by type: timeout 2 (failed TimeoutError 2)" in out
+    body = _run_log(tmp_path)
+    assert "Traceback" in body and "the snapshot volume stopped answering" in body
 
 
 def test_the_sweep_writes_its_own_log(
@@ -412,7 +487,7 @@ def test_the_sweep_writes_its_own_log(
     printed = [line for line in out.splitlines() if line.strip()]
     assert len(printed) >= 4, out
     assert [line for line in printed if line not in body] == []
-    assert f"held {_NS}/{_NAME}@1.0.0: pulled from the old release" in body
+    assert f"… held {_NS}/{_NAME}@1.0.0: {HELD_SNAPSHOT}\n    pulled from the old release" in body
     assert "\x1b[" not in body
     assert body.splitlines()[0] == "# registry --mode prod upgrade --apply"
     assert body.rstrip().splitlines()[-1].startswith("# ok") and "nothing changed" in body

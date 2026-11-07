@@ -8,6 +8,21 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry upgrade` prints one line per module; the detail is in the run's log
+
+The terminal now gets one line per module, written whole once the module is done (so a concurrent sweep
+cannot interleave them): `✓ ns/m@1.0.0 → 1.0.1 [contract_gap, rederive_snapshot]`, `✗ …:
+rederive_drift_needs_reading`, `… held …: needs_online` or `snapshot_not_current`, `· …: unchanged
+patch_gap`, `✗ …: failed TimeoutError`. The sweep ends on the same distribution line as before, then
+counts by type (`by type: drift to read 2 (refused rederive_drift_needs_reading 2)`, network, snapshot,
+timeout, validation, …), the compile warnings in the published successors by upstream warning code
+(actionable and carried apart), the upstream warnings logged during the sweep by logger, and the path of
+`run.log`. Every count is keyed by a code the sweep already had, never by a sentence. Drift subjects,
+refusal reasons, digests and enricher warnings go to `run.log` only; `upgrade --verbose` prints them too.
+A module that fails unexpectedly no longer ends the sweep: it is one `failed` line, its traceback is in the
+log, and the command exits 1. `replay-upgrade` reads the sweep's returned result rather than its printed
+lines, and its comparison block prints a held or refused module's reason under it.
+
 ### A run's backups are stored gzipped
 
 The catalog copy a run takes before it acts is now `db.sqlite.gz` (sqlite's backup API into a temporary

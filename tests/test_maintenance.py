@@ -22,6 +22,7 @@ from just_dna_registry.maintenance import (
     journaled,
     list_runs,
     maintenance_run,
+    quiet_console,
     read_record,
     revert_run,
     run_root,
@@ -267,3 +268,25 @@ def test_a_run_written_raw_by_0_28_1_still_reverts(tmp_path: Path) -> None:
 
     revert_run(settings, run.id, store)
     assert db_digest(settings.db_path) == db_before and _tree(store.root) == tree_before
+
+
+def test_quiet_console_keeps_warnings_off_the_terminal_and_in_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`upgrade`'s sweep prints one line per module; an upstream warning goes to run.log, not between them."""
+    settings = _settings(tmp_path)
+    # With no root handler the run adds its own terminal handler, which is the CLI's situation (pytest
+    # installs root handlers of its own, so they are set aside for this test).
+    monkeypatch.setattr(logging.getLogger(), "handlers", [])
+    upstream = logging.getLogger("just_dna_enricher.enrich")
+    with maintenance_run(settings, "upgrade", "x") as run:
+        assert run.console is not None
+        with quiet_console():
+            upstream.warning("quietened drift note")
+            upstream.error("an error still shows")
+        upstream.warning("loud note")
+    err = capsys.readouterr().err
+    assert "quietened drift note" not in err
+    assert "an error still shows" in err and "loud note" in err
+    log = (run.path / "run.log").read_text()
+    assert "quietened drift note" in log and "loud note" in log
