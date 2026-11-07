@@ -38,6 +38,11 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   `enrich_http_timeout_seconds` (`services/enrich.py:325`, `EnsemblSettings(timeout=...)`) does not bound a batch
   read in 0.8.x. At the publish: the enricher floor rises to `>=0.8.1`, a hard floor (the four modules held for
   RM400 must not be re-derived below it); format and compiler stay `>=0.8.0`.
+- **The patch after 0.8.1** (their `main` past `f38d677`, 2026-11-07): **RM407**, an indel's VRS mint reads the
+  reference once per locus instead of per normalize step (2,472 seqrepo reads, ~354 s, in the lead's replay; no id
+  moves), and **RM398** unparked as the next patch (dbSNP's SPDI, already fetched by the merge check, replaces the
+  REST placement witness; our S132's (a)(b)(d)). RM406 (dbSNP as a witness for every placed rsID) filed and parked.
+  Read at its tag.
 
 ## What the registry uses
 
