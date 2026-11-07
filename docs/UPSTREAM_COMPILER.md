@@ -55,7 +55,14 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   unchanged, and we call neither (`prepare_caches` only). **RM413** (`e7befd8`): their cut gate, no lane with a
   repository left unpublished; tests and docs only. Nothing here moves for either. 
   **RM414/RM415** (`89610c3`, module-creator's S136/S137): two repeat-bin warnings reworded; codes, firing and the
-  published fragments unchanged, and a compiler patch is no recompile gap here. Read through `89610c3`.
+  published fragments unchanged, and a compiler patch is no recompile gap here.
+  **RM410/RM416** (`21f5976`): the `constraint` lane builds gnomAD 4.1.2 by default and `enrich_gene_metrics` takes
+  a row from any snapshot release, so a 4.1 pull here stays good; a `--pin` on a lane whose adapter ignores it is now
+  refused. We pass no pin (`warm-caches` goes through `prepare_caches`), and `constraint` is only in
+  `METRICS_REFERENCES` (`services/enrich.py:81`). Nothing moves. Read through `21f5976`.
+- **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
+  0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
+  `_UNSHARED_EGRESS` stays the answer until 0.9.
 
 ## What the registry uses
 
