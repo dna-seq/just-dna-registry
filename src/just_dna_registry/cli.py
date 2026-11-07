@@ -6,6 +6,7 @@ DB, and issue API keys / namespaces for the static-key auth model.
 import json
 import os
 import secrets
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
+from just_dna_registry.replay import ReplayRefused, replay_upgrade
 from just_dna_registry.run_log import run_log
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
@@ -859,6 +861,35 @@ def upgrade(
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
     ctx.with_resource(run_log(settings, "upgrade", _invocation(ctx)))
+    if apply:
+        _guard(settings, reason="upgrade", backup=backup)
+    conn = connect(settings.db_path)
+    init_db(conn)
+    _upgrade_sweep(
+        settings, Repository(conn), _storage(settings), namespace=namespace, module=module,
+        apply=apply, force=force, trim=trim, limit=limit, online=online, accept_drift=accept_drift,
+    )
+
+
+def _upgrade_sweep(
+    settings: Settings,
+    repo: Repository,
+    storage: StorageBackend,
+    *,
+    namespace: str | None,
+    module: str | None,
+    apply: bool,
+    force: bool,
+    trim: bool,
+    limit: int,
+    online: bool,
+    accept_drift: bool,
+) -> None:
+    """The sweep `registry upgrade` runs, over a given catalog and storage.
+
+    Separate from the command so `replay-upgrade` runs the same code over a scratch copy of the
+    catalog and a storage overlay, which is what makes its report the one the lost run printed.
+    """
     _echo_mode(settings)
     # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
     typer.echo(
@@ -877,12 +908,6 @@ def upgrade(
     # Before the first PATCH, as every other command that changes the catalog does (0.28.1; through
     # 0.28.0 the operator had to remember `registry backup`). The snapshot is the index only: an
     # undo also removes the successors' stored files (`remove-version`, polygon), see UPGRADE.md.
-    if apply:
-        _guard(settings, reason="upgrade", backup=backup)
-    conn = connect(settings.db_path)
-    init_db(conn)
-    repo = Repository(conn)
-    storage = _storage(settings)
     planned = upgraded = blocked = 0
     #: Versions this run will not re-publish under its switches, and versions whose publish refused.
     #: Both are reported per module and the sweep goes on: one module's refusal is no reason to leave
@@ -1038,6 +1063,43 @@ def upgrade(
             + ". Re-run with --force to recompile them anyway.",
             fg=typer.colors.YELLOW,
         )
+
+
+@app.command("replay-upgrade")
+def replay_upgrade_command(
+    ctx: typer.Context,
+    since: str = typer.Option(
+        None, "--since", help="Only successors created at or after this ISO time (e.g. 2026-11-06)"
+    ),
+    compiler: str = typer.Option(
+        None, "--compiler", help="Only successors whose compiler_version starts with this, e.g. 0.8"
+    ),
+    online: bool | None = typer.Option(
+        None, "--online/--offline",
+        help="The original run's switch. Default: read off a successor's changelog; refused when none says",
+    ),
+    namespace: str = typer.Option(None, "--namespace", "-n"),
+    module: str = typer.Option(None, "--module", "-m"),
+) -> None:
+    """Recover a lost `upgrade --apply` report by replaying the sweep from the published successors'
+    predecessors, on a scratch copy of the catalog and a storage overlay. Writes nothing to the live
+    catalog or storage; the replay's DB and files stay under `replays/<time>/` beside the DB.
+
+    It prints the sweep's own report (held modules and why, each refusal with its drift), then compares
+    each replayed successor with the published one. With --online it re-asks live sources, so an answer
+    that moved since the original run shows up as a difference; it spends the same egress budget."""
+    settings = get_settings()
+    ctx.with_resource(run_log(settings, "replay-upgrade", _invocation(ctx)))
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    workdir = settings.db_path.resolve().parent / "replays" / stamp
+    try:
+        replay_upgrade(
+            settings, _storage(settings), sweep=_upgrade_sweep, since=since, compiler=compiler,
+            online=online, namespace=namespace, module=module, workdir=workdir,
+        )
+    except ReplayRefused as exc:
+        typer.secho(f"refused: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("revoke-key")

@@ -72,6 +72,10 @@ colour stripped, and log records at INFO and above, in `logs/` beside the DB (`R
 it), one file per run named `upgrade-<mode>-<utc>.log`. The path is printed first and last. Read the held
 modules out of it before `--accept-drift`. On 0.28.0, `tee` the output yourself.
 
+**Lost a sweep's output?** `registry replay-upgrade --since <the run's date> --compiler 0.8` replays it on a
+copy (0.28.1), prints the report again and compares it with what was published. Run it in a quiet window
+when the sweep ran `--online`: it re-asks the same subjects.
+
 **3. Dry run the sweep.** 0.7 → 0.8 is a contract gap, so the sweep acts on every latest version without
 `--force`, unless upstream's 0.8.0 release record says the interval moved nothing for it:
 

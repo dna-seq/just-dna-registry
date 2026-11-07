@@ -8,6 +8,17 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry replay-upgrade` recovers a sweep's lost report
+
+Replays `registry upgrade --apply` from the predecessors of the versions an earlier sweep published, on a
+copy of the catalog and over a storage overlay, under `replays/<time>/` beside the DB; the live catalog
+and storage are not written. It prints the report the lost run printed (held modules and why, each
+refusal with its drift lines), then compares each replayed successor with the published one: `same`
+(same digest), `same content` (same `content_signature`, the files whose bytes moved named), `differs`,
+or `not re-published` with the reason. `--since` and `--compiler` pick the sweep's successors; the online
+switch is read off their changelogs (`--online`/`--offline` to say it). An `--online` replay re-asks live
+sources today, spends the same egress, and can differ where a source changed since the original run.
+
 ### `registry upgrade` and `revalidate` write their own log
 
 Each run writes `logs/upgrade-<mode>-<utc>.log` (or `revalidate-…`) beside the DB: everything it printed,

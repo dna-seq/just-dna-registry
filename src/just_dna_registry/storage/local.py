@@ -39,3 +39,18 @@ class LocalStorage:
 
     def remove(self, key: str) -> None:
         shutil.rmtree(self._dir(key), ignore_errors=True)
+
+    def list_files(self, key: str) -> list[str]:
+        base = self._dir(key)
+        if not base.is_dir():
+            return []
+        return sorted(p.relative_to(base).as_posix() for p in base.rglob("*") if p.is_file())
+
+    def remove_file(self, key: str, name: str) -> None:
+        path = self._dir(key) / name
+        path.unlink(missing_ok=True)
+        # An emptied directory is a remnant a revert must not leave: prune up to the storage root.
+        parent = path.parent
+        while parent != self.root and parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
