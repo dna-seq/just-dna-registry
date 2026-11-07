@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.28.2] — 2026-11-07
+
 ### `registry upgrade --apply` re-publishes several modules at once (`--jobs`)
 
 `upgrade` and `replay-upgrade` take `--jobs N` (default `REGISTRY_UPGRADE_JOBS`, 4). The plan is still read
