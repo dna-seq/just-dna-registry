@@ -770,7 +770,9 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
 
 ---
 
-## 0.28.2 — run folders are pruned (planned; the lead, 2026-11-07)
+## 0.28.2 — run folders are pruned, backups gzipped, a terse sweep, parallel re-publish (built 2026-11-07, the lead)
+
+**done** on main (3ede128, 4c4579a, 4eb863f, c565556..eb2a384). The person, 2026-11-07, besides the prune: terse stdout with counts by type and detail in run.log; compressed backups; "shorten individual timeouts, pace retries, process modules in parallel". Measured: shorter timeouts make it slower (a cold Ensembl GET takes 1–18 s and an abandoned one does not warm the cache), so the timeout setting ships unset; `--jobs` overlaps online waits and does not speed the offline duckdb scan. The per-rsID GET loop, silent retries and the unbatched live link are upstream's: S133. The original plan follows.
 
 **Built** (unreleased, 2026-11-07), with one addition to item 1: the newest N `replay-upgrade` scratch trees
 are kept whole on the same count, because a replay changes nothing, is never revertible, and its `replay/`
