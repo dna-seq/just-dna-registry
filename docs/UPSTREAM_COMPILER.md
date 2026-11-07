@@ -11,7 +11,8 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
+**`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
+backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
 read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0 since registry 0.28.0 (`c5a7840`,
 2026-11-06; `>=0.8.0` floors, resolved from PyPI); 0.28.0 to 0.28.2 published (`v0.28.2`, 2026-11-07). Past the tag, `main` holds RM397
@@ -62,7 +63,7 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   `METRICS_REFERENCES` (`services/enrich.py:81`). Nothing moves.
   **RM417** (`19b3634`): rows from the live gnomAD constraint API are labelled `gnomad_api_constraint`, no longer
   `gnomad_v2.1.1_constraint`; old rows are not rewritten. Nothing here reads either label.
-- **Cut as `v0.8.2`** (`b98f7e9` on their `main`, 2026-11-07; not yet tagged or on PyPI): all three packages to
+- **Cut as `v0.8.2`** (`b98f7e9` on their `main`, 2026-11-07; tagged and on PyPI 2026-11-08): all three packages to
   0.8.2, their inter-package floors `>=0.8.2`. Carries RM408, RM410, RM411, RM413-RM417, each read above: no public
   name, field, table, flag or warning code. Release record `0.8.2` (from 0.8.0, 22 reference modules): only
   `compilation.warnings` moved, in 2, **declared as an addition**, so `declared_movement` does not act and no sweep
