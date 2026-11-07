@@ -29,11 +29,15 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   each shipped, then tell the lead, who holds four modules for RM400 and re-measures the sweep on RM401. Whether
   the floor must rise to it is read then: four modules are held for RM400, so a floor below it would let them
   be re-derived without the fix.
-  Built on their `main` by 2026-11-07, not yet pushed (their triage): RM401 batches Ensembl REST at
-  `EnsemblSettings.batch_size` 20 ids with its own `batch_timeout` of 120 s (`batch_size=1` restores one GET per
-  rsID). **To check at the tag**: `shared_lookup_clients` (`services/enrich.py:325`) passes our
-  `enrich_http_timeout_seconds` as `EnsemblSettings(timeout=...)` only, so a batch read would run under upstream's
-  120 s, not the operator's setting; whether to pass `batch_timeout` too is the lead's call.
+  **Cut as `v0.8.1`** (`f38d677` on their `main`, 2026-11-07): enricher 0.8.1 only; format and compiler stay 0.8.0
+  and carry no release record (nothing to recompile). Not yet on PyPI or tagged. Read from its changelog: RM400
+  (live REST drops GRCh38 patch/alt-contig loci; `--rederive` leaves recorded ones out, counted in one warning),
+  RM401 (20 rsIDs per POST), RM403 (a WARNING per retry on `just_dna_enricher.net`, and the give-up names attempts and
+  seconds), RM397 (packaging). **No public name is added** (`b6ea746`): the batch size (20) and the POST's read
+  timeout (120 s) are private constants until 0.9's RM404, so there is nothing for us to pass, and our
+  `enrich_http_timeout_seconds` (`services/enrich.py:325`, `EnsemblSettings(timeout=...)`) does not bound a batch
+  read in 0.8.x. At the publish: the enricher floor rises to `>=0.8.1`, a hard floor (the four modules held for
+  RM400 must not be re-derived below it); format and compiler stay `>=0.8.0`.
 
 ## What the registry uses
 
