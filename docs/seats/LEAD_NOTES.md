@@ -78,7 +78,7 @@ The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
 **0.28.1 published and tagged** (efa6055). Replay on the polygon reproduced the sweep exactly (34 same, 12 refused); the 12 are on desk #218 (publish 8 = moved insertions dbSNP confirms + respellings; hold 4 lost_allele for upstream RM400). Upstream: S132 answered (819553ea), S133 filed (timeouts/batching). Real-HF revert: desk #216 (default skip).
 **0.28.2 published and tagged** (2026-11-07, v0.28.2 on b5b0043; desk #219 answered "published"): gzipped run backups, terse sweep, `prune-runs` + auto-prune (REGISTRY_RUN_KEEP=2), `--jobs`. Open: the sweep runs with upstream retry defaults (Ensembl 3) while the server exports http_retry_attempts=5; left as is.
 
-**0.28.3 cut** (2026-11-07; the person: "in ppypi" after the hold): `drop-caches`, upgrade logs over REST for site admins, enricher >=0.8.1 hard (RM400/RM398; `upgrade --online` asks dbSNP). Waits on the person: publish, deploy (the polygon answered 502 from 14:58 UTC, asked), then `replay-upgrade --online` to re-measure; desk #218 updated to wait for that replay.
+**0.28.3 published and tagged** (v0.28.3 on 43bd40b). **0.28.4 cutting** (2026-11-07, the person: "yes, add REGISTRY_LOG_FILE"): the server writes a rotating log file of its own; the polygon answered 502 with no log to read. Then: deploy, set REGISTRY_LOG_FILE there, `replay-upgrade --online` (desk #218).
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for

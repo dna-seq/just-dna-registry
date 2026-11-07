@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.28.4] — 2026-11-07
+
 ### The server keeps a log file of its own (`REGISTRY_LOG_FILE`)
 
 `registry serve` logged only to stdout, and it is the one command that is not a maintenance run, so a
