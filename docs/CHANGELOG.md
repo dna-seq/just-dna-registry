@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.28.3] — 2026-11-07
+
 ### Enricher 0.8.1: what an upgrade sweep re-derives is corrected, and it asks dbSNP
 
 The enricher floor is `>=0.8.1`, hard; format and compiler stay 0.8.0 (upstream cut the enricher alone).
