@@ -25,6 +25,7 @@ from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.maintenance import (
     NOT_A_RUN,
     RevertRefused,
+    active_run,
     journaled,
     list_runs,
     maintenance_run,
@@ -34,6 +35,7 @@ from just_dna_registry.maintenance import (
 )
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
+from just_dna_registry.replay import ReplayRefused, replay_upgrade
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.pmid_check import verify_pmids
@@ -878,7 +880,7 @@ def _upgrade_sweep(
     """The sweep `registry upgrade` runs, over a given catalog and storage.
 
     Separate from the command so `replay-upgrade` runs the same code over a scratch copy of the
-    catalog and a storage overlay, which is what makes its log the log the lost run would have written.
+    catalog and a storage overlay, which is what makes its report the one the lost run printed.
     """
     _echo_mode(settings)
     # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
@@ -1099,6 +1101,43 @@ def revert_run_command(
         + ("restored from its snapshot" if report.db_restored else "removed (none existed before)"),
         fg=typer.colors.GREEN,
     )
+
+
+@app.command("replay-upgrade")
+def replay_upgrade_command(
+    since: str = typer.Option(
+        None, "--since", help="Only successors created at or after this ISO time (e.g. 2026-11-06)"
+    ),
+    compiler: str = typer.Option(
+        None, "--compiler", help="Only successors whose compiler_version starts with this, e.g. 0.8"
+    ),
+    online: bool | None = typer.Option(
+        None, "--online/--offline",
+        help="The original run's switch. Default: read off a successor's changelog; refused when none says",
+    ),
+    namespace: str = typer.Option(None, "--namespace", "-n"),
+    module: str = typer.Option(None, "--module", "-m"),
+) -> None:
+    """Recover a lost `upgrade --apply` report by replaying the sweep from the published successors'
+    predecessors, on a scratch copy of the catalog and a storage overlay. Writes nothing to the live
+    catalog or storage; the replay's DB and files stay in its run's directory (`list-runs`).
+
+    It prints the sweep's own report (held modules and why, each refusal with its drift), then compares
+    each replayed successor with the published one. With --online it re-asks live sources, so an answer
+    that moved since the original run shows up as a difference; it spends the same egress budget."""
+    settings = get_settings()
+    # Inside the run's own directory: `replay-upgrade` keeps its run (ALWAYS_LOG), so its report and
+    # the scratch catalog it was read from stay together under one id.
+    run = active_run()
+    workdir = (run.path if run is not None else settings.db_path.resolve().parent / "replays") / "replay"
+    try:
+        replay_upgrade(
+            settings, _storage(settings), sweep=_upgrade_sweep, since=since, compiler=compiler,
+            online=online, namespace=namespace, module=module, workdir=workdir,
+        )
+    except ReplayRefused as exc:
+        typer.secho(f"refused: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("revoke-key")

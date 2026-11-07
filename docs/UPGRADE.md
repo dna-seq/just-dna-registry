@@ -72,6 +72,10 @@ files it wrote, under `runs/<id>/` beside the DB. The path is printed first and 
 out of `run.log` before `--accept-drift`; `registry revert-run <id>` undoes an `--apply`, stored files
 included (stop the server first). On 0.28.0, `tee` the output and `registry backup` by hand.
 
+**Lost a sweep's output?** `registry replay-upgrade --since <the run's date> --compiler 0.8` replays it on a
+copy (0.28.1), prints the report again and compares it with what was published. Run it in a quiet window
+when the sweep ran `--online`: it re-asks the same subjects.
+
 **3. Dry run the sweep.** 0.7 → 0.8 is a contract gap, so the sweep acts on every latest version without
 `--force`, unless upstream's 0.8.0 release record says the interval moved nothing for it:
 

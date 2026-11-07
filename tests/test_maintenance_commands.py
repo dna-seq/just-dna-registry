@@ -190,7 +190,7 @@ ROWS: tuple[Row, ...] = (
     Row("purge-test-data/dry", ("purge-test-data",), False),
     Row("list-runs", ("list-runs",), False),
     Row("revert-run", ("revert-run", "{run}", "--yes"), True, setup=_a_run_to_revert),
-    Row("replay-upgrade", ("replay-upgrade", "-n", NS, "-m", MOD), False),
+    Row("replay-upgrade", ("replay-upgrade", "--offline", "-n", NS, "-m", MOD), False),
 )
 
 
