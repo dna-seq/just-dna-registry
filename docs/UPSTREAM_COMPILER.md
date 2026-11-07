@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
+**`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
 read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0 since registry 0.28.0 (`c5a7840`,
 2026-11-06; `>=0.8.0` floors, resolved from PyPI); 0.28.0 to 0.28.2 published (`v0.28.2`, 2026-11-07). Past the tag, `main` holds RM397
