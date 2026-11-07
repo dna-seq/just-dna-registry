@@ -8,6 +8,20 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `REGISTRY_ENRICH_HTTP_TIMEOUT_SECONDS` sets the live clients' per-request timeout
+
+Every client in the shared lookup bundle (Ensembl, GRCh37, gnomAD, NCBI eutils, OLS4/HGNC, Europe PMC,
+Crossref, the PMC id converter) takes it through its own constructor. Unset keeps upstream's values,
+15 s for Ensembl and GRCh37 and 30 s for the rest, and that is the default on purpose: measured on
+2026-11-07, a cold Ensembl `/variation` lookup takes 7-18 s at the server, a repeat 0.2 s, and a request
+abandoned early leaves the next one just as cold, so a shorter timeout only buys cold retries. On a
+522-row module re-derived online, 26 of 59 Ensembl requests timed out at 15 s (395 of 660 online
+seconds) and five rsIDs gave up after three attempts. The measurement points at 30; try it on a sweep.
+Retries are not configurable from here: upstream's attempt count can only be raised and its backoff is
+fixed.
+
+**Client surface:** unchanged.
+
 ### An online enrichment hands the enricher the shared GRCh37 client
 
 `enrich()` takes a `grch37_client` for its wrong-build diagnosis, and neither call site (publish and

@@ -684,6 +684,39 @@ def test_the_shared_bundle_actually_holds_clients() -> None:
         close_lookup_clients()
 
 
+def _client_timeout(client: object) -> float | None:
+    """The per-request timeout a client hands httpx: its own `timeout`, or its settings' one."""
+    own = getattr(client, "timeout", None)
+    return own if own is not None else getattr(getattr(client, "settings", None), "timeout", None)
+
+
+@pytest.mark.parametrize("timeout", [None, 7.5])
+def test_the_timeout_setting_reaches_every_client_in_the_bundle(timeout: float | None) -> None:
+    """`enrich_http_timeout_seconds` sets every member's timeout; unset leaves upstream's own values.
+
+    Read per field off upstream's `CLIENT_FIELDS`, so a client added upstream that the setting does not
+    reach fails here rather than keeping a 30 s timeout nobody chose.
+    """
+    from just_dna_enricher.lookup import CLIENT_FIELDS
+
+    from just_dna_registry.services.enrich import close_lookup_clients, shared_lookup_clients
+
+    close_lookup_clients()
+    try:
+        bundle = shared_lookup_clients(Settings(enrich_http_timeout_seconds=timeout))
+        assert len(CLIENT_FIELDS) >= 8, CLIENT_FIELDS
+        seen = {name: _client_timeout(getattr(bundle, name)) for name in CLIENT_FIELDS}
+        assert all(value is not None for value in seen.values()), seen
+        if timeout is not None:
+            assert seen == dict.fromkeys(CLIENT_FIELDS, timeout)
+        else:
+            # Each member's class constructed with no arguments is upstream's own default.
+            upstream = {name: _client_timeout(type(getattr(bundle, name))()) for name in CLIENT_FIELDS}
+            assert seen == upstream
+    finally:
+        close_lookup_clients()
+
+
 # ── Which snapshots gate what ─────────────────────────────────────────────────
 
 

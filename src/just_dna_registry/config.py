@@ -330,6 +330,18 @@ class Settings(BaseSettings):
     # unattended and a transient 502 costs a whole re-upload. Upstream treats this as a FLOOR: gnomAD
     # and eutils keep their higher defaults, and a value below a client's own is a no-op.
     http_retry_attempts: int = 5
+    # Per-request timeout, in seconds, for every live client in the shared lookup bundle (Ensembl,
+    # GRCh37, gnomAD, NCBI eutils, OLS4/HGNC, Europe PMC, Crossref, the PMC id converter), passed
+    # through each client's own constructor. Unset keeps upstream's per-client values: 15 s for
+    # Ensembl and GRCh37, 30 s for the rest. Applied when the bundle is first built, once per process.
+    #
+    # Why the default is not shorter, measured 2026-11-07: a cold Ensembl REST `/variation` lookup
+    # takes 7-18 s at the server and a repeat 0.2 s, and a request abandoned at 4 s left the next one
+    # just as cold (7.8, 18.1, 11.6 s). A shorter timeout therefore turns slow answers into retries that
+    # start cold again. The tail past 15 s is where the cost is: one 522-row module spent 395 of its
+    # 660 online seconds in 26 timed-out attempts, 5 rsIDs giving up after three. Raising it (30) is
+    # the direction the measurement points; try it on a sweep and compare the timed-out count.
+    enrich_http_timeout_seconds: float | None = None
 
     # Upload bounds, applied to every spec upload (publish, import, validate, check).
     #

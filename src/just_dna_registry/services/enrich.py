@@ -37,7 +37,7 @@ from just_dna_compiler.compiler import content_signature, validate_spec
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_format.release_records import parse_version
 
-from just_dna_registry.config import Settings
+from just_dna_registry.config import Settings, get_settings
 from just_dna_registry.models.api import (
     AcmgCheck,
     AlleleMismatchEntry,
@@ -253,7 +253,7 @@ _shared_clients: Any = None
 _clients_lock = threading.Lock()
 
 
-def shared_lookup_clients() -> Any:
+def shared_lookup_clients(settings: Settings | None = None) -> Any:
     """The process's one `LookupClients` bundle, built on first use.
 
     Shared rather than per-request because the pacing that keeps us inside gnomAD's and NCBI's stated
@@ -282,15 +282,24 @@ def shared_lookup_clients() -> Any:
     `PacingGate`, and the process-wide pacing this function exists for would not happen. Through 0.25
     that is exactly what this service did. Built once per process, on the first online run; an offline
     caller never asks for it.
+
+    **The per-request timeout is `enrich_http_timeout_seconds`**, passed through each client's own
+    constructor, the one knob upstream exposes for it, and read from the settings of whoever builds
+    the bundle first: the server builds it at boot (`hints.observed_intervals(settings)`) with the
+    app's own, and a CLI command's first online run passes none, so `get_settings()` answers, which is
+    what the CLI itself runs on. Process-wide and first-build-wins for the reason the bundle is, the
+    same shape `startup.export_enricher_credentials` documents. Unset keeps upstream's per-client
+    values. Retries are not ours to set: attempts are upstream's floor-only `JUST_DNA_HTTP_RETRY_ATTEMPTS`
+    and the backoff is fixed in their decorators.
     """
     global _shared_clients
     if _shared_clients is None:
         with _clients_lock:
             if _shared_clients is None:
-                from just_dna_enricher.ensembl import EnsemblResolver
-                from just_dna_enricher.eutils import EutilsClient
-                from just_dna_enricher.gnomad import GnomadClient
-                from just_dna_enricher.grch37 import Grch37Client
+                from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
+                from just_dna_enricher.eutils import EutilsClient, EutilsSettings
+                from just_dna_enricher.gnomad import GnomadClient, GnomadSettings
+                from just_dna_enricher.grch37 import Grch37Client, Grch37Settings
                 from just_dna_enricher.identifiers import OntologyClient
                 from just_dna_enricher.literature import (
                     CrossrefClient,
@@ -299,16 +308,18 @@ def shared_lookup_clients() -> Any:
                 )
                 from just_dna_enricher.lookup import LookupClients
 
+                timeout = (settings or get_settings()).enrich_http_timeout_seconds
+                given: dict[str, float] = {} if timeout is None else {"timeout": timeout}
                 # `EutilsClient` reads `NCBI_API_KEY` at construction to pick its interval (3/s
                 # without, 10/s with), which is why `export_enricher_credentials` runs at boot and
                 # this is built on demand rather than at import.
                 _shared_clients = LookupClients(
-                    gnomad=GnomadClient(),
-                    eutils=EutilsClient(),
-                    europepmc=EuropePmcClient(),
-                    crossref=CrossrefClient(),
-                    ontology=OntologyClient(),
-                    ensembl=EnsemblResolver(),
+                    gnomad=GnomadClient(settings=GnomadSettings(**given)),
+                    eutils=EutilsClient(settings=EutilsSettings(**given)),
+                    europepmc=EuropePmcClient(**given),
+                    crossref=CrossrefClient(**given),
+                    ontology=OntologyClient(**given),
+                    ensembl=EnsemblResolver(settings=EnsemblSettings(**given)),
                     # **Every field, and eager on purpose.** Since enricher 0.7.0 (RM206, our S92)
                     # upstream's legs fill an empty field through one locked path
                     # (`LookupClients.ensure`), so a bundle handed whole to `lookup.*` (the `/hint`
@@ -317,8 +328,8 @@ def shared_lookup_clients() -> Any:
                     # field would arrive as `None` and each pass would build its own unpaced client.
                     # So the bundle is filled here; `test_the_shared_bundle_actually_holds_clients`
                     # holds it to upstream's `CLIENT_FIELDS`.
-                    pmc_idconv=PmcIdConverterClient(),
-                    grch37=Grch37Client(),
+                    pmc_idconv=PmcIdConverterClient(**given),
+                    grch37=Grch37Client(settings=Grch37Settings(**given)),
                 )
     return _shared_clients
 

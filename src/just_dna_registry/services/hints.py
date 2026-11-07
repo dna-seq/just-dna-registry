@@ -57,7 +57,7 @@ _PACING_CLIENTS: dict[str, tuple[str, ...]] = {
 }
 
 
-def observed_intervals() -> dict[str, float]:
+def observed_intervals(settings: Settings | None = None) -> dict[str, float]:
     """The spacing each upstream is actually being paced at, read off the shared clients.
 
     The slowest client in a group wins, because a shared budget has to be expressed in the units of
@@ -66,7 +66,7 @@ def observed_intervals() -> dict[str, float]:
     """
     if not enricher_available():
         return {}
-    clients = shared_lookup_clients()
+    clients = shared_lookup_clients(settings)  # first build at boot: carries the timeout setting
     out: dict[str, float] = {}
     for upstream, fields in _PACING_CLIENTS.items():
         seen = [

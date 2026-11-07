@@ -112,7 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_tier=settings.hint_max_tier,
         max_interval=settings.hint_max_interval_seconds,
         min_daily_units=settings.hint_min_daily_units,
-        intervals=observed_intervals(),
+        intervals=observed_intervals(settings),
     )
     # `local()` reads installed package metadata, which cannot know the deployment mode — that is a
     # property of this process's settings, so it is stamped on here.
