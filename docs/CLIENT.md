@@ -595,4 +595,12 @@ registry revalidate --recompile-check   # which modules would a strict publish r
 registry upgrade --apply --limit 20     # batch the catalog migration
 ```
 
+A site admin reads the enricher-facing runs over HTTP (paths scrubbed):
+
+```python
+client.runs(command="upgrade")              # newest first: id, outcome, has_sweep, ...
+client.run(run_id)["sweep"]["items"]        # per module: status, code, detail, warnings_summary
+client.run_log(run_id, tail=200)            # the run.log as text
+```
+
 See [UPGRADE.md](UPGRADE.md) for the order these must run in and why.

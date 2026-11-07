@@ -1263,6 +1263,26 @@ class RegistryClient:
             )
         )
 
+    def runs(self, *, command: str | None = None, page: int = 1, per_page: int = 50) -> dict:
+        """**Site admins only.** The enricher-facing maintenance runs on the server (`upgrade`,
+        `replay-upgrade`, `revalidate`, `warm-caches`), newest first: `{items, total, page, per_page}`."""
+        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        if command is not None:
+            params["command"] = command
+        return self._json(self._http.get("/admin/runs", params=params))
+
+    def run(self, run_id: str) -> dict:
+        """**Site admins only.** One run's record (`run`) and its structured sweep (`sweep`: counts, the
+        summary lines, and per module its status, code, detail and warning counts), or `sweep: None`."""
+        return self._json(self._http.get(f"/admin/runs/{run_id}"))
+
+    def run_log(self, run_id: str, *, tail: int | None = None) -> str:
+        """**Site admins only.** The run's log as text, paths replaced by labels; `tail` keeps the last
+        N lines."""
+        resp = self._http.get(f"/admin/runs/{run_id}/log", params={"tail": tail} if tail else None)
+        self._raise_for_status(resp)
+        return resp.text
+
     # ── Orgs (0.9.0) ────────────────────────────────────────────────────────────
 
     def create_org(self, name: str) -> dict:

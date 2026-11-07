@@ -101,7 +101,7 @@ def _route(lane: Any) -> str:
     return "build" if lane.rebuild is not None else "none"
 
 
-def _lane_directories(settings: Settings) -> dict[str, Path]:
+def lane_directories(settings: Settings) -> dict[str, Path]:
     """Every lane's directory on this box: where it resolves, else where it would be provisioned."""
     present = lane_presence(settings)
     configured = lane_destinations(settings)
@@ -144,7 +144,7 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
     """
     lanes = cache_lanes()
     present = lane_presence(settings)
-    directories = _lane_directories(settings)
+    directories = lane_directories(settings)
     plan = DropPlan()
     for name in names:
         lane = lanes[name]

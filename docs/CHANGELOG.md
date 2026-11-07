@@ -8,6 +8,23 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### Upgrade logs over REST, for site admins
+
+`GET /api/v1/admin/runs` lists the maintenance runs of the commands that exercise the enricher (`upgrade`,
+`replay-upgrade`, `revalidate`, `warm-caches`), newest first; `GET /admin/runs/{id}` returns one run's
+record and, new, its structured sweep: per module the status, code, detail lines, the successor's warning
+counts and the online subjects it re-asked, plus the summary counts and what upstream logged by logger.
+`GET /admin/runs/{id}/log` returns `run.log` as text (`?tail=N` for the end). The point is diagnosing the
+enricher against a real catalog without carrying a zip off the box: the format project reads why a
+module was held by its `code`, never by parsing a sentence.
+
+Site admins only, on both instances. Filesystem paths are replaced by labels (`<cache:ensembl>`,
+`<runs>`, ...) on the way out; the copy on the box is untouched. A run of any other command (an account
+merge or rename names accounts) is a `404`. Every sweep now keeps `sweep.json` beside `run.log`; it is a
+few KB and `prune-runs` leaves it, as it leaves the log.
+
+**Client surface:** unchanged (new: `RegistryClient.runs`, `run`, `run_log`).
+
 ### `registry drop-caches` removes a snapshot lane from this box
 
 The inverse of `warm-caches`, one lane at a time. With no flags it lists every lane on the box, largest

@@ -575,6 +575,9 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("POST", "/api/v1/admin/accounts/{account}/merge"): ("merge_accounts",),
     ("POST", "/api/v1/auth/rename"): ("rename_account",),
     ("POST", "/api/v1/admin/accounts/{account}/rename"): ("admin_rename_account",),
+    ("GET", "/api/v1/admin/runs"): ("runs",),
+    ("GET", "/api/v1/admin/runs/{run_id}"): ("run",),
+    ("GET", "/api/v1/admin/runs/{run_id}/log"): ("run_log",),
     # `list_modules` alone — `catalog_stats` paged it before 0.28 (and still does against an older
     # server), and listing a roll-up here would let its own `namespace=`/`group=` arguments stand in
     # for filters the real wrapper had dropped. It has its own route now, below.

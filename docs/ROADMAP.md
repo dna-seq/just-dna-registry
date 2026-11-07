@@ -811,6 +811,13 @@ drop-caches` lists the lanes by size, removes a named lane at the path the serve
 the `.pre-<version>` builds, `--force` for a lane read here or one with no pull route, and a directory holding
 anything else is refused outright. A run with its log kept; not revertible (the restore is `warm-caches`).
 
+**Upgrade logs over REST, done on main, unreleased.** The person, 2026-11-07: "Build a feature for us here to
+get upgrade logs via rest. I would want format to have these as valuable diagnostic for enricher." Access:
+site admin on both instances (the person's choice over "open on the polygon"). `GET /admin/runs`,
+`/admin/runs/{id}` (record + structured sweep, now kept as `sweep.json`), `/admin/runs/{id}/log`; paths
+scrubbed; only `upgrade`, `replay-upgrade`, `revalidate`, `warm-caches`. Upstream told in their inbox once
+committed; a site-admin key for their seat is the person's to issue.
+
 ## Next registry version (post-0.11)
 
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's

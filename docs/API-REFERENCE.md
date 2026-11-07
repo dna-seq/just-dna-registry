@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.28.x**, API `v1` (**0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.28.x**, API `v1` (**0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -187,6 +187,9 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 39 | POST | `/api/v1/auth/rename` | bearer | Rename the caller's own handle; the old one stays reserved to it (0.28) |
 | 40 | POST | `/api/v1/admin/accounts/{account}/rename` | site admin | Rename any account's handle, an org's included (0.28) |
 | 41 | GET | `/api/v1/stats?namespace=&group=` | — | Catalog totals over what the listing shows (0.28) |
+| 42 | GET | `/api/v1/admin/runs?command=&page=&per_page=` | site admin | The enricher-facing maintenance runs, newest first (0.28.3) |
+| 43 | GET | `/api/v1/admin/runs/{run_id}` | site admin | One run's record and its structured per-module sweep (0.28.3) |
+| 44 | GET | `/api/v1/admin/runs/{run_id}/log?tail=` | site admin | One run's `run.log` as text, paths scrubbed (0.28.3) |
 
 ---
 
@@ -1325,6 +1328,29 @@ merge's does. Not held to `max_handle_aliases`. An applied rename takes a DB sna
 CLI is `registry rename-account OLD NEW [--apply] [--allow-test-data]`.
 
 ---
+
+### 42–44. `GET /api/v1/admin/runs[/{run_id}[/log]]`  *(site admin)*
+
+What `registry upgrade` and its kin left on the server, for diagnosing the enricher against a real
+catalog without a copy of the box. Served only for the commands that call the enricher or provision its
+snapshots: `upgrade`, `replay-upgrade`, `revalidate`, `warm-caches`. A run of any other command answers
+`404 run_not_found`, the same as an id that does not exist, and `?command=` naming one is a `422`.
+
+- **`GET /admin/runs`** → `Page[RunSummary]`, newest first. `RunSummary`: `id`, `command`, `invocation`,
+  `started`, `ended`, `outcome` (`ok`, `failed: <class> (exit N)`, or `null` while running), `changed`,
+  `pruned`, `reverted_by`, `has_log`, `has_sweep`.
+- **`GET /admin/runs/{run_id}`** → `RunDetail`: `{run: RunSummary, sweep: RunSweep | null}`. `RunSweep`
+  is the sweep keyed rather than worded: `counts` (modules per status), `problems` and `warnings` (the
+  summary lines the terminal printed), `logged_warnings` (records upstream logged, by logger), and
+  `items`, one per module: `label`, `status`, `code`, `problem_type`, `head`, `detail[]`,
+  `warnings_summary`, `online_subjects`. Kept for sweeps from 0.28.3 on; an earlier run has `sweep: null`
+  and the same blocks in its log.
+- **`GET /admin/runs/{run_id}/log`** → `text/plain`, the whole `run.log`, or its last `tail` lines.
+
+**No filesystem path leaves the server.** Each root the box resolves is replaced by a label (`<runs>`,
+`<data>`, `<storage>`, `<cache:ensembl>`, `<cache>`, `<venv>`, `<python>`, `<cwd>`, `~`), and any
+absolute path left after that by `<path>`. API keys never reach the log. The copy on the box keeps its
+paths. Not rate-limited, like the other site-admin routes.
 
 ## Schemas
 

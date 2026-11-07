@@ -18,6 +18,7 @@ is a table here, and a code the table does not name is `other`, shown with its c
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import Any
 
 from just_dna_format.vocab import CARRIED_WARNING_CODES
 
@@ -186,3 +187,25 @@ class SweepResult:
                 )
             )
         return lines
+
+    def to_json(self) -> dict[str, Any]:
+        """The structured record kept beside `run.log` as `sweep.json` (served by `GET /admin/runs/{id}`).
+
+        The same facts the terminal and the log got, keyed rather than worded, so an upstream reading why
+        a module was held reads `status` and `code` and never parses a sentence. Paths are not scrubbed
+        here: the file stays on this box, and the route scrubs on the way out."""
+        return {
+            "counts": dict(Counter(item.status for item in self.items)),
+            "problems": self.problem_lines(),
+            "warnings": self.warning_lines(),
+            "logged_warnings": dict(self.logged_warnings),
+            "items": [
+                {
+                    "label": item.label, "status": item.status, "code": item.code,
+                    "problem_type": item.problem_type, "head": item.head, "detail": list(item.detail),
+                    "warnings_summary": dict(item.warnings_summary),
+                    "online_subjects": item.online_subjects,
+                }
+                for item in self.items
+            ],
+        }

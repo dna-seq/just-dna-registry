@@ -8,12 +8,15 @@ any account's handle (an org's included, which its owners cannot do themselves).
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import PlainTextResponse
 
 from just_dna_registry.api.deps import (
     Account,
+    Pagination,
     get_repo,
     get_storage,
+    pagination,
     require_account,
     require_site_admin,
     settings_dep,
@@ -25,9 +28,18 @@ from just_dna_registry.models.api import (
     AccountMerge,
     AccountRename,
     MergeAccountsRequest,
+    Page,
     RenameAccountRequest,
+    RunDetail,
+    RunSummary,
 )
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
+from just_dna_registry.services.runs import (
+    DIAGNOSTIC_COMMANDS,
+    list_served_runs,
+    run_detail,
+    run_log,
+)
 from just_dna_registry.storage.base import StorageBackend
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -80,3 +92,53 @@ def rename(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="account_not_found") from exc
     except RenameRefused as exc:
         raise rename_refusal(exc) from exc
+
+
+# ── Maintenance runs (0.28.3): the enricher-facing runs' records, sweeps and logs ──────────────────
+# Read-only and not rate-limited, like the routes above: a site admin's key is the gate. Paths are
+# scrubbed in `services/runs.py`; a run of a command outside `DIAGNOSTIC_COMMANDS` is a 404.
+
+
+@router.get("/runs", response_model=Page[RunSummary])
+def runs(
+    settings: SettingsDep,
+    caller: AccountDep,
+    pages: Annotated[Pagination, Depends(pagination)],
+    command: Annotated[str | None, Query(description="One command's runs only")] = None,
+) -> Page[RunSummary]:
+    """The maintenance runs of the enricher-facing commands (`upgrade`, `replay-upgrade`, `revalidate`,
+    `warm-caches`) on this box, newest first. Site admins only."""
+    require_site_admin(caller)
+    if command is not None and command not in DIAGNOSTIC_COMMANDS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"command must be one of {sorted(DIAGNOSTIC_COMMANDS)}",
+        )
+    items, total = list_served_runs(settings, command=command, page=pages.page, per_page=pages.per_page)
+    return Page[RunSummary](items=items, total=total, page=pages.page, per_page=pages.per_page)
+
+
+@router.get("/runs/{run_id}", response_model=RunDetail)
+def run(settings: SettingsDep, caller: AccountDep, run_id: str) -> RunDetail:
+    """One run's record and, for a sweep kept from 0.28.3 on, every module's status, code, detail and
+    warning counts. Site admins only."""
+    require_site_admin(caller)
+    detail = run_detail(settings, run_id)
+    if detail is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="run_not_found")
+    return detail
+
+
+@router.get("/runs/{run_id}/log", response_class=PlainTextResponse)
+def run_log_text(
+    settings: SettingsDep,
+    caller: AccountDep,
+    run_id: str,
+    tail: Annotated[int | None, Query(ge=1, description="Only the last N lines")] = None,
+) -> PlainTextResponse:
+    """The run's `run.log` as text, filesystem paths replaced by labels. Site admins only."""
+    require_site_admin(caller)
+    text = run_log(settings, run_id, tail=tail)
+    if text is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="run_not_found")
+    return PlainTextResponse(text)

@@ -68,6 +68,9 @@ SNAPSHOT_FILE = "db.sqlite.gz"
 #: The raw snapshot 0.28.1 wrote. Read, never written: runs on a box from before 0.28.2 still revert.
 LEGACY_SNAPSHOT_FILE = "db.sqlite"
 JOURNAL_FILE = "journal.jsonl"
+#: A sweep's structured result (`SweepResult.to_json`), beside `run.log`. Never pruned: it is the log's
+#: keyed twin, a few KB, and what `GET /admin/runs/{id}` serves.
+SWEEP_FILE = "sweep.json"
 CAPTURE_DIR = "storage"
 #: Where `replay-upgrade` writes its scratch catalog and storage inside its run.
 REPLAY_DIR = "replay"
@@ -351,6 +354,11 @@ def journaled(storage: StorageBackend) -> StorageBackend:
 
 def _write_record(run_path: Path, record: dict[str, Any]) -> None:
     (run_path / RUN_FILE).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+
+def write_sweep(run: Run, payload: Mapping[str, Any]) -> None:
+    """Keep a sweep's structured result in its run, beside the log (`SWEEP_FILE`)."""
+    (run.path / SWEEP_FILE).write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
 
 
 def read_record(run_path: Path) -> dict[str, Any]:

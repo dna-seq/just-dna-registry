@@ -1774,3 +1774,65 @@ class VariantHintBatchResponse(BaseModel):
             "was held to."
         ),
     )
+
+
+# ── Maintenance runs over REST (0.28.3) ─────────────────────────────────────────────────────────────
+
+
+class RunSummary(BaseModel):
+    """One maintenance run, as `run.json` records it, with every filesystem path scrubbed.
+
+    Served only for the commands that exercise the enricher (`services.runs.DIAGNOSTIC_COMMANDS`), to
+    site admins. `invocation` is the command line, paths replaced by labels such as `<cache:ensembl>`."""
+
+    id: str
+    command: str
+    invocation: str
+    started: str | None = None
+    ended: str | None = None
+    #: `ok`, or `failed: <exception class> (exit N)`; `None` while the run is still going.
+    outcome: str | None = None
+    changed: bool | None = None
+    #: When `prune-runs` (or the auto-prune) took the run's snapshot; the log and the sweep stay.
+    pruned: str | None = None
+    reverted_by: str | None = None
+    has_log: bool = False
+    #: Whether a structured per-module result (`GET /admin/runs/{id}`'s `sweep`) was kept: `upgrade`
+    #: and `replay-upgrade` from 0.28.3 on. `false` for earlier runs, whose `run.log` holds the same blocks.
+    has_sweep: bool = False
+
+
+class RunSweepItem(BaseModel):
+    """One module's outcome in a sweep: the line the terminal got, and the detail the log got."""
+
+    label: str
+    status: str
+    code: str
+    #: The coarse class the summary counts by (`network`, `drift`, `reliability`, ...).
+    problem_type: str
+    head: str
+    detail: list[str] = Field(default_factory=list)
+    #: The successor's `compilation.warnings_summary`, for a module the sweep published.
+    warnings_summary: dict[str, int] = Field(default_factory=dict)
+    #: Recorded subjects an online re-derivation re-asked (or, in a dry run, would).
+    online_subjects: int = 0
+
+
+class RunSweep(BaseModel):
+    """Everything one `upgrade` sweep said, structured: what `sweep.json` beside `run.log` holds."""
+
+    #: Modules per status (`would_upgrade`, `held`, `failed`, ...).
+    counts: dict[str, int] = Field(default_factory=dict)
+    #: The summary lines the terminal printed: problems by type, then warnings.
+    problems: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    #: WARNING-and-above records upstream logged during the sweep, by logger name.
+    logged_warnings: dict[str, int] = Field(default_factory=dict)
+    items: list[RunSweepItem] = Field(default_factory=list)
+
+
+class RunDetail(BaseModel):
+    """`GET /admin/runs/{id}`: the run's record and, where it was kept, its structured sweep."""
+
+    run: RunSummary
+    sweep: RunSweep | None = None

@@ -835,6 +835,13 @@ running server, and one direction arms a delete endpoint on production data.
   path the server resolves, never a typed one, and refuses a directory holding anything else (another
   lane, the cache base, the catalog, storage, runs) whatever the flags; "provisioning never deletes"
   stays true of `warm-caches`, which is why removal is its own verb.
+  **Runs are readable over REST by site admins** (0.28.3, `services/runs.py`, `GET /admin/runs…`), for
+  the enricher-facing commands only (`DIAGNOSTIC_COMMANDS`); any other run is a `404`, never a `403`, so
+  the listing cannot probe for one. Every sweep keeps `sweep.json` (`SweepResult.to_json`) beside its
+  log, which is what an upstream reads by `code`. **Paths are scrubbed on the way out, never on disk**:
+  `PathScrubber` labels every root the box resolves, longest first, then masks any absolute path left.
+  A new root this service starts writing to goes into that list, and its test asserts on the rendered
+  body with the paths the test box resolves. A run id is looked up in `list_runs`, never joined.
 - **A long command's terminal is one line per item; the run's log is the detail** (0.28.2,
   `sweep_report.py`). `upgrade`'s sweep builds a `SweepItem` per module (a head carrying a status and a
   code, and the detail lines), prints the head whole once the module is done, and logs the block as one

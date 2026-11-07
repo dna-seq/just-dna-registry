@@ -41,6 +41,7 @@ from just_dna_registry.maintenance import (
     read_record,
     revert_run,
     run_root,
+    write_sweep,
 )
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
@@ -1216,6 +1217,8 @@ def _upgrade_sweep(
             root_logger.removeHandler(counter)
     result.logged_warnings = counter.by_logger
     _sweep_summary(result, apply=apply, force=force)
+    if (run := active_run()) is not None:
+        write_sweep(run, result.to_json())
     return result
 
 
