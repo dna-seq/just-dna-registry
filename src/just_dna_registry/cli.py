@@ -28,9 +28,13 @@ from just_dna_registry.maintenance import (
     NOT_A_RUN,
     RevertRefused,
     active_run,
+    apply_prune,
+    disk_usage,
+    human_size,
     journaled,
     list_runs,
     maintenance_run,
+    plan_prune,
     quiet_console,
     read_record,
     revert_run,
@@ -1185,21 +1189,69 @@ def _listed(labels: list[str]) -> str:
 
 @app.command("list-runs")
 def list_runs_command() -> None:
-    """Maintenance runs, oldest first: what each command changed and whether it was reverted."""
+    """Maintenance runs, oldest first: what each command changed, whether it was reverted or pruned,
+    and what it holds on disk, with the total."""
     settings = get_settings()
     runs = list_runs(settings)
     if not runs:
         typer.echo(f"no runs under {run_root(settings)}")
         return
+    total = 0
     for path in runs:
         record = read_record(path)
-        if record.get("reverted_by"):
+        if record.get("pruned"):
+            state = f"pruned {record['pruned']}"
+        elif record.get("reverted_by"):
             state = f"reverted by {record['reverted_by']}"
         elif record.get("changed"):
             state = "changed"
         else:
             state = "no change"
-        typer.echo(f"{record['id']}\t{record.get('outcome')}\t{state}\t{record.get('invocation')}")
+        size = disk_usage(path)
+        total += size
+        typer.echo(
+            f"{record['id']}\t{record.get('outcome')}\t{state}\t{human_size(size)}\t{record.get('invocation')}"
+        )
+    # Every command also copies the catalog before it acts and drops the copy if nothing changed, so a
+    # command briefly needs about the DB's size free on this volume, on top of what is listed here.
+    typer.echo(
+        f"total {human_size(total)} in {len(runs)} run(s) under {run_root(settings)}; a command also needs "
+        f"about {human_size(disk_usage(settings.db_path.resolve()))} free while it runs (the catalog copy)"
+    )
+
+
+@app.command("prune-runs")
+def prune_runs_command(
+    keep: int = typer.Option(
+        None, "--keep", min=1,
+        help="Revertible runs (and replays) to keep whole. Default: REGISTRY_RUN_KEEP, or 2 when that is 0",
+    ),
+    apply: bool = typer.Option(False, "--apply/--dry-run", help="Delete (default: list what would go)"),
+) -> None:
+    """Free the disk old runs hold, keeping their logs.
+
+    Keeps the newest revertible runs whole, and the newest `replay-upgrade` scratch trees; every other run
+    loses its catalog snapshot, journal, `storage/` and `replay/` and keeps `run.log` and `run.json`,
+    marked `pruned`, so `revert-run` refuses it by name. Revert goes newest first, so pruning the older
+    runs never strands one that could still be reverted. The same prune runs at the end of every command
+    (`REGISTRY_RUN_KEEP`); this is for room now. Not a run itself: it would copy the catalog in order to
+    delete catalog copies."""
+    settings = get_settings()
+    keep = keep or settings.run_keep or 2
+    plan = plan_prune(settings, keep)
+    if not plan.prune:
+        typer.echo(f"nothing to prune (keeping the newest {keep} revertible run(s) and replay(s) whole)")
+        return
+    for name, size in plan.prune:
+        typer.echo(f"  {name}\t{human_size(size)}")
+    if not apply:
+        typer.echo(
+            f"dry run: {len(plan.prune)} run(s) would be pruned, {human_size(plan.freed)} freed "
+            f"(keeping {keep} whole). Re-run with --apply."
+        )
+        return
+    freed = apply_prune(settings, plan)
+    typer.secho(f"pruned {len(plan.prune)} run(s), {human_size(freed)} freed", fg=typer.colors.GREEN)
 
 
 @app.command("revert-run")

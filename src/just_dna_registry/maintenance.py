@@ -24,6 +24,11 @@ raw captures) still reverts: the reader decides by the file it finds, never by t
 A run that changed nothing and succeeded is deleted at the end, except for the commands in
 `ALWAYS_LOG`, whose report is the point (it keeps its log and drops the snapshot).
 
+**Runs are pruned** (0.28.2): at the end of every run, per `REGISTRY_RUN_KEEP` (default 2, `0` off),
+and by `registry prune-runs`. The newest N revertible runs and the newest N replays stay whole; every
+other run keeps `run.log` and `run.json` (marked `pruned`) and loses its snapshot, journal, `storage/`
+and `replay/`, and `revert_run` refuses it by name (`plan_prune`).
+
 `revert_run` undoes the journal in reverse and puts the snapshot back, then reads both back. It
 reverts the newest changing run only, and refuses when the DB or a journaled file moved since the run
 (a server's write, another command), because restoring a snapshot over those would destroy them. The
@@ -63,6 +68,8 @@ SNAPSHOT_FILE = "db.sqlite.gz"
 LEGACY_SNAPSHOT_FILE = "db.sqlite"
 JOURNAL_FILE = "journal.jsonl"
 CAPTURE_DIR = "storage"
+#: Where `replay-upgrade` writes its scratch catalog and storage inside its run.
+REPLAY_DIR = "replay"
 
 #: Commands whose run keeps its log even when it changed nothing: their report is what an operator
 #: reads next (the held modules of a dry sweep, a merge plan), so losing it is the defect this module
@@ -75,7 +82,9 @@ ALWAYS_LOG: frozenset[str] = frozenset({
 #: Commands that are not maintenance runs. `serve` runs the API until stopped; its writes are
 #: requests, each answered by the request's own rules, and a run around it would snapshot once and
 #: then call a day of traffic "the command's change".
-NOT_A_RUN: frozenset[str] = frozenset({"serve"})
+#: `prune-runs` touches neither the catalog nor storage, and a run of it would copy the catalog in order
+#: to delete catalog copies.
+NOT_A_RUN: frozenset[str] = frozenset({"serve", "prune-runs"})
 
 
 class RevertRefused(Exception):
@@ -420,6 +429,27 @@ def maintenance_run(settings: Settings, command: str, invocation: str) -> Iterat
                 path = None  # type: ignore[assignment]
         if path is not None:
             click.echo(f"run: {path}", file=live_err)
+        if settings.run_keep > 0:
+            _auto_prune(settings, run.id, live_err)
+
+
+def _auto_prune(settings: Settings, current: str, live_err: TextIO) -> None:
+    """The prune every run ends with, so a box nobody watches stays bounded.
+
+    A failed cleanup must not turn a command that succeeded into a failure, so a filesystem error or an
+    unreadable `run.json` is reported and the command's own outcome stands.
+    """
+    try:
+        plan = plan_prune(settings, settings.run_keep, exclude=current)
+        if plan.prune:
+            freed = apply_prune(settings, plan)
+            click.echo(
+                f"pruned {len(plan.prune)} older run(s), {human_size(freed)} freed "
+                f"(REGISTRY_RUN_KEEP={settings.run_keep})",
+                file=live_err,
+            )
+    except (OSError, ValueError) as exc:
+        click.echo(f"! could not prune older runs: {exc}", file=live_err)
 
 
 @dataclass(frozen=True)
@@ -448,6 +478,13 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
     if path not in runs:
         raise RevertRefused(f"no run {run_id} under {run_root(settings)}")
     record = read_record(path)
+    if record.get("pruned"):
+        # Before the other checks: a pruned run did change something, and its snapshot is gone.
+        raise RevertRefused(
+            f"run {run_id} was pruned at {record['pruned']}: its catalog snapshot and journal were deleted "
+            "(prune-runs, or the automatic prune per REGISTRY_RUN_KEEP), so it cannot be reverted. "
+            "Its run.log is kept."
+        )
     if record.get("reverted_by"):
         raise RevertRefused(f"run {run_id} was already reverted by {record['reverted_by']}")
     if not record.get("changed"):
@@ -548,3 +585,93 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
         undone["reverted_by"] = None
         _write_record(run_root(settings) / target, undone)
     return RevertReport(run_id, restored, removed, record["db_before"] is not None)
+
+
+# ── Pruning (0.28.2) ─────────────────────────────────────────────────────────────────────────────────
+
+#: What a prune removes from a run: what a revert needs and a replay's scratch tree. `run.log` and
+#: `run.json` stay, a few KB, and the log is what runs exist to keep.
+PRUNABLE: tuple[str, ...] = (SNAPSHOT_FILE, LEGACY_SNAPSHOT_FILE, JOURNAL_FILE, CAPTURE_DIR, REPLAY_DIR)
+
+
+def disk_usage(path: Path) -> int:
+    """Bytes under `path` (a file or a directory), 0 when it is absent."""
+    if path.is_file():
+        return path.stat().st_size
+    if not path.is_dir():
+        return 0
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+
+
+def _prunable(run_path: Path) -> list[Path]:
+    return [run_path / name for name in PRUNABLE if (run_path / name).exists()]
+
+
+def revertible(record: Mapping[str, Any]) -> bool:
+    """A run `revert-run` could still undo: it changed something, is not reverted, and is not pruned."""
+    return bool(record.get("changed")) and not record.get("reverted_by") and not record.get("pruned")
+
+
+@dataclass(frozen=True)
+class PrunePlan:
+    """Which runs a prune keeps whole and which it empties, with the bytes each frees."""
+
+    keep: int
+    whole: list[str]
+    prune: list[tuple[str, int]]
+
+    @property
+    def freed(self) -> int:
+        return sum(size for _, size in self.prune)
+
+
+def plan_prune(settings: Settings, keep: int, *, exclude: str | None = None) -> PrunePlan:
+    """Keep the newest `keep` revertible runs whole, and the newest `keep` replays; empty the rest.
+
+    Revert goes newest first, so emptying anything older than the runs kept never strands a run that
+    could still be reverted. A replay's scratch tree is kept on the same count because people open it,
+    and a run with nothing to revert would otherwise be emptied by the very next command. `exclude` is
+    the run that is ending, never pruned by its own end.
+    """
+    if keep < 1:
+        raise ValueError("keep must be at least 1; REGISTRY_RUN_KEEP=0 turns the automatic prune off")
+    root = run_root(settings)
+    records = {p.name: read_record(p) for p in list_runs(settings)}
+    newest_first = sorted(records, reverse=True)
+    kept_revertible = [n for n in newest_first if revertible(records[n])][:keep]
+    kept_replays = [n for n in newest_first if (root / n / REPLAY_DIR).is_dir()][:keep]
+    whole = set(kept_revertible) | set(kept_replays) | ({exclude} if exclude else set())
+    prune = [
+        (name, sum(disk_usage(p) for p in found))
+        for name in sorted(records)
+        if name not in whole and (found := _prunable(root / name))
+    ]
+    return PrunePlan(keep=keep, whole=sorted(whole & records.keys()), prune=prune)
+
+
+def apply_prune(settings: Settings, plan: PrunePlan) -> int:
+    """Empty the runs `plan` names and mark each `pruned`; returns the bytes freed."""
+    root = run_root(settings)
+    freed = 0
+    for name, size in plan.prune:
+        path = root / name
+        for found in _prunable(path):
+            if found.is_dir():
+                shutil.rmtree(found)
+            else:
+                found.unlink()
+        record = read_record(path)
+        record["pruned"] = _stamp()
+        record["pruned_bytes"] = size
+        _write_record(path, record)
+        freed += size
+    return freed
+
+
+def human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024 or unit == "GiB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GiB"

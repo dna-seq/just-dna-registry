@@ -813,9 +813,13 @@ running server, and one direction arms a delete endpoint on production data.
   `revert-run` undoes one newest-first and reads the DB and every journaled file back; it refuses
   over a change made since (a server's write) unless `--force`, and is a run itself. Three rules
   keep it whole. **Storage goes through `_storage()`**, which journals inside a run: a backend built
-  any other way writes files no revert can see. **`serve` is the one exclusion** (`NOT_A_RUN`): its
-  writes are requests. **`test_maintenance_commands.py` enumerates every command** and reverts each
-  changing one to the byte, DB and storage tree both, so a new command without a row fails. Hard
+  any other way writes files no revert can see. **`serve` is the one exclusion that runs** (`NOT_A_RUN`):
+  its writes are requests. **`test_maintenance_commands.py` enumerates every command** and reverts each
+  changing one to the byte, DB and storage tree both, so a new command without a row fails. **Runs
+  are pruned** (0.28.2): every run ends with `plan_prune` per `REGISTRY_RUN_KEEP` (default 2, `0` off),
+  keeping the newest N revertible runs and the newest N replays whole and leaving every other run its
+  `run.log` and `run.json`, marked `pruned`, which `revert_run` refuses by name. `prune-runs` is the
+  second `NOT_A_RUN`: a run of it would copy the catalog to delete catalog copies. Hard
   delete stays CLI-only and production still mounts no delete. `registry backup` stays for a
   snapshot outside any command, and its index still only counts up.
 - **A long command's terminal is one line per item; the run's log is the detail** (0.28.2,

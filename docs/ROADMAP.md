@@ -772,6 +772,11 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
 
 ## 0.28.2 — run folders are pruned (planned; the lead, 2026-11-07)
 
+**Built** (unreleased, 2026-11-07), with one addition to item 1: the newest N `replay-upgrade` scratch trees
+are kept whole on the same count, because a replay changes nothing, is never revertible, and its `replay/`
+would otherwise go at the very next command. Shipped beside it: gzipped backups and a terse `upgrade`
+terminal (CHANGELOG `[Unreleased]`).
+
 **unattended** (the person, 2026-11-07: "plan adding prune command to keep last two backups"; urgent if the
 polygon's disk fills first). 0.28.1 keeps, per run that changed something, a full catalog copy (`db.sqlite`), the
 prior bytes of every stored file it overwrote or removed (`storage/`, downloaded from HF when storage is HF), and

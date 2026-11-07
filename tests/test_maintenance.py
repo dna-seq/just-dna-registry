@@ -18,10 +18,14 @@ from just_dna_registry.config import Settings
 from just_dna_registry.maintenance import (
     SNAPSHOT_FILE,
     RevertRefused,
+    Run,
+    apply_prune,
     db_digest,
+    disk_usage,
     journaled,
     list_runs,
     maintenance_run,
+    plan_prune,
     quiet_console,
     read_record,
     revert_run,
@@ -290,3 +294,89 @@ def test_quiet_console_keeps_warnings_off_the_terminal_and_in_the_log(
     assert "an error still shows" in err and "loud note" in err
     log = (run.path / "run.log").read_text()
     assert "quietened drift note" in log and "loud note" in log
+
+
+# ── Pruning (0.28.2) ─────────────────────────────────────────────────────────────────────────────────
+
+
+def _changing_runs(settings: Settings, store: LocalStorage, count: int) -> list[tuple[Run, str | None, dict[str, bytes]]]:
+    """`count` runs, each adding a stored file and a row; with the state *before* each one."""
+    made = []
+    for i in range(count):
+        before = (db_digest(settings.db_path), _tree(store.root) if store.root.is_dir() else {})
+        with maintenance_run(settings, "site-admin", f"x{i}") as run:
+            journaled(store).store_module(f"ns/m/1.0.{i}", {"manifest.json": b"m" * (1000 + i)})
+            _write(settings, f"INSERT INTO t VALUES ('k{i}', '{i}')")
+        made.append((run, *before))
+    return made
+
+
+def test_prune_keeps_the_newest_two_revertible_runs_whole_and_the_rest_their_logs(tmp_path: Path) -> None:
+    settings = _settings(tmp_path).model_copy(update={"run_keep": 0})  # no auto-prune: the call is the test
+    store = LocalStorage(settings.local_storage_dir)
+    made = _changing_runs(settings, store, 5)
+    runs = [run for run, _, _ in made]
+
+    plan = plan_prune(settings, 2)
+    assert [name for name, _ in plan.prune] == [run.id for run in runs[:3]]
+    assert set(plan.whole) == {runs[3].id, runs[4].id}
+    expected = sum(disk_usage(r.path / SNAPSHOT_FILE) + disk_usage(r.path / "journal.jsonl")
+                   + disk_usage(r.path / "storage") for r in runs[:3])
+    assert plan.freed == expected > 0
+    assert all((r.path / SNAPSHOT_FILE).is_file() for r in runs), "planning deleted something"
+
+    assert apply_prune(settings, plan) == expected
+    for run in runs[:3]:
+        assert sorted(p.name for p in run.path.iterdir()) == ["run.json", "run.log"]
+        record = read_record(run.path)
+        assert record["pruned"] and record["pruned_bytes"] > 0 and record["changed"] is True
+        with pytest.raises(RevertRefused, match="pruned"):
+            revert_run(settings, run.id, store)
+    assert plan_prune(settings, 2).prune == [], "a second prune finds nothing left to free"
+
+    # The two kept whole revert to the byte, newest first.
+    _, db_before_fourth, tree_before_fourth = made[3]
+    revert_run(settings, runs[4].id, store)
+    revert_run(settings, runs[3].id, store)
+    assert db_digest(settings.db_path) == db_before_fourth
+    assert _tree(store.root) == tree_before_fourth
+
+
+def test_every_run_prunes_at_its_end_per_run_keep(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)  # run_keep defaults to 2
+    assert settings.run_keep == 2
+    store = LocalStorage(settings.local_storage_dir)
+    runs = [run for run, _, _ in _changing_runs(settings, store, 3)]
+    assert read_record(runs[0].path).get("pruned") and not (runs[0].path / SNAPSHOT_FILE).exists()
+    assert all((r.path / SNAPSHOT_FILE).is_file() and not read_record(r.path).get("pruned") for r in runs[1:])
+
+
+def test_run_keep_zero_turns_the_automatic_prune_off(tmp_path: Path) -> None:
+    settings = _settings(tmp_path).model_copy(update={"run_keep": 0})
+    store = LocalStorage(settings.local_storage_dir)
+    runs = [run for run, _, _ in _changing_runs(settings, store, 4)]
+    assert all((r.path / SNAPSHOT_FILE).is_file() and not read_record(r.path).get("pruned") for r in runs)
+
+
+def test_the_newest_replays_keep_their_scratch_tree(tmp_path: Path) -> None:
+    """A replay changes nothing, so it is never revertible; its tree is kept on the same count."""
+    settings = _settings(tmp_path).model_copy(update={"run_keep": 0})
+    replays = []
+    for i in range(3):
+        with maintenance_run(settings, "replay-upgrade", f"r{i}") as run:
+            (run.path / "replay" / "storage").mkdir(parents=True)
+            (run.path / "replay" / "catalog.db").write_bytes(b"c" * 100)
+        replays.append(run)
+    plan = plan_prune(settings, 2)
+    assert [name for name, _ in plan.prune] == [replays[0].id]
+    apply_prune(settings, plan)
+    assert not (replays[0].path / "replay").exists() and (replays[0].path / "run.log").is_file()
+    assert all((r.path / "replay" / "catalog.db").is_file() for r in replays[1:])
+
+
+def test_the_run_that_is_ending_is_never_pruned_by_its_own_end(tmp_path: Path) -> None:
+    settings = _settings(tmp_path).model_copy(update={"run_keep": 0})
+    runs = [run for run, _, _ in _changing_runs(settings, LocalStorage(settings.local_storage_dir), 3)]
+    plan = plan_prune(settings, 1, exclude=runs[0].id)
+    assert [name for name, _ in plan.prune] == [runs[1].id]
+    assert runs[0].id in plan.whole

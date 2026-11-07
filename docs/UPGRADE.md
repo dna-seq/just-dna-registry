@@ -69,7 +69,11 @@ Not run against either box (they are the operator's). The fallback is removed on
 
 **Every `registry` command is a run (0.28.1)**: its log, the catalog as it was before it, and the stored
 files it wrote, under `runs/<id>/` beside the DB (since 0.28.2 the catalog copy and the stored files'
-prior bytes are gzipped; a 0.28.1 run's raw copies still revert). The path is printed first and last. Read the held modules
+prior bytes are gzipped; a 0.28.1 run's raw copies still revert). Every run ends by pruning older ones
+(`REGISTRY_RUN_KEEP`, default 2: the newest two revertible runs and the newest two replays stay whole, the
+rest keep only `run.log` and `run.json`), so revert a run before two newer changing commands follow it,
+or set `REGISTRY_RUN_KEEP` higher for the sweep. `registry prune-runs` frees room by hand; `list-runs`
+shows each run's size. The path is printed first and last. Read the held modules
 out of `run.log` before `--accept-drift`; `registry revert-run <id>` undoes an `--apply`, stored files
 included (stop the server first). On 0.28.0, `tee` the output and `registry backup` by hand.
 

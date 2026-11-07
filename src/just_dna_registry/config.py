@@ -113,8 +113,12 @@ class Settings(BaseSettings):
     backup_dir: Path | None = None
     # Where maintenance runs live (`maintenance.py`): one directory per `registry` command, holding its
     # log, the catalog snapshot taken before it acted, and its storage journal. Default `runs/` beside
-    # `db_path`. Never pruned for you: a run is what `revert-run` undoes.
+    # `db_path`.
     run_dir: Path | None = None
+    # How many revertible runs (and `replay-upgrade` scratch trees) every run keeps whole when it ends;
+    # older runs keep `run.log` and `run.json` and lose their snapshot, journal, `storage/` and `replay/`
+    # (`maintenance.plan_prune`). `0` turns the automatic prune off; `registry prune-runs` still works.
+    run_keep: int = 2
     # Snapshot the DB before every destructive admin op. Off is supported (`--no-backup` per command,
     # or this globally) for a scripted teardown where the DB is disposable anyway, but the default is
     # on: the ops that call it are the irreversible ones.

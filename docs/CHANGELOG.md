@@ -8,6 +8,17 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### `registry prune-runs`, and every run prunes the old ones when it ends
+
+`registry prune-runs [--keep N] [--apply]` keeps the newest N revertible runs whole (default
+`REGISTRY_RUN_KEEP`, or 2), and the newest N `replay-upgrade` scratch trees; every other run loses its
+catalog snapshot, journal, `storage/` and `replay/` and keeps `run.log` and `run.json`, marked `pruned`.
+Dry run by default, listing each run and the bytes it would free. `revert-run` on a pruned run refuses
+and names the prune. The same prune runs at the end of every command, per the new
+`REGISTRY_RUN_KEEP` (default 2, `0` turns it off), so a box nobody watches stays bounded. `prune-runs` is
+not itself a run. `list-runs` shows each run's size, the total, and the catalog copy every command
+briefly needs free while it runs.
+
 ### `registry upgrade` prints one line per module; the detail is in the run's log
 
 The terminal now gets one line per module, written whole once the module is done (so a concurrent sweep
