@@ -11,14 +11,23 @@ a fact of running a command, which a new command inherits without doing anything
 A run is a directory `<run root>/<run id>/` (the root is `REGISTRY_RUN_DIR`, else `runs/` beside the DB):
 
 - `run.log`: everything the command printed, colour stripped, and log records at INFO and above.
-- `db.sqlite`: the catalog as it was before the command (sqlite's backup API, consistent with a live
-  server writing beside it); absent when there was no DB.
+- `db.sqlite.gz`: the catalog as it was before the command (sqlite's backup API into a temporary file,
+  consistent with a live server writing beside it, then gzipped); absent when there was no DB.
 - `journal.jsonl` + `storage/`: every stored file the command added, overwrote or removed, with the
-  bytes it had before, captured before the write (`JournaledStorage`).
+  bytes it had before, captured before the write (`JournaledStorage`) and gzipped (`NNNNNN.gz`).
+
+**Backups are compressed and read by suffix** (0.28.2). A run copied the whole catalog raw, and a
+polygon with little spare disk kept one per changing command. A run written by 0.28.1 (raw `db.sqlite`,
+raw captures) still reverts: the reader decides by the file it finds, never by the version.
 - `run.json`: the invocation, outcome, and the DB digest before and after.
 
 A run that changed nothing and succeeded is deleted at the end, except for the commands in
 `ALWAYS_LOG`, whose report is the point (it keeps its log and drops the snapshot).
+
+**Runs are pruned** (0.28.2): at the end of every run, per `REGISTRY_RUN_KEEP` (default 2, `0` off),
+and by `registry prune-runs`. The newest N revertible runs and the newest N replays stay whole; every
+other run keeps `run.log` and `run.json` (marked `pruned`) and loses its snapshot, journal, `storage/`
+and `replay/`, and `revert_run` refuses it by name (`plan_prune`).
 
 `revert_run` undoes the journal in reverse and puts the snapshot back, then reads both back. It
 reverts the newest changing run only, and refuses when the DB or a journaled file moved since the run
@@ -29,6 +38,7 @@ The DB is compared by `db_digest`, over sqlite's logical dump rather than the fi
 moved by a no-op migration is not a change and a restored snapshot compares equal to its source.
 """
 
+import gzip
 import hashlib
 import io
 import json
@@ -54,9 +64,13 @@ from just_dna_registry.storage.base import StorageBackend
 RUN_DIRNAME = "runs"
 RUN_FILE = "run.json"
 LOG_FILE = "run.log"
-SNAPSHOT_FILE = "db.sqlite"
+SNAPSHOT_FILE = "db.sqlite.gz"
+#: The raw snapshot 0.28.1 wrote. Read, never written: runs on a box from before 0.28.2 still revert.
+LEGACY_SNAPSHOT_FILE = "db.sqlite"
 JOURNAL_FILE = "journal.jsonl"
 CAPTURE_DIR = "storage"
+#: Where `replay-upgrade` writes its scratch catalog and storage inside its run.
+REPLAY_DIR = "replay"
 
 #: Commands whose run keeps its log even when it changed nothing: their report is what an operator
 #: reads next (the held modules of a dry sweep, a merge plan), so losing it is the defect this module
@@ -69,7 +83,9 @@ ALWAYS_LOG: frozenset[str] = frozenset({
 #: Commands that are not maintenance runs. `serve` runs the API until stopped; its writes are
 #: requests, each answered by the request's own rules, and a run around it would snapshot once and
 #: then call a day of traffic "the command's change".
-NOT_A_RUN: frozenset[str] = frozenset({"serve"})
+#: `prune-runs` touches neither the catalog nor storage, and a run of it would copy the catalog in order
+#: to delete catalog copies.
+NOT_A_RUN: frozenset[str] = frozenset({"serve", "prune-runs"})
 
 
 class RevertRefused(Exception):
@@ -82,19 +98,53 @@ def run_root(settings: Settings) -> Path:
 
 
 def db_digest(path: Path) -> str | None:
-    """sha256 over the DB's logical dump, or `None` when there is no DB. The oracle for "as it was"."""
+    """sha256 over the DB's logical dump, or `None` when there is no DB. The oracle for "as it was".
+
+    A gzipped snapshot (`*.gz`) is read through a temporary copy, so the same oracle compares a run's
+    compressed snapshot with the live catalog.
+    """
     path = Path(path)
     if not path.is_file():
         return None
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    with _plain_db(path) as plain:
+        conn = sqlite3.connect(f"file:{plain}?mode=ro", uri=True)
+        try:
+            digest = hashlib.sha256()
+            for line in conn.iterdump():
+                digest.update(line.encode("utf-8"))
+                digest.update(b"\n")
+            return digest.hexdigest()
+        finally:
+            conn.close()
+
+
+@contextmanager
+def _plain_db(path: Path) -> Iterator[Path]:
+    """`path` as a sqlite file: itself when raw, a temporary gunzipped copy beside it when `*.gz`."""
+    if path.suffix != ".gz":
+        yield path
+        return
+    plain = path.with_name(f".{path.stem}.{_stamp(precise=True)}.tmp")
     try:
-        digest = hashlib.sha256()
-        for line in conn.iterdump():
-            digest.update(line.encode("utf-8"))
-            digest.update(b"\n")
-        return digest.hexdigest()
+        with gzip.open(path, "rb") as packed, plain.open("wb") as out:
+            shutil.copyfileobj(packed, out)
+        yield plain
     finally:
-        conn.close()
+        plain.unlink(missing_ok=True)
+
+
+def snapshot_path(run_path: Path) -> Path | None:
+    """The run's catalog snapshot, compressed or (written by 0.28.1) raw, or `None` when it has none."""
+    for name in (SNAPSHOT_FILE, LEGACY_SNAPSHOT_FILE):
+        if (run_path / name).is_file():
+            return run_path / name
+    return None
+
+
+def read_capture(path: Path) -> bytes:
+    """A journaled file's prior bytes: gunzipped when the capture is `*.gz`, as stored when raw (0.28.1)."""
+    data = path.read_bytes()
+    return gzip.decompress(data) if path.suffix == ".gz" else data
 
 
 def _sha256(data: bytes) -> str:
@@ -102,15 +152,26 @@ def _sha256(data: bytes) -> str:
 
 
 def _copy_db(source: Path, dest: Path) -> None:
-    """Copy a catalog with sqlite's backup API, which reads a consistent state under a live writer."""
+    """Snapshot a catalog to `dest`, gzipped.
+
+    sqlite's backup API reads a consistent state under a live writer, and it needs a database to write
+    into, so it fills a temporary file beside `dest` which is then compressed and removed. Compressing
+    the live file directly would read pages mid-write.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
+    plain = dest.with_name(f".{dest.name}.tmp")
     src = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-    out = sqlite3.connect(dest)
+    out = sqlite3.connect(plain)
     try:
         src.backup(out)
     finally:
         out.close()
         src.close()
+    try:
+        with plain.open("rb") as raw, gzip.open(dest, "wb", compresslevel=6) as packed:
+            shutil.copyfileobj(raw, packed)
+    finally:
+        plain.unlink(missing_ok=True)
 
 
 _API_KEY = re.compile(r"\bmk_(live|test)_[A-Za-z0-9_-]+")
@@ -180,6 +241,8 @@ class Run:
     entries: list[dict[str, Any]] = field(default_factory=list)
     #: Fields the command adds to `run.json` (a revert names the run it reverted).
     extra: dict[str, Any] = field(default_factory=dict)
+    #: The handler that puts WARNING records on the terminal, when the run added one (`quiet_console`).
+    console: logging.Handler | None = None
     #: Held across each journal entry, and by `JournaledStorage` from a read of prior bytes to the write.
     #: A capture file is named by the entry's index, so two threads recording at once would take the
     #: same name and one capture would overwrite the other; `upgrade --jobs` publishes from N threads.
@@ -192,10 +255,11 @@ class Run:
         with self.lock:
             captured: str | None = None
             if before is not None:
-                captured = f"{CAPTURE_DIR}/{len(self.entries):06d}"
+                captured = f"{CAPTURE_DIR}/{len(self.entries):06d}.gz"
                 target = self.path / captured
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(before)
+                # mtime=0: the capture's bytes depend on the file alone, never on when it was taken.
+                target.write_bytes(gzip.compress(before, compresslevel=6, mtime=0))
             entry = {
                 "op": op, "key": key, "name": name, "before": captured,
                 "after_sha256": _sha256(after) if after is not None else None,
@@ -258,6 +322,27 @@ class JournaledStorage:
         return self.inner.list_files(key)
 
 
+@contextmanager
+def quiet_console(*, enabled: bool = True) -> Iterator[None]:
+    """Keep upstream WARNING records off the terminal for a while; the run's log still takes them.
+
+    For a command whose terminal output is one line per item (`upgrade`'s sweep): an enricher warning
+    printed between those lines is what made them unreadable. ERROR records still reach the terminal.
+    Outside a run, or when the run added no terminal handler, there is nothing of ours to quieten.
+    """
+    run = active_run()
+    console = run.console if run is not None else None
+    if not enabled or console is None:
+        yield
+        return
+    level = console.level
+    console.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        console.setLevel(level)
+
+
 def journaled(storage: StorageBackend) -> StorageBackend:
     """`storage` journaled by the active run, or as it is outside one."""
     run = active_run()
@@ -318,6 +403,7 @@ def maintenance_run(settings: Settings, command: str, invocation: str) -> Iterat
     if console is not None:
         console.setLevel(logging.WARNING)
         root_logger.addHandler(console)
+    run.console = console
     root_logger.addHandler(handler)
     root_logger.setLevel(min(previous_level or logging.WARNING, logging.INFO))
     for name in NOISY_LOGGERS:
@@ -358,6 +444,27 @@ def maintenance_run(settings: Settings, command: str, invocation: str) -> Iterat
                 path = None  # type: ignore[assignment]
         if path is not None:
             click.echo(f"run: {path}", file=live_err)
+        if settings.run_keep > 0:
+            _auto_prune(settings, run.id, live_err)
+
+
+def _auto_prune(settings: Settings, current: str, live_err: TextIO) -> None:
+    """The prune every run ends with, so a box nobody watches stays bounded.
+
+    A failed cleanup must not turn a command that succeeded into a failure, so a filesystem error or an
+    unreadable `run.json` is reported and the command's own outcome stands.
+    """
+    try:
+        plan = plan_prune(settings, settings.run_keep, exclude=current)
+        if plan.prune:
+            freed = apply_prune(settings, plan)
+            click.echo(
+                f"pruned {len(plan.prune)} older run(s), {human_size(freed)} freed "
+                f"(REGISTRY_RUN_KEEP={settings.run_keep})",
+                file=live_err,
+            )
+    except (OSError, ValueError) as exc:
+        click.echo(f"! could not prune older runs: {exc}", file=live_err)
 
 
 @dataclass(frozen=True)
@@ -386,6 +493,13 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
     if path not in runs:
         raise RevertRefused(f"no run {run_id} under {run_root(settings)}")
     record = read_record(path)
+    if record.get("pruned"):
+        # Before the other checks: a pruned run did change something, and its snapshot is gone.
+        raise RevertRefused(
+            f"run {run_id} was pruned at {record['pruned']}: its catalog snapshot and journal were deleted "
+            "(prune-runs, or the automatic prune per REGISTRY_RUN_KEEP), so it cannot be reverted. "
+            "Its run.log is kept."
+        )
     if record.get("reverted_by"):
         raise RevertRefused(f"run {run_id} was already reverted by {record['reverted_by']}")
     if not record.get("changed"):
@@ -431,6 +545,12 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
                 + ". Restoring would destroy those changes (--force to do it anyway)."
             )
 
+    # Found before anything is undone: a revert that restored the files and then found no snapshot
+    # would leave the catalog and the storage from two different moments.
+    snapshot = snapshot_path(path) if record["db_before"] is not None else None
+    if record["db_before"] is not None and snapshot is None:
+        raise RevertRefused(f"run {run_id} has no catalog snapshot to restore")
+
     restored = removed = 0
     for entry in reversed(entries):
         key, name = entry["key"], entry["name"]
@@ -438,21 +558,22 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
             storage.remove_file(key, name)
             removed += 1
         else:
-            storage.store_module(key, {name: (path / entry["before"]).read_bytes()})
+            storage.store_module(key, {name: read_capture(path / entry["before"])})
             restored += 1
 
     db_path = settings.db_path.resolve()
-    snapshot = path / SNAPSHOT_FILE
     if record["db_before"] is None:
         db_path.unlink(missing_ok=True)
     else:
-        source = sqlite3.connect(f"file:{snapshot}?mode=ro", uri=True)
-        live = sqlite3.connect(db_path)
-        try:
-            source.backup(live)
-        finally:
-            live.close()
-            source.close()
+        assert snapshot is not None  # refused above
+        with _plain_db(snapshot) as plain:
+            source = sqlite3.connect(f"file:{plain}?mode=ro", uri=True)
+            live = sqlite3.connect(db_path)
+            try:
+                source.backup(live)
+            finally:
+                live.close()
+                source.close()
 
     # Read back: the DB and every journaled file as they were before the run.
     if db_digest(db_path) != record["db_before"]:
@@ -462,7 +583,7 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
         first.setdefault((entry["key"], entry["name"]), entry)
     wrong = []
     for (key, name), entry in first.items():
-        expected = _sha256((path / entry["before"]).read_bytes()) if entry["before"] else None
+        expected = _sha256(read_capture(path / entry["before"])) if entry["before"] else None
         if _storage_state(storage, key, name) != expected:
             wrong.append(f"{key}/{name}")
     if wrong:
@@ -479,3 +600,93 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
         undone["reverted_by"] = None
         _write_record(run_root(settings) / target, undone)
     return RevertReport(run_id, restored, removed, record["db_before"] is not None)
+
+
+# ── Pruning (0.28.2) ─────────────────────────────────────────────────────────────────────────────────
+
+#: What a prune removes from a run: what a revert needs and a replay's scratch tree. `run.log` and
+#: `run.json` stay, a few KB, and the log is what runs exist to keep.
+PRUNABLE: tuple[str, ...] = (SNAPSHOT_FILE, LEGACY_SNAPSHOT_FILE, JOURNAL_FILE, CAPTURE_DIR, REPLAY_DIR)
+
+
+def disk_usage(path: Path) -> int:
+    """Bytes under `path` (a file or a directory), 0 when it is absent."""
+    if path.is_file():
+        return path.stat().st_size
+    if not path.is_dir():
+        return 0
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+
+
+def _prunable(run_path: Path) -> list[Path]:
+    return [run_path / name for name in PRUNABLE if (run_path / name).exists()]
+
+
+def revertible(record: Mapping[str, Any]) -> bool:
+    """A run `revert-run` could still undo: it changed something, is not reverted, and is not pruned."""
+    return bool(record.get("changed")) and not record.get("reverted_by") and not record.get("pruned")
+
+
+@dataclass(frozen=True)
+class PrunePlan:
+    """Which runs a prune keeps whole and which it empties, with the bytes each frees."""
+
+    keep: int
+    whole: list[str]
+    prune: list[tuple[str, int]]
+
+    @property
+    def freed(self) -> int:
+        return sum(size for _, size in self.prune)
+
+
+def plan_prune(settings: Settings, keep: int, *, exclude: str | None = None) -> PrunePlan:
+    """Keep the newest `keep` revertible runs whole, and the newest `keep` replays; empty the rest.
+
+    Revert goes newest first, so emptying anything older than the runs kept never strands a run that
+    could still be reverted. A replay's scratch tree is kept on the same count because people open it,
+    and a run with nothing to revert would otherwise be emptied by the very next command. `exclude` is
+    the run that is ending, never pruned by its own end.
+    """
+    if keep < 1:
+        raise ValueError("keep must be at least 1; REGISTRY_RUN_KEEP=0 turns the automatic prune off")
+    root = run_root(settings)
+    records = {p.name: read_record(p) for p in list_runs(settings)}
+    newest_first = sorted(records, reverse=True)
+    kept_revertible = [n for n in newest_first if revertible(records[n])][:keep]
+    kept_replays = [n for n in newest_first if (root / n / REPLAY_DIR).is_dir()][:keep]
+    whole = set(kept_revertible) | set(kept_replays) | ({exclude} if exclude else set())
+    prune = [
+        (name, sum(disk_usage(p) for p in found))
+        for name in sorted(records)
+        if name not in whole and (found := _prunable(root / name))
+    ]
+    return PrunePlan(keep=keep, whole=sorted(whole & records.keys()), prune=prune)
+
+
+def apply_prune(settings: Settings, plan: PrunePlan) -> int:
+    """Empty the runs `plan` names and mark each `pruned`; returns the bytes freed."""
+    root = run_root(settings)
+    freed = 0
+    for name, size in plan.prune:
+        path = root / name
+        for found in _prunable(path):
+            if found.is_dir():
+                shutil.rmtree(found)
+            else:
+                found.unlink()
+        record = read_record(path)
+        record["pruned"] = _stamp()
+        record["pruned_bytes"] = size
+        _write_record(path, record)
+        freed += size
+    return freed
+
+
+def human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024 or unit == "GiB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GiB"

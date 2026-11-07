@@ -66,10 +66,12 @@ _STUDIES = (
 
 # ── The table: every command, deny by default ────────────────────────────────────────────────────────
 
-#: The one command that is not a maintenance run, and why.
+#: The commands that are not maintenance runs, and why. Each may still have a row, which must leave no run.
 EXCLUDED: dict[str, str] = {
     "serve": "runs the API until stopped; its writes are requests, each under the request's own rules, "
              "and a run around it would call a day of traffic one command's change",
+    "prune-runs": "deletes old runs' snapshots and touches neither the catalog nor storage; a run of it "
+                  "would copy the catalog in order to delete catalog copies",
 }
 
 #: Commands with no path that changes the catalog DB or the storage tree, and why. Each still has a row,
@@ -193,6 +195,8 @@ ROWS: tuple[Row, ...] = (
     Row("list-runs", ("list-runs",), False),
     Row("revert-run", ("revert-run", "{run}", "--yes"), True, setup=_a_run_to_revert),
     Row("replay-upgrade", ("replay-upgrade", "--offline", "-n", NS, "-m", MOD), False),
+    Row("prune-runs/dry", ("prune-runs",), False),
+    Row("prune-runs/apply", ("prune-runs", "--apply"), False),
 )
 
 
@@ -370,12 +374,12 @@ def box(seed_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Box:
 # ── The table is complete ────────────────────────────────────────────────────────────────────────────
 
 
-def test_every_command_has_a_row_and_only_serve_is_excluded() -> None:
+def test_every_command_has_a_row_and_only_serve_and_prune_runs_are_excluded() -> None:
     commands = set(typer.main.get_command(cli.app).commands)  # type: ignore[attr-defined]
     # Floor before the set comparison: an enumeration that came back near-empty would make "every
     # command has a row" vacuous. Well under today's count.
     assert len(commands) >= 30, sorted(commands)
-    assert "serve" in commands and "revert-run" in commands
+    assert "serve" in commands and "revert-run" in commands and "prune-runs" in commands
     covered = {row.command for row in ROWS}
     assert commands - covered - EXCLUDED.keys() == set(), "commands with no row in this table"
     assert covered - commands == set(), "rows for commands the CLI does not have"
@@ -550,3 +554,42 @@ def test_a_revert_is_refused_when_the_state_moved_since_the_run(
     # --force restores over the outside write: the state is the run's before, the outsider gone.
     assert (maintenance.db_digest(box.db), _tree(box.storage)) == (db_before, tree_before)
     assert _record(run)["reverted_by"] == _newest_run(box).name
+
+
+# ── Pruning, through the CLI (0.28.2) ────────────────────────────────────────────────────────────────
+
+
+def test_prune_runs_lists_then_prunes_and_a_pruned_run_refuses_to_revert(
+    box: Box, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REGISTRY_RUN_KEEP", "0")  # the command's own default (2) is under test, not the auto-prune
+    for argv in (["feature", TEST_NS], ["unfeature", NS], ["set-funding", "bob", "https://example.org/d"]):
+        assert _invoke(argv).exit_code == 0
+    oldest, *newest = sorted(_run_names(box))
+    assert len(newest) == 2
+
+    listing = _invoke(["list-runs"])
+    assert listing.exit_code == 0, listing.output
+    # Four: the three commands and the list-runs run itself, which is open while it lists.
+    assert "total " in listing.output and " in 4 run(s) under " in listing.output
+    assert "KiB" in listing.output or " B\t" in listing.output
+
+    dry = _invoke(["prune-runs"])
+    assert dry.exit_code == 0, dry.output
+    assert oldest in dry.output and "dry run: 1 run(s) would be pruned" in dry.output
+    assert (box.runs / oldest / maintenance.SNAPSHOT_FILE).is_file()
+    assert sorted(_run_names(box)) == [oldest, *newest], "prune-runs is not a run: it leaves no directory"
+
+    done = _invoke(["prune-runs", "--apply"])
+    assert done.exit_code == 0, done.output
+    assert "pruned 1 run(s)" in done.output
+    assert sorted(p.name for p in (box.runs / oldest).iterdir()) == sorted([maintenance.LOG_FILE, maintenance.RUN_FILE])
+    assert _record(box.runs / oldest)["pruned"]
+    assert all((box.runs / name / maintenance.SNAPSHOT_FILE).is_file() for name in newest)
+    assert "pruned " in _invoke(["list-runs"]).output
+
+    # Newest first, the two kept whole revert; the pruned one refuses by name, not on a missing file.
+    for name in reversed(newest):
+        assert _invoke(["revert-run", name, "--yes"]).exit_code == 0
+    refused = _invoke(["revert-run", oldest, "--yes"])
+    assert refused.exit_code == 1 and "was pruned at" in refused.output, refused.output

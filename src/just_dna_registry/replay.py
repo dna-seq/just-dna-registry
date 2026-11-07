@@ -23,18 +23,14 @@ therefore names the files that moved rather than calling a digest difference a d
 """
 
 import hashlib
-import io
 import json
 import re
 import sqlite3
-import sys
 from collections.abc import Mapping
-from contextlib import redirect_stdout
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, TextIO
+from typing import Any, Protocol
 
-import click
 import typer
 
 from just_dna_registry.config import Settings
@@ -43,6 +39,7 @@ from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.services.upgrade import is_latest_version
 from just_dna_registry.storage.base import StorageBackend, version_key
 from just_dna_registry.storage.local import LocalStorage
+from just_dna_registry.sweep_report import SweepResult
 
 #: How `services.upgrade._upgrade_changelog` opens every automated successor's changelog.
 AUTOMATED_PREFIX = "Automated upgrade of "
@@ -87,7 +84,7 @@ class Sweep(Protocol):
         online: bool,
         accept_drift: bool,
         jobs: int,
-    ) -> None: ...
+    ) -> SweepResult: ...
 
 
 # ── The overlay ──────────────────────────────────────────────────────────────────────────────────────
@@ -249,39 +246,14 @@ def original_online(successors: list[Successor]) -> bool | None:
 # ── Reading the sweep's output ───────────────────────────────────────────────────────────────────────
 
 
-class _Capture(io.TextIOBase):
-    """Passes writes through to the live stream and keeps a colourless copy."""
-
-    def __init__(self, live: TextIO) -> None:
-        self._live = live
-        self.buffer_text = io.StringIO()
-
-    def write(self, text: str) -> int:
-        self._live.write(text)
-        self.buffer_text.write(click.unstyle(text))
-        return len(text)
-
-    def flush(self) -> None:
-        self._live.flush()
-
-    def isatty(self) -> bool:
-        return self._live.isatty()
-
-    def writable(self) -> bool:
-        return True
-
-    @property
-    def encoding(self) -> str:  # type: ignore[override]
-        return getattr(self._live, "encoding", None) or "utf-8"
-
-
 @dataclass
 class SweepLines:
-    """What the sweep printed about each version, keyed by its `ns/name@version` label.
+    """What the sweep said about each version, keyed by its `ns/name@version` label.
 
-    Read from the printed lines because `_upgrade_sweep` returns nothing; each line is anchored on the
-    label the sweep itself prints, and an indented line belongs to the label line above it (a refusal's
-    drift list, a publish's digest line).
+    Parsed from the sweep's blocks (`SweepResult.text()`, the shape `--verbose` prints): each block is
+    anchored on the label line, and an indented line belongs to the label line above it (a refusal's
+    drift list, a publish's digest line). Since 0.28.2 the terminal shows the label lines only, so the
+    detail is read from the result the sweep returns rather than from what it printed.
     """
 
     published: dict[str, list[str]] = field(default_factory=dict)
@@ -470,14 +442,12 @@ def replay_upgrade(
         f"replay: {len(successors)} automated successor(s) found, {len(targets)} replayed from their "
         f"predecessors on a scratch copy ({copy}); {'online' if online else 'offline'} as the original"
     )
-    capture = _Capture(sys.stdout)
-    with redirect_stdout(capture):
-        sweep(
-            scratch_settings, repo, overlay,
-            namespace=namespace, module=module, apply=True, force=False, trim=False, limit=0,
-            online=online, accept_drift=False, jobs=jobs,
-        )
-    lines = SweepLines.parse(capture.buffer_text.getvalue())
+    swept = sweep(
+        scratch_settings, repo, overlay,
+        namespace=namespace, module=module, apply=True, force=False, trim=False, limit=0,
+        online=online, accept_drift=False, jobs=jobs,
+    )
+    lines = SweepLines.parse(swept.text())
 
     replayed = {
         (s.namespace, s.name, s.predecessor): s
@@ -520,6 +490,10 @@ def print_summary(report: ReplayReport) -> None:
         if e.replayed is not None and e.replayed.version != e.original.version:
             head += f" (replayed as {e.replayed.version})"
         typer.echo(head + (f" — {e.reason}" if e.reason else ""))
+        if e.status == NOT_REPUBLISHED:
+            # The held or refused line's detail: the reason in words, which the terminal line names by code.
+            for line in e.lines[1:]:
+                typer.echo(f"    {line}")
         if e.moved_files:
             typer.echo(f"      moved: {', '.join(e.moved_files)}")
     originals = {e.original.predecessor_label for e in entries}

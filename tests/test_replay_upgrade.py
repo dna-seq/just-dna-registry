@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 from just_dna_registry import cli
 from just_dna_registry.config import Settings, get_settings
+from just_dna_registry.maintenance import SNAPSHOT_FILE
 from just_dna_registry.replay import (
     NOT_REPLAYED,
     NOT_REPUBLISHED,
@@ -251,9 +252,14 @@ def test_a_module_held_in_the_replay_is_named_with_the_reason(
     out = capsys.readouterr().out
     [entry] = report.entries
     assert entry.status == NOT_REPUBLISHED and entry.replayed is None
-    assert entry.reason == "held: pulled from the old release"
-    assert f"{_NS}/{_NAME}@1.0.0 → 1.0.1: {NOT_REPUBLISHED} — held: pulled from the old release" in out
-    assert f"held {_NS}/coronary_two@1.0.0: pulled from the old release" in out
+    assert entry.reason == "held: snapshot_not_current"
+    assert entry.lines[1:] == ["    pulled from the old release"]
+    summary = out.split("── replay against the original run ──")[1]
+    assert (
+        f"{_NS}/{_NAME}@1.0.0 → 1.0.1: {NOT_REPUBLISHED} — held: snapshot_not_current\n"
+        "        pulled from the old release\n"
+    ) in summary
+    assert f"  … held {_NS}/coronary_two@1.0.0: snapshot_not_current\n      pulled from the old release" in summary
 
 
 def test_only_a_modules_latest_successor_is_replayed(
@@ -308,5 +314,5 @@ def test_the_command_replays_into_its_own_folder_and_logs_the_report(
     body = (run / "run.log").read_text()
     assert "── replay against the original run ──" in body and "rs1801133 moved" in body
     assert (run / "replay" / "catalog.db").is_file()
-    assert not (run / "db.sqlite").exists(), "the replay changed nothing live, so no snapshot is kept"
+    assert not (run / SNAPSHOT_FILE).exists(), "the replay changed nothing live, so no snapshot is kept"
     assert _db_dump_digest(settings.db_path) == db_dump

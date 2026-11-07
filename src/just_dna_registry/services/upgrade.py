@@ -58,6 +58,7 @@ from just_dna_registry.specfiles import (
     has_spec_data,
 )
 from just_dna_registry.storage.base import StorageBackend, version_key
+from just_dna_registry.sweep_report import HELD_NEEDS_ONLINE
 from just_dna_registry.version import contract_compatible, installed_compiler
 
 # The columns `VariantRow.upgraded()` may set, mirrored back into the CSV. `state` stays present
@@ -794,8 +795,12 @@ class UpgradeHeld(Exception):
     """A version the sweep will not re-publish under this run's switches, with the reason (M12).
 
     Not a `PublishError`: nothing was attempted, so no publish refused. The sweep reports it per module
-    and goes on.
+    and goes on, under `code` on the terminal and with the sentence in the run's log.
     """
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def upgrade_version(
@@ -842,7 +847,8 @@ def upgrade_version(
     if prep.needs_online and not online:
         raise UpgradeHeld(
             "its re-derivation needs the network: it carries an indel, and offline 0.8 cannot left-align "
-            "one (upstream RM385); re-run with --online"
+            "one (upstream RM385); re-run with --online",
+            code=HELD_NEEDS_ONLINE,
         )
     if prep.needs_online:
         settings = settings.model_copy(update={"enrich_offline": False})

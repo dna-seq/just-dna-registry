@@ -4,12 +4,12 @@ DB, and issue API keys / namespaces for the static-key auth model.
 """
 
 import json
+import logging
 import os
 import secrets
 import shlex
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
@@ -26,12 +26,18 @@ from just_dna_registry.config import DEFAULT_PORTS, VALID_MODES, Settings, get_s
 from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect, init_db
 from just_dna_registry.maintenance import (
+    LOG_FILE,
     NOT_A_RUN,
     RevertRefused,
     active_run,
+    apply_prune,
+    disk_usage,
+    human_size,
     journaled,
     list_runs,
     maintenance_run,
+    plan_prune,
+    quiet_console,
     read_record,
     revert_run,
     run_root,
@@ -58,7 +64,25 @@ from just_dna_registry.services.upgrade import (
 from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
+from just_dna_registry.sweep_report import (
+    ANOMALY,
+    BLOCKED,
+    FAILED,
+    HELD,
+    HELD_NEEDS_ONLINE,
+    HELD_SNAPSHOT,
+    PUBLISHED,
+    REFUSED,
+    UNCHANGED,
+    WOULD_UPGRADE,
+    SweepItem,
+    SweepResult,
+    WarningCounter,
+)
 from just_dna_registry.testdata import accepted_anyway, test_data_refusal
+
+#: Where a sweep's per-module detail goes: the run's log (INFO), not the terminal.
+_sweep_log = logging.getLogger("just_dna_registry.sweep")
 
 
 class _MaintenanceGroup(TyperGroup):
@@ -829,6 +853,12 @@ def upgrade(
         help="Publish a re-derivation whose drift wants reading (moved, lost_allele, renamed, "
              "undecided) after you have read it. Aim it with -m",
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Print each module's detail (drift, refusal reasons, digests) and upstream warnings on the "
+             "terminal too. Without it the terminal gets one line per module and the counts; the run's "
+             "log always has everything",
+    ),
     jobs: int = typer.Option(
         None, "--jobs", "-j", min=1,
         help="Modules re-published at once under --apply (default REGISTRY_UPGRADE_JOBS, 4). Overlaps "
@@ -861,34 +891,144 @@ def upgrade(
     moved an answer (`--accept-drift`, after reading). A held or refused module is reported and the
     sweep goes on.
 
-    **`--apply` re-publishes `--jobs` modules at once** (default 4). Planning stays in order on one
-    thread; each module's report is printed whole when it finishes, so the order is completion order."""
+    **The terminal gets one line per module** (published, refused/held with its code, unchanged with
+    its bucket, failed with the exception's type) and, at the end, counts by type; every detail line and
+    every upstream warning is in the run's `run.log` (`--verbose` prints them too). A module that fails
+    unexpectedly is reported and the sweep goes on; the command then exits 1.
+
+    **`--apply` re-publishes `--jobs` modules at once** (default 4). Planning stays in catalog order on
+    one thread; each module's line is printed whole when it finishes, so the order is completion order."""
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
     conn = connect(settings.db_path)
     init_db(conn)
-    _upgrade_sweep(
+    result = _upgrade_sweep(
         settings, Repository(conn), _storage(settings), namespace=namespace, module=module,
         apply=apply, force=force, trim=trim, limit=limit, online=online, accept_drift=accept_drift,
-        jobs=jobs or settings.upgrade_jobs,
+        verbose=verbose, jobs=jobs or settings.upgrade_jobs,
     )
+    if result.count(FAILED):
+        raise typer.Exit(code=1)
+
+
+def _act_codes(prep: VersionUpgradePlan, *, recompile: bool) -> str:
+    """Why a version acts, as codes read off the plan's own fields: the terminal's `[...]` on its line."""
+    codes: list[str] = []
+    if prep.variants_plan.needed:
+        codes.append("data_gap")
+    if prep.dropped:
+        codes.append("trim")
+    if prep.contract_acts:
+        codes.append("contract_gap")
+    if prep.verdict.acts_by_default:
+        codes.append("output_drift")
+    if not codes and recompile:
+        codes.append("forced")
+    if prep.rederive:
+        codes.append("rederive_online" if prep.needs_online else "rederive_snapshot")
+    return f"[{', '.join(codes)}]"
+
+
+def _emit(item: SweepItem, *, verbose: bool) -> None:
+    """Print one module's outcome whole, after it is done; its detail goes to the run's log.
+
+    One call per stream, so a sweep that processes modules concurrently still prints whole lines and
+    logs whole blocks. The detail record is INFO: the run's file handler takes it and the terminal's
+    (WARNING) does not, which is the whole of "full details in the log". `--verbose` prints it instead.
+    """
+    colour = {
+        PUBLISHED: typer.colors.GREEN, REFUSED: typer.colors.RED, FAILED: typer.colors.RED,
+        BLOCKED: typer.colors.RED, ANOMALY: typer.colors.RED, HELD: typer.colors.YELLOW,
+    }.get(item.status)
+    if verbose:
+        typer.secho(item.block(), fg=colour)
+        return
+    typer.secho(item.head, fg=colour)
+    if item.detail:
+        _sweep_log.info("%s", item.block())
 
 
 @dataclass
-class _Republished:
-    """What one module's re-publish came to, reported by the sweep's main thread when it finishes.
-
-    `lines` is the module's whole block in the shapes `replay.SweepLines` reads (`✓ <label> …` or
-    `✗ <label>: …`, then four-space continuations), each with its colour, so a block is printed in one
-    piece however many workers are running."""
+class _ToPublish:
+    """A version the plan says acts under `--apply`: what its worker needs, and its line's parts."""
 
     label: str
-    published: bool = False
-    refused: bool = False
-    held: str | None = None
-    drift_to_read: bool = False
-    lines: list[tuple[str, str | None]] = dataclass_field(default_factory=list)
+    namespace: str
+    name: str
+    version: str
+    manifest: ModuleManifest
+    prep: VersionUpgradePlan
+    codes: str
+    described: str
+    online_subjects: int
+
+
+def _sweep_one(
+    settings: Settings,
+    storage: StorageBackend,
+    row: Any,
+    *,
+    apply: bool,
+    force: bool,
+    trim: bool,
+    online: bool,
+    snapshot_problem: str | None,
+) -> SweepItem | _ToPublish:
+    """One latest version's plan: what became of it, or, under `--apply`, the re-publish to run."""
+    ns, name, ver = row["namespace"], row["name"], row["version"]
+    label = f"{ns}/{name}@{ver}"
+    manifest = ModuleManifest.model_validate_json(row["manifest_json"])
+    prep = prepare_version_upgrade(storage, ns, name, ver, manifest, trim=trim)
+    if prep is None:  # spec inputs not retrievable (legacy import)
+        return SweepItem(label, UNCHANGED, "no_spec_inputs", f"· {label}: unchanged no_spec_inputs")
+    if prep.blocked:
+        return SweepItem(
+            label, BLOCKED, "contract_rejects", f"✗ {label}: blocked contract_rejects (--trim --force)",
+            [f"{f}: {', '.join(c)}" for f, c in prep.blocked.items()],
+        )
+    if not prep.would_act(recompile=force):
+        if prep.verdict.anomaly:
+            return SweepItem(
+                label, ANOMALY, "identical_compiler_drift", f"! {label}: anomaly identical_compiler_drift",
+                [prep.verdict.describe()],
+            )
+        bucket = (
+            "compiler_unidentifiable" if prep.gap.scale == GAP_UNKNOWN
+            else "patch_gap" if prep.gap.scale == GAP_PATCH
+            else "current"
+        )
+        return SweepItem(label, UNCHANGED, bucket, f"· {label}: unchanged {bucket}")
+    if prep.rederive and snapshot_problem:
+        return SweepItem(label, HELD, HELD_SNAPSHOT, f"… held {label}: {HELD_SNAPSHOT}", [snapshot_problem])
+    if prep.needs_online and not online:
+        return SweepItem(
+            label, HELD, HELD_NEEDS_ONLINE, f"… held {label}: {HELD_NEEDS_ONLINE}",
+            ["carries an indel, which offline 0.8 cannot left-align; needs --online"],
+        )
+    codes = _act_codes(prep, recompile=force)
+    described = f"{_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)}"
+    online_subjects = prep.rederive_subjects if prep.needs_online else 0
+    if not apply:
+        return SweepItem(
+            label, WOULD_UPGRADE, "next_patch", f"⇧ {label}: would upgrade {codes} → next PATCH", [described],
+            online_subjects=online_subjects,
+        )
+    return _ToPublish(label, ns, name, ver, manifest, prep, codes, described, online_subjects)
+
+
+def _failed(label: str, exc: Exception) -> SweepItem:
+    """A module that failed unexpectedly: reported, never fatal to the sweep.
+
+    Through 0.28.1 an unexpected error ended the sweep at that module and left the rest of the catalog
+    unvisited. The traceback is the log's; the terminal says which module and what kind of failure, and
+    `upgrade` exits 1 at the end. INFO, so the traceback reaches the log and not the terminal (whose
+    handler takes ERROR)."""
+    _sweep_log.info("%s failed", label, exc_info=exc)
+    return SweepItem(
+        label, FAILED, type(exc).__name__, f"✗ {label}: failed {type(exc).__name__}",
+        [f"{type(exc).__name__}: {exc}"],
+    )
 
 
 def _sweep_db_file(repo: Repository) -> str | None:
@@ -905,49 +1045,49 @@ def _sweep_db_file(repo: Repository) -> str | None:
     return None
 
 
-def _republish(
+def _publish_one(
     settings: Settings,
     repo: Repository,
     db_file: str | None,
     storage: StorageBackend,
+    todo: _ToPublish,
     *,
-    label: str,
-    prep: VersionUpgradePlan,
-    manifest: ModuleManifest,
-    namespace: str,
-    name: str,
-    version: str,
     force: bool,
     trim: bool,
     online: bool,
     accept_drift: bool,
-) -> _Republished:
-    """One module's `upgrade_version`, on a worker thread, as a block for the main thread to print."""
-    own = Repository(connect(Path(db_file))) if db_file else repo
+) -> SweepItem:
+    """One planned re-publish, on a worker thread, as the item the main thread prints and counts."""
+    label, manifest = todo.label, todo.manifest
     try:
-        result = upgrade_version(
-            repo=own, storage=storage, settings=settings,
-            namespace=namespace, name=name, version=version, manifest=manifest,
-            recompile=force, trim=trim, prepared=prep, online=online, accept_drift=accept_drift,
-        )
+        own = Repository(connect(Path(db_file))) if db_file else repo
+        try:
+            result = upgrade_version(
+                repo=own, storage=storage, settings=settings,
+                namespace=todo.namespace, name=todo.name, version=todo.version, manifest=manifest,
+                recompile=force, trim=trim, prepared=todo.prep, online=online, accept_drift=accept_drift,
+            )
+        finally:
+            if own is not repo:
+                own.conn.close()
     except UpgradeHeld as exc:
-        return _Republished(label, held=f"{label}: {exc}")
+        return SweepItem(label, HELD, exc.code, f"… held {label}: {exc.code}", [str(exc)])
     except PublishError as exc:
-        return _Republished(
-            label, refused=True,
-            drift_to_read=exc.detail == "rederive_drift_needs_reading",
-            lines=[(f"✗ {label}: {exc.detail}", typer.colors.RED), *((f"    {line}", None) for line in exc.errors)],
+        return SweepItem(
+            label, REFUSED, exc.detail, f"✗ {label}: {exc.detail}", list(exc.errors),
+            online_subjects=todo.online_subjects,
         )
-    finally:
-        if own is not repo:
-            own.conn.close()
+    except Exception as exc:  # one module's failure is reported, not fatal
+        return _failed(label, exc)
     if result is None:
-        return _Republished(label)
+        return SweepItem(label, UNCHANGED, "current", f"· {label}: unchanged current")
     new_version, new_manifest = result
-    return _Republished(label, published=True, lines=[
-        (f"✓ {label} → {new_version} ({_describe_upgrade(prep, recompile=force)})", None),
-        (f"    digest {manifest.artifact.digest[:23]}… → {new_manifest.artifact.digest[:23]}…", None),
-    ])
+    return SweepItem(
+        label, PUBLISHED, new_version, f"✓ {label} → {new_version} {todo.codes}",
+        [todo.described, f"digest {manifest.artifact.digest[:23]}… → {new_manifest.artifact.digest[:23]}…"],
+        warnings_summary=dict(new_manifest.compilation.warnings_summary),
+        online_subjects=todo.online_subjects,
+    )
 
 
 def _upgrade_sweep(
@@ -963,20 +1103,24 @@ def _upgrade_sweep(
     limit: int,
     online: bool,
     accept_drift: bool,
+    verbose: bool = False,
     jobs: int = 1,
-) -> None:
+) -> SweepResult:
     """The sweep `registry upgrade` runs, over a given catalog and storage.
 
     Separate from the command so `replay-upgrade` runs the same code over a scratch copy of the
-    catalog and a storage overlay, which is what makes its report the one the lost run printed.
+    catalog and a storage overlay, which is what makes its report the one the lost run printed. It
+    returns every module's outcome (`SweepResult`), which is what the replay reads, and prints one line
+    per module and the counts at the end; the detail is in the run's log (`sweep_report`).
 
-    **Planned on this thread, re-published on `jobs` workers.** The plan (which version acts, which is
-    held or blocked) is read in catalog order here; under `--apply` each acting version is handed to a
-    worker, at most `jobs` at once so at most that many modules' files are in memory, and its block is
-    printed here when it finishes. Workers share the storage backend (the publish path commits one at
-    a time, and the run's journal is thread-safe) and open their own catalog connection. The waits
-    they overlap are the enrichment's and the compile's; live egress is paced by the shared client
-    bundle whatever the worker count. `--limit` counts versions attempted.
+    **Planned on this thread, re-published on `jobs` workers.** Each version's plan (acts, held,
+    blocked, unchanged) is read in catalog order here; under `--apply` an acting version goes to a
+    worker, at most `jobs` at once so at most that many modules' files are in memory, and its line is
+    emitted here when it finishes, so `result.items` is in completion order. Workers share the storage
+    backend (the publish path commits one at a time and the run's journal is thread-safe) and open
+    their own catalog connection. What they overlap is the enrichment's and the compile's waiting; live
+    egress paces through the shared client bundle whatever the count. `--limit` counts versions that
+    would act or were handed to a worker.
     """
     _echo_mode(settings)
     # Echoed for the reason the mode is: a switch is invisible until a rule fires, minutes in.
@@ -993,43 +1137,19 @@ def _upgrade_sweep(
     if snapshot_problem:
         typer.secho(f"re-derive refused for every module that needs it: {snapshot_problem}",
                     fg=typer.colors.YELLOW)
-    planned = upgraded = blocked = 0
-    #: Versions this run will not re-publish under its switches, and versions whose publish refused.
-    #: Both are reported per module and the sweep goes on: one module's refusal is no reason to leave
-    #: the rest of the catalog on the old contract.
-    held: list[str] = []
-    refused: list[str] = []
-    drift_to_read = False
-    online_subjects = 0
-    # Counted rather than merely skipped. A version this planner cannot date is the one shape that
-    # reads identically to "already current", which is the confusion that made `--force` the normal
-    # path in the first place — so it gets its own number in the summary and a name an operator can
-    # aim `--force -m <module>` at.
-    unidentifiable: list[str] = []
-    #: Versions on a different compiler PATCH. Not a gap, and deliberately not acted on — but counted,
-    #: for the reason `unidentifiable` is: the alternative is a silence, and a silence reads as an
-    #: all-clear. See the note printed below.
-    patch_gap: list[str] = []
-    #: Drift measured against the **identical** compiler. A recompile derives the same value again, so
-    #: acting would mint a PATCH per sweep forever — reported instead, in red, because it means
-    #: something other than a compiler upgrade put a stale value into a published manifest.
-    anomalies: list[str] = []
-    attempted = 0
+    result = SweepResult()
+    counter = WarningCounter()
+    root_logger = logging.getLogger()
+    root_logger.addHandler(counter)
     workers = max(1, jobs)
     db_file = _sweep_db_file(repo)
-    pending: set[Future[_Republished]] = set()
+    pending: set[Future[SweepItem]] = set()
+    handed = 0
 
-    def report(outcome: _Republished) -> None:
-        """Count one finished re-publish and print its block, on this thread only."""
-        nonlocal upgraded, drift_to_read
-        if outcome.held is not None:
-            held.append(outcome.held)
-        if outcome.refused:
-            refused.append(outcome.label)
-            drift_to_read = drift_to_read or outcome.drift_to_read
-        upgraded += outcome.published
-        for text, colour in outcome.lines:
-            typer.secho(text, fg=colour)
+    def report(item: SweepItem) -> None:
+        """Record one module's outcome and print its line whole, on this thread only."""
+        result.items.append(item)
+        _emit(item, verbose=verbose)
 
     def collect(at_most: int) -> None:
         """Report every finished worker, waiting until no more than `at_most` are still running."""
@@ -1044,105 +1164,108 @@ def _upgrade_sweep(
                 report(future.result())
 
     pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="upgrade") if apply else None
-    try:
-        # The 0.5 migration roughly doubles the catalog's version count and runs a full enrich+compile
-        # per module, so it is the longest ops operation the registry has. `--limit` makes it batchable.
-        for row in repo.list_all_versions(namespace):
-            if limit and (planned + attempted) >= limit:
-                typer.echo(f"\n(stopping at --limit {limit}; re-run to continue)")
-                break
-            ns, name, ver = row["namespace"], row["name"], row["version"]
-            if module is not None and name != module:
-                continue
-            # Only the latest version is upgrade-eligible — a superseded older version is immutable and
-            # already replaced, so re-upgrading it would just mint an endless chain of patches.
-            if not is_latest_version(repo, ns, name, ver):
-                continue
-            manifest = ModuleManifest.model_validate_json(row["manifest_json"])
-            prep = prepare_version_upgrade(storage, ns, name, ver, manifest, trim=trim)
-            if prep is None:  # spec inputs not retrievable (legacy import)
-                continue
-            if prep.blocked:
-                detail = "; ".join(f"{f}: {', '.join(c)}" for f, c in prep.blocked.items())
-                typer.echo(f"✗ {ns}/{name}@{ver}: contract rejects ({detail}) — "
-                           f"re-run with --trim --force to drop them")
-                blocked += 1
-                continue
-            if not prep.would_act(recompile=force):
-                if prep.verdict.anomaly:
-                    anomalies.append(f"{ns}/{name}@{ver}: {prep.verdict.describe()}")
-                elif prep.gap.scale == GAP_UNKNOWN:
-                    unidentifiable.append(f"{ns}/{name}@{ver}")
-                elif prep.gap.scale == GAP_PATCH:
-                    patch_gap.append(f"{ns}/{name}@{ver}")
-                continue
-            label = f"{ns}/{name}@{ver}"
-            if prep.rederive and snapshot_problem:
-                held.append(f"{label}: {snapshot_problem}")
-                continue
-            if prep.needs_online and not online:
-                held.append(f"{label}: carries an indel, which offline 0.8 cannot left-align; needs --online")
-                continue
-            if prep.needs_online:
-                online_subjects += prep.rederive_subjects
-            if not apply:
-                planned += 1
-                typer.echo(
-                    f"⇧ {label}: {_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)} → next PATCH"
-                )
-                continue
-            # At most `workers` running: their files are in memory until they finish.
-            collect(at_most=workers - 1)
-            attempted += 1
-            pending.add(pool.submit(
-                _republish, settings, repo, db_file, storage, label=label, prep=prep, manifest=manifest,
-                namespace=ns, name=name, version=ver, force=force, trim=trim, online=online,
-                accept_drift=accept_drift,
-            ))
-        collect(at_most=0)
-    finally:
-        if pool is not None:
-            # Reached early only by an error: what has not started is dropped, what is running
-            # finishes (a thread cannot be stopped), and whatever finished still published, so it
-            # is still reported. A worker's own error is not raised over the one unwinding.
-            for future in pending:
-                future.cancel()
-            pool.shutdown(wait=True)
-            for future in list(pending):
-                if not future.cancelled() and future.exception() is None:
-                    report(future.result())
+    # A warning an upstream logs (the enricher's re-derivation drift, a placement note) is counted on
+    # the summary and kept whole in the run's log, rather than printed between the module lines.
+    with quiet_console(enabled=not verbose):
+        try:
+            # The 0.5 migration roughly doubles the catalog's version count and runs a full
+            # enrich+compile per module, so it is the longest ops operation the registry has. `--limit`
+            # makes it batchable.
+            for row in repo.list_all_versions(namespace):
+                acted = result.count(WOULD_UPGRADE) + handed
+                if limit and acted >= limit:
+                    typer.echo(f"\n(stopping at --limit {limit}; re-run to continue)")
+                    break
+                if module is not None and row["name"] != module:
+                    continue
+                # Only the latest version is upgrade-eligible — a superseded older version is
+                # immutable and already replaced, so re-upgrading it would mint an endless chain.
+                if not is_latest_version(repo, row["namespace"], row["name"], row["version"]):
+                    continue
+                label = f"{row['namespace']}/{row['name']}@{row['version']}"
+                try:
+                    planned = _sweep_one(
+                        settings, storage, row, apply=apply, force=force, trim=trim,
+                        online=online, snapshot_problem=snapshot_problem,
+                    )
+                except Exception as exc:  # one module's failure is reported, not fatal
+                    planned = _failed(label, exc)
+                if isinstance(planned, SweepItem):
+                    report(planned)
+                    continue
+                assert pool is not None  # a re-publish is planned only under --apply
+                # At most `workers` running: their files are in memory until they finish.
+                collect(at_most=workers - 1)
+                handed += 1
+                pending.add(pool.submit(
+                    _publish_one, settings, repo, db_file, storage, planned,
+                    force=force, trim=trim, online=online, accept_drift=accept_drift,
+                ))
+            collect(at_most=0)
+        finally:
+            if pool is not None:
+                # Reached early only by an interrupt: what has not started is dropped, what is running
+                # finishes (a thread cannot be stopped), and whatever finished still published, so it
+                # is still reported.
+                for future in pending:
+                    future.cancel()
+                pool.shutdown(wait=True)
+                for future in list(pending):
+                    if not future.cancelled() and future.exception() is None:
+                        report(future.result())
+            root_logger.removeHandler(counter)
+    result.logged_warnings = counter.by_logger
+    _sweep_summary(result, apply=apply, force=force)
+    return result
 
+
+def _sweep_summary(result: SweepResult, *, apply: bool, force: bool) -> None:
+    """The sweep's last lines: the distribution, the counts by type, and the notes once per sweep."""
+    blocked, refused, held = result.count(BLOCKED), result.count(REFUSED), result.count(HELD)
+    failed = result.count(FAILED)
     blocked_note = f", {blocked} blocked (need --trim --force)" if blocked else ""
     if refused:
-        blocked_note += f", {len(refused)} refused (above)"
+        blocked_note += f", {refused} refused (above)"
     if held:
-        blocked_note += f", {len(held)} held"
+        blocked_note += f", {held} held"
+    if failed:
+        blocked_note += f", {failed} failed"
     if apply:
-        typer.echo(f"\n{upgraded} version(s) upgraded and re-published{blocked_note}")
+        typer.echo(f"\n{result.count(PUBLISHED)} version(s) upgraded and re-published{blocked_note}")
     else:
         typer.echo(
-            f"\n{planned} version(s) would upgrade{blocked_note}  (dry-run; pass --apply to publish)"
+            f"\n{result.count(WOULD_UPGRADE)} version(s) would upgrade{blocked_note}  "
+            "(dry-run; pass --apply to publish)"
         )
-    if online_subjects:
+    for line in result.problem_lines():
+        typer.echo(f"by type: {line}")
+    for line in result.warning_lines():
+        typer.echo(line)
+    run = active_run()
+    if run is not None:
+        typer.echo(f"full detail: {run.path / LOG_FILE}")
+    if any(item.online_subjects for item in result.items):
         typer.echo(
-            f"online re-derivation re-asks {online_subjects} recorded subject(s) from this process's own "
-            "pacing, which a running server does not share: run it in a quiet window"
+            f"online re-derivation re-asks {sum(item.online_subjects for item in result.items)} recorded "
+            "subject(s) from this process's own pacing, which a running server does not share: run it in "
+            "a quiet window"
         )
-    for line in held:
-        typer.secho(f"… held {line}", fg=typer.colors.YELLOW)
-    if drift_to_read:
+    if any(item.status == REFUSED and item.code == "rederive_drift_needs_reading" for item in result.items):
         typer.echo(
-            "A `rederive_drift_needs_reading` refusal lists each subject before → after; once read, "
-            "re-run with -m <module> --accept-drift."
+            "A `rederive_drift_needs_reading` refusal lists each subject before → after in the run's log; "
+            "once read, re-run with -m <module> --accept-drift."
         )
-    # **An anomaly is not a gap and is not actionable, so it prints on its own.** Drift measured
+    # **An anomaly is not a gap and is not actionable, so it is said on its own.** Drift measured
     # against the identical compiler cannot be repaired by recompiling — the recompile derives the same
     # value — so the sweep says so rather than looping. Red, because unlike everything else here it
     # means a published manifest disagrees with the compiler that allegedly produced it.
-    for line in anomalies:
+    anomalies = [item.label for item in result.items if item.status == ANOMALY]
+    if anomalies:
         typer.secho(
-            f"✗ {line}. Recompiling reproduces it, so this sweep will not act; investigate the "
-            "stored inputs or the manifest.",
+            f"{len(anomalies)} version(s) with drift measured against the identical compiler ("
+            + _listed(anomalies)
+            + "). Recompiling reproduces it, so this sweep will not act; investigate the stored inputs "
+            "or the manifest.",
             fg=typer.colors.RED,
         )
     # **A patch is not a gap, and a patch bucket is not nothing** (0.20.1). The rule is unchanged: a
@@ -1157,44 +1280,98 @@ def _upgrade_sweep(
     # that need the compile we are avoiding. `--force` is how an operator acts on those — a fallback
     # for a case the detector cannot reach, rather than the everyday lever it had to be for
     # `stats.genes` in 0.20.
+    patch_gap = [item.label for item in result.items if item.code == "patch_gap"]
     if patch_gap and not force:
         typer.secho(
-            f"{len(patch_gap)} version(s) sit on a different compiler patch "
-            f"({', '.join(patch_gap[:5])}"
-            + (f" … ({len(patch_gap)} total)" if len(patch_gap) > 5 else "")
-            + "). Every probed field was recomputed and is current; what cannot be checked without "
+            f"{len(patch_gap)} version(s) sit on a different compiler patch ({_listed(patch_gap)}). "
+            "Every probed field was recomputed and is current; what cannot be checked without "
             f"recompiling is {', '.join(UNPROBED_SURFACES)}. Check the upstream changelog for the "
             "interval, and re-run with --force -m <module> if it moved one of those.",
             fg=typer.colors.YELLOW,
         )
+    # Counted rather than merely skipped. A version this planner cannot date is the one shape that
+    # reads identically to "already current", which is the confusion that made `--force` the normal
+    # path in the first place — so it gets its own number and a name an operator can aim
+    # `--force -m <module>` at.
+    unidentifiable = [item.label for item in result.items if item.code == "compiler_unidentifiable"]
     if unidentifiable and not force:
         typer.secho(
             f"{len(unidentifiable)} version(s) skipped because the compiler that produced them "
-            f"cannot be identified — unchecked, not up to date: "
-            f"{', '.join(unidentifiable[:5])}"
-            + (f" … ({len(unidentifiable)} total)" if len(unidentifiable) > 5 else "")
-            + ". Re-run with --force to recompile them anyway.",
+            f"cannot be identified — unchecked, not up to date: {_listed(unidentifiable)}. "
+            "Re-run with --force to recompile them anyway.",
             fg=typer.colors.YELLOW,
         )
 
 
+def _listed(labels: list[str]) -> str:
+    return ", ".join(labels[:5]) + (f" … ({len(labels)} total)" if len(labels) > 5 else "")
+
+
 @app.command("list-runs")
 def list_runs_command() -> None:
-    """Maintenance runs, oldest first: what each command changed and whether it was reverted."""
+    """Maintenance runs, oldest first: what each command changed, whether it was reverted or pruned,
+    and what it holds on disk, with the total."""
     settings = get_settings()
     runs = list_runs(settings)
     if not runs:
         typer.echo(f"no runs under {run_root(settings)}")
         return
+    total = 0
     for path in runs:
         record = read_record(path)
-        if record.get("reverted_by"):
+        if record.get("pruned"):
+            state = f"pruned {record['pruned']}"
+        elif record.get("reverted_by"):
             state = f"reverted by {record['reverted_by']}"
         elif record.get("changed"):
             state = "changed"
         else:
             state = "no change"
-        typer.echo(f"{record['id']}\t{record.get('outcome')}\t{state}\t{record.get('invocation')}")
+        size = disk_usage(path)
+        total += size
+        typer.echo(
+            f"{record['id']}\t{record.get('outcome')}\t{state}\t{human_size(size)}\t{record.get('invocation')}"
+        )
+    # Every command also copies the catalog before it acts and drops the copy if nothing changed, so a
+    # command briefly needs about the DB's size free on this volume, on top of what is listed here.
+    typer.echo(
+        f"total {human_size(total)} in {len(runs)} run(s) under {run_root(settings)}; a command also needs "
+        f"about {human_size(disk_usage(settings.db_path.resolve()))} free while it runs (the catalog copy)"
+    )
+
+
+@app.command("prune-runs")
+def prune_runs_command(
+    keep: int = typer.Option(
+        None, "--keep", min=1,
+        help="Revertible runs (and replays) to keep whole. Default: REGISTRY_RUN_KEEP, or 2 when that is 0",
+    ),
+    apply: bool = typer.Option(False, "--apply/--dry-run", help="Delete (default: list what would go)"),
+) -> None:
+    """Free the disk old runs hold, keeping their logs.
+
+    Keeps the newest revertible runs whole, and the newest `replay-upgrade` scratch trees; every other run
+    loses its catalog snapshot, journal, `storage/` and `replay/` and keeps `run.log` and `run.json`,
+    marked `pruned`, so `revert-run` refuses it by name. Revert goes newest first, so pruning the older
+    runs never strands one that could still be reverted. The same prune runs at the end of every command
+    (`REGISTRY_RUN_KEEP`); this is for room now. Not a run itself: it would copy the catalog in order to
+    delete catalog copies."""
+    settings = get_settings()
+    keep = keep or settings.run_keep or 2
+    plan = plan_prune(settings, keep)
+    if not plan.prune:
+        typer.echo(f"nothing to prune (keeping the newest {keep} revertible run(s) and replay(s) whole)")
+        return
+    for name, size in plan.prune:
+        typer.echo(f"  {name}\t{human_size(size)}")
+    if not apply:
+        typer.echo(
+            f"dry run: {len(plan.prune)} run(s) would be pruned, {human_size(plan.freed)} freed "
+            f"(keeping {keep} whole). Re-run with --apply."
+        )
+        return
+    freed = apply_prune(settings, plan)
+    typer.secho(f"pruned {len(plan.prune)} run(s), {human_size(freed)} freed", fg=typer.colors.GREEN)
 
 
 @app.command("revert-run")

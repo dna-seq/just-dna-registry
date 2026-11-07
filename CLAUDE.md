@@ -815,15 +815,31 @@ running server, and one direction arms a delete endpoint on production data.
   flipping the field would be the same contradiction rewritten backwards.
 - **Every `registry` command is a maintenance run** (0.28.1, `maintenance.py`), opened in the CLI's
   dispatch so a new command inherits it: its log, the catalog snapshot taken before it acts (sqlite's
-  backup API), and a journal of every stored file it adds, overwrites or removes, with prior bytes.
+  backup API into a temp file, then gzipped), and a journal of every stored file it adds, overwrites or
+  removes, with prior bytes (gzipped). The reader goes by the file it finds (`snapshot_path`,
+  `read_capture`), so a 0.28.1 run's raw copies still revert.
   `revert-run` undoes one newest-first and reads the DB and every journaled file back; it refuses
   over a change made since (a server's write) unless `--force`, and is a run itself. Three rules
   keep it whole. **Storage goes through `_storage()`**, which journals inside a run: a backend built
-  any other way writes files no revert can see. **`serve` is the one exclusion** (`NOT_A_RUN`): its
-  writes are requests. **`test_maintenance_commands.py` enumerates every command** and reverts each
-  changing one to the byte, DB and storage tree both, so a new command without a row fails. Hard
+  any other way writes files no revert can see. **`serve` is the one exclusion that runs** (`NOT_A_RUN`):
+  its writes are requests. **`test_maintenance_commands.py` enumerates every command** and reverts each
+  changing one to the byte, DB and storage tree both, so a new command without a row fails. **Runs
+  are pruned** (0.28.2): every run ends with `plan_prune` per `REGISTRY_RUN_KEEP` (default 2, `0` off),
+  keeping the newest N revertible runs and the newest N replays whole and leaving every other run its
+  `run.log` and `run.json`, marked `pruned`, which `revert_run` refuses by name. `prune-runs` is the
+  second `NOT_A_RUN`: a run of it would copy the catalog to delete catalog copies. Hard
   delete stays CLI-only and production still mounts no delete. `registry backup` stays for a
   snapshot outside any command, and its index still only counts up.
+- **A long command's terminal is one line per item; the run's log is the detail** (0.28.2,
+  `sweep_report.py`). `upgrade`'s sweep builds a `SweepItem` per module (a head carrying a status and a
+  code, and the detail lines), prints the head whole once the module is done, and logs the block as one
+  INFO record on `just_dna_registry.sweep`, which the run's file handler takes and its terminal handler
+  (WARNING) does not. `quiet_console()` keeps upstream WARNING records off the terminal meanwhile, and a
+  `WarningCounter` counts them by logger. The summary counts by *type*, and a type is a table over codes
+  something already emitted (`PublishError.detail`, the sweep's hold codes, an exception's class name,
+  upstream's `warnings_summary` keys split only by `CARRIED_WARNING_CODES`, a logger's package), never a
+  sentence; a code the table does not name is `other`, still shown with its code. `replay-upgrade` reads
+  the `SweepResult` the sweep returns: parsing the terminal would see heads only.
 - **A site admin is an elevated *role*, never an extra *route*.** `accounts.site_admin` makes
   `deps.effective_role` answer `owner` on every namespace that exists, and it does that in one place
   so no router learns about it. Keep both limits. An unclaimed namespace stays `403`, or the flag

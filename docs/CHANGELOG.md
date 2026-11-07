@@ -12,14 +12,15 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 `upgrade` and `replay-upgrade` take `--jobs N` (default `REGISTRY_UPGRADE_JOBS`, 4). The plan is still read
 in catalog order on one thread; each acting version is re-published on a worker, at most N at once, and its
-report block is printed whole when it finishes, so the output is in completion order and `replay-upgrade`
-still reads every block. A module's re-publish is mostly waiting (an online module's cold Ensembl lookups
-at 7-18 s each, the compile), so the workers overlap the waits; they do not raise the request rate, since
-every live client paces through the one shared bundle, and an online enrichment with `enrich_verify_rsids`
-or `enrich_verify_datasets` on (whose clients `enrich()` builds per run) takes a process lock. Each worker
-opens its own catalog connection, publishes still commit one at a time, and the run's storage journal is
-now thread-safe on its own: a capture file was named by the entry count, so two writers could take one
-name. `--limit` now counts versions attempted rather than versions published.
+one line is printed whole when it finishes (its detail to `run.log`), so the output and the returned
+result are in completion order. A module's re-publish is mostly waiting (an online module's cold Ensembl
+lookups at 7-18 s each, the compile), so the workers overlap the waits; they do not raise the request rate,
+since every live client paces through the one shared bundle, and an online enrichment with
+`enrich_verify_rsids` or `enrich_verify_datasets` on (whose clients `enrich()` builds per run) takes a
+process lock. Each worker opens its own catalog connection, publishes still commit one at a time, and the
+run's storage journal is now thread-safe on its own: a capture file was named by the entry count, so two
+writers could take one name. `--limit` counts versions that would act or were handed to a worker, rather
+than versions published.
 
 **Client surface:** unchanged.
 
@@ -44,6 +45,41 @@ fixed.
 fresh pacing gate. Both pass it now, and a test reads every client `enrich()` accepts off its signature
 and requires the bundle's own on both paths, so the next client upstream adds fails a test rather than
 pacing per call.
+
+**Client surface:** unchanged.
+
+### `registry prune-runs`, and every run prunes the old ones when it ends
+
+`registry prune-runs [--keep N] [--apply]` keeps the newest N revertible runs whole (default
+`REGISTRY_RUN_KEEP`, or 2), and the newest N `replay-upgrade` scratch trees; every other run loses its
+catalog snapshot, journal, `storage/` and `replay/` and keeps `run.log` and `run.json`, marked `pruned`.
+Dry run by default, listing each run and the bytes it would free. `revert-run` on a pruned run refuses
+and names the prune. The same prune runs at the end of every command, per the new
+`REGISTRY_RUN_KEEP` (default 2, `0` turns it off), so a box nobody watches stays bounded. `prune-runs` is
+not itself a run. `list-runs` shows each run's size, the total, and the catalog copy every command
+briefly needs free while it runs.
+
+### `registry upgrade` prints one line per module; the detail is in the run's log
+
+The terminal now gets one line per module, written whole once the module is done (so a concurrent sweep
+cannot interleave them): `✓ ns/m@1.0.0 → 1.0.1 [contract_gap, rederive_snapshot]`, `✗ …:
+rederive_drift_needs_reading`, `… held …: needs_online` or `snapshot_not_current`, `· …: unchanged
+patch_gap`, `✗ …: failed TimeoutError`. The sweep ends on the same distribution line as before, then
+counts by type (`by type: drift to read 2 (refused rederive_drift_needs_reading 2)`, network, snapshot,
+timeout, validation, …), the compile warnings in the published successors by upstream warning code
+(actionable and carried apart), the upstream warnings logged during the sweep by logger, and the path of
+`run.log`. Every count is keyed by a code the sweep already had, never by a sentence. Drift subjects,
+refusal reasons, digests and enricher warnings go to `run.log` only; `upgrade --verbose` prints them too.
+A module that fails unexpectedly no longer ends the sweep: it is one `failed` line, its traceback is in the
+log, and the command exits 1. `replay-upgrade` reads the sweep's returned result rather than its printed
+lines, and its comparison block prints a held or refused module's reason under it.
+
+### A run's backups are stored gzipped
+
+The catalog copy a run takes before it acts is now `db.sqlite.gz` (sqlite's backup API into a temporary
+file, then compressed, so a server writing beside it is still safe), and the prior bytes of each stored
+file it overwrote or removed are `storage/NNNNNN.gz`. `revert-run` decompresses and reads both back to
+the byte. Runs written by 0.28.1 (raw `db.sqlite`, raw captures) still revert. `replay/` stays readable.
 
 **Client surface:** unchanged.
 
