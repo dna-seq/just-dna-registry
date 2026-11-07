@@ -20,7 +20,9 @@ since every live client paces through the one shared bundle, and an online enric
 process lock. Each worker opens its own catalog connection, publishes still commit one at a time, and the
 run's storage journal is now thread-safe on its own: a capture file was named by the entry count, so two
 writers could take one name. `--limit` counts versions that would act or were handed to a worker, rather
-than versions published.
+than versions published. What it does not speed up, measured: an offline re-derivation is ~9 s of duckdb
+scanning the Ensembl snapshot per module, already on every core (six modules: 45 s on one worker, 50 s on
+four), so the gain is on `--online`, where a module waits on live lookups.
 
 **Client surface:** unchanged.
 

@@ -129,7 +129,10 @@ raise the request rate, which every live client paces through one shared bundle.
 spends its time, measured 2026-11-07: a cold Ensembl lookup is 7-18 s at the server and they are asked one
 rsID at a time, so a module whose snapshot answers fall through to live Ensembl costs minutes (660 s for
 38 lookups, 26 of them timing out at 15 s). `REGISTRY_ENRICH_HTTP_TIMEOUT_SECONDS=30` lets the slow tail
-answer once instead of timing out and retrying cold; a shorter timeout makes it worse.
+answer once instead of timing out and retrying cold; a shorter timeout makes it worse. Workers help
+the waiting, not the snapshot pass: an offline re-derivation spends ~9 s of its ~10 s in duckdb scans of
+the Ensembl snapshot by rsID, which already use every core, so six modules took 45 s on one worker and
+50 s on four. Expect `--jobs` to pay off on `--online` and leave the offline sweep where it was.
 
 **5. Read the drift the sweep held.** A re-derivation reports each subject whose answer changed, in one of
 upstream's seven arms. `respelled`, `gained_allele` and `gained_rsid` publish and are counted in the
