@@ -45,6 +45,12 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   `sources.csv` gains a `dbsnp` resolution row; we carry witness names verbatim (`models/api.py:207`, no copy of the
   vocabulary) and charge `/hint` for a live Ensembl *answer* only (`services/hints.reconcile_ensembl`), so nothing
   here moves. A run with the merge check off counts those indels as not asked. RM406 filed and parked.
+- **Their `main` past `v0.8.1`, unreleased** (read 2026-11-07): **RM408** (`7c075b7`) gives the Open Targets lane
+  `publish_repo` (`just-dna-seq/opentargets`) and a pull route, a patch with no new public name. Nothing here
+  moves in code: `warm-caches` takes the route off the lane, and `drop-caches` asks `--force` only for a lane
+  whose route is not `pull` (`services/cache_drop.py:170`), so a pulled Open Targets lane drops without it once
+  shipped. At its publish, one sentence goes stale: `services/cache_drop.py:19` ("OpenTargets a long build"); the
+  lead's to change with the floor, if the floor moves.
 
 ## What the registry uses
 
