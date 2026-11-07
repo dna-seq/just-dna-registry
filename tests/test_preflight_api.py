@@ -777,7 +777,7 @@ def test_an_ensembl_that_never_answered_is_unchecked_rather_than_absent(
         "shared_lookup_clients",
         lambda: SimpleNamespace(
             ensembl=_UnreachableEnsembl(), ontology=None, gnomad=None, eutils=None,
-            europepmc=None, crossref=None,
+            europepmc=None, crossref=None, grch37=None,
         ),
     )
     resp = _app(tmp_path, enrich_verify_ref=False).post(
@@ -1086,7 +1086,7 @@ def test_the_identifier_pass_grades_traits_and_genes_without_gating_publish(
         "shared_lookup_clients",
         lambda: SimpleNamespace(
             ontology=_Ontology(), gnomad=None, ensembl=None, eutils=None,
-            europepmc=None, crossref=None,
+            europepmc=None, crossref=None, grch37=None,
         ),
     )
     variants = (
@@ -1161,7 +1161,7 @@ def test_a_gene_on_another_chromosome_is_a_finding_of_its_own(
         "shared_lookup_clients",
         lambda: SimpleNamespace(
             ontology=_ontology_placing_the_gene_on("16"), gnomad=None, ensembl=None,
-            eutils=None, europepmc=None, crossref=None,
+            eutils=None, europepmc=None, crossref=None, grch37=None,
         ),
     )
     # The variant is authored on chromosome 10; HGNC puts its gene on 16.
@@ -1205,7 +1205,7 @@ def test_an_uncomparable_gene_locus_says_so_rather_than_reporting_clean(
         "shared_lookup_clients",
         lambda: SimpleNamespace(
             ontology=_ontology_placing_the_gene_on(None), gnomad=None, ensembl=None,
-            eutils=None, europepmc=None, crossref=None,
+            eutils=None, europepmc=None, crossref=None, grch37=None,
         ),
     )
     resp = _app(tmp_path, enrich_verify_ref=False).post(
@@ -1290,7 +1290,7 @@ def _bundle(**over):
 
     base = {
         "ensembl": None, "gnomad": None, "eutils": None,
-        "europepmc": None, "crossref": None, "ontology": None,
+        "europepmc": None, "crossref": None, "ontology": None, "grch37": None,
     }
     base.update(over)
     return SimpleNamespace(**base)
