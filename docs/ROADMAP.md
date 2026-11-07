@@ -594,7 +594,7 @@ in [CLAUDE.md](../CLAUDE.md) under *The caching proxy*; the reasoning per surfac
 
 ---
 
-## 0.28 — format 0.8 adoption, with the rename and the client fixes (scope; sized by the pm)
+## 0.28 — format 0.8 adoption, with the rename and the client fixes (sized by the pm; published 2026-11-06) ✅
 
 Sized 2026-11-04 with the maintainer, from the liaison's adoption map (`docs/UPSTREAM_COMPILER.md`, "The
 coming minor", rows M1–M7, and M8–M11 added the same day from the branch at `503730c`) and the open entries under *Next registry version*. The lead builds it; each
