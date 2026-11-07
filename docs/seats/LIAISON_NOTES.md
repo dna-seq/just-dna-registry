@@ -58,6 +58,7 @@ reset").
   files the moment before: the pm staged in between. `--only` commits the named paths whatever else is staged.
 - reflect after 2026-11-11: classes/base/BASE.md as of v0.1.127 (kit reports filed without asking, timed by cost).
 - reflect after 2026-11-12: classes/base/BASE.md as of v0.1.136 (commit by path in a shared clone; my #286).
+- reflect after 2026-11-14: classes/base/BASE.md as of v0.1.141 (sessions sent to the `kit-tools` skill before a step goes to the person or a helper is built).
 - reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137 ("An in-house release"; concern raised 2026-11-06 in `#just-dna-registry > seats`: the priming keeps a minor with the lead, a patch is the weekly bump's); amended in v0.1.138 (a priming may keep a minor with the lead; the liaison reports the publish). The `compiler` tag watcher hears in-house tags from v0.1.137 (#287); it was silent on `v0.8.0`.
 
 ## Backlog, in order
