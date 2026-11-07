@@ -8,6 +8,15 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### A run's backups are stored gzipped
+
+The catalog copy a run takes before it acts is now `db.sqlite.gz` (sqlite's backup API into a temporary
+file, then compressed, so a server writing beside it is still safe), and the prior bytes of each stored
+file it overwrote or removed are `storage/NNNNNN.gz`. `revert-run` decompresses and reads both back to
+the byte. Runs written by 0.28.1 (raw `db.sqlite`, raw captures) still revert. `replay/` stays readable.
+
+**Client surface:** unchanged.
+
 ## [0.28.1] — 2026-11-07
 
 ### Every maintenance command is logged, snapshotted first, and revertible

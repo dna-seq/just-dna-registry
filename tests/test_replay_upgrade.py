@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 from just_dna_registry import cli
 from just_dna_registry.config import Settings, get_settings
+from just_dna_registry.maintenance import SNAPSHOT_FILE
 from just_dna_registry.replay import (
     NOT_REPLAYED,
     NOT_REPUBLISHED,
@@ -308,5 +309,5 @@ def test_the_command_replays_into_its_own_folder_and_logs_the_report(
     body = (run / "run.log").read_text()
     assert "── replay against the original run ──" in body and "rs1801133 moved" in body
     assert (run / "replay" / "catalog.db").is_file()
-    assert not (run / "db.sqlite").exists(), "the replay changed nothing live, so no snapshot is kept"
+    assert not (run / SNAPSHOT_FILE).exists(), "the replay changed nothing live, so no snapshot is kept"
     assert _db_dump_digest(settings.db_path) == db_dump

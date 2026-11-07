@@ -4,6 +4,7 @@ The per-command half (every `registry` command, seeded catalog, revert to the by
 `test_maintenance_commands.py`; this file drives `maintenance_run` and `revert_run` directly.
 """
 
+import gzip
 import json
 import logging
 import sqlite3
@@ -15,6 +16,7 @@ import pytest
 
 from just_dna_registry.config import Settings
 from just_dna_registry.maintenance import (
+    SNAPSHOT_FILE,
     RevertRefused,
     db_digest,
     journaled,
@@ -75,7 +77,7 @@ def test_a_changing_run_keeps_log_snapshot_and_journal_and_reverts_without_remna
 
     record = read_record(run.path)
     assert record["changed"] is True and record["outcome"] == "ok" and record["db_before"] == db_before
-    assert db_digest(run.path / "db.sqlite") == db_before
+    assert db_digest(run.path / SNAPSHOT_FILE) == db_before
     log = (run.path / "run.log").read_text()
     assert log.startswith("# registry rename-account a b --apply") and "did it" in log and "a record" in log
     journal = [json.loads(line) for line in (run.path / "journal.jsonl").read_text().splitlines()]
@@ -138,7 +140,7 @@ def test_an_unchanged_run_leaves_nothing_unless_its_report_is_the_point(tmp_path
     with maintenance_run(settings, "upgrade", "registry upgrade --dry-run") as kept:
         click.echo("held ns/m@1.0.0: needs --online")
     assert [p.name for p in list_runs(settings)] == [kept.id]
-    assert (kept.path / "run.log").is_file() and not (kept.path / "db.sqlite").exists()
+    assert (kept.path / "run.log").is_file() and not (kept.path / SNAPSHOT_FILE).exists()
     assert "held ns/m@1.0.0" in (kept.path / "run.log").read_text()
 
 
@@ -173,7 +175,7 @@ def test_no_db_before_reverts_to_no_db(tmp_path: Path) -> None:
     settings = Settings(db_path=tmp_path / "fresh.db", run_dir=tmp_path / "runs")
     with maintenance_run(settings, "init-db", "x") as run:
         sqlite3.connect(settings.db_path).execute("CREATE TABLE t (k)").connection.commit()
-    assert read_record(run.path)["db_before"] is None and not (run.path / "db.sqlite").exists()
+    assert read_record(run.path)["db_before"] is None and not (run.path / SNAPSHOT_FILE).exists()
     revert_run(settings, run.id, LocalStorage(tmp_path / "store"))
     assert not settings.db_path.exists()
 
@@ -208,4 +210,60 @@ def test_a_failed_run_that_changed_nothing_keeps_no_snapshot(tmp_path: Path) -> 
     settings = _settings(tmp_path)
     with pytest.raises(click.exceptions.Exit), maintenance_run(settings, "revert-run", "x") as run:
         raise click.exceptions.Exit(1)
-    assert (run.path / "run.log").is_file() and not (run.path / "db.sqlite").exists()
+    assert (run.path / "run.log").is_file() and not (run.path / SNAPSHOT_FILE).exists()
+
+
+def test_the_snapshot_and_the_captures_are_stored_gzipped_and_revert_to_the_byte(tmp_path: Path) -> None:
+    """0.28.2: a run's catalog copy and its captured prior bytes are compressed, and come back exact."""
+    settings = _settings(tmp_path)
+    # Compressible on purpose, so "smaller than the source" is a property and not luck.
+    _write(settings, "INSERT INTO t VALUES ('pad', '" + "x" * 200_000 + "')")
+    store = LocalStorage(settings.local_storage_dir)
+    prior = b"parquet-ish " * 10_000
+    store.store_module("ns/m/1.0.0", {"data/a.parquet": prior})
+    db_before, tree_before = db_digest(settings.db_path), _tree(store.root)
+
+    with maintenance_run(settings, "rename-account", "x") as run:
+        journaled(store).store_module("ns/m/1.0.0", {"data/a.parquet": b"new"})
+        _write(settings, "UPDATE t SET v = '2' WHERE k = 'a'")
+
+    snapshot = run.path / SNAPSHOT_FILE
+    assert snapshot.name.endswith(".gz") and not (run.path / "db.sqlite").exists()
+    assert gzip.decompress(snapshot.read_bytes())[:16] == b"SQLite format 3\x00"
+    assert snapshot.stat().st_size < settings.db_path.stat().st_size
+    assert db_digest(snapshot) == db_before
+    [entry] = [json.loads(line) for line in (run.path / "journal.jsonl").read_text().splitlines()]
+    capture = run.path / entry["before"]
+    assert capture.suffix == ".gz" and gzip.decompress(capture.read_bytes()) == prior
+    assert capture.stat().st_size < len(prior)
+    assert not list(run.path.glob(".*.tmp")), "the backup API's temporary file was left behind"
+
+    revert_run(settings, run.id, store)
+    assert db_digest(settings.db_path) == db_before and _tree(store.root) == tree_before
+
+
+def test_a_run_written_raw_by_0_28_1_still_reverts(tmp_path: Path) -> None:
+    """The polygon holds runs from before compression: raw `db.sqlite` and raw captures."""
+    settings = _settings(tmp_path)
+    store = LocalStorage(settings.local_storage_dir)
+    store.store_module("ns/m/1.0.0", {"manifest.json": b"old"})
+    db_before, tree_before = db_digest(settings.db_path), _tree(store.root)
+    with maintenance_run(settings, "rename-account", "x") as run:
+        journaled(store).store_module("ns/m/1.0.0", {"manifest.json": b"new"})
+        _write(settings, "INSERT INTO t VALUES ('b', '2')")
+
+    # Rewrite the run as 0.28.1 left it.
+    (run.path / "db.sqlite").write_bytes(gzip.decompress((run.path / SNAPSHOT_FILE).read_bytes()))
+    (run.path / SNAPSHOT_FILE).unlink()
+    journal = run.path / "journal.jsonl"
+    entries = [json.loads(line) for line in journal.read_text().splitlines()]
+    for entry in entries:
+        packed = run.path / entry["before"]
+        raw = packed.with_suffix("")
+        raw.write_bytes(gzip.decompress(packed.read_bytes()))
+        packed.unlink()
+        entry["before"] = raw.relative_to(run.path).as_posix()
+    journal.write_text("".join(json.dumps(e) + "\n" for e in entries))
+
+    revert_run(settings, run.id, store)
+    assert db_digest(settings.db_path) == db_before and _tree(store.root) == tree_before

@@ -807,7 +807,9 @@ running server, and one direction arms a delete endpoint on production data.
   flipping the field would be the same contradiction rewritten backwards.
 - **Every `registry` command is a maintenance run** (0.28.1, `maintenance.py`), opened in the CLI's
   dispatch so a new command inherits it: its log, the catalog snapshot taken before it acts (sqlite's
-  backup API), and a journal of every stored file it adds, overwrites or removes, with prior bytes.
+  backup API into a temp file, then gzipped), and a journal of every stored file it adds, overwrites or
+  removes, with prior bytes (gzipped). The reader goes by the file it finds (`snapshot_path`,
+  `read_capture`), so a 0.28.1 run's raw copies still revert.
   `revert-run` undoes one newest-first and reads the DB and every journaled file back; it refuses
   over a change made since (a server's write) unless `--force`, and is a run itself. Three rules
   keep it whole. **Storage goes through `_storage()`**, which journals inside a run: a backend built

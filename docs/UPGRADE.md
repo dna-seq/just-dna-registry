@@ -68,7 +68,8 @@ Not run against either box (they are the operator's). The fallback is removed on
 `fallback`.
 
 **Every `registry` command is a run (0.28.1)**: its log, the catalog as it was before it, and the stored
-files it wrote, under `runs/<id>/` beside the DB. The path is printed first and last. Read the held modules
+files it wrote, under `runs/<id>/` beside the DB (since 0.28.2 the catalog copy and the stored files'
+prior bytes are gzipped; a 0.28.1 run's raw copies still revert). The path is printed first and last. Read the held modules
 out of `run.log` before `--accept-drift`; `registry revert-run <id>` undoes an `--apply`, stored files
 included (stop the server first). On 0.28.0, `tee` the output and `registry backup` by hand.
 

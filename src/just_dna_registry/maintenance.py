@@ -11,10 +11,14 @@ a fact of running a command, which a new command inherits without doing anything
 A run is a directory `<run root>/<run id>/` (the root is `REGISTRY_RUN_DIR`, else `runs/` beside the DB):
 
 - `run.log`: everything the command printed, colour stripped, and log records at INFO and above.
-- `db.sqlite`: the catalog as it was before the command (sqlite's backup API, consistent with a live
-  server writing beside it); absent when there was no DB.
+- `db.sqlite.gz`: the catalog as it was before the command (sqlite's backup API into a temporary file,
+  consistent with a live server writing beside it, then gzipped); absent when there was no DB.
 - `journal.jsonl` + `storage/`: every stored file the command added, overwrote or removed, with the
-  bytes it had before, captured before the write (`JournaledStorage`).
+  bytes it had before, captured before the write (`JournaledStorage`) and gzipped (`NNNNNN.gz`).
+
+**Backups are compressed and read by suffix** (0.28.2). A run copied the whole catalog raw, and a
+polygon with little spare disk kept one per changing command. A run written by 0.28.1 (raw `db.sqlite`,
+raw captures) still reverts: the reader decides by the file it finds, never by the version.
 - `run.json`: the invocation, outcome, and the DB digest before and after.
 
 A run that changed nothing and succeeded is deleted at the end, except for the commands in
@@ -29,6 +33,7 @@ The DB is compared by `db_digest`, over sqlite's logical dump rather than the fi
 moved by a no-op migration is not a change and a restored snapshot compares equal to its source.
 """
 
+import gzip
 import hashlib
 import io
 import json
@@ -53,7 +58,9 @@ from just_dna_registry.storage.base import StorageBackend
 RUN_DIRNAME = "runs"
 RUN_FILE = "run.json"
 LOG_FILE = "run.log"
-SNAPSHOT_FILE = "db.sqlite"
+SNAPSHOT_FILE = "db.sqlite.gz"
+#: The raw snapshot 0.28.1 wrote. Read, never written: runs on a box from before 0.28.2 still revert.
+LEGACY_SNAPSHOT_FILE = "db.sqlite"
 JOURNAL_FILE = "journal.jsonl"
 CAPTURE_DIR = "storage"
 
@@ -81,19 +88,53 @@ def run_root(settings: Settings) -> Path:
 
 
 def db_digest(path: Path) -> str | None:
-    """sha256 over the DB's logical dump, or `None` when there is no DB. The oracle for "as it was"."""
+    """sha256 over the DB's logical dump, or `None` when there is no DB. The oracle for "as it was".
+
+    A gzipped snapshot (`*.gz`) is read through a temporary copy, so the same oracle compares a run's
+    compressed snapshot with the live catalog.
+    """
     path = Path(path)
     if not path.is_file():
         return None
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    with _plain_db(path) as plain:
+        conn = sqlite3.connect(f"file:{plain}?mode=ro", uri=True)
+        try:
+            digest = hashlib.sha256()
+            for line in conn.iterdump():
+                digest.update(line.encode("utf-8"))
+                digest.update(b"\n")
+            return digest.hexdigest()
+        finally:
+            conn.close()
+
+
+@contextmanager
+def _plain_db(path: Path) -> Iterator[Path]:
+    """`path` as a sqlite file: itself when raw, a temporary gunzipped copy beside it when `*.gz`."""
+    if path.suffix != ".gz":
+        yield path
+        return
+    plain = path.with_name(f".{path.stem}.{_stamp(precise=True)}.tmp")
     try:
-        digest = hashlib.sha256()
-        for line in conn.iterdump():
-            digest.update(line.encode("utf-8"))
-            digest.update(b"\n")
-        return digest.hexdigest()
+        with gzip.open(path, "rb") as packed, plain.open("wb") as out:
+            shutil.copyfileobj(packed, out)
+        yield plain
     finally:
-        conn.close()
+        plain.unlink(missing_ok=True)
+
+
+def snapshot_path(run_path: Path) -> Path | None:
+    """The run's catalog snapshot, compressed or (written by 0.28.1) raw, or `None` when it has none."""
+    for name in (SNAPSHOT_FILE, LEGACY_SNAPSHOT_FILE):
+        if (run_path / name).is_file():
+            return run_path / name
+    return None
+
+
+def read_capture(path: Path) -> bytes:
+    """A journaled file's prior bytes: gunzipped when the capture is `*.gz`, as stored when raw (0.28.1)."""
+    data = path.read_bytes()
+    return gzip.decompress(data) if path.suffix == ".gz" else data
 
 
 def _sha256(data: bytes) -> str:
@@ -101,15 +142,26 @@ def _sha256(data: bytes) -> str:
 
 
 def _copy_db(source: Path, dest: Path) -> None:
-    """Copy a catalog with sqlite's backup API, which reads a consistent state under a live writer."""
+    """Snapshot a catalog to `dest`, gzipped.
+
+    sqlite's backup API reads a consistent state under a live writer, and it needs a database to write
+    into, so it fills a temporary file beside `dest` which is then compressed and removed. Compressing
+    the live file directly would read pages mid-write.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
+    plain = dest.with_name(f".{dest.name}.tmp")
     src = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-    out = sqlite3.connect(dest)
+    out = sqlite3.connect(plain)
     try:
         src.backup(out)
     finally:
         out.close()
         src.close()
+    try:
+        with plain.open("rb") as raw, gzip.open(dest, "wb", compresslevel=6) as packed:
+            shutil.copyfileobj(raw, packed)
+    finally:
+        plain.unlink(missing_ok=True)
 
 
 _API_KEY = re.compile(r"\bmk_(live|test)_[A-Za-z0-9_-]+")
@@ -184,10 +236,11 @@ class Run:
         """Journal one stored file, capturing its prior bytes, before the write that changes it."""
         captured: str | None = None
         if before is not None:
-            captured = f"{CAPTURE_DIR}/{len(self.entries):06d}"
+            captured = f"{CAPTURE_DIR}/{len(self.entries):06d}.gz"
             target = self.path / captured
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(before)
+            # mtime=0: the capture's bytes depend on the file alone, never on when it was taken.
+            target.write_bytes(gzip.compress(before, compresslevel=6, mtime=0))
         entry = {
             "op": op, "key": key, "name": name, "before": captured,
             "after_sha256": _sha256(after) if after is not None else None,
@@ -416,6 +469,12 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
                 + ". Restoring would destroy those changes (--force to do it anyway)."
             )
 
+    # Found before anything is undone: a revert that restored the files and then found no snapshot
+    # would leave the catalog and the storage from two different moments.
+    snapshot = snapshot_path(path) if record["db_before"] is not None else None
+    if record["db_before"] is not None and snapshot is None:
+        raise RevertRefused(f"run {run_id} has no catalog snapshot to restore")
+
     restored = removed = 0
     for entry in reversed(entries):
         key, name = entry["key"], entry["name"]
@@ -423,21 +482,22 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
             storage.remove_file(key, name)
             removed += 1
         else:
-            storage.store_module(key, {name: (path / entry["before"]).read_bytes()})
+            storage.store_module(key, {name: read_capture(path / entry["before"])})
             restored += 1
 
     db_path = settings.db_path.resolve()
-    snapshot = path / SNAPSHOT_FILE
     if record["db_before"] is None:
         db_path.unlink(missing_ok=True)
     else:
-        source = sqlite3.connect(f"file:{snapshot}?mode=ro", uri=True)
-        live = sqlite3.connect(db_path)
-        try:
-            source.backup(live)
-        finally:
-            live.close()
-            source.close()
+        assert snapshot is not None  # refused above
+        with _plain_db(snapshot) as plain:
+            source = sqlite3.connect(f"file:{plain}?mode=ro", uri=True)
+            live = sqlite3.connect(db_path)
+            try:
+                source.backup(live)
+            finally:
+                live.close()
+                source.close()
 
     # Read back: the DB and every journaled file as they were before the run.
     if db_digest(db_path) != record["db_before"]:
@@ -447,7 +507,7 @@ def revert_run(settings: Settings, run_id: str, storage: StorageBackend, *, forc
         first.setdefault((entry["key"], entry["name"]), entry)
     wrong = []
     for (key, name), entry in first.items():
-        expected = _sha256((path / entry["before"]).read_bytes()) if entry["before"] else None
+        expected = _sha256(read_capture(path / entry["before"])) if entry["before"] else None
         if _storage_state(storage, key, name) != expected:
             wrong.append(f"{key}/{name}")
     if wrong:

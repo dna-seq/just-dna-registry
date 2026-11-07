@@ -28,7 +28,7 @@ from typer.testing import CliRunner
 
 from just_dna_registry import cli
 from just_dna_registry.config import Settings, get_settings
-from just_dna_registry.maintenance import db_digest
+from just_dna_registry.maintenance import SNAPSHOT_FILE, db_digest
 from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services.enrich import QUIET_DRIFT, snapshot_not_current
 from just_dna_registry.services.publish import PublishError
@@ -416,7 +416,7 @@ def test_the_sweep_writes_its_own_log(
     assert "\x1b[" not in body
     assert body.splitlines()[0] == "# registry --mode prod upgrade --apply"
     assert body.rstrip().splitlines()[-1].startswith("# ok") and "nothing changed" in body
-    assert not (runs[0] / "db.sqlite").exists()
+    assert not (runs[0] / SNAPSHOT_FILE).exists()
     assert json.loads((runs[0] / "run.json").read_text())["changed"] is False
 
 
@@ -434,7 +434,7 @@ def test_a_sweep_that_publishes_kept_the_catalog_as_it_was_before(
     (run,) = sorted((tmp_path / "runs").glob("*-upgrade"))
     record = json.loads((run / "run.json").read_text())
     assert record["changed"] is True and record["db_before"] == before
-    assert db_digest(run / "db.sqlite") == before != db_digest(settings.db_path)
+    assert db_digest(run / SNAPSHOT_FILE) == before != db_digest(settings.db_path)
     journal = [json.loads(line) for line in (run / "journal.jsonl").read_text().splitlines()]
     assert journal and {e["key"] for e in journal} == {f"{_NS}/{_NAME}/1.0.1"}
     assert {e["op"] for e in journal} == {"add"}
