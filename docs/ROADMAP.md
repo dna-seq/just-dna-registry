@@ -770,6 +770,31 @@ queue and the online-tier paging (one subsystem, built once), Redis for the limi
 
 ---
 
+## 0.28.2 — run folders are pruned (planned; the lead, 2026-11-07)
+
+**unattended** (the person, 2026-11-07: "plan adding prune command to keep last two backups"; urgent if the
+polygon's disk fills first). 0.28.1 keeps, per run that changed something, a full catalog copy (`db.sqlite`), the
+prior bytes of every stored file it overwrote or removed (`storage/`, downloaded from HF when storage is HF), and
+for `replay-upgrade` the rebuilt modules (`replay/`). Nothing removes them, and the polygon has little spare disk.
+
+1. **`registry prune-runs [--keep 2] [--apply]`**: keeps the newest two *revertible* runs whole; for every older
+   run it deletes `db.sqlite`, `journal.jsonl`, `storage/` and `replay/`, and keeps `run.log` and `run.json`
+   (a few KB, and the log is what 0.28.1 exists to keep). `run.json` gets `pruned: <stamp>`, and `revert-run` on a
+   pruned run refuses naming the prune rather than failing on a missing file. Dry run by default, prints the
+   bytes it would free. Revert already goes newest first, so pruning only the oldest never strands a run that
+   could still be reverted.
+2. **The same prune runs at the end of every run**, `REGISTRY_RUN_KEEP` (default 2; `0` turns it off), so a box
+   nobody watches stays bounded. The command is for the operator who wants room now.
+3. **`prune-runs` is not itself a run** (`NOT_A_RUN`, beside `serve`): it touches neither catalog nor storage,
+   and a run of it would copy the catalog in order to delete catalog copies.
+4. **Report the transient cost**: every command copies the catalog before acting and drops the copy if nothing
+   changed, so a command briefly needs the DB's size free. `list-runs` shows each run's size and the total.
+5. **No upload of backups to HF** (the person, 2026-11-07: "overkill"). Snapshots stay local to the box.
+
+Tests: a row in `test_maintenance_commands.py`; keep-2 over five runs leaves three with logs only and the newest
+two revertible to the byte; a revert of a pruned run refuses; auto-prune at `REGISTRY_RUN_KEEP=0` keeps all.
+About 45 minutes with tests; selected tests in the background, full suite at the cut.
+
 ## Next registry version (post-0.11)
 
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's
