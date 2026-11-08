@@ -79,6 +79,19 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   (filed: the same class beyond NCBI, Ensembl REST first) ships. The lock is narrowed when the floor moves, not on a
   release we merely lock to. Check: `uv run python -c "import inspect,just_dna_enricher.net as n; print('_service_gate' in inspect.getsource(n))"`
   (run 2026-11-08 on the installed enricher: `False`; a `True` is a prompt to read `net`, not proof).
+  **RM420** (`dd900ff`, unreleased): `prepare_lane` and `cache pull` hand each lane's `ensure` a private
+  `_follow_hub`, so a **present** cache pulled from the lane's own repo is re-pulled when the hub publishes another
+  `release_label` (gnomAD constraint 4.1 → 4.1.2, STRchive v2.26.0 → v2.28.0); a cache built here is left alone with
+  both labels, an unreadable hub serves it as it is, and `enrich`'s own `ensure` still never reads the hub. No
+  public name moves; `pulled_from_elsewhere` and `pull_record_repo`, which we call, are unchanged. **Against us
+  the fix does not arrive by itself**: `warm-caches` hands `prepare_caches` only the absent lanes plus
+  `lanes_to_repull` (`services/enrich.py:574`: a record naming another repo, or none), so a present lane whose record
+  names its current repo never reaches the new comparison, the 0.28.1 shape again. Once our enricher floor carries
+  RM420, every present pullable lane (selected, or all: the lead's call; the cost is one small hub read per lane)
+  goes to `prepare_caches`, and `lanes_to_repull`'s docstring and CLAUDE.md's "a present pulled lane whose record
+  names another repo (or none)" move with it. The derived-lane bandaid (`LaneAge`) stays: a built lane is still
+  left alone. Check: `uv run python -c "import inspect,just_dna_enricher.download as d; print('_follow_hub' in inspect.signature(d.ensure_constraint_snapshot).parameters)"`
+  (run 2026-11-08 on the installed enricher: `False`).
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
