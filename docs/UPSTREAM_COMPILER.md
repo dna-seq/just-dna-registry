@@ -70,6 +70,15 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   follows. **Not a hard floor here**: our floors may stay (`>=0.8.0`, enricher `>=0.8.1`); a lock that takes enricher
   0.8.2 takes format and compiler 0.8.2 with it. It rides the weekly bump once on PyPI (a patch, the liaison's under
   its grant), with the `services/cache_drop.py:19` sentence (RM408) fixed in the same patch.
+- **Their `main` past `v0.8.2`, unreleased** (read 2026-11-08): **RM418** (`d28c74b`, RM404's patch half): an
+  `EutilsClient` built without a gate takes one process-wide gate per (service, interval), so `check_rsids`' own
+  client and the literature pass, or two `enrich()` runs on two threads, pace against one NCBI budget; all new names
+  private. Against us: `_UNSHARED_EGRESS` (`services/enrich.py:263`, taken at `:1095` when `enrich_verify_rsids` or
+  `enrich_verify_datasets` is on) exists for exactly the first. Once our enricher floor reaches the release carrying
+  RM418, the `verify_rsids` half of that condition is upstream's; the `verify_datasets` half stays until **RM419**
+  (filed: the same class beyond NCBI, Ensembl REST first) ships. The lock is narrowed when the floor moves, not on a
+  release we merely lock to. Check: `uv run python -c "import inspect,just_dna_enricher.net as n; print('_service_gate' in inspect.getsource(n))"`
+  (run 2026-11-08 on the installed enricher: `False`; a `True` is a prompt to read `net`, not proof).
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
