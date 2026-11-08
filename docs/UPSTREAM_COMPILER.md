@@ -92,6 +92,10 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   names another repo (or none)" move with it. The derived-lane bandaid (`LaneAge`) stays: a built lane is still
   left alone. Check: `uv run python -c "import inspect,just_dna_enricher.download as d; print('_follow_hub' in inspect.signature(d.ensure_constraint_snapshot).parameters)"`
   (run 2026-11-08 on the installed enricher: `False`).
+  **RM409** (`e0ceaa2`, unreleased): `net.stream_to_file` takes a private `_stop` event, so Ctrl-C or a first
+  failure stops the Open Targets mirror and the AlphaGenome AVI build within a chunk instead of joining every
+  in-flight part. We call neither build nor `stream_to_file` (a build would reach us only through `prepare_caches`);
+  nothing moves here.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
