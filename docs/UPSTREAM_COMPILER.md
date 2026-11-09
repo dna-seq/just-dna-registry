@@ -105,6 +105,16 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   or name. Nothing here keys on that code (`sweep_report` types it by its code like any other). Expect it on `/check`
   and in `registry upgrade` sweeps over a stored table that kept rows for variants an author later removed, since the
   enricher merges rather than clobbers; a warning, never a hold. Nothing moves.
+  **RM423** (`b74d4f0`, unreleased; module-creator's S139): `merge_records(existing_still_binds=False)` keeps only
+  this run's records, so a run over edited authored bytes no longer re-signs an earlier check's record under the new
+  `module_hash`; `record_verification` logs each check it drops. Defaults and unchanged bytes behave as before; no
+  public name moves. Against us: our publish and `/check` call `enrich()` over the uploaded spec, which writes
+  `verification.json` through that path, so from the next patch an upload whose `verification.json` predates an edit
+  loses those records on the server (a log warning, no field of ours). **Not repaired**: a document 0.8.2 already
+  wrote that way binds to its bytes and is carried on, so published manifests may hold such records; only the author
+  can re-run. Upstream calls it a corrected derivation: at the cut, read the release record for a declared
+  `correction` and its `requires` before deciding whether `registry upgrade` acts (`declared_movement`). No code here
+  moves now.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
