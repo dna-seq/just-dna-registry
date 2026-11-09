@@ -123,6 +123,9 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   `correction` and `registry upgrade` acts on nothing. **Not a hard floor**, but two of our items wait on a floor of
   0.8.3, both the lead's: the `verify_rsids` half of `_UNSHARED_EGRESS` (RM418) and `warm-caches` handing present
   pulled lanes upstream (RM420). The weekly bump takes 0.8.3 instead of 0.8.2 once it is on PyPI.
+- **Their `main` past the 0.8.3 cut**: **RM425** (`290acb5`, module-creator's S140): `ExpressionEffectRow.effect_size`'s
+  field description says it is the single strongest track, not an aggregate; wording only. Nothing here reads that
+  model or repeats the sentence. Nothing moves.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
