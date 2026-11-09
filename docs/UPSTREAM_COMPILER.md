@@ -100,6 +100,11 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   timeout), so a source that accepts and goes silent fails a build instead of hanging it. Reaches us only through
   `warm-caches` → `prepare_caches` (the CIViC, ClinVar GKM, MANE builds among others): a hang there becomes a lane
   reported failed, which `warm-caches` already prints and counts. No code or doc here moves.
+  **RM422** (`61a2056`, unreleased; module-creator's S138): `validate_spec` adds one more `derived_row_orphan` arm, a
+  `resolution.csv` row whose `variant_key`/`rsid` no authored locus table names, a warning in both modes, no new code
+  or name. Nothing here keys on that code (`sweep_report` types it by its code like any other). Expect it on `/check`
+  and in `registry upgrade` sweeps over a stored table that kept rows for variants an author later removed, since the
+  enricher merges rather than clobbers; a warning, never a hold. Nothing moves.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
