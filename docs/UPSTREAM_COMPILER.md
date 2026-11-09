@@ -126,6 +126,13 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
 - **Their `main` past the 0.8.3 cut**: **RM425** (`290acb5`, module-creator's S140): `ExpressionEffectRow.effect_size`'s
   field description says it is the single strongest track, not an aggregate; wording only. Nothing here reads that
   model or repeats the sentence. Nothing moves.
+  **RM426** (`249c18d`, module-creator's S141): `GeneLocusConflict`'s closing sentence no longer says "a real symbol
+  beside an invented rsID"; it names both readings (a made-up rsID, or a real one beside the wrong gene) and the lookup
+  that tells them apart. The fact sentence is unchanged byte for byte. **We repeat the retracted guess**: the
+  `gene_loci` field description (`models/api.py:1181`, served in the OpenAPI schema) and `docs/CLIENT.md:555` call
+  the finding the signature of an invented rsID beside a real symbol; `services/enrich.py:1981` already says which
+  half is wrong is unknowable. A wording fix, the lead's (handed 2026-11-09); no floor needed, nothing reads the
+  sentence.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
