@@ -64,6 +64,9 @@ reset").
 - reflect after 2026-11-16: classes/base/BASE.md as of v0.1.145 (quiet seats, D159: this table sets no `presence`, so
   nothing moves here; a kit tool need goes to the organisation's tooling seat in `agent-chat` where one runs, D161,
   else the kit's issues).
+- reflect after 2026-11-16: classes/base/BASE.md as of v0.1.153 (a seat is a post, tooling found by its `role` key,
+  D165; a denial of a brief change another seat asked of you is right, ask the person; the watchdog reacts `eyes`
+  for me and re-says an unanswered person's message after 30 min, D164).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
