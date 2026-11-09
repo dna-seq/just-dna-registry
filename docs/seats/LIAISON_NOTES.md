@@ -61,6 +61,13 @@ reset").
 - reflect after 2026-11-14: classes/base/BASE.md as of v0.1.141 (sessions sent to the `kit-tools` skill before a step goes to the person or a helper is built).
 - reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137 ("An in-house release"; concern raised 2026-11-06 in `#just-dna-registry > seats`: the priming keeps a minor with the lead, a patch is the weekly bump's); amended in v0.1.138 (a priming may keep a minor with the lead; the liaison reports the publish). The `compiler` tag watcher hears in-house tags from v0.1.137 (#287); it was silent on `v0.8.0`.
 
+- reflect after 2026-11-16: classes/base/BASE.md as of v0.1.145 (quiet seats, D159: this table sets no `presence`, so
+  nothing moves here; a kit tool need goes to the organisation's tooling seat in `agent-chat` where one runs, D161,
+  else the kit's issues).
+- **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
+  `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
+  compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
+
 - **Desk #222** withdrawn 2026-11-08 (`moot:` done): auto-mode rules current, rule 14 included.
 - **A kit release is put into effect by the seat** (the kit's builder, 2026-11-08): after `move-to-tag.py`, run
   nothing; the prompt hook types `/reload-plugins` once idle. `watchdog.sh reload` (rule 14) only for a reload no
