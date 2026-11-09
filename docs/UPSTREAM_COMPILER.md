@@ -115,6 +115,14 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   can re-run. Upstream calls it a corrected derivation: at the cut, read the release record for a declared
   `correction` and its `requires` before deciding whether `registry upgrade` acts (`declared_movement`). No code here
   moves now.
+- **Cut as `v0.8.3`** (`725eb2b` on their `main`, 2026-11-09; untagged and not on PyPI when read, 07:4x CET): all
+  three packages to 0.8.3, inter-package floors `>=0.8.3`. Carries RM418, RM420, RM409, RM421, RM422, RM423, each
+  read above, plus `7a4ac41` (RM409's stop signals subclass `BaseException`, private) and `4fef32f` (RM421's test
+  walk); no public name, field, table, flag or warning code. Release record `0.8.3` (from 0.8.2, 22 reference
+  modules): **every axis measured `False`, `declared=[]`**, so RM423's corrected derivation is not a declared
+  `correction` and `registry upgrade` acts on nothing. **Not a hard floor**, but two of our items wait on a floor of
+  0.8.3, both the lead's: the `verify_rsids` half of `_UNSHARED_EGRESS` (RM418) and `warm-caches` handing present
+  pulled lanes upstream (RM420). The weekly bump takes 0.8.3 instead of 0.8.2 once it is on PyPI.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
