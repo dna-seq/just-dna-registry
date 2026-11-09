@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.28.5] — 2026-11-09
+
 ### `GET /caches` says what reads each lane, and `read_here` is right for five more
 
 `read_here` followed the `/check` groups alone, so the API said nothing in the server reads `pubmind`,
