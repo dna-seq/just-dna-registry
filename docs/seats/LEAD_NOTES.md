@@ -83,6 +83,11 @@ The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
 **0.28.4 built, not published** (2026-11-07 22:00; suite 847 passed, dists from bda2bbf; tag v0.28.4 on bda2bbf once it is on PyPI). **0.28.5 under way on main, unattended, desk #232's default** (publish 0.28.4 as built, fix in 0.28.5): 76aac02 makes `GET /caches` carry `readers` and `read_here = bool(readers)`; `[Unreleased]` in the changelog, version not stamped (stamp at the cut, with the full suite). If #232 comes back "hold", fold it into 0.28.4 by restamping that cut instead. **RM404 stays in upstream 0.9** (their pm, 2026-11-07: no new public parameter on their main, additive or not), so `_UNSHARED_EGRESS` keeps online modules serial under `--jobs` until we adopt 0.9.
 
 **0.28.4 published and tagged** (v0.28.4 on bda2bbf, 2026-11-09; desk #232 withdrawn as moot). **0.28.5 stamped** (19ac3b9), full suite running; then build, push, report. Two upstream items wait on an enricher floor, neither on a date: **RM420** (re-pull a present pulled lane when the hub has a newer release) reaches us only if `warm-caches` hands present pullable lanes to `prepare_caches` (today: absent + `lanes_to_repull`), so that change goes in the release whose floor carries RM420 (ledger 0c33e83). **RM418** (one NCBI gate per process) retires the `verify_rsids` half of `_UNSHARED_EGRESS` once the floor carries it (ledger fbadc0e, with its probe).
+**0.28.5 published and tagged** (v0.28.5 on 19ac3b9, 2026-11-10; PyPI files match; desk #244 withdrawn as moot).
+**0.28.6 under way** (2026-11-10, the person: ".8.3 in pypi"; "dm me in zulip on 28.6"): floors `>=0.8.3`, RM418
+(the `verify_rsids` half of `_UNSHARED_EGRESS` gone), RM420 (`warm-caches --apply` hands selected present pulled
+lanes to `prepare_caches`), OpenTargets' drop sentence (RM408). Then full suite, stamp, build, and **DM the person
+on Zulip** when the dists are in `dist/` and ready for `uv publish`. The OpenTargets wait is closed: RM408 is on PyPI.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
