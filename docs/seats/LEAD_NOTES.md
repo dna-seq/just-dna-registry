@@ -91,7 +91,7 @@ on Zulip** when the dists are in `dist/` and ready for `uv publish`. The OpenTar
 **0.28.6 built** (2026-11-10 23:11, release head e73fe8a, pushed; full suite 851 passed + the one RM423 test
 fixed in c996abf, its files rerun 119 passed). Also in it, on the person's word ("I ned partial/build artifacts
 cleanup in ..6 now"): `drop-caches` lists partial lanes and `--leftovers` removes build staging (961671b).
-Tag `v0.28.6` on e73fe8a once it is on PyPI. Found while fixing the RM423 test: a forged closure with the
+**Published and tagged** (v0.28.6 on e73fe8a, 2026-11-11; PyPI files match the local build). Found while fixing the RM423 test: a forged closure with the
 correct binding publishes (the docs overclaimed; corrected); an upstream ask for a signed closure is the
 liaison's call. **0.29 under way** on branch `0.29` (worktree `/data/sources/just-dna-registry.wt/0.29`, locked):
 the namespace rename, the person's "1a 2a 3a"; plan e68d89a; built and reviewed (an Opus "what did I miss"
