@@ -7,12 +7,12 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.162.2`** read (2026-11-07; 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.0`
+**`0.162.3`** read (2026-11-10; 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.0`
 (`uv.lock`, the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
 
 ## Backlog
 
-None: read through `0.162.2`.
+None: read through `0.162.3`.
 
 ## What the registry uses
 
@@ -46,7 +46,8 @@ From the imports under `src/` (an AST walk, 2026-11-04).
   the weekly bump's job.
   **Measured 2026-11-05** (`bb42dbd`): the full suite passes on 0.162.0 (612 passed), upload and publish tests
   included, and no warning from fastapi or starlette. Closed.
-- Read, nothing for us: 0.162.2 (docs, a release-notes note); 0.162.1 (docs, translations, upstream's own CI pins; its "pytest below 9.2 for
+- Read, nothing for us: 0.162.3 (Python 3.15 in the classifiers, type annotations in `_compat` widened to
+  `object` with no runtime change, their own dev lock on Pydantic 2.14.3, docs and translations); 0.162.2 (docs, a release-notes note); 0.162.1 (docs, translations, upstream's own CI pins; its "pytest below 9.2 for
   pytest-xdist" is their test rig, and we run no xdist); 0.143 OpenTelemetry exporter opt-in (we set none up), 0.145 `openapi_prefix` and 0.146
   `root_path` on `FastAPI(...)` (neither used), 0.155 `**extra` on request parameters (none passed), 0.160 a
   parameter model's `extra` (no parameter models here); the features and fixes of 0.152 to 0.161.
