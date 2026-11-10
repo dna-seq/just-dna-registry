@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-11-11
+
 ### A namespace renames, and its old name stays an alias (S28, reversed)
 
 0.28 renamed handles and said a namespace never renames, which left S28's reporter (an owner moving a
