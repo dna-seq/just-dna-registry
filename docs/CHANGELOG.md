@@ -8,12 +8,6 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-### Documentation
-
-- `rename_account`, `registry-client rename-account` and CLIENT.md now say that a namespace is never
-  renamed, and that on the polygon `delete_module` is how a module's data moves to another namespace
-  (S28, just-module-creator).
-
 ## [0.28.6] — 2026-11-10
 
 ### On upstream 0.8.3: `upgrade --jobs` checks rsIDs concurrently, and `warm-caches` follows the hub
@@ -54,6 +48,12 @@ records past this server's own enrichment, so a check the server does not run su
 document bound to the upload. Measuring that showed the docs overclaimed one thing: a closure written
 with the correct binding publishes as sent, because the binding is computable from the files. `closed:
 true` is the publisher's word like the rest of the block; the API reference and the model now say so.
+
+### Documentation
+
+- `rename_account`, `registry-client rename-account` and CLIENT.md now say that a namespace is never
+  renamed, and that on the polygon `delete_module` is how a module's data moves to another namespace
+  (S28, just-module-creator).
 
 **Client surface:** unchanged.
 
