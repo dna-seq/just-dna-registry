@@ -1523,10 +1523,12 @@ member upstream adds later.
 **How much of this block is the registry's word, measured rather than asserted.** A check *this
 server runs* cannot be forged — publish runs enrichment itself and its record displaces whatever
 arrived under the same name. A check *this server does not run* is carried **verbatim from the
-upload** and is unverifiable. `closed` is the sturdiest field, because a closure is hash-bound: the
-compiler recomputes the binding against the authored bytes and drops the closure when it does not
-match, so `closed: true` cannot be claimed by editing a JSON file — though `closed_by` is free text
-and proves that someone declared authoring finished, not who.
+upload** and is unverifiable, provided the uploaded document binds to the uploaded bytes (since enricher
+0.8.3, RM423, records bound to other bytes do not outlive the server's own run). `closed` is
+**hash-bound, not signed**: the compiler recomputes the binding against the authored bytes and drops the
+closure when it does not match, so a closure cannot outlive an edit, but anyone holding the files can
+compute the binding, so `closed: true` is the publisher's word too, and `closed_by` is free text
+(measured 2026-11-10; this paragraph said "cannot be claimed by editing a JSON file" until then).
 
 Consequently: **absent reads as *nothing was said*, never as *passed***, and this block is
 deliberately **not** on the card and **not** filterable or sortable. A registry that let you rank by

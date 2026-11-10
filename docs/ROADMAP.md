@@ -1351,8 +1351,9 @@ addressed in the build; the plan above is corrected to match.
   check we do **not** run is carried verbatim and is unverifiable — that is the residual surface, so
   nothing in the block is presented as a registry verdict, and it is deliberately not a card facet,
   not a filter and not a sort key. **(3)** The closure earns a boolean of its own: it is hash-bound,
-  the compiler recomputes the binding and drops a closure whose authored bytes moved, so `closed:
-  true` cannot be claimed by editing a file. `closed_by` remains free text and proves that somebody
+  the compiler recomputes the binding and drops a closure whose authored bytes moved. (Corrected
+  2026-11-10, measured: the binding is computable from the files, so a closure written with it
+  publishes as sent; `closed: true` is the publisher's word, not proof.) `closed_by` remains free text and proves that somebody
   declared authoring finished, not who. An Ed25519 signature over it would add a *who*, and that is
   worth revisiting only if signed closures start appearing in the wild.
 

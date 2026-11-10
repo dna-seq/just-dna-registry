@@ -88,6 +88,16 @@ The `?gene=`/`?category=` scoping fix is on main (c551799), 0.28.1 material.
 (the `verify_rsids` half of `_UNSHARED_EGRESS` gone), RM420 (`warm-caches --apply` hands selected present pulled
 lanes to `prepare_caches`), OpenTargets' drop sentence (RM408). Then full suite, stamp, build, and **DM the person
 on Zulip** when the dists are in `dist/` and ready for `uv publish`. The OpenTargets wait is closed: RM408 is on PyPI.
+**0.28.6 built** (2026-11-10 23:11, release head e73fe8a, pushed; full suite 851 passed + the one RM423 test
+fixed in c996abf, its files rerun 119 passed). Also in it, on the person's word ("I ned partial/build artifacts
+cleanup in ..6 now"): `drop-caches` lists partial lanes and `--leftovers` removes build staging (961671b).
+Tag `v0.28.6` on e73fe8a once it is on PyPI. Found while fixing the RM423 test: a forged closure with the
+correct binding publishes (the docs overclaimed; corrected); an upstream ask for a signed closure is the
+liaison's call. **0.29 under way** on branch `0.29` (worktree `/data/sources/just-dna-registry.wt/0.29`, locked):
+the namespace rename, the person's "1a 2a 3a"; plan e68d89a; built and reviewed (an Opus "what did I miss"
+pass found 11 gaps, all addressed); uncommitted on the branch at 23:15. Left: commit, the full suite, the
+plan's Facts corrected, and the console banner (needs Node). Worktree tests need
+`JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for

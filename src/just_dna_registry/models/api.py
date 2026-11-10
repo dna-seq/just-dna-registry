@@ -254,10 +254,13 @@ class VerificationInfo(BaseModel):
       produces `acmg_secondary_findings`, so a fabricated one is carried into the manifest as sent.
       That is the residual surface and the reason nothing in this block is presented as a registry
       verdict.
-    * `closed` is the sturdiest field, because the closure is **hash-bound**: the compiler recomputes
-      the binding against the authored bytes and drops the whole closure when it does not match. So
-      `closed: true` cannot be claimed by editing a JSON file — though `closed_by` is free text, and
-      proves that someone declared authoring finished, not who.
+    * `closed` is **hash-bound, not signed**: the compiler recomputes the binding against the authored
+      bytes and drops the whole closure when it does not match, so a closure cannot outlive an edit.
+      But the binding is computable by anyone holding the files, so `closed: true` is the publisher's
+      word like every other field here, and `closed_by` is free text (measured 2026-11-10; this said
+      "cannot be claimed by editing a JSON file" until then).
+    * Since enricher 0.8.3 (RM423) a check this server does not run survives only from a document
+      bound to the uploaded bytes; records bound to other bytes do not outlive the server's own run.
 
     Deliberately **not** a card facet and deliberately not a filter. A registry that let you sort by
     someone else's unverifiable pass would be lending it our credibility, which is the one thing this
