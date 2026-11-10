@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.28.6] — 2026-11-10
+
 ### On upstream 0.8.3: `upgrade --jobs` checks rsIDs concurrently, and `warm-caches` follows the hub
 
 All three tiers floor at 0.8.3. Its release record moves no axis and declares nothing, so `registry
