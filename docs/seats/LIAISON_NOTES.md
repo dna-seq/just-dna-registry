@@ -74,6 +74,10 @@ reset").
 - reflect after 2026-11-17: classes/base/BASE.md as of v0.1.160 (another organisation's encrypted messages are
   posted in `embassy-review`; a held-back one gets my redacted description, L104. The compiler's seats are in our
   own organisation, so none has reached me yet).
+- reflect after 2026-11-17: classes/liaison/LIAISON.md as of v0.1.161 (the dependency bump runs the repo's static
+  checks over the whole tree beside the suite, kit #378). Here that is `uv run ruff check .` (no Python type checker
+  is configured) and, where Node is on the box, `cd console && npm ci && npm run verify` (tsc); first due on the
+  Thursday 2026-11-12 bump.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
