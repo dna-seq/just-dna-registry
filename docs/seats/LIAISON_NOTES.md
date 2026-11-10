@@ -78,6 +78,8 @@ reset").
   checks over the whole tree beside the suite, kit #378). Here that is `uv run ruff check .` (no Python type checker
   is configured) and, where Node is on the box, `cd console && npm ci && npm run verify` (tsc); first due on the
   Thursday 2026-11-12 bump.
+- reflect after 2026-11-17: classes/base/BASE.md as of v0.1.165 (the tooling seat is the one holding the tooling
+  role's duties, D181; this clone has none, so kit gaps still go to the kit's issues).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
