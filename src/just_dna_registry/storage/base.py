@@ -51,6 +51,12 @@ class StorageBackend(Protocol):
         """Delete one file under `key`. Idempotent. Used to revert a file a maintenance run added."""
         ...
 
+    def copy_module(self, src: str, dst: str, overrides: Mapping[str, bytes]) -> int:
+        """Copy every file under `src` to `dst`, writing `overrides` instead for the names it holds
+        (and adding any it holds that `src` lacks). Returns the number of files at `dst`. A namespace
+        rename's copy (0.29): on HuggingFace the large files are copied server-side, not re-uploaded."""
+        ...
+
     def remove(self, key: str) -> None:
         """Hard-delete everything stored under `key` (a version key or a `{ns}/{name}` / `{ns}`
         prefix). Used only by the ops removal CLI, never the public API. Idempotent."""

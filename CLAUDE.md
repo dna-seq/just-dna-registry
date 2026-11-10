@@ -894,7 +894,24 @@ running server, and one direction arms a delete endpoint on production data.
   `merge-accounts` reuses the same sweep (`services/accounts.amend_owner`) to move `owner` from the
   lost handle to the kept one. The card's `owner` is re-read from each touched module's latest
   manifest, never rewritten in bulk, so a module another account published last keeps naming them.
-  Not done, said so it is not assumed: a namespace is never renamed (identity is immutable).
+- **A namespace renames too, and its old name is an alias for good (0.29).** It was immutable through
+  0.28 (S28 was declined on that ground); the person reversed it. It is possible because the namespace
+  is registry-stamped: `identity.namespace` and `canonical_id` are outside every compiled byte, the
+  digest, `content_signature` and the signature, so the manifest is amended as `owner` is. Four things
+  keep the old name meaning what it meant, and a fifth path would have to keep them too. **Every
+  request naming it lands on the new name**, resolved once, in `api/namespace_alias.py`, before routing;
+  query filters and ops commands go through `repo.resolve_namespace`. **Every door that claims a
+  namespace refuses it**, inside the write statement (`_NOT_A_NAMESPACE_ALIAS`), as handles do. **Storage
+  first, then one transaction**, refused if a version landed under the old name meanwhile, so a failure
+  moves nothing and a re-run converges; the copy is `StorageBackend.copy_module` (server-side on HF for
+  the LFS parquets), and `_finalize` re-resolves the name under `_COMMIT_LOCK`, which the rename's
+  transaction also takes, while `upsert_module`'s insert refuses an alias for a publish from another
+  process. **Nothing is deleted** by a rename: the old copies stay, which is why every hard delete walks
+  `repo.storage_namespaces`, and freeing a namespace leaves its old names reserved and resolving to
+  nothing (`_FREED`), never pointed at whoever claims the freed name. A `DELETE` never follows an alias.
+  An account rename carries the namespace spelled like the old handle (`services/accounts.py`), after
+  `amend_owner`, so the copies already name the new owner. No command rebuilds the catalog from storage;
+  one that is built must skip the old copies.
 - **A new route on either mode needs a `RegistryClient` method and a row in the parity table.** The
   guard enumerates *both* modes precisely because a mode-gated route would otherwise ship unwrapped.
 

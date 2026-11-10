@@ -32,6 +32,33 @@ class HandleReserved(ValueError):
         self.current = current
 
 
+class NamespaceReserved(ValueError):
+    """A namespace name that was renamed away from (0.29): it stays an alias of `current` for good."""
+
+    def __init__(self, name: str, current: str) -> None:
+        super().__init__(f"namespace {name!r} was renamed to {current!r}")
+        self.name = name
+        self.current = current
+
+
+class NamespaceChanged(RuntimeError):
+    """A version landed under a namespace while it was being renamed (0.29); nothing moved."""
+
+    def __init__(self, namespace: str, versions: list[str]) -> None:
+        what = f"gained {', '.join(versions)}" if versions else "was renamed or removed"
+        super().__init__(f"{namespace} {what} during the rename")
+        self.versions = versions
+
+
+#: The `target` of an alias whose namespace was freed (deleted, purged, its account removed): the old
+#: name stays reserved and resolves to nothing, so an old link 404s rather than reaching whoever claims
+#: the freed name next (0.29).
+_FREED = ""
+
+#: The same guard for `namespaces.name` (0.29): every door that claims a namespace refuses a name
+#: that is now an alias of another, in the statement that writes it.
+_NOT_A_NAMESPACE_ALIAS = "NOT EXISTS (SELECT 1 FROM namespace_aliases WHERE name = ?)"
+
 #: The guard every door that writes `accounts.name` puts on its own statement: no constraint spans
 #: `accounts` and `account_aliases`, so the check and the write are one statement, never a read and
 #: a later write another thread can slip between.
@@ -217,6 +244,101 @@ class Repository:
             "SELECT account_id FROM namespaces WHERE name = ?", (namespace,)
         ).fetchone()
 
+    def resolve_namespace(self, name: str) -> str:
+        """`name`, or the namespace it was renamed to (0.29). For the places a namespace is *looked
+        up* (a path, a query filter, a batch lookup, an ops command), never for a door that claims one."""
+        row = self.conn.execute(
+            "SELECT target FROM namespace_aliases WHERE name = ?", (name,)
+        ).fetchone()
+        return row["target"] if row and row["target"] != _FREED else name
+
+    def namespace_aliases_of(self, namespace: str) -> list[str]:
+        """The names `namespace` renamed away from, oldest first."""
+        return [
+            r["name"] for r in self.conn.execute(
+                "SELECT name FROM namespace_aliases WHERE target = ? ORDER BY rowid", (namespace,)
+            ).fetchall()
+        ]
+
+    def storage_namespaces(self, namespace: str) -> list[str]:
+        """Every storage prefix holding files of `namespace`'s versions: its own name and each name it
+        renamed away from, whose copies a rename keeps (0.29). A hard delete removes under all."""
+        return [namespace, *self.namespace_aliases_of(namespace)]
+
+    def namespace_name_taken(self, name: str) -> str | None:
+        """What holds `name` in the namespace name space: `"namespace"`, `"alias"` (with the
+        namespace it points to readable through `resolve_namespace`), or `None`."""
+        if self.namespace_owner(name) is not None:
+            return "namespace"
+        row = self.conn.execute("SELECT 1 FROM namespace_aliases WHERE name = ?", (name,)).fetchone()
+        return "alias" if row else None
+
+    def namespace_versions(self, namespace: str) -> list[dict[str, Any]]:
+        """Every version stored under `namespace`, with its manifest, oldest module first."""
+        return [
+            dict(r) for r in self.conn.execute(
+                "SELECT m.name AS name, v.version AS version, v.manifest_json AS manifest_json "
+                "FROM versions v JOIN modules m ON m.id = v.module_id WHERE m.namespace = ? "
+                "ORDER BY m.name, v.id",
+                (namespace,),
+            ).fetchall()
+        ]
+
+    def rename_namespace_rows(
+        self, old: str, new: str, manifests: dict[tuple[str, str], str], *, retired_at: str
+    ) -> None:
+        """Move namespace `old` to `new` in one transaction, keeping `old` as an alias of it (0.29).
+
+        The three tables that carry the name (`namespaces`, `modules`, `namespace_members`), every
+        `versions.manifest_json` (`manifests`, keyed by `(module name, version)`, already amended by the
+        caller), the alias row, and every older alias re-pointed from `old` to `new`. Renaming back to
+        one of its own aliases reclaims it. Run it on a connection of its own; raises
+        `NamespaceReserved` when `new` became somebody else's alias, `sqlite3.IntegrityError` when it
+        became a namespace, and `NamespaceChanged` when the versions under `old` are not exactly the
+        ones `manifests` names (a publish landed meanwhile), each after rolling back."""
+        c = self.conn
+        c.commit()
+        try:
+            # Renamed or removed by a concurrent request since the caller listed it: say that, rather
+            # than let the guarded UPDATE below miss and read as "`new` is taken".
+            if c.execute("SELECT 1 FROM namespaces WHERE name = ?", (old,)).fetchone() is None:
+                raise NamespaceChanged(old, [])
+            c.execute("DELETE FROM namespace_aliases WHERE name = ? AND target = ?", (new, old))
+            cur = c.execute(
+                f"UPDATE namespaces SET name = ? WHERE name = ? AND {_NOT_A_NAMESPACE_ALIAS}",
+                (new, old, new),
+            )
+            if not cur.rowcount:
+                raise NamespaceReserved(new, self.resolve_namespace(new))
+            # A version published under `old` while its files were being copied has no copy and no
+            # amended manifest: moving its row would point it at files that are not there.
+            under = {
+                (r["name"], r["version"]) for r in c.execute(
+                    "SELECT m.name AS name, v.version AS version FROM versions v "
+                    "JOIN modules m ON m.id = v.module_id WHERE m.namespace = ?",
+                    (old,),
+                ).fetchall()
+            }
+            if under != set(manifests):
+                raise NamespaceChanged(old, sorted(f"{n}@{v}" for n, v in under ^ set(manifests)))
+            c.execute("UPDATE modules SET namespace = ? WHERE namespace = ?", (new, old))
+            c.execute("UPDATE namespace_members SET namespace = ? WHERE namespace = ?", (new, old))
+            for (name, version), body in manifests.items():
+                c.execute(
+                    "UPDATE versions SET manifest_json = ? WHERE version = ? AND module_id = "
+                    "(SELECT id FROM modules WHERE namespace = ? AND name = ?)",
+                    (body, version, new, name),
+                )
+            c.execute("UPDATE namespace_aliases SET target = ? WHERE target = ?", (new, old))
+            c.execute(
+                "INSERT INTO namespace_aliases(name, target, retired_at) VALUES (?, ?, ?)",
+                (old, new, retired_at),
+            )
+        except (sqlite3.IntegrityError, NamespaceReserved, NamespaceChanged):
+            c.rollback()
+            raise
+        c.commit()
+
     def namespace_flags(self, namespace: str) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT featured, blacklisted FROM namespaces WHERE name = ?", (namespace,)
@@ -240,11 +362,17 @@ class Repository:
 
         With `seed_owner` (personal namespaces) also seed an `owner` `namespace_members` row so the
         user has a direct grant. For org-owned namespaces pass `seed_owner=False`: the org account
-        isn't a person, and access flows through the org-role cascade instead."""
-        self.conn.execute(
-            "INSERT OR REPLACE INTO namespaces(name, account_id) VALUES (?, ?)",
-            (name, account_id),
+        isn't a person, and access flows through the org-role cascade instead.
+
+        A name another namespace renamed away from raises `NamespaceReserved` (0.29)."""
+        cur = self.conn.execute(
+            "INSERT OR REPLACE INTO namespaces(name, account_id) "
+            f"SELECT ?, ? WHERE {_NOT_A_NAMESPACE_ALIAS}",
+            (name, account_id, name),
         )
+        if not cur.rowcount:
+            self.conn.rollback()
+            raise NamespaceReserved(name, self.resolve_namespace(name))
         if seed_owner:
             self.conn.execute(
                 "INSERT OR IGNORE INTO namespace_members(namespace, account_id, role) "
@@ -492,6 +620,8 @@ class Repository:
             "org_members": rows("SELECT org_id, account_id, role FROM org_members"),
             # 0.28: a restore that dropped these would free every retired handle for the taking.
             "aliases": rows("SELECT name, account_id, retired_at FROM account_aliases"),
+            # 0.29: likewise every name a namespace renamed away from.
+            "namespace_aliases": rows("SELECT name, target, retired_at FROM namespace_aliases"),
         }
 
     def import_auth(self, data: dict[str, list[dict]]) -> dict[str, int]:
@@ -500,14 +630,23 @@ class Repository:
         or ignored (keys/members/aliases).
 
         Refuses, before writing anything, an account whose name the target holds as **another**
-        account's retired handle (`HandleReserved`): importing it would hand the name to somebody
-        new, which is the one thing an alias exists to prevent."""
+        account's retired handle (`HandleReserved`), and a namespace whose name it holds as an alias
+        (`NamespaceReserved`, 0.29): importing either would hand the name to somebody new, which is the
+        one thing an alias exists to prevent."""
         for a in data.get("accounts", []):
             held = self.conn.execute(
                 "SELECT account_id FROM account_aliases WHERE name = ?", (a["name"],)
             ).fetchone()
             if held is not None and int(held["account_id"]) != int(a["id"]):
                 raise self._reserved(a["name"])
+        # 0.29: likewise a namespace whose name the target holds as an alias of another namespace,
+        # and an alias whose name is a live namespace here (it would start redirecting somebody's).
+        for n in data.get("namespaces", []):
+            if self.namespace_name_taken(n["name"]) == "alias":
+                raise NamespaceReserved(n["name"], self.resolve_namespace(n["name"]))
+        for na in data.get("namespace_aliases", []):
+            if self.namespace_owner(na["name"]) is not None:
+                raise NamespaceReserved(na["name"], na["target"])
         for a in data.get("accounts", []):
             self.conn.execute(
                 "INSERT OR REPLACE INTO accounts(id, name, email, display_name, avatar_url, "
@@ -538,6 +677,12 @@ class Repository:
                 "VALUES (:org_id, :account_id, :role)",
                 om,
             )
+        for na in data.get("namespace_aliases", []):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO namespace_aliases(name, target, retired_at) "
+                "VALUES (:name, :target, :retired_at)",
+                na,
+            )
         for al in data.get("aliases", []):  # after accounts: the FK names them
             self.conn.execute(
                 "INSERT OR IGNORE INTO account_aliases(name, account_id, retired_at) "
@@ -547,7 +692,8 @@ class Repository:
         self.conn.commit()
         return {
             key: len(data.get(key, []))
-            for key in ("accounts", "api_keys", "namespaces", "members", "org_members", "aliases")
+            for key in ("accounts", "api_keys", "namespaces", "members", "org_members", "aliases",
+                        "namespace_aliases")
         }
 
     def reset_catalog(self, *, keep_auth: bool = True) -> None:
@@ -560,7 +706,7 @@ class Repository:
             self.conn.execute(f"DELETE FROM {table}")
         if not keep_auth:
             for table in ("org_members", "namespace_members", "api_keys", "namespaces",
-                          "account_aliases", "accounts"):
+                          "namespace_aliases", "account_aliases", "accounts"):
                 self.conn.execute(f"DELETE FROM {table}")
         self.conn.commit()
 
@@ -602,7 +748,14 @@ class Repository:
         return True
 
     def delete_namespace_grant(self, namespace: str) -> None:
-        """Free a namespace's ownership + all memberships so a new key can claim it."""
+        """Free a namespace's ownership + all memberships so a new key can claim it.
+
+        Its old names stay reserved and stop resolving (0.29): pointing them at the freed name would
+        hand every old link to whoever claims it next, and deleting them would hand the old names
+        themselves out. Either is the one thing an alias exists to prevent."""
+        self.conn.execute(
+            f"UPDATE namespace_aliases SET target = '{_FREED}' WHERE target = ?", (namespace,)
+        )
         self.conn.execute("DELETE FROM namespaces WHERE name = ?", (namespace,))
         self.conn.execute("DELETE FROM namespace_members WHERE namespace = ?", (namespace,))
         self.conn.commit()
@@ -678,6 +831,11 @@ class Repository:
         self.conn.execute("DELETE FROM org_members WHERE account_id = ? OR org_id = ?",
                           (account_id, account_id))
         self.conn.execute("DELETE FROM module_stars WHERE account_id = ?", (account_id,))
+        self.conn.execute(  # freed names keep their aliases reserved (0.29, `_retire_aliases`)
+            f"UPDATE namespace_aliases SET target = '{_FREED}' "
+            "WHERE target IN (SELECT name FROM namespaces WHERE account_id = ?)",
+            (account_id,),
+        )
         self.conn.execute("DELETE FROM namespaces WHERE account_id = ?", (account_id,))
         self.conn.execute("DELETE FROM api_keys WHERE account_id = ?", (account_id,))
         self.conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
@@ -781,16 +939,21 @@ class Repository:
         if existing is None:
             # First publish: created_at and updated_at both take the stamp. Republishes advance
             # only updated_at (below), so created_at preserves the module's first-seen time.
+            # Never under a name a namespace renamed away from (0.29): a publish from another
+            # process that resolved the old name before the rename would otherwise recreate it.
             cur = self.conn.execute(
                 "INSERT INTO modules(namespace, name, title, description, icon, color, "
                 "genome_build, license, owner, readme, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                f"SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE {_NOT_A_NAMESPACE_ALIAS}",
                 (
                     ident.namespace, ident.name, disp.title, disp.description, disp.icon,
                     disp.color, manifest.genome_build, manifest.license, manifest.owner,
-                    readme or "", updated_at, updated_at,
+                    readme or "", updated_at, updated_at, ident.namespace,
                 ),
             )
+            if not cur.rowcount:
+                self.conn.rollback()
+                raise NamespaceReserved(ident.namespace, self.resolve_namespace(ident.namespace))
             self.conn.commit()
             return int(cur.lastrowid)
         readme_sql, readme_params = ("", []) if readme is None else ("readme=?, ", [readme])

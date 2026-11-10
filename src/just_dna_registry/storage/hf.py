@@ -18,7 +18,7 @@ from collections.abc import Mapping
 # long before the `>=0.34.0` floor. The private module path was an implementation detail we
 # happened to import, and a relock that swept 1.31 → 1.32 turned every server import into an
 # `ImportError` at collection time.
-from huggingface_hub import CommitOperationAdd, HfApi, HfFileSystem
+from huggingface_hub import CommitOperationAdd, CommitOperationCopy, HfApi, HfFileSystem
 
 
 class HfStorage:
@@ -63,6 +63,37 @@ class HfStorage:
             f"https://huggingface.co/datasets/{self.repo_id}/resolve/"
             f"{self.revision}/{self._repo_path(key, name)}"
         )
+
+    def copy_module(self, src: str, dst: str, overrides: Mapping[str, bytes]) -> int:
+        """One commit. The hub copies only LFS files server-side (`CommitOperationCopy`), which are the
+        parquets that make a version large; every other file is read and re-added, as is each override."""
+        names = self.list_files(src)
+        lfs = {
+            info.path for info in self._api.get_paths_info(
+                self.repo_id, [self._repo_path(src, n) for n in names if n not in overrides],
+                repo_type="dataset", revision=self.revision,
+            )
+            if getattr(info, "lfs", None) is not None
+        } if names else set()
+        operations: list[CommitOperationAdd | CommitOperationCopy] = []
+        for name in sorted({*names, *overrides}):
+            target = self._repo_path(dst, name)
+            if name in overrides:
+                operations.append(CommitOperationAdd(path_in_repo=target, path_or_fileobj=overrides[name]))
+            elif self._repo_path(src, name) in lfs:
+                operations.append(CommitOperationCopy(
+                    src_path_in_repo=self._repo_path(src, name), path_in_repo=target,
+                    src_revision=self.revision,
+                ))
+            else:
+                operations.append(CommitOperationAdd(
+                    path_in_repo=target, path_or_fileobj=self.read_file(src, name)
+                ))
+        self._api.create_commit(
+            repo_id=self.repo_id, repo_type="dataset", operations=operations,
+            commit_message=f"copy {src} to {dst}", revision=self.revision,
+        )
+        return len(operations)
 
     def remove(self, key: str) -> None:
         # Broad on purpose and unchanged in substance: removal is idempotent, so an already-absent

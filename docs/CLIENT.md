@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.28.x** against a server speaking API `v1` (0.25 added nine methods
+**Normative for:** client **0.14.x–0.29.x** against a server speaking API `v1` (0.29 adds `rename_namespace`; 0.25 added nine methods
 and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`;
 0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server;
 0.28 adds `merge_accounts`, `rename_account` and `admin_rename_account`, gives `publish` `recover_within=`
@@ -265,10 +265,13 @@ for a member, any for admin+).
   handle. The old one stays reserved to your account, old links follow it, and `owner` is amended on
   every manifest naming you (outside the digest: nothing changes identity). Returns the
   `AccountRename` report; anything under `failed` is finished by calling it again. An org asks a site
-  admin; self-service stops at three retired handles. **It renames the handle, never a namespace**, and
-  no call does: `ns/name@version` is a published identity, so a version stays under the namespace it
-  was published in. On a test instance, `delete_module` frees a module's content claim so it can be
-  published under another namespace; on production there is no move (S28).
+  admin; self-service stops at three retired handles. Since 0.29 the namespace spelled like the old
+  handle renames with it when the account owns it (`namespaces_renamed`).
+- **`rename_namespace(namespace, name, *, dry_run=True, allow_test_data=False)`** (0.29): a namespace's
+  owner, or a site admin, renames it. Every version moves (files copied, `identity.namespace` and
+  `canonical_id` amended, no identity moved), the old copies are kept, and the old name stays an alias:
+  `old/module` keeps resolving for reads and publishes, the response header `X-Namespace-Current` names
+  the new one, and nobody else can claim the old name. `registry-client rename-namespace NS NEW [--apply]`.
 - **`admin_rename_account(account, name, *, apply=False, allow_test_data=False) -> dict`** (0.28) —
   **site admins only.** The same for any account; `account` may be a retired handle. Reports only
   unless `apply=True`.

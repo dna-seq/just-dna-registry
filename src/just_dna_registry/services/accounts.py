@@ -16,6 +16,7 @@ from just_dna_registry.db.repository import HandleReserved, Repository
 from just_dna_registry.db.schema import connect
 from just_dna_registry.models.api import AccountMerge, AccountRename
 from just_dna_registry.services.ingest import now_iso
+from just_dna_registry.services.namespaces import NamespaceRenameRefused, rename_namespace
 from just_dna_registry.storage.base import StorageBackend, version_key
 from just_dna_registry.testdata import accepted_anyway, override_hint, test_data_refusal
 
@@ -157,12 +158,40 @@ def rename_account(
         versions_unattributed=[label(v) for v in mine if v["published_by"] is None],
         conflicts=[label(v) for v in owned if v["published_by"] not in (None, account_id)],
         modules=repo.modules_owned_as(names) if names else [],
-        namespaces_kept=sorted(
-            n for n in (*names, new) if repo.namespace_owner(n) is not None
-        ),
         warnings=warnings,
     )
+    # The namespace spelled like a handle this account gave up renames with it (0.29, the person's
+    # 1a), when the account owns it; another account's namespace of that spelling stays where it is.
+    # Read before the handle moves, so a re-run (current == new) still finds a namespace an earlier
+    # run could not rename and tries again.
+    spelled = [
+        n for n in names
+        if (row := repo.namespace_owner(n)) is not None and int(row["account_id"]) == account_id
+    ]
+    report.namespaces_kept = sorted(
+        f"{n}: owned by another account" for n in (*names, new)
+        if (row := repo.namespace_owner(n)) is not None and int(row["account_id"]) != account_id
+    )
+
+    def follow_namespaces(applying: bool) -> None:
+        for n in spelled:
+            try:
+                moved = rename_namespace(
+                    repo, storage, settings, n, new, apply=applying,
+                    allow_test_data=allow_test_data, by_admin=True,
+                )
+            except NamespaceRenameRefused as exc:
+                report.namespaces_kept.append(f"{n}: {exc}")
+                continue
+            if moved.failed:
+                report.namespaces_kept.append(
+                    f"{n}: {len(moved.failed)} version(s) could not be copied; run the same rename again"
+                )
+                continue
+            report.namespaces_renamed.append(f"{n} -> {new}")
+
     if not apply:
+        follow_namespaces(False)
         return report
 
     if settings.auto_backup and (renaming or mine):
@@ -183,6 +212,8 @@ def rename_account(
         logger.warning("renamed account %s (id %s) to %s", current, account_id, new)
 
     report.amended, report.failed = amend_owner(repo, storage, mine, new)
+    # After the owner amendment, so the manifests the namespace rename copies already name `new`.
+    follow_namespaces(True)
     return report
 
 

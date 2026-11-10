@@ -1,5 +1,14 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.29 — namespace rename (operator note — nothing to run)
+
+The `namespace_aliases` table is created at boot. No catalog row moves until somebody renames a
+namespace. A namespace renamed here keeps its old copies in storage; `registry remove-*` and
+`purge-test-data` remove them with the rest. A backup restored from before a rename restores the old
+names and leaves the new copies orphaned in storage, which is a complete revert except after a rename
+back to an old name (`a → b → a`), whose `a/` manifests were rewritten. The console's error banner does
+not yet show the new name on a refused claim: that needs the bundle rebuilt where Node is installed.
+
 ## 0.28.6 — upstream 0.8.3, all three tiers (operator note — no sweep)
 
 Upstream's release record moves no axis and declares nothing, so `registry upgrade` has nothing to do.

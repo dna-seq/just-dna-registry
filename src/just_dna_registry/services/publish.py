@@ -55,7 +55,7 @@ from just_dna_format.signing import sign_digest
 from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
-from just_dna_registry.db.repository import Repository
+from just_dna_registry.db.repository import NamespaceReserved, Repository
 from just_dna_registry.services.enrich import (
     enrich_spec,
     enricher_available,
@@ -811,6 +811,18 @@ def _finalize(
             readme_name = manifest.readme.name if manifest.readme is not None else README_FILE
             readme_bytes = stored.get(readme_name)
             with _COMMIT_LOCK:
+                # The namespace may have been renamed while this run compiled (0.29): the route
+                # resolved the old name at request start, and `registry upgrade` carries the stored
+                # one. A version published now lands under the current name, stamped with it, and the
+                # rename takes this lock around its own transaction, so the two cannot interleave.
+                current = repo.resolve_namespace(namespace)
+                if current != namespace:
+                    namespace = current
+                    manifest.identity.namespace = current
+                    manifest.identity.canonical_id = canonical_id(current, name, version)
+                    write_manifest(manifest, out_dir / "manifest.json")
+                    stored["manifest.json"] = (out_dir / "manifest.json").read_bytes()
+                    key = version_key(current, name, version)
                 # Re-asked here, not only at the route: see `_COMMIT_LOCK`.
                 if repo.version_exists(namespace, name, version):
                     raise PublishError(
@@ -818,13 +830,22 @@ def _finalize(
                         errors=[f"{namespace}/{name}@{version} was published while this run compiled"],
                     )
                 storage.store_module(key, stored)
-                ingest_manifest(
-                    repo,
-                    manifest,
-                    changelog=changelog,
-                    published_by=published_by,
-                    readme=readme_bytes.decode("utf-8", errors="replace") if readme_bytes else None,
-                )
+                try:
+                    ingest_manifest(
+                        repo,
+                        manifest,
+                        changelog=changelog,
+                        published_by=published_by,
+                        readme=readme_bytes.decode("utf-8", errors="replace") if readme_bytes else None,
+                    )
+                except NamespaceReserved as exc:
+                    # Renamed by another process between the check above and the insert, which the
+                    # lock cannot see; the module row's guard refused it. Nothing was catalogued.
+                    raise PublishError(
+                        "namespace_renamed",
+                        errors=[f"{exc.name} was renamed to {exc.current} while this run compiled; "
+                                f"publish again"],
+                    ) from exc
             action.add_success_fields(
                 digest=manifest.artifact.digest,
                 content_signature=manifest.content_signature,

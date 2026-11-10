@@ -21,8 +21,9 @@ from just_dna_registry.api.deps import (
     settings_dep,
 )
 from just_dna_registry.config import Settings
-from just_dna_registry.db.repository import HandleReserved, Repository
+from just_dna_registry.db.repository import HandleReserved, NamespaceReserved, Repository
 from just_dna_registry.models.api import (
+    ALIAS_HEADER,
     AddMemberRequest,
     CreateOrgRequest,
     MemberEntry,
@@ -181,9 +182,19 @@ def create_org_namespace(
     namespace = body.namespace
     if not is_valid_namespace(namespace):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="invalid_namespace")
+    if repo.namespace_name_taken(namespace) == "alias":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="namespace_taken",
+            headers={ALIAS_HEADER: repo.resolve_namespace(namespace)},
+        )
     if repo.namespace_owner(namespace) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="namespace_taken")
     if repo.count_namespaces_for_account(org_id) >= settings.namespaces_per_account:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="namespace_limit_reached")
-    repo.add_namespace(namespace, org_id, seed_owner=False)
+    try:
+        repo.add_namespace(namespace, org_id, seed_owner=False)
+    except NamespaceReserved as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="namespace_taken", headers={ALIAS_HEADER: exc.current}
+        ) from exc
     return {"namespace": namespace, "org": org}

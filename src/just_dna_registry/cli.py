@@ -44,11 +44,12 @@ from just_dna_registry.maintenance import (
     run_root,
     write_sweep,
 )
-from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename
+from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename, NamespaceRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
 from just_dna_registry.replay import ReplayRefused, replay_upgrade
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
+from just_dna_registry.services.namespaces import NamespaceRenameRefused, rename_namespace
 from just_dna_registry.services.pmid_check import verify_pmids
 from just_dna_registry.services.publish import PublishError
 from just_dna_registry.services.purge import DEFAULT_PREFIX, apply_purge, plan_purge
@@ -293,6 +294,12 @@ def issue_key(
             raise typer.BadParameter(f"{refusal} Pass --allow-test-data to grant it anyway.")
         typer.secho(accepted_anyway(refusal), fg=typer.colors.YELLOW)
     for ns in namespace:
+        if repo.namespace_name_taken(ns) == "alias":
+            # Checked before any is granted, as the test-data rule above is.
+            raise typer.BadParameter(
+                f"namespace {ns} was renamed to {repo.resolve_namespace(ns)}; grant that one instead"
+            )
+    for ns in namespace:
         repo.add_namespace(ns, account_id)
     if site_admin:
         repo.set_site_admin(account_id, True)
@@ -416,6 +423,67 @@ def rename_account_command(
     if done.failed:
         typer.echo("run the same command again to finish the versions above")
     typer.echo(f"renamed {done.account} to {done.name}: {done.amended} manifest(s) amended")
+
+
+@app.command("rename-namespace")
+def rename_namespace_command(
+    namespace: str = typer.Argument(..., help="The namespace (an old name resolves)"),
+    new: str = typer.Argument(..., help="Its new name"),
+    apply: bool = typer.Option(False, "--apply", help="Act; without it, report only"),
+    allow_test_data: bool = typer.Option(
+        False, "--allow-test-data", help="Give a test- name on production deliberately"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Rename NAMESPACE to NEW (0.29): every version's files are copied to the new storage path and its
+    manifest's namespace amended (outside the digest; nothing changes identity), the catalog moves in
+    one transaction, and the old name stays an alias that reads and publishes follow. The old copies
+    are kept. Reports only unless --apply; snapshots the DB first. Running it again finishes a rename a
+    storage error interrupted. Not capped by `max_handle_aliases` (that is the self-service limit)."""
+    settings = get_settings()
+    _echo_mode(settings)
+    repo = _open_existing_db(settings)
+    storage = _storage(settings)
+
+    def run(act: bool) -> NamespaceRename:
+        try:
+            return rename_namespace(
+                repo, storage, settings, namespace, new,
+                apply=act, allow_test_data=allow_test_data, by_admin=True,
+            )
+        except LookupError as exc:
+            typer.echo(f"namespace not found: {namespace}")
+            raise typer.Exit(code=1) from exc
+        except NamespaceRenameRefused as exc:
+            typer.echo(f"cannot rename {namespace} to {new}: {exc.code}: {exc}")
+            raise typer.Exit(code=1) from exc
+
+    plan = run(False)
+    typer.echo(f"  aliases after   {plan.aliases}")
+    typer.echo(f"  modules         {len(plan.modules)}: {', '.join(plan.modules)}")
+    for move in plan.versions:
+        typer.echo(f"  {move.version} -> {move.to} ({move.files} files)")
+    for line in plan.warnings:
+        typer.secho(f"  ! {line}", fg=typer.colors.YELLOW)
+    if not apply:
+        typer.echo(f"dry run: nothing changed (pass --apply to rename {plan.namespace} to {new})")
+        return
+    if not yes:
+        typer.confirm(
+            f"Rename {plan.namespace} to {new}? {plan.namespace} stays an alias of it for good.",
+            abort=True,
+        )
+    done = run(True)
+    if done.snapshot is None:
+        typer.secho("! no pre-flight snapshot taken (auto-backup disabled)", fg=typer.colors.YELLOW)
+    else:
+        typer.secho(f"snapshot: {done.snapshot}", fg=typer.colors.GREEN)
+    for line in done.failed:
+        typer.secho(f"✗ {line}", fg=typer.colors.RED)
+    if done.failed:
+        typer.echo("nothing in the catalog moved; run the same command again to finish")
+        raise typer.Exit(code=1)
+    typer.echo(f"renamed {done.namespace} to {done.name}: {done.copied} version(s) moved")
 
 
 @app.command("export-keys")
@@ -616,6 +684,15 @@ def set_funding(account: str, url: str = typer.Argument(..., help="Donation link
     typer.echo(f"{account}: funding_url {'cleared' if url == '' else 'set'}")
 
 
+def _refuse_namespace_alias(repo: Repository, namespace: str) -> None:
+    """A hard delete names the namespace it deletes by its current name, never an old one (0.29):
+    a deletion is the one act where landing on another name than the one typed is wrong."""
+    current = repo.resolve_namespace(namespace)
+    if current != namespace:
+        typer.echo(f"{namespace} was renamed to {current}; name {current} to delete it")
+        raise typer.Exit(code=1)
+
+
 @app.command("remove-module")
 def remove_module(
     namespace: str, name: str, yes: bool = typer.Option(False, "--yes", "-y"),
@@ -624,10 +701,13 @@ def remove_module(
     settings = get_settings()
     repo = Repository(connect(settings.db_path))
     storage = _storage(settings)
+    _refuse_namespace_alias(repo, namespace)
     if not yes:
         typer.confirm(f"Hard-delete {namespace}/{name} and ALL its artifacts?", abort=True)
+    prefixes = repo.storage_namespaces(namespace)
     versions = repo.delete_module(namespace, name)
-    storage.remove(f"{namespace}/{name}")
+    for prefix in prefixes:  # with the copies a namespace rename kept (0.29)
+        storage.remove(f"{prefix}/{name}")
     typer.echo(f"removed {namespace}/{name} ({len(versions)} version(s): {versions})")
 
 
@@ -639,12 +719,14 @@ def remove_version(
     settings = get_settings()
     repo = Repository(connect(settings.db_path))
     storage = _storage(settings)
+    _refuse_namespace_alias(repo, namespace)
     if not yes:
         typer.confirm(f"Hard-delete {namespace}/{name}@{version} and its artifacts?", abort=True)
     if not repo.delete_version(namespace, name, version):
         typer.echo(f"not found: {namespace}/{name}@{version}")
         raise typer.Exit(code=1)
-    storage.remove(f"{namespace}/{name}/{version}")
+    for prefix in repo.storage_namespaces(namespace):  # with the copies a rename kept (0.29)
+        storage.remove(f"{prefix}/{name}/{version}")
     typer.echo(f"removed {namespace}/{name}@{version}")
 
 
@@ -657,7 +739,9 @@ def remove_namespace(
     settings = get_settings()
     repo = Repository(connect(settings.db_path))
     storage = _storage(settings)
+    _refuse_namespace_alias(repo, namespace)
     modules = repo.modules_in_namespace(namespace)
+    prefixes = repo.storage_namespaces(namespace)
     if not yes:
         typer.confirm(
             f"Hard-delete namespace {namespace!r}: {len(modules)} module(s) + artifacts, "
@@ -666,15 +750,33 @@ def remove_namespace(
         )
     for module in modules:
         repo.delete_module(namespace, module["name"])
-    repo.delete_namespace_grant(namespace)
-    storage.remove(namespace)  # nuke any residual {ns}/ subtree
+    repo.delete_namespace_grant(namespace)  # its aliases with it (0.29)
+    for prefix in prefixes:  # nuke any residual {ns}/ subtree, and the copies a rename kept
+        storage.remove(prefix)
     typer.echo(
         f"removed namespace {namespace}: {len(modules)} module(s) purged; namespace freed"
     )
 
 
+def _current_namespace(settings: Settings, namespace: str | None) -> str | None:
+    """`namespace`, or the name it was renamed to (0.29), for a command that filters or flags by one.
+    Said aloud when it moves, since the operator typed the other name."""
+    if namespace is None or not Path(settings.db_path).exists():
+        return namespace
+    conn = connect(settings.db_path)
+    try:
+        init_db(conn)
+        current = Repository(conn).resolve_namespace(namespace)
+    finally:
+        conn.close()
+    if current != namespace:
+        typer.echo(f"{namespace} was renamed to {current}; using {current}")
+    return current
+
+
 def _set_flag(namespace: str, *, featured=None, blacklisted=None) -> None:
     settings = get_settings()
+    namespace = _current_namespace(settings, namespace)
     repo = Repository(connect(settings.db_path))
     if not repo.set_namespace_flags(namespace, featured=featured, blacklisted=blacklisted):
         typer.echo(f"namespace not found: {namespace}")
@@ -737,6 +839,7 @@ def revalidate(
     publishers. `--strict-check` is the cheap approximation: it catches the mode-ladder findings but
     not the unresolved-position gate, which only a real compile can see."""
     settings = get_settings()
+    namespace = _current_namespace(settings, namespace)
     _echo_mode(settings)
     conn = connect(settings.db_path)
     init_db(conn)  # idempotent: ensures the needs_upgrade column exists on a pre-0.5.0 DB
@@ -908,6 +1011,7 @@ def upgrade(
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
     settings = get_settings()
+    namespace = _current_namespace(settings, namespace)
     conn = connect(settings.db_path)
     init_db(conn)
     result = _upgrade_sweep(
@@ -1440,6 +1544,7 @@ def replay_upgrade_command(
     each replayed successor with the published one. With --online it re-asks live sources, so an answer
     that moved since the original run shows up as a difference; it spends the same egress budget."""
     settings = get_settings()
+    namespace = _current_namespace(settings, namespace)
     # Inside the run's own directory: `replay-upgrade` keeps its run (ALWAYS_LOG), so its report and
     # the scratch catalog it was read from stay together under one id.
     run = active_run()
@@ -2133,6 +2238,7 @@ def rederive_signatures(
     not find them.
     """
     settings = get_settings()
+    namespace = _current_namespace(settings, namespace)
     repo = _open_existing_db(settings)
     storage = _storage(settings)
 

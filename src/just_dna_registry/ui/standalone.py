@@ -45,6 +45,8 @@ FORWARDED_RESPONSE_HEADERS: frozenset[str] = frozenset(
         # Which bucket a `429 rate_limited` came from (0.26). Added with the header, because a
         # whitelist that lags the API by one field is a page saying "rate limited" and nothing else.
         "x-ratelimit-bucket",
+        # The namespace an old name resolved to (0.29), on a served request and on a refused claim.
+        "x-namespace-current",
     }
 )
 _CHUNK = 64 * 1024

@@ -155,7 +155,10 @@ def plan_purge(
             swept.add((ns, name))
 
     plan.modules = sorted(swept)
-    plan.storage_keys = [f"{ns}/{name}" for ns, name in plan.modules]
+    # With the copies a namespace rename kept under each old name (0.29).
+    plan.storage_keys = [
+        f"{prefix}/{name}" for ns, name in plan.modules for prefix in repo.storage_namespaces(ns)
+    ]
 
     # Versions still authored by a purged account after the sweep — their module survives, so the
     # authorship pointer is cleared rather than the row deleted. Computed last, against the final sweep

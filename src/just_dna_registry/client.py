@@ -17,6 +17,7 @@ from just_dna_format.integrity import sha256_bytes, verify_manifest
 from just_dna_format.manifest import ModuleManifest, write_manifest
 
 from just_dna_registry.models.api import (
+    ALIAS_HEADER,
     CacheStatusReport,
     CheckReport,
     CitationHintReport,
@@ -191,7 +192,9 @@ class RegistryError(RuntimeError):
     `headers` is the response's, lower-cased, because through 0.25.2 this carried the status and
     body only — so a `429`'s `Retry-After`, sent by the server and forwarded by the console proxy,
     reached no Python caller (S23). `retry_after` and `bucket` read the two headers a `429
-    rate_limited` carries; both are `None` where the server sent neither.
+    rate_limited` carries; both are `None` where the server sent neither. `namespace_current` reads
+    `X-Namespace-Current`, which a `409 namespace_taken` carries when the name asked for is a renamed
+    namespace's old name (0.29).
     """
 
     def __init__(
@@ -208,7 +211,14 @@ class RegistryError(RuntimeError):
             message += ")"
         elif self.retry_after is not None:
             message += f" (retry after {self.retry_after}s)"
+        if self.namespace_current is not None:
+            message += f" (that name now resolves to {self.namespace_current})"
         super().__init__(message)
+
+    @property
+    def namespace_current(self) -> str | None:
+        """The namespace an old name points to, from `X-Namespace-Current` (0.29), else `None`."""
+        return self.headers.get(ALIAS_HEADER.lower())
 
     @property
     def retry_after(self) -> int | None:
@@ -1244,13 +1254,27 @@ class RegistryClient:
         published changes identity. Returns the `AccountRename` report; `dry_run` changes nothing.
         Running the same rename again finishes any version listed under `failed`.
 
-        It renames the handle, never a namespace: `ns/name@version` is a published identity that
-        consumers pin, so every version stays where it was published, and no call moves one. On a
-        test instance, `delete_module` frees a module's content claim, after which it can be
-        published under another namespace."""
+        Since 0.29 the namespace spelled like the old handle, when this account owns it, renames with
+        it (`namespaces_renamed`; see `rename_namespace`); any other namespace is renamed on its own."""
         return self._json(
             self._http.post(
                 "/auth/rename",
+                json={"name": name, "dry_run": dry_run, "allow_test_data": allow_test_data},
+            )
+        )
+
+    def rename_namespace(
+        self, namespace: str, name: str, *, dry_run: bool = True, allow_test_data: bool = False
+    ) -> dict:
+        """Rename `namespace` to `name` (0.29; its owner, or a site admin). Every version moves: files
+        copied to the new storage path, `identity.namespace` and `canonical_id` amended (outside the
+        digest, `content_signature` and the signature), and the old name stays an alias, so
+        `old/module` keeps resolving and nobody else may claim it. Returns the `NamespaceRename`
+        report; `dry_run` (the default) changes nothing. Running the same rename again finishes one
+        a storage error interrupted."""
+        return self._json(
+            self._http.post(
+                f"/namespaces/{namespace}/rename",
                 json={"name": name, "dry_run": dry_run, "allow_test_data": allow_test_data},
             )
         )

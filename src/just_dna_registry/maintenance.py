@@ -286,6 +286,18 @@ class JournaledStorage:
                     self._run.record("add", key, name, before=None, after=data)
             self.inner.store_module(key, files)
 
+    def copy_module(self, src: str, dst: str, overrides: Mapping[str, bytes]) -> int:
+        # Journaled as the writes it makes at `dst`, with the bytes each one lands, so a revert of a
+        # namespace rename removes (or restores) exactly what the copy put there.
+        with self._run.lock:
+            for name in sorted({*self.inner.list_files(src), *overrides}):
+                after = overrides[name] if name in overrides else self.inner.read_file(src, name)
+                if self.inner.exists(dst, name):
+                    self._run.record("overwrite", dst, name, before=self.inner.read_file(dst, name), after=after)
+                else:
+                    self._run.record("add", dst, name, before=None, after=after)
+            return self.inner.copy_module(src, dst, overrides)
+
     def remove(self, key: str) -> None:
         with self._run.lock:
             for name in self.inner.list_files(key):

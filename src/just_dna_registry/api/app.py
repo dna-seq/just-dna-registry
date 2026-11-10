@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from just_dna_format.signing import public_key_b64_from_pem
 
 from just_dna_registry import __version__
+from just_dna_registry.api.namespace_alias import NamespaceAliasMiddleware
 from just_dna_registry.api.routers import (
     admin,
     auth,
@@ -117,6 +118,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # `local()` reads installed package metadata, which cannot know the deployment mode — that is a
     # property of this process's settings, so it is stamped on here.
     server_versions = VersionInfo.local().model_copy(update={"mode": settings.mode})
+
+    # Innermost of the middleware, so the trace and the version headers see the request as routed.
+    app.add_middleware(NamespaceAliasMiddleware)
 
     @app.middleware("http")
     async def _trace_requests(request: Request, call_next):

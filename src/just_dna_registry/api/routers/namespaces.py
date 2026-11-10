@@ -2,21 +2,33 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from just_dna_format.identity import is_valid_namespace
 from pydantic import BaseModel
 
 from just_dna_registry.api.deps import (
     Account,
     get_repo,
+    get_storage,
+    rate_limit,
+    refund_rate_charge,
     require_account,
     require_capability,
     settings_dep,
 )
 from just_dna_registry.config import Settings
-from just_dna_registry.db.repository import Repository
-from just_dna_registry.models.api import AddMemberRequest, MemberEntry, MemberList
+from just_dna_registry.db.repository import NamespaceReserved, Repository
+from just_dna_registry.models.api import (
+    ALIAS_HEADER,
+    AddMemberRequest,
+    MemberEntry,
+    MemberList,
+    NamespaceRename,
+    NamespaceRenameRequest,
+)
 from just_dna_registry.permissions import VALID_NS_ROLES, Capability
+from just_dna_registry.services.namespaces import NamespaceRenameRefused, rename_namespace
+from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.testdata import accepted_anyway, override_hint, test_data_refusal
 
 router = APIRouter(prefix="/namespaces", tags=["namespaces"])
@@ -24,6 +36,7 @@ router = APIRouter(prefix="/namespaces", tags=["namespaces"])
 RepoDep = Annotated[Repository, Depends(get_repo)]
 SettingsDep = Annotated[Settings, Depends(settings_dep)]
 AccountDep = Annotated[Account, Depends(require_account)]
+StorageDep = Annotated[StorageBackend, Depends(get_storage)]
 
 
 class ClaimRequest(BaseModel):
@@ -58,6 +71,10 @@ def availability(repo: RepoDep, settings: SettingsDep, namespace: str) -> dict:
         # Machine-readable, so a caller branches on this rather than on the prose beside it.
         "requires_allow_test_data": bool(warnings),
         "warnings": [f"{w} {override_hint()}" for w in warnings],
+        # The names this namespace renamed away from (0.29). Asked by one of them, the path was
+        # already resolved to this namespace, so `namespace` names the current one and
+        # `X-Namespace-Current` says so; `available` is then false, as the claim would be refused.
+        "aliases": repo.namespace_aliases_of(namespace),
     }
 
 
@@ -83,6 +100,13 @@ def claim(repo: RepoDep, settings: SettingsDep, account: AccountDep, body: Claim
             )
         warnings.append(accepted_anyway(refusal))
 
+    if repo.namespace_name_taken(namespace) == "alias":
+        # A name another namespace renamed away from (0.29). The detail stays the string clients
+        # compare; the current name rides in a header, as every new fact about a refusal does.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="namespace_taken",
+            headers={ALIAS_HEADER: repo.resolve_namespace(namespace)},
+        )
     owner = repo.namespace_owner(namespace)
     if owner is not None:
         if int(owner["account_id"]) == account.id:
@@ -95,7 +119,12 @@ def claim(repo: RepoDep, settings: SettingsDep, account: AccountDep, body: Claim
     if repo.count_namespaces_for_account(account.id) >= settings.namespaces_per_account:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="namespace_limit_reached")
 
-    repo.add_namespace(namespace, account.id)
+    try:
+        repo.add_namespace(namespace, account.id)
+    except NamespaceReserved as exc:  # renamed into an alias since the check above
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="namespace_taken", headers={ALIAS_HEADER: exc.current}
+        ) from exc
     return {
         "namespace": namespace, "owner": account.name, "already_owned": False, "warnings": warnings,
     }
@@ -154,3 +183,44 @@ def remove_member(
         namespace=namespace,
         members=[MemberEntry(account=r["account"], role=r["role"]) for r in repo.list_members(namespace)],
     )
+
+
+@router.post(
+    "/{namespace}/rename", response_model=NamespaceRename, dependencies=[Depends(rate_limit("rename"))]
+)
+def rename(
+    request: Request,
+    repo: RepoDep,
+    storage: StorageDep,
+    settings: SettingsDep,
+    account: AccountDep,
+    namespace: str,
+    body: NamespaceRenameRequest,
+) -> NamespaceRename:
+    """Rename a namespace (0.29). Its owner may, and a site admin may rename any (an owner everywhere).
+
+    Every version moves: its files are copied to the new storage path and its manifest's
+    `identity.namespace` and `canonical_id` amended (registry-stamped, outside `artifact.digest`,
+    `content_signature` and the signature, so nothing published changes identity). The old name stays
+    an alias: reads and publishes addressed to it land here, and nobody else may claim it. The old
+    copies are kept. `dry_run` (the default) reports and changes nothing.
+    """
+    # The path was already resolved through any alias (`NamespaceAliasMiddleware`).
+    require_capability(repo, account, namespace, Capability.MANAGE_ROLES)
+    try:
+        report = rename_namespace(
+            repo, storage, settings, namespace, body.name,
+            apply=not body.dry_run, allow_test_data=body.allow_test_data, by_admin=account.site_admin,
+        )
+    except NamespaceRenameRefused as exc:
+        refund_rate_charge(request)  # refused before the work the bucket prices
+        code = status.HTTP_409_CONFLICT if exc.conflict else status.HTTP_422_UNPROCESSABLE_CONTENT
+        raise HTTPException(code, detail={"error": exc.code, "errors": [str(exc)]}) from exc
+    if body.dry_run:
+        refund_rate_charge(request)
+    if report.failed:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail={"error": "storage_failed", "errors": report.failed},
+        )
+    return report

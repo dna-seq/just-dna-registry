@@ -37,6 +37,17 @@ class LocalStorage:
         # Local backend has no external URL; the API streams the bytes instead.
         return None
 
+    def copy_module(self, src: str, dst: str, overrides: Mapping[str, bytes]) -> int:
+        names = sorted({*self.list_files(src), *overrides})
+        for name in names:
+            dest = self._dir(dst) / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if name in overrides:
+                dest.write_bytes(overrides[name])
+            else:
+                shutil.copyfile(self._dir(src) / name, dest)
+        return len(names)
+
     def remove(self, key: str) -> None:
         shutil.rmtree(self._dir(key), ignore_errors=True)
 

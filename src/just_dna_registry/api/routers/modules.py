@@ -144,7 +144,7 @@ def list_modules(
         # A retired handle lists the account's modules under its current one (0.28): old links work.
         owner=repo.current_handle(owner) if owner else None,
         license=license,
-        namespace=namespace,
+        namespace=repo.resolve_namespace(namespace) if namespace else None,  # an old name (0.29)
         featured=featured,
         include_blacklisted=include_blacklisted,
         has_gene_validity=has_gene_validity,

@@ -502,6 +502,8 @@ export interface NamespaceAvailability {
   available: boolean;
   requires_allow_test_data: boolean;
   warnings: string[];
+  /** Names this namespace renamed away from (0.29); they resolve here. */
+  aliases: string[];
 }
 export interface ClaimResult { namespace: string; owner: string; already_owned: boolean; warnings: string[]; }
 export interface RegisterResult { token: string; account: string; namespaces: string[]; }

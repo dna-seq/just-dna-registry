@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.28.x**, API `v1` (**0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.29.x**, API `v1` (**0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -190,6 +190,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 42 | GET | `/api/v1/admin/runs?command=&page=&per_page=` | site admin | The enricher-facing maintenance runs, newest first (0.28.3) |
 | 43 | GET | `/api/v1/admin/runs/{run_id}` | site admin | One run's record and its structured per-module sweep (0.28.3) |
 | 44 | GET | `/api/v1/admin/runs/{run_id}/log?tail=` | site admin | One run's `run.log` as text, paths scrubbed (0.28.3) |
+| 45 | POST | `/api/v1/namespaces/{ns}/rename` | owner / site admin | Rename a namespace; the old name stays an alias that reads and publishes follow (0.29) |
 
 ---
 
@@ -1324,9 +1325,12 @@ carries a warning: `registry purge-test-data` deletes accounts whose **current**
 
 `200 → AccountRename {"account", "name", "applied", "aliases": [...], "versions": [...],
 "versions_unattributed": [...], "conflicts": [...], "modules": [...], "namespaces_kept": [...],
-"amended", "failed": [...], "warnings": [...], "snapshot"}`. `versions_unattributed` are the versions
-with no recorded publisher (successors `registry upgrade` minted, versions from before 0.9). A
-namespace is never renamed; `namespaces_kept` names the ones spelled like a handle of the account.
+"amended", "failed": [...], "warnings": [...], "snapshot", "namespaces_renamed": [...]}`.
+`versions_unattributed` are the versions with no recorded publisher (successors `registry upgrade`
+minted, versions from before 0.9). Since 0.29 the namespace spelled like the old handle, when this
+account owns it, renames with the handle as endpoint 45 renames it (`namespaces_renamed`,
+`"old -> new"`); `namespaces_kept` lists one spelled like a handle that did not, with why (another
+account owns it, the new name is taken). Any other namespace is renamed through endpoint 45.
 Errors: `401`, `403 org_rename_is_admin_only`, `409 {"error": "account_taken"}` (somebody's current
 or retired handle), `409 {"error": "alias_limit_reached"}`, `422 {"error": "invalid_account"}`,
 `422 {"error": "test_data_on_prod"}`, `429`.
@@ -1337,6 +1341,57 @@ Endpoint 39 for any account, an org's included; `{account}` may be a retired han
 merge's does. Not held to `max_handle_aliases`. An applied rename takes a DB snapshot first. Same
 `AccountRename` response; additionally `403 site_admin_required`, `404 account_not_found`. The ops
 CLI is `registry rename-account OLD NEW [--apply] [--allow-test-data]`.
+
+---
+
+### 45. `POST /api/v1/namespaces/{ns}/rename`  *(namespace owner, or a site admin)*
+Rename a namespace (0.29). Body `{"name": "new-name", "dry_run": true, "allow_test_data": false}`:
+**`dry_run` defaults to true.** Every version moves: its files are copied to `{new}/{name}/{version}` in
+storage with the manifest's `identity.namespace` and `identity.canonical_id` amended, then the catalog
+moves in one transaction. Both fields are registry-stamped and outside `artifact.digest`,
+`content_signature` and the signature, so nothing published changes identity and every download still
+verifies. Stars, reviews, downloads, facets and the `content_hash` claims follow the module. **The old
+copies are kept**, so a rename back is clean.
+
+**The old name stays an alias for good.** Every request whose path names it, under `/api/v1/modules/{ns}/…`
+and `/api/v1/namespaces/{ns}…`, reads, publishes, yanks and member changes alike, is served under the
+new name, and the response carries `X-Namespace-Current: <new>`. `GET /modules?namespace=` follows it
+too. **A `DELETE` never follows an old name**: a hard delete or a member removal acts on the name the
+caller typed, so one addressed to an old name finds nothing. Claiming an old name (endpoint 13, an
+org's namespace, `registry issue-key -n`, `registry import-keys`) is refused, `409 namespace_taken`
+with `X-Namespace-Current` naming the namespace it points to (the `detail` string is unchanged;
+`RegistryError.namespace_current` reads the header). Renaming twice re-points every older alias, and
+renaming back to one of its own aliases reclaims it. `GET /namespaces/{ns}` gains `aliases`. A publish
+that started before the rename and finishes after it lands under the new name.
+
+A name that holds modules or stored files without an owner (an account deleted with its versions
+kept) is not free: `409 namespace_taken`. Leaving a `test-` name for an unprefixed one on production
+needs no flag and answers with a warning, since `purge-test-data` stops reaching those modules;
+entering one needs `allow_test_data`, and an account rename into a `test-` handle with that flag takes
+its handle-spelled namespace along, which a routine purge then removes.
+
+A copy that fails lists the version under `failed` and moves nothing in the catalog (`502
+storage_failed`); sending the same request again finishes it. A version published under the old name
+while the files were being copied stops the move (`409 namespace_changed`); run it again. An applied
+rename takes a DB snapshot first. Rate bucket `rename`; a dry run and a refusal are refunded. A
+self-service rename refuses once the namespace would answer to more than `max_handle_aliases` old names;
+a site admin is not held to it. On production a `test-` name needs `allow_test_data`, as a claim does.
+
+`200 → NamespaceRename {"namespace", "name", "applied", "aliases": [...], "modules": [...], "versions":
+[{"version", "to", "files"}], "copied", "failed": [...], "warnings": [...], "snapshot"}`. Errors: `401`,
+`403` (not the namespace's owner), `409 {"error": "namespace_taken"}`, `409 {"error":
+"alias_limit_reached"}`, `409 {"error": "namespace_changed"}`, `422 {"error": "invalid_namespace"}`,
+`422 {"error": "test_data_on_prod"}`, `429`, `502 {"error": "storage_failed"}`. The ops CLI is `registry
+rename-namespace OLD NEW [--apply] [--allow-test-data]`, the client's `registry-client rename-namespace`.
+A hard delete (endpoints 35 and 36, `registry remove-*`, `purge-test-data`) removes the copies kept under
+old names too, and the ops removals refuse an old name. Freeing a namespace (`remove-namespace`, a
+purge, a deleted account) frees its current name only: its old names stay reserved and resolve to
+nothing, so an old link answers `404` rather than reaching whoever claims the freed name next.
+
+**Reverting one.** Copies are add-only and the old copies are untouched, so restoring the DB snapshot
+the rename took is a complete revert; the new copies are then orphaned files. The one exception is a
+rename back to an old name (`a → b → a`), which rewrites the `manifest.json` kept under `a/` (same
+bytes but for the amended fields). A CLI rename is also a maintenance run that `revert-run` undoes.
 
 ---
 

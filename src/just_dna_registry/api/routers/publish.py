@@ -948,7 +948,8 @@ def delete_version(
     require_capability(repo, account, namespace, Capability.PUBLISH)
     if not repo.delete_version(namespace, name, version):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version_not_found")
-    storage.remove(version_key(namespace, name, version))
+    for prefix in repo.storage_namespaces(namespace):  # with the copies a rename kept (0.29)
+        storage.remove(version_key(prefix, name, version))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -969,5 +970,6 @@ def delete_module(
     versions = repo.delete_module(namespace, name)
     if not versions:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="module_not_found")
-    storage.remove(f"{namespace}/{name}")
+    for prefix in repo.storage_namespaces(namespace):  # with the copies a rename kept (0.29)
+        storage.remove(f"{prefix}/{name}")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -453,6 +453,9 @@ _RENAME_REFUSALS: dict[str, str] = {
     "invalid_account": "that is not a valid handle (lowercase letters, digits and hyphens)",
     "alias_limit_reached": "this account already holds the most retired handles self-service allows",
     "test_data_on_prod": "production refuses a test- handle; pass --allow-test-data if you mean it",
+    "invalid_namespace": "not a valid namespace (lowercase letters, digits and hyphens)",
+    "namespace_taken": "another namespace holds that name, or answers to it",
+    "namespace_changed": "a version was published while it moved; nothing moved, run it again",
 }
 
 
@@ -468,7 +471,7 @@ def _rename_error(exc: RegistryError) -> str | None:
 def _echo_rename(report: dict) -> None:
     typer.echo(f"  {report['account']} → {report['name']}")
     for field in ("aliases", "versions", "versions_unattributed", "conflicts", "modules",
-                  "namespaces_kept", "failed", "warnings"):
+                  "namespaces_renamed", "namespaces_kept", "failed", "warnings"):
         value = report.get(field) or []
         if value:
             typer.echo(f"  {field:<22} {len(value)}: {', '.join(value[:8])}"
@@ -489,8 +492,9 @@ def rename_account(
 ) -> None:
     """Rename your handle (or, with --account and a site-admin token, any account's) to NAME. The
     old handle stays reserved to the account, and every manifest naming it is amended. Reports only
-    unless --apply; running it again finishes any version a storage error left behind. Namespaces
-    are never renamed: every version stays under the namespace it was published in."""
+    unless --apply; running it again finishes any version a storage error left behind. The namespace
+    spelled like the old handle, when the account owns it, renames with it (0.29); any other
+    namespace is renamed with `rename-namespace`."""
 
     def call(c: RegistryClient, act: bool) -> dict:
         if account is None:
@@ -522,6 +526,53 @@ def rename_account(
         typer.secho(f"! {len(done['failed'])} version(s) not amended; run the same command again",
                     fg=typer.colors.YELLOW)
     typer.echo(f"✓ {done['account']} is now {done['name']} ({done['amended']} manifest(s) amended)")
+
+
+@app.command("rename-namespace")
+def rename_namespace(
+    namespace: str = typer.Argument(..., help="The namespace to rename"),
+    name: str = typer.Argument(..., help="Its new name"),
+    apply: bool = typer.Option(False, "--apply", help="Act; without it, report only"),
+    allow_test_data: bool = typer.Option(False, "--allow-test-data"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Rename NAMESPACE to NAME (its owner, or a site admin). Every version moves with its files and
+    its manifest's namespace amended; the old name stays an alias, so links, installs and publishes
+    addressed to it keep working, and nobody else can claim it. Reports only unless --apply."""
+    with _client(url, token, need_token=True) as c:
+        try:
+            plan = c.rename_namespace(namespace, name, dry_run=True, allow_test_data=allow_test_data)
+        except RegistryError as exc:
+            reason = _rename_error(exc)
+            if reason is None:
+                raise
+            typer.secho(f"✗ cannot rename {namespace} to {name}: {reason}", fg=typer.colors.RED)
+            raise typer.Exit(code=1) from exc
+        _echo_namespace_rename(plan)
+        if not apply:
+            typer.echo("dry run: nothing changed (pass --apply to act)")
+            return
+        if not yes:
+            typer.confirm(
+                f"Rename {plan['namespace']} to {name}? {plan['namespace']} stays an alias of it and "
+                f"cannot be given to anyone else.",
+                abort=True,
+            )
+        done = c.rename_namespace(namespace, name, dry_run=False, allow_test_data=allow_test_data)
+    _echo_namespace_rename(done)
+    typer.echo(f"✓ {done['namespace']} is now {done['name']} ({done['copied']} version(s) moved)")
+
+
+def _echo_namespace_rename(report: dict) -> None:
+    typer.echo(f"  {report['namespace']} → {report['name']}")
+    moves = [f"{v['version']} ({v['files']} files)" for v in report.get("versions") or []]
+    for field, value in (("aliases", report.get("aliases") or []), ("modules", report.get("modules") or []),
+                         ("versions", moves), ("warnings", report.get("warnings") or [])):
+        if value:
+            typer.echo(f"  {field:<10} {len(value)}: {', '.join(value[:8])}"
+                       + (f" (+{len(value) - 8} more)" if len(value) > 8 else ""))
 
 
 @app.command("find-by-hash")

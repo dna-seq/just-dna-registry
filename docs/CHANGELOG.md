@@ -8,11 +8,24 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
-### Documentation
+### A namespace renames, and its old name stays an alias (S28, reversed)
 
-- `rename_account`, `registry-client rename-account` and CLIENT.md now say that a namespace is never
-  renamed, and that on the polygon `delete_module` is how a module's data moves to another namespace
-  (S28, just-module-creator).
+0.28 renamed handles and said a namespace never renames, which left S28's reporter (an owner moving a
+polygon namespace) with delete-and-republish. Now `POST /namespaces/{ns}/rename` (its owner, or a site
+admin; `RegistryClient.rename_namespace`, `registry-client rename-namespace`, `registry
+rename-namespace`) moves every version: files copied to the new storage path, each manifest's
+`identity.namespace` and `canonical_id` amended (registry-stamped, outside the digest,
+`content_signature` and the signature, so every download still verifies), and the catalog moved in one
+transaction. The old name stays an alias for good: reads and publishes addressed to it land on the new
+one with an `X-Namespace-Current` header, `?namespace=` follows it, and every door that claims a
+namespace refuses it. Renaming back reclaims it. The old copies are kept; a hard delete removes them
+with the rest. An account rename now carries the namespace spelled like its old handle
+(`namespaces_renamed`). A failed copy, or a version published mid-rename, moves nothing; run it again.
+
+**Client surface:** unchanged in signature; `rename_namespace` is new and `RegistryError` gains
+`namespace_current`. Two behaviours move: `rename_account` now also moves the handle-spelled namespace
+(storage copies included), and `AccountRename.namespaces_kept` now lists only namespaces that did not
+rename, each with why. A `DELETE` addressed to an old name finds nothing; name the current one.
 
 ## [0.28.6] — 2026-11-10
 

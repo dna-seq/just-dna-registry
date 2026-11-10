@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS account_aliases (
     retired_at TEXT NOT NULL
 );
 
+-- A namespace's history (0.29): every name a namespace gave up by renaming, and the name it carries
+-- now. Requests addressed to an alias land on `target`, and nothing frees an alias, so an install's
+-- `registry://old/name@version`, a pinned URL or a CI publish can never come to mean somebody else's
+-- namespace. A later rename re-points every alias of the old target, so a lookup is one hop.
+CREATE TABLE IF NOT EXISTS namespace_aliases (
+    name       TEXT PRIMARY KEY,
+    target     TEXT NOT NULL,
+    retired_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS api_keys (
     key        TEXT PRIMARY KEY,
     account_id INTEGER NOT NULL REFERENCES accounts(id)
@@ -156,6 +166,7 @@ CREATE INDEX IF NOT EXISTS idx_namespace_members_account ON namespace_members(ac
 CREATE INDEX IF NOT EXISTS idx_org_members_account ON org_members(account_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_module ON reviews(module_id);
 CREATE INDEX IF NOT EXISTS idx_account_aliases_account ON account_aliases(account_id);
+CREATE INDEX IF NOT EXISTS idx_namespace_aliases_target ON namespace_aliases(target);
 """
 
 

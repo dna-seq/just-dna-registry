@@ -849,23 +849,32 @@ manifest's namespace against the path it asked for.
 **Plan.**
 1. **Schema**: `namespace_aliases(name PRIMARY KEY, target, retired_at)`; `target` is the current name, and a
    later rename re-points every alias of the old target, so a lookup is one hop. Created on boot (no
-   migration step for an operator).
+   migration step for an operator). Freeing a namespace leaves its old names reserved with an empty
+   target (`_FREED`): they resolve to nothing, so an old link 404s rather than reaching whoever claims
+   the freed name next (review item 3).
 2. **One resolver, one place for the API**: a small ASGI middleware rewrites the first path segment after
    `/api/v1/modules/` and `/api/v1/namespaces/` when it is an alias, and the response carries
-   `X-Namespace-Renamed: old -> new`. Reserved first segments (`lookup`, `groups`) are never aliases, since a
-   namespace cannot be named so. The batch lookup's body and `?namespace=`-style query filters resolve
-   through the same `repo.resolve_namespace`. Ops CLI commands that take a namespace resolve too.
-3. **Every door that mints a namespace refuses an alias**: the claim route, org namespace create, the
-   personal namespace a registration or `issue-key` claims, `import-keys`. Checked inside the write
+   `X-Namespace-Current: <new>`. The exact paths `/modules/lookup` and `/modules/groups` are skipped (a
+   namespace *can* be named so, and `/modules/groups/x` resolves). A `DELETE` is never rewritten, and the
+   ops removals refuse an old name: a deletion acts on the name typed. `?namespace=` and the ops commands'
+   filters resolve through `repo.resolve_namespace`. (The batch lookup carries no namespace.)
+3. **Every door that mints a namespace refuses an alias**: the claim route, org namespace create,
+   `issue-key -n`, `import-keys` (both directions: an imported namespace that is an alias here, and an
+   imported alias that is a live namespace here). Registration claims none. Checked inside the write
    statement, as `_NOT_AN_ALIAS` does for handles. The refusal names the current name.
 4. **`services/namespaces.rename_namespace(old, new, apply, by_admin, allow_test_data)`**: refuses an unknown
    or alias `old` (an alias resolves, so renaming an alias renames its target), an invalid or taken `new`
-   (a namespace, an alias held by another lineage, or `test_data_refusal`), and self-service past
+   (a namespace, an alias held by another lineage, a name with modules or stored files and no grant,
+   or `test_data_refusal`), and self-service past
    `max_handle_aliases` aliases in that lineage. Renaming back to one of its own aliases reclaims it. The dry
    run reports every version, its old and new key, and file count. Apply: backup; **storage first**, copying
    each version's files to the new key with the manifest amended (`identity.namespace`, `canonical_id`);
    then **one transaction**: the three tables, every `versions.manifest_json`, the alias row, re-pointed
    aliases. A storage failure changes no row, and a re-run converges (copies overwrite). Old copies stay.
+   The copy is `StorageBackend.copy_module` (one commit per version on HF, LFS parquets copied
+   server-side). **A publish racing the rename**: `_finalize` re-resolves the namespace under
+   `_COMMIT_LOCK`, which the rename's transaction also takes; a publish from another process meets the
+   alias guard on `upsert_module`'s insert (review item 1).
 5. **The account rename calls it** for the namespace spelled like the old handle, when the account owns it;
    a refusal there (the name taken) is reported in the account rename's report, never a failure of it.
    `namespaces_kept` becomes `namespaces_renamed` / `namespaces_kept` with reasons.
@@ -878,8 +887,17 @@ manifest's namespace against the path it asked for.
    CLIENT.md (reversing 185a8c7's sentences), CHANGELOG 0.29.0 with `**Client surface:**` (a new method),
    UPGRADE (nothing to run). S28's follow-up is triage's once cut.
 
-**Known limit, said so it is not assumed**: no command rebuilds the catalog from storage today; if one is
-built, the old copies (still naming the old namespace) must be skipped through `namespace_aliases`.
+**Known limits, said so they are not assumed**: no command rebuilds the catalog from storage today; if one
+is built, the old copies (still naming the old namespace) must be skipped through `namespace_aliases`.
+The console's `ApiError` does not read `X-Namespace-Current` yet: the bundle needs Node to rebuild. An
+HTTP rename runs inside the request; a namespace of many versions on HF is slow there, and the CLI is the
+route for a large one. Leaving a `test-` name on production warns and needs no flag; entering one needs
+`allow_test_data`, and an account renamed into `test-` takes its handle-spelled namespace along, where
+a routine purge removes it. A DB-snapshot restore is a complete revert except after a rename back to an
+old name, which rewrote that name's kept manifests.
+
+**Review** (2026-11-10, an Opus "what did I miss" pass over the plan and the draft): eleven items, all
+addressed in the build; the plan above is corrected to match.
 
 ## Next registry version (post-0.11)
 

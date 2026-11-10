@@ -47,6 +47,8 @@ class _FakeHub:
         self.repo_id = repo_id
         self.files: dict[str, bytes] = {}
         self.commits = 0
+        self.lfs: set[str] = set()
+        self.copied = 0
 
     def _in_repo(self, fs_path: str) -> str:
         prefix = f"datasets/{self.repo_id}/"
@@ -71,8 +73,21 @@ class _FakeHub:
     def create_commit(self, *, repo_id: str, operations, **_: object) -> None:
         assert repo_id == self.repo_id
         for op in operations:
-            self.files[op.path_in_repo] = op.path_or_fileobj
+            if hasattr(op, "src_path_in_repo"):  # CommitOperationCopy: the hub copies LFS files only
+                assert op.src_path_in_repo in self.lfs, f"copied a non-LFS file: {op.src_path_in_repo}"
+                self.files[op.path_in_repo] = self.files[op.src_path_in_repo]
+                self.lfs.add(op.path_in_repo)
+                self.copied += 1
+            else:
+                self.files[op.path_in_repo] = op.path_or_fileobj
         self.commits += 1
+
+    def get_paths_info(self, repo_id: str, paths: list[str], **_: object) -> list:
+        assert repo_id == self.repo_id
+        return [
+            type("RepoFile", (), {"path": p, "lfs": {"size": 1} if p in self.lfs else None})()
+            for p in paths if p in self.files
+        ]
 
     def delete_folder(self, *, path_in_repo: str, repo_id: str, **_: object) -> None:
         assert repo_id == self.repo_id
@@ -129,6 +144,32 @@ def test_a_maintenance_run_over_hf_storage_reverts_to_the_byte(tmp_path) -> None
         live.store_module("ns/new/1.0.1", {"manifest.json": b"n", "data/b.parquet": b"B"})
         live.remove("ns/gone/1.0.0")
     assert hub.files != before
+
+    with maintenance_run(settings, "revert-run", "x"):
+        revert_run(settings, run.id, journaled(storage))
+    assert hub.files == before
+
+
+def test_copy_module_copies_lfs_files_server_side_in_one_commit_and_journals_every_file(tmp_path) -> None:
+    """A namespace rename's copy (0.29): parquets are LFS on the hub and copied there, the small files are
+    re-added, the override replaces its file, and a journaled copy reverts to the byte."""
+    hub = _FakeHub("org/repo")
+    storage = _hf(hub)
+    storage.store_module("old/m/1.0.0", {"manifest.json": b"old", "weights.parquet": b"P", "logs/x.log": b"L"})
+    hub.lfs.add("data/old/m/1.0.0/weights.parquet")
+    before, commits = dict(hub.files), hub.commits
+    db = tmp_path / "registry.db"
+    sqlite3.connect(db).execute("CREATE TABLE t (k)").connection.commit()
+    settings = Settings(db_path=db, run_dir=tmp_path / "runs")
+
+    with maintenance_run(settings, "rename-namespace", "x") as run:
+        assert journaled(storage).copy_module("old/m/1.0.0", "new/m/1.0.0", {"manifest.json": b"new"}) == 3
+    assert hub.commits == commits + 1 and hub.copied == 1
+    assert {p: hub.files[p] for p in hub.files if p.startswith("data/new/")} == {
+        "data/new/m/1.0.0/manifest.json": b"new", "data/new/m/1.0.0/weights.parquet": b"P",
+        "data/new/m/1.0.0/logs/x.log": b"L",
+    }
+    assert {p: hub.files[p] for p in before} == before  # the old copy is untouched
 
     with maintenance_run(settings, "revert-run", "x"):
         revert_run(settings, run.id, journaled(storage))

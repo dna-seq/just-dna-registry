@@ -628,6 +628,55 @@ class RenameAccountRequest(BaseModel):
     allow_test_data: bool = False
 
 
+#: The response header naming a namespace's current name (0.29): on a request whose path named an alias
+#: and was served under the namespace it now points to, and on a `409 namespace_taken` refusing a claim
+#: of an alias. A header, never the `detail` string, which clients compare with `==`.
+ALIAS_HEADER = "X-Namespace-Current"
+
+
+class NamespaceRenameRequest(BaseModel):
+    name: str = Field(description="The namespace's new name")
+    dry_run: bool = Field(True, description="Report what would move, change nothing")
+    allow_test_data: bool = Field(
+        False, description="Proceed although production refuses a test-prefixed name (0.14 rule)"
+    )
+
+
+class NamespaceVersionMove(BaseModel):
+    version: str = Field(description="`old/name@version`")
+    to: str = Field(description="`new/name@version`")
+    files: int = Field(description="Files copied to the new storage path (none deleted from the old)")
+
+
+class NamespaceRename(BaseModel):
+    """What renaming a namespace changed (or, on a dry run, would change), 0.29.
+
+    `identity.namespace` and `canonical_id` are registry-stamped and outside `artifact.digest`,
+    `content_signature` and the signature, so amending them moves no identity and breaks no
+    verification. The old name stays an alias: reads and publishes addressed to it land here."""
+
+    namespace: str = Field(description="The namespace before this request")
+    name: str = Field(description="The namespace after it")
+    applied: bool
+    aliases: list[str] = Field(
+        description="Names this namespace answers to after the rename; each stays reserved to it"
+    )
+    modules: list[str] = Field(description="`new/name` of every module that moves")
+    versions: list[NamespaceVersionMove] = Field(description="Every version that moves")
+    copied: int = Field(0, description="Versions whose files were copied by this request (0 on a dry run)")
+    failed: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Versions whose copy failed; nothing in the catalog moved, and the same rename run again "
+            "finishes it"
+        ),
+    )
+    warnings: list[str] = Field(default_factory=list)
+    snapshot: str | None = Field(
+        default=None, description="Backup file name taken before an applied rename (name only)"
+    )
+
+
 class AccountRename(BaseModel):
     """What renaming a handle changed (or, on a dry run, would change).
 
@@ -655,9 +704,19 @@ class AccountRename(BaseModel):
         description="Versions whose `owner` names this account but another account published: left as they are",
     )
     modules: list[str] = Field(description="`ns/name` whose card `owner` changes")
+    namespaces_renamed: list[str] = Field(
+        default_factory=list,
+        description=(
+            "`old -> new` for the namespace spelled like the old handle, which this account owns and "
+            "which renames with it (0.29); the old name stays its alias"
+        ),
+    )
     namespaces_kept: list[str] = Field(
         default_factory=list,
-        description="Namespaces spelled like a handle of this account: a namespace is never renamed",
+        description=(
+            "Namespaces spelled like a handle of this account that did not rename, each with why "
+            "(another account owns it, or the new name is taken)"
+        ),
     )
     amended: int = Field(0, description="Versions amended by this request (0 on a dry run)")
     failed: list[str] = Field(

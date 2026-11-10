@@ -574,6 +574,7 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("PATCH", "/api/v1/auth/whoami"): ("update_profile",),
     ("POST", "/api/v1/admin/accounts/{account}/merge"): ("merge_accounts",),
     ("POST", "/api/v1/auth/rename"): ("rename_account",),
+    ("POST", "/api/v1/namespaces/{namespace}/rename"): ("rename_namespace",),
     ("POST", "/api/v1/admin/accounts/{account}/rename"): ("admin_rename_account",),
     ("GET", "/api/v1/admin/runs"): ("runs",),
     ("GET", "/api/v1/admin/runs/{run_id}"): ("run",),

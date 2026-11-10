@@ -158,6 +158,8 @@ ROWS: tuple[Row, ...] = (
     Row("merge-accounts/dry", ("merge-accounts", "carol", "bob"), False),
     Row("rename-account/apply", ("rename-account", "antonkulaga", "anton-renamed", "--apply", "--yes"), True),
     Row("rename-account/dry", ("rename-account", "antonkulaga", "anton-renamed"), False),
+    Row("rename-namespace/apply", ("rename-namespace", NS, "renamed-space", "--apply", "--yes"), True),
+    Row("rename-namespace/dry", ("rename-namespace", NS, "renamed-space"), False),
     Row("export-keys/stdout", ("export-keys",), False),
     Row("export-keys/file", ("export-keys", "--out", "{root}/auth-export.json"), False),
     Row("import-keys", ("import-keys", "{inputs}/import.json"), True),
