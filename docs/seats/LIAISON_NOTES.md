@@ -80,6 +80,8 @@ reset").
   Thursday 2026-11-12 bump.
 - reflect after 2026-11-17: classes/base/BASE.md as of v0.1.165 (the tooling seat is the one holding the tooling
   role's duties, D181; this clone has none, so kit gaps still go to the kit's issues).
+- reflect after 2026-11-17: classes/base/BASE.md as of v0.1.167 (a person's reaction on my post reaches me; a yes or
+  no emoji wakes me, D180), and v0.1.166's "Another organisation" section (none of my contacts are outside ours).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
