@@ -823,6 +823,64 @@ committed; a site-admin key for their seat is the person's to issue.
 check on for its online modules), RM401, RM403 (retry lines counted as `network`). Next on the polygon: deploy,
 `replay-upgrade --online` to re-measure (upstream reads it by run id), then the 12 held modules.
 
+## 0.29 — a namespace renames, and the old name stays an alias (planned 2026-11-10, the lead)
+
+**Decided by the person 2026-11-10** in the lead's session, reversing S28's decline (triage, 185a8c7): "Redesign
+the rename. It shound rename the namespace as follows: rename old to new, leave old one as alias pointer.
+Build missing parts", then "1a 2a 3a" on three questions: (1a) a namespace's owner renames it, a site admin
+renames any, and an account rename also renames the namespace spelled like the old handle when the account
+owns it; (2a) reads **and** publishes addressed to the old name land on the new one, and nobody else may ever
+claim the old name; (3a) each version's files are copied to the new storage path and every stored manifest's
+`identity.namespace` and `canonical_id` amended, the old copies kept, so nothing is deleted. The person's 1a
+said "site-admin `rename-namespace`"; the namespace owner may too, because S28's reporter is an owner and
+not an admin (the more complete scope, the lead's call; self-service is capped as the handle rename is).
+Sizing: **minor** (a route, a client method, a parity row, a behaviour reversed). Branch `0.29`.
+
+**Facts that make it possible.** The namespace is registry-stamped (`_finalize` sets `identity.namespace`,
+`identity.canonical_id`); it is in no compiled parquet, not in `artifact.digest`, not in `content_signature`
+(format's `integrity.content_signature` excludes the identity half of the spec), and the signature covers the
+digest only. So a stored manifest can be amended in place, as `amend_owner` already does. Three tables carry
+the name (`namespaces.name`, `modules.namespace`, `namespace_members.namespace`); everything else keys on
+`module_id`, so stars, reviews, downloads, gene/category facets and the `content_hash` claims follow the row.
+Storage keys are `{ns}/{name}/{version}` (`storage.base.version_key`). Every API path that names a namespace
+is under `/api/v1/modules/{ns}/…` or `/api/v1/namespaces/{ns}…` (both modes), and no client checks the
+manifest's namespace against the path it asked for.
+
+**Plan.**
+1. **Schema**: `namespace_aliases(name PRIMARY KEY, target, retired_at)`; `target` is the current name, and a
+   later rename re-points every alias of the old target, so a lookup is one hop. Created on boot (no
+   migration step for an operator).
+2. **One resolver, one place for the API**: a small ASGI middleware rewrites the first path segment after
+   `/api/v1/modules/` and `/api/v1/namespaces/` when it is an alias, and the response carries
+   `X-Namespace-Renamed: old -> new`. Reserved first segments (`lookup`, `groups`) are never aliases, since a
+   namespace cannot be named so. The batch lookup's body and `?namespace=`-style query filters resolve
+   through the same `repo.resolve_namespace`. Ops CLI commands that take a namespace resolve too.
+3. **Every door that mints a namespace refuses an alias**: the claim route, org namespace create, the
+   personal namespace a registration or `issue-key` claims, `import-keys`. Checked inside the write
+   statement, as `_NOT_AN_ALIAS` does for handles. The refusal names the current name.
+4. **`services/namespaces.rename_namespace(old, new, apply, by_admin, allow_test_data)`**: refuses an unknown
+   or alias `old` (an alias resolves, so renaming an alias renames its target), an invalid or taken `new`
+   (a namespace, an alias held by another lineage, or `test_data_refusal`), and self-service past
+   `max_handle_aliases` aliases in that lineage. Renaming back to one of its own aliases reclaims it. The dry
+   run reports every version, its old and new key, and file count. Apply: backup; **storage first**, copying
+   each version's files to the new key with the manifest amended (`identity.namespace`, `canonical_id`);
+   then **one transaction**: the three tables, every `versions.manifest_json`, the alias row, re-pointed
+   aliases. A storage failure changes no row, and a re-run converges (copies overwrite). Old copies stay.
+5. **The account rename calls it** for the namespace spelled like the old handle, when the account owns it;
+   a refusal there (the name taken) is reported in the account rename's report, never a failure of it.
+   `namespaces_kept` becomes `namespaces_renamed` / `namespaces_kept` with reasons.
+6. **Surfaces**: `POST /namespaces/{ns}/rename` (owner role; site admin is owner everywhere), body
+   `{name, dry_run, allow_test_data}`, response `NamespaceRename`; `RegistryClient.rename_namespace`; parity
+   row; `registry rename-namespace OLD NEW [--apply]` (a maintenance run, storage through `_storage()`) and
+   `registry-client rename-namespace`; `GET /namespaces/{ns}` gains `aliases`; console types; export and
+   import carry `namespace_aliases`.
+7. **Docs**: CLAUDE.md's "a namespace is never renamed" becomes the rule and its four keepers; API-REFERENCE,
+   CLIENT.md (reversing 185a8c7's sentences), CHANGELOG 0.29.0 with `**Client surface:**` (a new method),
+   UPGRADE (nothing to run). S28's follow-up is triage's once cut.
+
+**Known limit, said so it is not assumed**: no command rebuilds the catalog from storage today; if one is
+built, the old copies (still naming the old namespace) must be skipped through `namespace_aliases`.
+
 ## Next registry version (post-0.11)
 
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's
