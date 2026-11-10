@@ -133,6 +133,10 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   the finding the signature of an invented rsID beside a real symbol; `services/enrich.py:1981` already says which
   half is wrong is unknowable. A wording fix, the lead's (handed 2026-11-09); no floor needed, nothing reads the
   sentence.
+  **RM427** (`e7fa81d`, module-creator's S142): the ClinVar clinical-assertion pass's no-snapshot skip, a log
+  warning in `assertions.py` and a CLI line, named `clinvar pull`, which no app registers. It now names `cache pull
+  --only clinvar` or `clinvar build`. Nothing in this repo names either command or reads the sentence (a grep of
+  `src`, `docs`, `console`), and we import no symbol from `assertions`. Nothing moves.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
