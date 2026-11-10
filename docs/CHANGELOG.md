@@ -8,6 +8,26 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### On upstream 0.8.3: `upgrade --jobs` checks rsIDs concurrently, and `warm-caches` follows the hub
+
+All three tiers floor at 0.8.3. Its release record moves no axis and declares nothing, so `registry
+upgrade` recompiles nothing. Two of its changes reach code here, and the reasons are beside the pins.
+
+- **The dbSNP check no longer serializes a publish** (upstream RM418). `upgrade --jobs` and the server's
+  threadpool ran each online publish with `REGISTRY_ENRICH_VERIFY_RSIDS` on one at a time, because the
+  check built an NCBI client of its own that paced alone. From 0.8.3 every such client in a process paces
+  on one gate, the one the shared bundle's client uses too, so an online sweep's rsID checks overlap and
+  together keep NCBI's rate. `REGISTRY_ENRICH_VERIFY_DATASETS` still serializes, until upstream's RM419.
+- **`warm-caches --apply` compares each selected present pulled lane with the release the hub publishes**
+  (upstream RM420), and upstream re-pulls one that came from a pull and holds another release (gnomAD
+  constraint 4.1 → 4.1.2, a newer STRchive). A cache built here is left alone, and upstream's line beside
+  it names both releases. It costs one small hub read per lane on every `--apply`; the dry run reads
+  nothing and marks these lanes "checked against the hub's on --apply".
+- **OpenTargets drops without `--force`** once pulled: upstream published the lane in 0.8.2 (RM408), so
+  `drop-caches` no longer counts it as a lane with no snapshot to pull back.
+
+**Client surface:** unchanged.
+
 ## [0.28.5] — 2026-11-09
 
 ### `GET /caches` says what reads each lane, and `read_here` is right for five more

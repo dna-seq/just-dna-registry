@@ -107,7 +107,8 @@ by member, with *cannot say* for anything else**: `agreement_is_evidence` maps `
 present and still wrong**: 0.8's Ensembl lane moved repositories (RM372), a 0.7 cache still reads as
 present, so `warm-caches` hands a present pulled lane whose record names another repo (or none) to
 upstream's `prepare_caches` and reads the record back (0.28.1; 0.28.0 left it alone and the guide sent
-operators to the enricher's own pull), and `registry upgrade` checks the pull record before re-deriving
+operators to the enricher's own pull); since 0.28.6 (enricher 0.8.3, RM420) every other selected present
+pulled lane goes too, for upstream to compare its release with the hub's; and `registry upgrade` checks the pull record before re-deriving
 anything. **When the format moves a lane, our provisioning command moves with it in the same release.**
 
 **And having read one, be willing to say it is not load-bearing. `0.6.4` is the first enricher floor
@@ -492,8 +493,10 @@ Four rules that each cost a bug to learn:
 - **`upgrade --jobs` is a concurrent caller of `enrich()`, so every client it can reach must be shared
   or serialized (0.28.2).** The bundle covers `resolver`, `gnomad_client` and `grch37_client`, and a test
   reads every client `enrich()` accepts off its signature. What `enrich()` builds per run with no way to
-  hand it one (`check_rsids`' `EutilsClient`, the dataset-currency probes) runs under `_UNSHARED_EGRESS`
-  while its setting is on; ask upstream for the parameter rather than widening that lock. The workers'
+  hand it one (the dataset-currency probes) runs under `_UNSHARED_EGRESS` while its setting is on; ask
+  upstream for the parameter rather than widening that lock. `check_rsids`' `EutilsClient` left the lock in
+  0.28.6: enricher 0.8.3 (RM418) paces every gate-less client of a service on one process-wide gate, which our
+  bundle's `EutilsClient` shares, and a test holds the two to one gate object; the floor is that reason. The workers'
   speed-up is overlapped waiting, never rate. And **a shorter timeout is not faster against Ensembl**:
   measured, a cold `/variation` lookup is 7-18 s at the server and an abandoned request leaves it cold, so
   `enrich_http_timeout_seconds` defaults to upstream's values and the measured direction is longer.

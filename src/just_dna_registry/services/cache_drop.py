@@ -17,7 +17,8 @@ Four rules, each of which a hand `rm` gets wrong somewhere:
 * **Two kinds of lane need `--force`**: one anything here reads (`lane_readers`: every enrichment, a
   `/check` pass, a proxy route, or a build of one of those; removing `ensembl` makes publishing an
   rsID-authored module refuse), and one with no published snapshot to pull back (PharmVar needs a
-  personal key, ACMG a workbook, OpenTargets a long build). Both are recoverable; neither is cheap.
+  personal key, ACMG a workbook). Both are recoverable; neither is cheap. OpenTargets left the second kind
+  with enricher 0.8.2 (RM408), which published it, so a pulled one drops without `--force`.
 * **Leftovers are offered separately** (`stale`): `<lane>.pre-<version>` builds that a derived-lane
   rebuild kept, `.<lane>.rebuild-*` staging that a failed one left, and `.<lane>.dropping-*` from an
   interrupted removal. No resolver reads any of them.

@@ -75,7 +75,11 @@ dependencies = [
     # codes, a `toolchain` change kind, verification records naming their witness, new resolution columns),
     # so a client on 0.7 cannot read a manifest this server writes. The server, `registry-client` and the
     # console move together; see docs/UPGRADE.md, 0.28.
-    "just-dna-format>=0.8.0",
+    #
+    # **0.8.3 is the soft kind here** (registry 0.28.6). Upstream's release record for 0.8.2 -> 0.8.3 measures
+    # every axis `False` with nothing declared, and no public name, field, table or warning code moved. It is
+    # the floor because the enricher 0.8.3 the `server` extra needs floors all three tiers at `>=0.8.3`.
+    "just-dna-format>=0.8.3",
 ]
 
 [project.optional-dependencies]
@@ -122,7 +126,7 @@ dependencies = [
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.8.0",  # lockstep with the format floor above (0.28)
+    "just-dna-compiler>=0.8.3",  # lockstep with the format floor above
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -325,8 +329,20 @@ server = [
     # fetched by the merge check, which the sweep therefore turns on online (`upgrade_version`). Also in
     # it: RM401 batches live Ensembl 20 rsIDs per request, RM403 logs every retry at WARNING on
     # `just_dna_enricher.net` (counted as `network` in a sweep's summary), RM407.
-    "just-dna-compiler>=0.8.0",  # lockstep with the format floor above (0.28)
-    "just-dna-enricher>=0.8.1",  # hard: RM400 and RM398, see the 0.8.1 note above
+    #
+    # **0.8.3 (upstream `v0.8.3`, all three tiers) is soft for what it derives and load-bearing for one lock.**
+    # Release record: every axis `False`, nothing declared, so `registry upgrade` acts on nothing. Two of its
+    # private changes reach code here. RM418: an `EutilsClient` built without a gate paces on one gate per
+    # (service, interval) per process, so `check_rsids`' own client and our shared bundle's pace together,
+    # and `enrich_spec` no longer serializes a publish for `verify_rsids` (`_UNSHARED_EGRESS`). On 0.8.1 that
+    # narrower lock would let `upgrade --jobs` ask NCBI at N times its rate, which is what makes this a floor
+    # rather than the lock's choice. RM420: a present pulled lane handed to `prepare_caches` is compared with
+    # the release the hub publishes and re-pulled when they differ, and `warm-caches` hands it every selected
+    # present pulled lane. Probes, run 2026-11-10 on the installed enricher, both `True`:
+    # `uv run python -c "import inspect,just_dna_enricher.net as n; print('_service_gate' in inspect.getsource(n))"`
+    # `uv run python -c "import inspect,just_dna_enricher.download as d; print('_follow_hub' in inspect.signature(d.ensure_constraint_snapshot).parameters)"`
+    "just-dna-compiler>=0.8.3",  # lockstep with the format floor above
+    "just-dna-enricher>=0.8.3",  # RM418 under the narrowed lock, see the 0.8.3 note above
 ]
 
 [build-system]

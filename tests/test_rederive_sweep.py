@@ -288,8 +288,8 @@ def test_an_indel_module_is_held_offline_and_goes_online_only_when_allowed(
         pass
 
     def record(spec_dir, **kwargs):
-        # Held while the enrich runs: an unshared `EutilsClient` paces per run, so a `--jobs` sweep
-        # must take one at a time.
+        # Whether the unshared-egress lock is held while the enrich runs. The dbSNP witness no longer
+        # takes it (RM418: its `EutilsClient` paces on the process's NCBI gate); only the dataset probes do.
         free = enrich_service._UNSHARED_EGRESS.acquire(blocking=False)
         if free:
             enrich_service._UNSHARED_EGRESS.release()
@@ -301,8 +301,8 @@ def test_an_indel_module_is_held_offline_and_goes_online_only_when_allowed(
     with pytest.raises(Stop):
         upgrade_version(**args, online=True)
     assert seen[0]["offline"] is False and seen[0]["rederive"] is True
-    # RM398: online, the dbSNP witness is asked, and so the run is serialized.
-    assert seen[0]["verify_rsids"] is True and seen[0]["serialized"] is True
+    # RM398: online, the dbSNP witness is asked; since RM418 that does not serialize the sweep.
+    assert seen[0]["verify_rsids"] is True and seen[0]["serialized"] is False
     # The process's own settings are untouched: only that one publish went online.
     assert settings.enrich_offline is True and settings.enrich_verify_rsids is False
 

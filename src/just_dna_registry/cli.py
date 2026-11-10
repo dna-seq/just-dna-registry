@@ -1556,6 +1556,10 @@ def warm_caches(
     provisioner** (0.28.1). Format 0.8 moved Ensembl to a new repo under the same file names, so a 0.7
     cache reads as present; upstream re-pulls it, or checks a record-less one against the published
     files once. The dry run marks these `⟳`, and `--apply` reads each record back afterwards.
+    **Since 0.28.6 every other selected present pulled lane is handed over too** (enricher 0.8.3,
+    RM420): upstream compares its release with the one the hub publishes and re-pulls it when they
+    differ (gnomAD constraint 4.1 to 4.1.2, a new STRchive release), or leaves a cache built here alone
+    and says so. That costs one small read of the hub per lane on every `--apply`.
 
     **Each lane is tagged with what in this server opens it** (`services/lane_readers.py`): `publish`
     (every enrichment), `check: <group>`, `proxy: hints / drafts / derived`, `builds: <lane>`, or
@@ -1677,6 +1681,12 @@ def warm_caches(
     ages = {age.lane: age for age in derived_lane_ages(settings)}
     # A present pulled lane whose record names another repo, or no repo (`lanes_to_repull`).
     repull = lanes_to_repull(present, selected)
+    # Every other selected present lane with a pull route is compared with the release the hub publishes
+    # (enricher 0.8.3, RM420): upstream re-pulls one that came from a pull of the lane's repo and holds
+    # another release, and leaves one built here alone with both labels in its detail. The comparison is
+    # upstream's and runs only under `--apply`, one small read of the hub per lane; the dry run cannot say
+    # which way it will go without that read, so it lists them as present.
+    hub_check: list[str] = []
 
     typer.secho("lanes:", bold=True)
     missing: list[str] = []
@@ -1701,6 +1711,9 @@ def warm_caches(
                 f"  ✓ {name} {tag}: {where} (builder version unrecorded, so staleness cannot be "
                 f"judged; `just-dna-enricher cache rebuild --only {name}` to be sure)"
             )
+        elif where is not None and name in selected and name in pullable:
+            typer.echo(f"  ✓ {name} {tag}: {where} (its release is checked against the hub's on --apply)")
+            hub_check.append(name)
         elif where is not None:
             typer.echo(f"  ✓ {name} {tag}: {where}")
         elif name in exclude:
@@ -1733,8 +1746,13 @@ def warm_caches(
                 fg=typer.colors.YELLOW,
             )
 
-    if not missing and not stale:
+    if not missing and not stale and (not hub_check or not apply):
         typer.secho("\nEvery selected lane is present.", fg=typer.colors.GREEN)
+        if hub_check:
+            typer.echo(
+                f"{len(hub_check)} of them pulled ({', '.join(hub_check)}): --apply compares each with the "
+                f"release the hub publishes and re-pulls one that differs."
+            )
         return
     if not apply:
         if missing:
@@ -1746,6 +1764,11 @@ def warm_caches(
             typer.echo(
                 f"\n{len(stale)} derived lane(s) to rebuild: {', '.join(stale)}. Re-run with --apply "
                 f"(local, no network; the previous build is kept beside it)."
+            )
+        if hub_check:
+            typer.echo(
+                f"\n{len(hub_check)} present pulled lane(s) --apply also compares with the hub's release: "
+                f"{', '.join(hub_check)}."
             )
         raise typer.Exit(code=1)
 
@@ -1800,15 +1823,17 @@ def warm_caches(
         # use — two contradictory sentences about one lane, and the misleading one last.
         missing = [name for name in missing if name != "acmg"]
 
-    if not missing:
+    if not missing and not hub_check:
         if fetch_failures:
             raise typer.Exit(code=1)
         return
 
     from just_dna_enricher.caches import prepare_caches
 
+    # A present lane's outcome carries upstream's own line naming both release labels when they
+    # differ (re-pulled, or left alone because it was built here), and is printed as it comes.
     outcomes = prepare_caches(
-        [lanes[name] for name in missing],
+        [lanes[name] for name in [*missing, *hub_check]],
         declared_use=declared,
         pins=pins or None,
         sources=sources or None,

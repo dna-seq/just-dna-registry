@@ -258,8 +258,8 @@ QUIET_DRIFT: frozenset[str] = frozenset({"respelled", "gained_allele", "gained_r
 
 _shared_clients: Any = None
 _clients_lock = threading.Lock()
-#: Held around a publish's online `enrich()` while a pass that builds its own paced client is on; see
-#: `enrich_spec`. Process-wide, for the reason the shared bundle is.
+#: Held around a publish's online `enrich()` while a pass that builds its own paced client is on (the
+#: dataset-currency probes; the rsID check left it with enricher 0.8.3's RM418); see `enrich_spec`. Process-wide, for the reason the shared bundle is.
 _UNSHARED_EGRESS = threading.Lock()
 
 
@@ -588,7 +588,10 @@ def lanes_to_repull(present: Mapping[str, Path | None], selected: set[str]) -> d
       this is the route that clears it.
 
     The decision stays upstream's: this only chooses which present lanes to hand `prepare_caches`, and
-    the caller reads the record back afterwards rather than trusting the outcome's route.
+    the caller reads the record back afterwards rather than trusting the outcome's route. Since enricher
+    0.8.3 (RM420) `warm-caches` also hands every other selected present pulled lane over, for upstream to
+    compare its release with the hub's; those need no read-back, since a cache left on another release
+    is upstream's stated answer (built here), not a failure.
     """
     from just_dna_enricher.download import pulled_from_elsewhere
     from just_dna_enricher.locations import pull_record_repo
@@ -1084,13 +1087,17 @@ def enrich_spec(
     # gnomAD sells no key to raise. Only constructed online: offline the enricher builds neither a
     # resolver nor a gnomAD client, so there is nothing to share and nothing to pace.
     clients = None if offline else shared_lookup_clients()
-    # **A pass that builds its own paced client runs one enrichment at a time.** The dbSNP check
-    # (`verify_rsids`, through `identifiers.check_rsids`) builds a fresh `EutilsClient`, and the
-    # dataset-currency probes (`verify_datasets`) their own clients; `enrich()` accepts no client for
-    # either, so their pacing is per run, and N concurrent publishes (`upgrade --jobs`, or a server's
-    # threadpool) would ask NCBI at N times its rate. Held only online with one of those passes on:
-    # with the defaults every live request paces through the shared bundle and nothing waits here.
-    serialized = not offline and (settings.enrich_verify_rsids or settings.enrich_verify_datasets)
+    # **A pass that builds its own paced client runs one enrichment at a time.** The dataset-currency
+    # probes (`verify_datasets`) build their own clients and `enrich()` accepts none for them, so their
+    # pacing is per run, and N concurrent publishes (`upgrade --jobs`, or a server's threadpool) would
+    # ask each source at N times its rate. Held only online with that pass on: with the defaults every
+    # live request paces through the shared bundle and nothing waits here.
+    # The dbSNP check (`verify_rsids`) needed the same lock through enricher 0.8.2: `check_rsids` builds
+    # a fresh `EutilsClient`. Since 0.8.3 (RM418, our floor) a client built without a gate takes the
+    # process's one gate for its service and interval, which our bundle's `EutilsClient` takes too, so
+    # every NCBI request in this process paces together and the rsID check runs concurrently. The
+    # dataset half waits for upstream's RM419 (the same class beyond NCBI).
+    serialized = not offline and settings.enrich_verify_datasets
     if serialized:
         _UNSHARED_EGRESS.acquire()
 

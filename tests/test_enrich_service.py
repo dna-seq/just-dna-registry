@@ -688,18 +688,20 @@ def test_the_shared_bundle_actually_holds_clients() -> None:
     ("over", "held"),
     [
         ({}, False),
-        ({"enrich_verify_rsids": True}, True),
+        # RM418 (enricher 0.8.3): `check_rsids`' client paces on the process's NCBI gate, so no lock.
+        ({"enrich_verify_rsids": True}, False),
         ({"enrich_verify_datasets": True}, True),
+        ({"enrich_verify_rsids": True, "enrich_verify_datasets": True}, True),
         ({"enrich_verify_rsids": True, "enrich_offline": True}, False),
     ],
 )
 def test_a_publish_with_an_unshared_paced_pass_enriches_one_at_a_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, over: dict[str, bool], held: bool
 ) -> None:
-    """`enrich()` builds the dbSNP check's `EutilsClient` and the dataset probes' clients per run, so
-    concurrent publishes (`upgrade --jobs`) would each pace on their own. Online with either pass on,
-    the publish's `enrich()` runs under one process lock; otherwise it does not wait, and the lock is
-    released however the call ends."""
+    """`enrich()` builds the dataset probes' clients per run, so concurrent publishes (`upgrade --jobs`)
+    would each pace on their own. Online with that pass on, the publish's `enrich()` runs under one
+    process lock; otherwise it does not wait, and the lock is released however the call ends. The dbSNP
+    check no longer takes it: see the test below for why that is safe."""
     import just_dna_enricher.enrich as upstream
 
     from just_dna_registry.services import enrich as enrich_service
@@ -718,6 +720,37 @@ def test_a_publish_with_an_unshared_paced_pass_enriches_one_at_a_time(
         enrich_service.enrich_spec(spec, Settings(**{"enrich_offline": False, **over}))
     assert seen == [held]
     assert not enrich_service._UNSHARED_EGRESS.locked()
+
+
+def test_the_rsid_checks_own_eutils_client_paces_on_the_shared_bundles_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Why `verify_rsids` runs outside `_UNSHARED_EGRESS` (enricher 0.8.3, RM418).
+
+    `check_rsids` builds an `EutilsClient` of its own with no gate, as it did before; what changed is that
+    such a client takes the process's one gate for (eutils, interval). The bundle every publish shares
+    builds its `EutilsClient` without a gate too, so both must be handed the *same* gate object: if this
+    fails (a floor below 0.8.3, or the bundle starting to hand its client a gate of its own), concurrent
+    sweeps ask NCBI at N times its rate and the lock has to come back."""
+    from just_dna_enricher.eutils import EutilsClient
+
+    from just_dna_registry.services import enrich as enrich_service
+    from just_dna_registry.services.enrich import close_lookup_clients
+
+    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    close_lookup_clients()
+    try:
+        bundle = enrich_service.shared_lookup_clients(Settings(enrich_offline=False))
+        own = EutilsClient()
+        try:
+            assert bundle.eutils is not None
+            assert own.gate is bundle.eutils.gate
+            # And it is the eutils gate, not some other service's at the same spacing.
+            assert own.gate.interval == own.settings.min_request_interval
+        finally:
+            own.close()
+    finally:
+        close_lookup_clients()
 
 
 class _NoClients:
