@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-07)
+## Now (2026-11-10)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -11,9 +11,11 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   marked ✅. The C8/C17 "you may move them" reminder is moot: they shipped in it. 0.28.1 and 0.28.2 (maintenance
   runs, replay, pruning, parallel re-publish) are the lead's patches, not scope. Deploying is the person's,
   `docs/UPGRADE.md` 0.28; the sweep's operator question is the lead's desk #218.
-- **Next: 0.29 is not sized.** Its candidates are the open entries under *Next registry version* plus whatever the
-  liaison maps from upstream's next patch (RM400/401/403, a patch, so likely 0.28.x). Size it with the person
-  when they ask, or when the lead runs out of decided work; not before.
+- **0.29 is sized, by the person, not by the pm**: the namespace rename (2026-11-10 in the lead's session,
+  "rename old to new, leave old one as alias pointer", then "1a 2a 3a"; reverses S28). Minor. The lead wrote its
+  roadmap section on branch `0.29` (e68d89a) and builds it there; the section lands on main with the merge.
+  Nothing for the pm until then. The row catalog plus gene facet (below) is the next candidate after it.
+  0.28.6 (upstream 0.8.3: RM418, RM420) is the lead's patch, not scope.
 - **Upstream parked RM378** (coded strict errors): the strict-phrase match in *Next registry version* may be
   permanent (da9d8b8).
 - **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled;
@@ -22,7 +24,7 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   the lead (637623436, after 0.28, so now due for 0.29's sizing); nine ideas on `docs/TO_RESEARCH.md`.
 - **Push works**; commits go by path, `git commit --only -- <paths>` (base, kit #286), after a race on
   2026-11-05 put a pm roadmap paragraph inside the liaison's 7e88e7d.
-- **Auto-mode rules** still stale for the person to paste (1, 2, 3, 5 older, 13 missing), told 2026-11-05.
+- **Auto-mode rules** still stale for the person to apply (rule 14 older), `automode.py --apply`, told 2026-11-10.
 
 ## Tools
 
