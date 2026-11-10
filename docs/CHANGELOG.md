@@ -47,6 +47,14 @@ under `source/`. `drop-caches` could not show it: its listing named only lanes t
   fetch leaves, a build's `data.building` staging and the Open Targets `source/` mirror. A present lane's
   `data/` is never touched. Not while a `warm-caches` is running: a lane mid-download reads as partial.
 
+### Upstream 0.8.3 narrows what an uploaded verification document can carry, and a claim corrected
+
+RM423: an uploaded `verification.json` bound to other bytes than the ones uploaded keeps none of its
+records past this server's own enrichment, so a check the server does not run survives only from a
+document bound to the upload. Measuring that showed the docs overclaimed one thing: a closure written
+with the correct binding publishes as sent, because the binding is computable from the files. `closed:
+true` is the publisher's word like the rest of the block; the API reference and the model now say so.
+
 **Client surface:** unchanged.
 
 ## [0.28.5] — 2026-11-09

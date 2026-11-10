@@ -19,7 +19,9 @@ from just_dna_compiler.compiler import (
     _PROVENANCE_FILE,
     _TABLE_KIND_CSVS,
     AUTHORED_NON_KIND_TABLES,
+    authored_input_entries,
 )
+from just_dna_enricher.verification import module_binding
 from just_dna_format.manifest import ModuleManifest
 from just_dna_format.verification import VerificationDoc
 
@@ -470,7 +472,7 @@ def test_an_attestation_survives_the_rebuild_that_used_to_drop_it(client, api_ke
     assert with_it["content_signature"] == without["content_signature"]
 
 
-def test_a_publisher_cannot_forge_a_check_this_server_runs(client, api_key) -> None:
+def test_a_publisher_cannot_forge_a_check_this_server_runs(client, api_key, tmp_path) -> None:
     """Exactly how much of `manifest.verification` is the publisher's word, measured rather than assumed.
 
     The 0.17 decision to surface this block at all turned on this question, and the ROADMAP's worry —
@@ -483,19 +485,59 @@ def test_a_publisher_cannot_forge_a_check_this_server_runs(client, api_key) -> N
     upload claims `clinical_significance` ran over 999 subjects and found nothing; what publishes is
     this server's own `skipped` record for a deployment with no ClinVar snapshot.
 
-    **Half two: a check this server does *not* run survives verbatim, and is unverifiable.** Nothing
-    in this deployment produces `acmg_secondary_findings`, so the fabricated record is carried into
-    the manifest exactly as sent. That is the residual surface, it is why every field in the block is
-    presented as the publisher's claim, and it is why an absent block must read as *nothing was said*
-    rather than as *nothing was found*.
+    **Half two: a check this server does *not* run survives verbatim, and is unverifiable, when the
+    document binds to the uploaded bytes.** Nothing in this deployment produces
+    `acmg_secondary_findings`, so a fabricated record whose `module_hash` is the binding of the authored
+    files is carried into the manifest exactly as sent. That is the residual surface, it is why every
+    field in the block is presented as the publisher's claim, and it is why an absent block must read as
+    *nothing was said* rather than as *nothing was found*. Since enricher 0.8.3 (RM423) a document bound
+    to *other* bytes keeps none of its records past this server's own run, so a forger has to compute
+    the binding, which anyone holding the files can: the surface is narrower, not gone.
 
-    A third property falls out of the format and is worth pinning beside them: the **closure is
-    hash-bound**. A closure whose `module_hash` does not match the authored bytes is dropped by the
-    compiler rather than republished, so `closed` cannot be claimed by editing a JSON file.
+    A third property is pinned beside them: the **closure is hash-bound, not signed**. A closure whose
+    `module_hash` does not match the authored bytes is dropped rather than republished, so it cannot
+    outlive an edit; but one whose `module_hash` is the binding publishes as sent, so `closed` is the
+    publisher's word like the rest of the block (measured 2026-11-10: the earlier wording, "cannot be
+    claimed by editing a JSON file", held only because this test used a hash that bound nothing).
     """
-    forged = json.dumps(
+    authored = tmp_path / "authored"
+    authored.mkdir()
+    for fname, text in ((SPEC_YAML, _MINIMAL_YAML), ("variants.csv", _MINIMAL_VARIANTS),
+                        ("studies.csv", _MINIMAL_STUDIES)):
+        (authored / fname).write_text(text)
+    bound = module_binding(authored_input_entries(authored))
+
+    def forged(module_hash: str) -> bytes:
+        return _forged_verification(module_hash)
+
+    stale, stale_closure = _publish_with(client, api_key, "1.0.0", forged("sha256:" + "0" * 64))
+    assert stale_closure is None
+    # RM423: bound to other bytes, the upload's records do not outlive this server's own run.
+    assert "acmg_secondary_findings" not in stale, sorted(stale)
+    assert stale["clinical_significance"].detail != "everything is perfect"
+
+    published, closure = _publish_with(client, api_key, "1.0.1", forged(bound))
+    assert closure is not None and closure.closed_by == "a person who says it is fine", closure
+
+    # Displacement is the property, not the verdict: this fixture *has* a ClinVar snapshot, so the
+    # check really runs and reports `subjects=0` against a spec whose one variant it found nothing
+    # for. What matters is that none of the forged cells survived — not the count, not the prose, and
+    # not the invented release, which is replaced by the snapshot actually read.
+    ours = published["clinical_significance"]
+    assert ours.subjects == 0 and ours.detail != "everything is perfect", (
+        "a forged 'ran' record displaced this server's own"
+    )
+    assert ours.release != "2026-01"
+    theirs = published["acmg_secondary_findings"]
+    assert theirs.subjects == 999 and theirs.skipped is None, (
+        "the unverifiable half changed shape — re-read the surface's wording before changing this"
+    )
+
+
+def _forged_verification(module_hash: str) -> bytes:
+    return json.dumps(
         {
-            "module_hash": "sha256:" + "0" * 64,
+            "module_hash": module_hash,
             "signature": "sha256:" + "0" * 64,
             "difficulty": 20,
             "nonce": 1,
@@ -524,34 +566,23 @@ def test_a_publisher_cannot_forge_a_check_this_server_runs(client, api_key) -> N
             ],
         }
     ).encode()
+
+
+def _publish_with(client, api_key: str, version: str, verification: bytes) -> tuple[dict, object]:
     resp = client.post(
         "/api/v1/modules/just-dna-seq/coronary/versions",
-        data={"version": "1.0.0"},
+        data={"version": version},
         files=[
             ("files", (SPEC_YAML, _MINIMAL_YAML.encode(), "text/yaml")),
             ("files", ("variants.csv", _MINIMAL_VARIANTS.encode(), "text/csv")),
             ("files", ("studies.csv", _MINIMAL_STUDIES.encode(), "text/csv")),
-            ("files", (VERIFICATION_FILE, forged, "application/json")),
+            ("files", (VERIFICATION_FILE, verification, "application/json")),
         ],
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 201, resp.text
-    published = {r.check: r for r in ModuleManifest.model_validate(resp.json()).verification.checks}
-
-    # Displacement is the property, not the verdict: this fixture *has* a ClinVar snapshot, so the
-    # check really runs and reports `subjects=0` against a spec whose one variant it found nothing
-    # for. What matters is that none of the forged cells survived — not the count, not the prose, and
-    # not the invented release, which is replaced by the snapshot actually read.
-    ours = published["clinical_significance"]
-    assert ours.subjects == 0 and ours.detail != "everything is perfect", (
-        "a forged 'ran' record displaced this server's own"
-    )
-    assert ours.release != "2026-01"
-    theirs = published["acmg_secondary_findings"]
-    assert theirs.subjects == 999 and theirs.skipped is None, (
-        "the unverifiable half changed shape — re-read the surface's wording before changing this"
-    )
-    assert ModuleManifest.model_validate(resp.json()).verification.closure is None
+    manifest = ModuleManifest.model_validate(resp.json())
+    return {r.check: r for r in manifest.verification.checks}, manifest.verification.closure
 
 
 def test_required_is_only_the_yaml() -> None:
