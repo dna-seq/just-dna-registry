@@ -46,6 +46,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S25** archive publish lost the logo — `/versions` takes archives, 0.27.0
 - **S26** large publish lands but drops the response — race fixed, 0.27.0
 - **S27** `.env` loaded at import — enricher's (upstream S124); CLI fixed
+- **S28** namespace rename — declined by design; docs say so (unreleased)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2718,3 +2719,56 @@ A token loaded silently at import is also the shape `F35` / format-tree `S39` wa
 call is what gives a deployment its `.env` today; moving it into the entry points (`registry serve`, the
 CLI) as `load_dotenv(find_dotenv(usecwd=True))` keeps that, and reads the working directory's file rather
 than one found from the package. A library a consumer imports should leave `os.environ` alone.
+
+# Field notes from just-module-creator
+
+*2026-11-10, against the polygon (registry 0.28.5, format 0.8.0), client 0.28.5.*
+
+## S28 — a namespace cannot be renamed; `rename_account` renames the handle and leaves every version under the old namespace
+
+What we wanted: move the polygon namespace `test-sheep` (account `sheep`, the only namespace it holds, 44
+rehearsal versions) to a new `test-`-prefixed name, so the rehearsals sit under the name their author now uses.
+
+What we ran: `RegistryClient.rename_account(<new name>, dry_run=True, allow_test_data=True)` with the
+account's own token, the only rename the 0.28.5 client and `registry-client --help` offer (`rename-account`,
+`merge-accounts`; nothing names a namespace).
+
+What happened: the dry run reports `account: "sheep"`, `aliases: ["sheep"]` and lists all 44 versions as
+`test-sheep/<module>@<version>`. Per its docstring, "nothing published changes identity": the rename amends
+`owner` on each manifest and leaves the namespace where it is. So the call does a different thing from
+the one asked, and no call does the asked one. (A side observation from the same report: 22 of the 44 are
+listed under `versions_unattributed` as well.)
+
+What we did meanwhile: nothing applied. The handle rename was not run, since it would reserve a name and
+still not move a single module.
+
+What would serve: a namespace rename (or transfer) beside `rename_account`, with the same shape: the old
+namespace kept as an alias or redirect so `test-sheep/<module>` references resolve, `dry_run`, and a report
+of each version moved. If renaming a namespace is deliberately unsupported (a published `namespace/name`
+being an identity a consumer pins), saying so in `rename_account`'s docstring and in the CLI help would
+have answered this before the call. A plugin tool for it would follow on our side once it exists.
+
+**Status — declined by design; the documentation half is fixed, unreleased (after 0.28.6).** A namespace
+is never renamed, and no call moves a version to another one. `ns/name@version` is a published identity:
+it is the manifest's `canonical_id`, it is what consumers pin, and a published manifest is immutable. A
+redirect would leave the stored versions naming the old namespace, and re-publishing them under the new
+one is refused as `409 duplicate_content`, because each version's data is already claimed by
+`(test-sheep, name)`. Checked against the code: `rename_account` amends only `owner`, which sits outside
+`artifact.digest` and `content_signature` (`services/accounts.py`, `AccountRename`). The rule was already
+written down in API-REFERENCE.md (endpoint 39) and in the description of `namespaces_kept`, but that field
+lists only namespaces spelled exactly like a handle, so `test-sheep` beside the handle `sheep` was not
+listed and your report said nothing about the namespace. Your fallback was the right fix. The
+`rename_account` docstring, the `registry-client rename-account` help and CLIENT.md now say it.
+
+**What to do on the polygon:** claim the new `test-` namespace, then `delete_module("test-sheep", name)`
+for each module you want to move. That removes its versions and their content claims (pinned by
+`tests/test_modes.py::test_the_polygon_delete_frees_the_version_and_its_content_claim`). Then publish the
+specs under the new namespace. Only the versions you re-publish come back, and the history under
+`test-sheep` is gone. On production there is no equivalent: `yank` does not release a claim. The handle
+rename is separate: run it if you also want the account to be called by the new name.
+
+**The 22 of 44 under `versions_unattributed`:** that is expected and not a defect. The field lists the
+versions with no recorded publisher (`registry upgrade` successors, and versions from before 0.9), and
+they are amended because their `owner` names the account. The polygon has had upgrade sweeps, which
+publish without `published_by`. I did not reproduce your exact 22 against the polygon.
+<!-- triaged: 0.28.6 · sha baf9b8cf97b2 -->

@@ -489,7 +489,8 @@ def rename_account(
 ) -> None:
     """Rename your handle (or, with --account and a site-admin token, any account's) to NAME. The
     old handle stays reserved to the account, and every manifest naming it is amended. Reports only
-    unless --apply; running it again finishes any version a storage error left behind."""
+    unless --apply; running it again finishes any version a storage error left behind. Namespaces
+    are never renamed: every version stays under the namespace it was published in."""
 
     def call(c: RegistryClient, act: bool) -> dict:
         if account is None:

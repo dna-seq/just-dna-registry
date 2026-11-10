@@ -265,7 +265,10 @@ for a member, any for admin+).
   handle. The old one stays reserved to your account, old links follow it, and `owner` is amended on
   every manifest naming you (outside the digest: nothing changes identity). Returns the
   `AccountRename` report; anything under `failed` is finished by calling it again. An org asks a site
-  admin; self-service stops at three retired handles.
+  admin; self-service stops at three retired handles. **It renames the handle, never a namespace**, and
+  no call does: `ns/name@version` is a published identity, so a version stays under the namespace it
+  was published in. On a test instance, `delete_module` frees a module's content claim so it can be
+  published under another namespace; on production there is no move (S28).
 - **`admin_rename_account(account, name, *, apply=False, allow_test_data=False) -> dict`** (0.28) —
   **site admins only.** The same for any account; `account` may be a retired handle. Reports only
   unless `apply=True`.

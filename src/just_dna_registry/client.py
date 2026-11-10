@@ -1242,7 +1242,12 @@ class RegistryClient:
         """Rename the caller's own handle to `name` (0.28; an org asks a site admin). The old handle
         stays reserved to the account, and `owner` is amended on every manifest naming it; nothing
         published changes identity. Returns the `AccountRename` report; `dry_run` changes nothing.
-        Running the same rename again finishes any version listed under `failed`."""
+        Running the same rename again finishes any version listed under `failed`.
+
+        It renames the handle, never a namespace: `ns/name@version` is a published identity that
+        consumers pin, so every version stays where it was published, and no call moves one. On a
+        test instance, `delete_module` frees a module's content claim, after which it can be
+        published under another namespace."""
         return self._json(
             self._http.post(
                 "/auth/rename",

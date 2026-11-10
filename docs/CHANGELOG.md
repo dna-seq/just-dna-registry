@@ -8,6 +8,12 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### Documentation
+
+- `rename_account`, `registry-client rename-account` and CLIENT.md now say that a namespace is never
+  renamed, and that on the polygon `delete_module` is how a module's data moves to another namespace
+  (S28, just-module-creator).
+
 ## [0.28.6] — 2026-11-10
 
 ### On upstream 0.8.3: `upgrade --jobs` checks rsIDs concurrently, and `warm-caches` follows the hub
