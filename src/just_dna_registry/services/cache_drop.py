@@ -19,9 +19,12 @@ Four rules, each of which a hand `rm` gets wrong somewhere:
   rsID-authored module refuse), and one with no published snapshot to pull back (PharmVar needs a
   personal key, ACMG a workbook). Both are recoverable; neither is cheap. OpenTargets left the second kind
   with enricher 0.8.2 (RM408), which published it, so a pulled one drops without `--force`.
-* **Leftovers are offered separately** (`stale`): `<lane>.pre-<version>` builds that a derived-lane
+* **Leftovers are offered separately** (`--leftovers`): `<lane>.pre-<version>` builds that a derived-lane
   rebuild kept, `.<lane>.rebuild-*` staging that a failed one left, and `.<lane>.dropping-*` from an
-  interrupted removal. No resolver reads any of them.
+  interrupted removal, beside the lanes; since 0.28.6 also every **partial** lane directory (one that
+  holds files and is not a readable snapshot, which provisioning refuses to overwrite) and the staging an
+  interrupted download or build leaves **inside** a present lane (`INNER_LEFTOVERS`). No resolver reads
+  any of them. A lane being provisioned at this moment reads as partial, so not during a `warm-caches`.
 
 The enricher is imported lazily through `services.enrich`, as everywhere: a client install has none.
 """
@@ -46,6 +49,15 @@ from just_dna_registry.services.lane_readers import lane_readers
 
 #: Sibling names that no resolver reads, by the prefix each writer gives them.
 LEFTOVER_PATTERNS: tuple[str, ...] = ("{name}.pre-*", ".{name}.rebuild-*", ".{name}.dropping-*")
+
+#: What an interrupted download or build leaves inside a lane's own directory, by upstream's private
+#: names (a test reads each one off the enricher's source, so a rename fails there rather than here):
+#: `*.part`, the temporary file every fetch streams into before its rename (`net.stream_to_file`,
+#: `download`); `data.building`, a snapshot build's staging beside the live `data/`
+#: (`opentargets_build.build_snapshot`); and `source/`, the Open Targets raw mirror (about 22 GB) a
+#: local build downloads into the lane and removes only after a good build (`caches._rebuild_opentargets`).
+#: A killed 0.8.1 build left exactly these (2026-11-10). Resolvers read `data/` and the records beside it.
+INNER_LEFTOVERS: tuple[str, ...] = ("**/*.part", "**/data.building", "source")
 
 
 @dataclass(frozen=True)
@@ -104,6 +116,32 @@ def _route(lane: Any) -> str:
     return "build" if lane.rebuild is not None else "none"
 
 
+def _state(where: Path, present: Path | None) -> str | None:
+    """`present`, `partial` (a directory holding something that is not a readable snapshot), or `None`."""
+    if present is not None:
+        return "present"
+    if where.is_dir() and not where.is_symlink() and any(where.iterdir()):
+        return "partial"
+    return None
+
+
+def inner_leftovers(where: Path) -> list[Path]:
+    """`INNER_LEFTOVERS` under a lane's directory, outermost only (a `.part` inside `source/` goes with it)."""
+    found: set[Path] = set()
+    for pattern in INNER_LEFTOVERS:
+        found.update(path for path in where.glob(pattern) if not path.is_symlink())
+    return sorted(path for path in found if not any(other in path.parents for other in found))
+
+
+def partial_lanes(settings: Settings) -> dict[str, Path]:
+    """Every lane whose directory holds files and does not resolve as a snapshot."""
+    present = lane_presence(settings)
+    return {
+        name: where for name, where in lane_directories(settings).items()
+        if _state(where, present.get(name)) == "partial"
+    }
+
+
 def lane_directories(settings: Settings) -> dict[str, Path]:
     """Every lane's directory on this box: where it resolves, else where it would be provisioned."""
     present = lane_presence(settings)
@@ -153,14 +191,8 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
     for name in names:
         lane = lanes[name]
         where = directories.get(name)
-        if where is None or not (where.exists() or where.is_symlink()):
-            plan.absent.append(name)
-            continue
-        if present.get(name) is not None:
-            state = "present"
-        elif where.is_dir() and any(where.iterdir()):
-            state = "partial"
-        else:
+        state = None if where is None else _state(where, present.get(name))
+        if where is None or state is None:
             plan.absent.append(name)
             continue
         readers = readers_of.get(name, ())
@@ -186,14 +218,31 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
             needs_force=tuple(force), refused=refusal(where, settings, directories, name), feeds=feeds,
         ))
     if leftovers:
+        planned = {drop.path for drop in plan.drops}
         for name, where in directories.items():
-            for pattern in LEFTOVER_PATTERNS:
-                for found in sorted(where.parent.glob(pattern.format(name=where.name))):
-                    plan.drops.append(LaneDrop(
-                        lane=name, path=found, state="leftover", size=path_bytes(found),
-                        readers=(), route=_route(lanes[name]),
-                        refused=refusal(found, settings, directories, name),
-                    ))
+            found = [
+                path for pattern in LEFTOVER_PATTERNS
+                for path in sorted(where.parent.glob(pattern.format(name=where.name)))
+            ]
+            state = _state(where, present.get(name))
+            if state == "present":
+                found += inner_leftovers(where)
+            elif state == "partial" and where not in planned:
+                # Nothing reads it (it does not resolve), and provisioning refuses to write over it, so
+                # it is in the way as well as on the disk. No `--force`: whatever reads the lane reads
+                # a snapshot, which this is not.
+                plan.drops.append(LaneDrop(
+                    lane=name, path=where, state="partial", size=path_bytes(where), readers=(),
+                    route=_route(lanes[name]), refused=refusal(where, settings, directories, name),
+                ))
+            for path in found:
+                if path in planned:
+                    continue
+                plan.drops.append(LaneDrop(
+                    lane=name, path=path, state="leftover", size=path_bytes(path),
+                    readers=(), route=_route(lanes[name]),
+                    refused=refusal(path, settings, directories, name),
+                ))
     return plan
 
 

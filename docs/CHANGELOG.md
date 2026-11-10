@@ -28,6 +28,19 @@ upgrade` recompiles nothing. Two of its changes reach code here, and the reasons
 - **OpenTargets drops without `--force`** once pulled: upstream published the lane in 0.8.2 (RM408), so
   `drop-caches` no longer counts it as a lane with no snapshot to pull back.
 
+### `drop-caches` finds what an interrupted download or build left behind
+
+A killed `warm-caches` build of Open Targets on enricher 0.8.1 (whose Ctrl-C waited on every in-flight
+part, fixed upstream by RM409 in 0.8.3) left its raw mirror, gigabytes of it, in the lane's directory
+under `source/`. `drop-caches` could not show it: its listing named only lanes that resolve, and
+`--leftovers` looked only beside the lanes. Now:
+
+- the listing (`registry drop-caches`, no flags) also shows each **partial** lane directory, one holding
+  files that is not a readable snapshot, with its size;
+- `--leftovers` removes partial lane directories too, and inside a present lane the `*.part` files a cut-off
+  fetch leaves, a build's `data.building` staging and the Open Targets `source/` mirror. A present lane's
+  `data/` is never touched. Not while a `warm-caches` is running: a lane mid-download reads as partial.
+
 **Client surface:** unchanged.
 
 ## [0.28.5] — 2026-11-09

@@ -837,7 +837,9 @@ running server, and one direction arms a delete endpoint on production data.
   a lane back, because the disk is the point and the restore is `warm-caches`. It removes only the
   path the server resolves, never a typed one, and refuses a directory holding anything else (another
   lane, the cache base, the catalog, storage, runs) whatever the flags; "provisioning never deletes"
-  stays true of `warm-caches`, which is why removal is its own verb. **What reads a lane is
+  stays true of `warm-caches`, which is why removal is its own verb. `--leftovers` covers what no resolver
+  reads: siblings (`LEFTOVER_PATTERNS`), partial lane directories, and upstream's staging inside a present
+  lane (`INNER_LEFTOVERS`, private names a test reads off the enricher's source) (0.28.6). **What reads a lane is
   `lane_readers`** (0.28.4), assembled from the tuples the call sites pass (`ENRICH_LANES`, which
   `enrich_spec` spreads into `enrich()`; `HINT_LANES`; `DRAFT_SOURCES`; `LANE_GROUPS`), never a list of
   names: the first version read `LANE_GROUPS` alone and called five lanes the proxy and every enrichment

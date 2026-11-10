@@ -90,7 +90,9 @@ def test_with_no_lane_it_lists_what_holds_the_disk_largest_first(box) -> None:
     code, out = _run()
     rows = [line.split()[0] for line in out.splitlines() if line.startswith("  ")]
     assert code == 0, out
-    assert set(rows) == set(box.dirs) and rows[0] == "alphagenome_avi", out
+    # The present lanes, largest first, then the partial one (0.28.6: through 0.28.5 it was not listed).
+    assert set(rows) == {*box.dirs, "mane"} and rows[0] == "alphagenome_avi" and rows[-1] == "mane", out
+    assert "mane partial (not a snapshot)" in out and "--leftovers --apply" in out, out
     clinvar = next(line for line in out.splitlines() if line.startswith("  clinvar"))
     assert "[publish; check: resolution; builds: mitomap_miss; proxy: derived, hints, drafts]" in clinvar, out
     assert "alphagenome_avi [nothing here]" in out
@@ -161,10 +163,45 @@ def test_a_partial_directory_is_removable_and_says_so(box) -> None:
 
 
 def test_leftovers_go_and_the_live_lane_stays(box) -> None:
+    """Sibling leftovers, the partial lane (0.28.6), and what an interrupted fetch or build left inside a
+    present lane go; every present lane's `data/` stays whole."""
+    clinvar = box.dirs["clinvar"]
+    (clinvar / "data" / "chr2.parquet.part").write_bytes(b"p" * 3)
+    (clinvar / "data.building").mkdir()
+    (clinvar / "data.building" / "variants.parquet").write_bytes(b"b" * 4)
+    (clinvar / "source" / "25.09" / "variant").mkdir(parents=True)
+    (clinvar / "source" / "25.09" / "variant" / "part-0.parquet.part").write_bytes(b"s" * 6)
+    data_before = {lane: sorted((where / "data").iterdir()) for lane, where in box.dirs.items()}
+
+    code, out = _run("--leftovers")
+    assert code == 0 and "mane [nothing here] partial" in out, out
+    junk = {clinvar / "data" / "chr2.parquet.part", clinvar / "data.building", clinvar / "source"}
+    listed = {Path(line.split(": ", 1)[1].split(" — ")[0]) for line in out.splitlines() if "leftover:" in line}
+    # Outermost only: the `.part` inside `source/` goes with it rather than as a line of its own.
+    assert listed == {*junk, box.leftover}, out
+    assert all(path.exists() for path in junk) and box.partial.is_dir(), "the dry run removed something"
+
     code, out = _run("--leftovers", "--apply")
     assert code == 0 and "leftover" in out, out
-    assert not box.leftover.exists()
-    assert box.dirs["mitomap_miss"].is_dir() and box.partial.is_dir()
+    assert not box.leftover.exists() and not box.partial.exists()
+    assert not any(path.exists() for path in junk), out
+    assert box.dirs["mitomap_miss"].is_dir()
+    assert {
+        lane: sorted((where / "data").iterdir()) for lane, where in box.dirs.items()
+    } == {**data_before, "clinvar": [p for p in data_before["clinvar"] if not p.name.endswith(".part")]}
+
+
+def test_the_inner_leftover_names_are_upstreams(box) -> None:
+    """`INNER_LEFTOVERS` names upstream's private staging; read each off the enricher, so a rename upstream
+    fails here rather than leaving a cut-off download on the disk unnoticed."""
+    import inspect
+
+    from just_dna_enricher import caches, net, opentargets_build
+
+    assert cache_drop.INNER_LEFTOVERS, "nothing to look for"
+    assert '".part"' in inspect.getsource(net.stream_to_file)
+    assert '"data.building"' in inspect.getsource(opentargets_build.build_snapshot)
+    assert '/ "source" /' in inspect.getsource(caches._rebuild_opentargets)
 
 
 @pytest.mark.parametrize("target", ["base", "catalog", "symlink"])

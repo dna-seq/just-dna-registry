@@ -1891,7 +1891,8 @@ def drop_caches(
     leftovers: bool = typer.Option(
         False, "--leftovers",
         help="Also remove what no resolver reads: `<lane>.pre-<version>` builds a derived-lane rebuild "
-             "kept, failed rebuild staging, and interrupted removals",
+             "kept, failed rebuild staging, interrupted removals, partial lane directories (an "
+             "interrupted download or build), and `*.part` / build staging inside present lanes",
     ),
     force: bool = typer.Option(
         False, "--force",
@@ -1917,7 +1918,7 @@ def drop_caches(
     """
     settings = get_settings()
     from just_dna_registry.lane_tags import reader_tag
-    from just_dna_registry.services.cache_drop import drop, path_bytes, plan_drops
+    from just_dna_registry.services.cache_drop import drop, partial_lanes, path_bytes, plan_drops
     from just_dna_registry.services.enrich import cache_lanes, enricher_available, lane_presence
     from just_dna_registry.services.lane_readers import lane_readers
 
@@ -1938,18 +1939,32 @@ def drop_caches(
 
     if not lane and not leftovers:
         present = {name: where for name, where in lane_presence(settings).items() if where is not None}
-        if not present:
+        # A directory that does not resolve holds disk too, often the most (a cut-off 22 GB download),
+        # and was invisible here through 0.28.5 because it is not a lane anything reads.
+        partial = partial_lanes(settings)
+        if not present and not partial:
             typer.echo("no lane is present on this box")
             return
-        sizes = {name: path_bytes(Path(where)) for name, where in present.items()}
+        sizes = {name: path_bytes(Path(where)) for name, where in {**present, **partial}.items()}
         readers = lane_readers()
         for name in sorted(present, key=lambda n: -sizes[n]):
             tag = reader_tag(readers.get(name, ()))
             typer.echo(f"  {name} {tag}\t{human_size(sizes[name])}\t{present[name]}")
+        for name in sorted(partial, key=lambda n: -sizes[n]):
+            typer.secho(
+                f"  {name} partial (not a snapshot)\t{human_size(sizes[name])}\t{partial[name]}",
+                fg=typer.colors.YELLOW,
+            )
         typer.echo(
-            f"{len(present)} lane(s), {human_size(sum(sizes.values()))}. Remove one with "
+            f"{len(present)} lane(s), {human_size(sum(sizes[n] for n in present))}. Remove one with "
             f"`registry drop-caches --lane NAME --apply`."
         )
+        if partial:
+            typer.echo(
+                f"{len(partial)} partial, {human_size(sum(sizes[n] for n in partial))}: an interrupted "
+                f"download or build. `registry drop-caches --leftovers --apply` removes them, with the "
+                f"staging left inside present lanes."
+            )
         return
 
     plan = plan_drops(settings, list(dict.fromkeys(lane)), leftovers=leftovers)
