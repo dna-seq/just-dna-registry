@@ -36,3 +36,12 @@ reports; this file holds the seat's own decisions and the items it owns.
    so a message from this seat wakes it.
 4. First pass: nothing pending.
 5. Avatar: set (a red squirrel clerk, from `agents-kit/admin`).
+
+## Items this seat owns (2026-11-10)
+
+- **S28 follow-up reply** — waits until 0.29.0 is cut. Answered 185a8c7 as "declined by design"; the person
+  reversed that in the lead's session (lead's message 639283920): 0.29.0, built by the lead on branch `0.29`,
+  renames a namespace and keeps the old name as an alias that reads and publishes follow. The lead reverses
+  185a8c7's docs on that branch. Once 0.29.0 is cut: append a second `**Status —**` paragraph to S28 in
+  `docs/CONSUMER_SUGGESTIONS_HISTORY.md` (accepted, shipped 0.29.0, the call to make), update its contents line,
+  and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
