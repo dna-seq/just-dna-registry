@@ -71,6 +71,9 @@ reset").
   or on the desk already).
 - reflect after 2026-11-17: classes/base/BASE.md as of v0.1.157 (the watchdog answers someone not on the team with
   `thinking` and a once-a-day line, L101; nothing for me to send).
+- reflect after 2026-11-17: classes/base/BASE.md as of v0.1.160 (another organisation's encrypted messages are
+  posted in `embassy-review`; a held-back one gets my redacted description, L104. The compiler's seats are in our
+  own organisation, so none has reached me yet).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
