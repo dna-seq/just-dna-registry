@@ -137,6 +137,11 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   warning in `assertions.py` and a CLI line, named `clinvar pull`, which no app registers. It now names `cache pull
   --only clinvar` or `clinvar build`. Nothing in this repo names either command or reads the sentence (a grep of
   `src`, `docs`, `console`), and we import no symbol from `assertions`. Nothing moves.
+  **RM428** (filed 2026-11-10 from module-creator's S143, sized for 0.8.4, not landed): the GWAS Catalog pass asks
+  v2 `/associations` with `size=1000`, which the Catalog answers 400 above 500, and 0.7.3's v1 path now answers 410, so
+  `enrich_gwas` returns nothing on every installable release. Only `gwas.py` and the enricher's CLI call it; we import
+  neither, and `enrich()` does not reach it. We only read a published `gwas_effects` sidecar (`services/catalog.py:251`).
+  Nothing moves here; at 0.8.4, check that the fix stays private.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
