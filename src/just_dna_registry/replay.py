@@ -133,6 +133,13 @@ class OverlayStorage:
         }
         return sorted(visible | set(self.scratch.list_files(key)))
 
+    def copy_module(self, src: str, dst: str, overrides: Mapping[str, bytes]) -> int:
+        # Through this overlay's own read and write, so a copy reads what the overlay shows and lands
+        # in scratch only (a namespace rename replayed must not write into the base).
+        names = sorted({*self.list_files(src), *overrides})
+        self.store_module(dst, {n: overrides[n] if n in overrides else self.read_file(src, n) for n in names})
+        return len(names)
+
     def remove_file(self, key: str, name: str) -> None:
         self.scratch.remove_file(key, name)
         self._tombstones.add(self._path(key, name))
