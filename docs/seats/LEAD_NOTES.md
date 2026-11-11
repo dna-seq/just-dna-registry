@@ -106,6 +106,14 @@ asked to say when it lands. Check (run 2026-11-11 on the installed enricher: `10
 prompt to read the release, not proof):
 `uv run python -c "import just_dna_enricher.gwas as g; print(g._PAGE_SIZE)"` and
 `curl -s https://pypi.org/pypi/just-dna-enricher/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])"`.
+**0.30, the caching proxy made lane-level** (the person, 2026-11-11: "we have a goddamn CACHING PROXY feature, not
+a transit. Make sure to have some proper requerements and tests on coverage", to the pm; "Add override" for
+AlphaGenome's live API). `blocked: the pm's requirements` (forwarded in `#just-dna-registry > caching-proxy`,
+639328432). Found: the proxy is per pass, so 13 of 14 fact tables and four held lanes (opentargets,
+alphagenome_avi, drug_labels, mane) have no route; the person dropped alphagenome_avi for size and expected it
+proxied, and it is readable remotely (per-chromosome parquet on the hub). Draft: keyed lookups per lane from
+the local snapshot or the published repo; a guard over CACHE_LANES and _FACT_TABLES; the live expression pass
+behind `REGISTRY_PROXY_ALPHAGENOME`; upstream asked for keyed remote readers where a lane lacks one.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
