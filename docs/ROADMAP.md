@@ -899,6 +899,108 @@ old name, which rewrote that name's kept manifests.
 **Review** (2026-11-10, an Opus "what did I miss" pass over the plan and the draft): eleven items, all
 addressed in the build; the plan above is corrected to match.
 
+## 0.30 — the caching proxy, by lane and by pass (requirements by the pm, 2026-11-11)
+
+**Asked by the person 2026-11-11**, in the lead's session, forwarded to the pm: "we have a goddamn CACHING
+PROXY feature, not a transit. Make sure to have some proper requerements and tests on coverage". Also from
+them, through the lead: every lane the box holds, or can read from its published repo, should answer keyed
+lookups through the registry, because a cached entry is published data with no key and no third-party
+budget; `alphagenome_avi`, dropped from the server for size, was expected to be proxied anyway; and the live
+AlphaGenome Atlas goes behind an operator override ("Add override"). Sizing it as **0.30, a minor**, is the
+pm's call (new routes, client methods and parity rows). It goes ahead of the row catalog, which moves behind
+it. The lead builds it; route shapes are the lead's. These are the requirements and the acceptance tests.
+The lead's draft (handed to the pm 2026-11-11) was read, and these requirements agree with it except where
+they say otherwise.
+
+**What is there (measured 2026-11-11, registry 0.29.0, enricher 0.8.4 as locked).** 0.25 built the proxy
+per surface, not per lane, and the gap is the result:
+
+- **Lanes**: upstream's `caches.CACHE_LANES` has 17. Three answer a keyed lookup here (`ensembl`, `clinvar`,
+  `pubmind`, through `/hint/*`). `lane_readers` tags more as read (by `/check`, `/drafts`, a build or a
+  publish), but none of those answers a lookup by key. Four have no reader at all: `opentargets`,
+  `alphagenome_avi`, `drug_labels`, `mane`.
+- **Passes**: upstream's `producers.DERIVED_PRODUCERS` has 16 producers (a table and the command that fills
+  it). `POST .../derived` runs `enrich()` and so reaches three of them (`resolution.csv`,
+  `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv`). The other 13 run only on an author's machine:
+  `frequencies`, `gene-metrics`, `dosage`, `gene-validity`, `assertions`, `gwas`, `opentargets enrich`
+  (×4 tables), `literature`, `alphagenome expression`, `ld-pairs`. `/check` runs `dosage` and a literature
+  check as checks, which report findings and hand back no table.
+- **No guard** compares either roster with what the routes serve, so the next lane or pass upstream adds is
+  unproxied in silence. That is how 0.25 drifted.
+
+**"Proxied" means one thing below**: a caller with no snapshot gets, through a registry route, the same
+rows for the same key that the snapshot or pass would give them on their own machine. A lane opened only by a
+check, a drafter or a build is *read* here but not *proxied*. The guards count only proxied.
+
+**Requirements.**
+
+1. **Every lane answers keyed lookups, or is exempt with a reason.** A lane is served from the local
+   snapshot when the box holds it. Otherwise it is read remotely from the lane's `publish_repo` (fsspec,
+   predicate pushdown, only the rows for the key), and never downloaded whole on a request path. The
+   CLAUDE.md rule "a request path never downloads" stands. A bounded keyed read is not a download, and the
+   bound must be stated in code (rows, bytes, time).
+2. **Eligibility is read from the lane's own fields in `CACHE_LANES`, never from a list of ours.** A lane
+   with a `publish_repo` is eligible. A lane whose `unpublished` reason is a derivation from published
+   parents (`mitomap_miss`) is eligible from a local build. A lane whose `unpublished` reason is a refusal
+   under its terms (`pharmvar`, `pubmind`) or is unestablished (`mane`, `acmg`) is exempt by default, with
+   that reason as the exemption's reason, until the person rules otherwise (questions below). The premise
+   "cached means published, no key" holds for the published lanes and not for these four.
+3. **Every producer runs through the registry, or is exempt with a reason.** The roster is
+   `DERIVED_PRODUCERS`, keyed on `(table, command)`, because `gene_metrics.csv` and `gwas_effects.csv` each
+   have two producers and a guard keyed on tables passes with half a table served. A pass reads the
+   snapshot first. A live leg is metered per upstream by `PaceLedger`, each with its own budget, as `/hint/*`
+   already is. Every rule of *Enrichment on the server* and *The caching proxy* in CLAUDE.md applies: the
+   shared `LookupClients`, a gate permit, `download=False`, a pass that could not run says why
+   (`unchecked` is never `clean`), no filesystem path in a body, and both wire forms for a spec upload.
+4. **Live sources, defaults open to the person's veto.**
+   - AlphaGenome Atlas (`alphagenome expression`, and the knot cases of the variant-impact check) runs
+     only under `REGISTRY_PROXY_ALPHAGENOME=true`. This one is the person's word. It defaults to off and is
+     bounded per request (interval, rows, time) so one call cannot hold a worker for the ~50 minutes
+     upstream measured per gene.
+   - gnomAD (`frequencies`) stays behind the existing `REGISTRY_HINT_ALLOW_GNOMAD`, default off. The
+     allowance cannot be bought, and production and the polygon share one IP (see 0.25).
+   - The keyless live sources (GWAS Catalog, ClinGen, GenCC, Ensembl LD, E-utilities, Europe PMC, Crossref)
+     are on and metered.
+   These defaults are the pm's, not the person's.
+5. **`GET /caches` says per lane how it is proxied** (local, remote, exempt with the reason), and
+   `lane_readers` takes the same answer. `warm-caches` stops tagging a proxied lane "nothing here", including
+   a lane it does not hold but can read remotely.
+6. **Client and console parity, as for any route**: a `RegistryClient` method and a parity row for each
+   route, `registry-client` commands, a rate-limit category registered in the same commit, and the
+   `**Client surface:**` line.
+
+**Coverage tests (the acceptance gate).**
+
+- **Lane guard**: `proxied ∪ exempt == {lane.name for lane in CACHE_LANES}` and `proxied ∩ exempt == ∅`,
+  with a floor on the upstream count (well under today's 17). It fails when upstream adds a lane, and it
+  fails when an exemption names a lane upstream no longer has. `proxied` is read off the app's routes and
+  never kept by hand, as the rate-limit guard reads `rate_category`.
+- **Producer guard**: the same shape over the `(table, command)` pairs of `DERIVED_PRODUCERS`, with a
+  floor. It is cross-checked against the compiler's `_FACT_TABLES` minus `WRITTEN_BY_EVERY_PASS`, so a fact
+  table with no producer fails too. `_FACT_TABLES` is private, so it is the cross-check and never the
+  roster.
+- **Each exemption's reason is checkable**: it is upstream's own `unpublished` text, or a setting's name,
+  or a condition with its query written beside it (CLAUDE.md's ladder). A reason that is prose with nothing
+  to check fails review.
+- **Each proxied lane and pass has one test that returns what upstream really builds** (stub the network,
+  never the report), and a snapshot-served answer is asserted to make zero egress with the socket
+  tripwire armed, as `/hint/variants` already is.
+- **Remote read**: one test reads a keyed row from a published lane with no local snapshot, and asserts
+  the bound and that nothing lands on disk beyond the rows.
+
+**Upstream, through the liaison.** A keyed reader that accepts a remote path, for any lane whose reader
+opens a local path only. The variant-impact check (`alphagenome_check`) reads `alphagenome_avi` locally,
+so remote reads of it may need upstream first. If so, the lane is exempt until upstream ships the reader,
+with that as its checkable reason. Which lanes need it is the lead's first measurement.
+
+**Questions for the person** (in chat 2026-11-11; each has a default, and the build goes on under it):
+(a) PharmVar: exempt, because its terms §2 make the bulk download personal to an account and serving its
+rows to anonymous callers is redistribution (default: exempt). (b) PubMind: CC BY-NC-ND and refused
+publication upstream, yet `/hint/*` already serves keyed answers from it (default: keep serving single
+answers with attribution, exempt the bulk derived table). (c) `alphagenome_avi`: is a remote snapshot read
+enough, or must the live Atlas check also run here with no snapshot (default: snapshot read, plus the
+Atlas under the override)?
+
 ## Next registry version (post-0.11)
 
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's

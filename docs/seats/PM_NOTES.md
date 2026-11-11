@@ -14,8 +14,10 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **0.29 published** (2026-11-11, `v0.29.0`; heading marked ✅, c17af6e): the namespace rename, sized by the
   person in the lead's session ("1a 2a 3a", reversing S28). 0.29.1 (rebuild once the enricher carrying RM428, the
   GWAS page-size fix, is on PyPI) is the lead's patch, not scope.
-- **Next: 0.30 is not sized.** First candidate: the row catalog plus a gene-level facet (below). Size it when the
-  person asks or when the lead runs out of decided work.
+- **0.30 is the caching proxy by lane and by pass** (the person, 2026-11-11, forwarded by the lead; requirements
+  filed in the roadmap's 0.30 section). The lead builds it. Three questions are put to the person in chat
+  (PharmVar, PubMind, alphagenome_avi), each with a default; the build goes on under the defaults. Relay their
+  answers into the section. The row catalog plus gene facet moves behind it, to 0.31.
 - **Upstream parked RM378** (coded strict errors): the strict-phrase match in *Next registry version* may be
   permanent (da9d8b8).
 - **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled;
