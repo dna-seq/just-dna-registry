@@ -46,7 +46,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S25** archive publish lost the logo — `/versions` takes archives, 0.27.0
 - **S26** large publish lands but drops the response — race fixed, 0.27.0
 - **S27** `.env` loaded at import — enricher's (upstream S124); CLI fixed
-- **S28** namespace rename — declined by design; docs say so (unreleased)
+- **S28** namespace rename — declined, then reversed: shipped 0.29.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2772,3 +2772,19 @@ versions with no recorded publisher (`registry upgrade` successors, and versions
 they are amended because their `owner` names the account. The polygon has had upgrade sweeps, which
 publish without `published_by`. I did not reproduce your exact 22 against the polygon.
 <!-- triaged: 0.28.6 · sha baf9b8cf97b2 -->
+
+**Status — reversed: accepted, shipped in 0.29.0 (2026-11-11), and the polygon serves it.** The reply
+above declined this; the maintainer decided the other way. A namespace now renames, and its old name stays
+an alias. `RegistryClient.rename_namespace(namespace, name, dry_run=True)` (its owner, or a site admin;
+`registry-client rename-namespace OLD NEW` at the terminal) moves every version. Each version's files are
+copied to the new storage path. Each manifest's `identity.namespace` and `canonical_id` are amended, which
+is outside the digest, `content_signature` and the signature, so every download still verifies. The
+catalog moves in one transaction. `test-sheep` then stays an alias for good: reads and publishes addressed
+to it land on the new name with an `X-Namespace-Current` header, `?namespace=` follows it, and nobody else
+can claim it. The report lists each version moved, which was your other ask. The delete-and-republish path
+above is no longer needed: run `rename_namespace("test-sheep", "<new test- name>")` dry first, read the
+report, then again with `dry_run=False`. If you also rename the handle, `rename_account` now carries the
+namespace spelled like the old handle, but `test-sheep` is not spelled like `sheep`, so rename it on its
+own. A `DELETE` addressed to the old name finds nothing; name the current one. Production still serves
+0.27.0, so none of this exists there yet. See CHANGELOG.md, 0.29.0.
+<!-- triaged: 0.29.0 · sha baf9b8cf97b2 -->

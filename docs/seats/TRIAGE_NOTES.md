@@ -39,7 +39,7 @@ reports; this file holds the seat's own decisions and the items it owns.
 
 ## Items this seat owns (2026-11-10)
 
-- **S28 follow-up reply** — waits until 0.29.0 is cut. Answered 185a8c7 as "declined by design"; the person
+- **S28 follow-up reply** — done 2026-11-11: the second Status paragraph is in the history file, and the consumer was told. Was: waits until 0.29.0 is cut. Answered 185a8c7 as "declined by design"; the person
   reversed that in the lead's session (lead's message 639283920): 0.29.0, built by the lead on branch `0.29`,
   renames a namespace and keeps the old name as an alias that reads and publishes follow. The lead reverses
   185a8c7's docs on that branch. Once 0.29.0 is cut: append a second `**Status —**` paragraph to S28 in

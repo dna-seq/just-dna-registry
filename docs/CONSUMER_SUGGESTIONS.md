@@ -15,7 +15,7 @@ wherever the *fix* would land.
 than a current one, and refer to the project as `just-dna-registry` throughout.)
 
 S1–S4 were answered in 0.13.0, S5–S7 in 0.14.0, S8–S9 in 0.15.0, S10–S12 in 0.16.0,
-S19–S22 in 0.25.0, S23 in 0.26.0, S24 (tracked on the roadmap), S25–S26 in 0.27.0, S27 (0.27.1) and S28 (docs, after 0.28.6), all moved to
+S19–S22 in 0.25.0, S23 in 0.26.0, S24 (tracked on the roadmap), S25–S26 in 0.27.0, S27 (0.27.1) and S28 (0.29.0), all moved to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md).
 
 ---
