@@ -7,12 +7,12 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.162.4`** read (2026-11-10; 0.162.3 the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.0`
+**`0.162.5`** read (2026-11-11; 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.0`
 (`uv.lock`, the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
 
 ## Backlog
 
-None: read through `0.162.4`.
+None: read through `0.162.5`.
 
 ## What the registry uses
 
@@ -46,7 +46,10 @@ From the imports under `src/` (an AST walk, 2026-11-04).
   the weekly bump's job.
   **Measured 2026-11-05** (`bb42dbd`): the full suite passes on 0.162.0 (612 passed), upload and publish tests
   included, and no warning from fastapi or starlette. Closed.
-- Read, nothing for us: 0.162.4 (a runtime floor `anyio>=4.1.0`; we lock anyio 4.16.0); 0.162.3 (Python 3.15 in the classifiers, type annotations in `_compat` widened to
+- Read, nothing for us: 0.162.5 (`contextmanager_in_threadpool` enters a sync yield dependency before its `try` and
+  shields `__exit__` from cancellation, so a cancelled request still runs the cleanup; we have no sync yield
+  dependency, only the async `lifespan`; their docs extra moves to `pydantic-ai-slim`, not a runtime dependency);
+  0.162.4 (a runtime floor `anyio>=4.1.0`; we lock anyio 4.16.0); 0.162.3 (Python 3.15 in the classifiers, type annotations in `_compat` widened to
   `object` with no runtime change, their own dev lock on Pydantic 2.14.3, docs and translations); 0.162.2 (docs, a release-notes note); 0.162.1 (docs, translations, upstream's own CI pins; its "pytest below 9.2 for
   pytest-xdist" is their test rig, and we run no xdist); 0.143 OpenTelemetry exporter opt-in (we set none up), 0.145 `openapi_prefix` and 0.146
   `root_path` on `FastAPI(...)` (neither used), 0.155 `**extra` on request parameters (none passed), 0.160 a
