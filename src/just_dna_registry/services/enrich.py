@@ -743,6 +743,11 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
     present = lane_presence(settings)
     configured = lane_destinations(settings)
     statuses: list[CacheLaneStatus] = []
+    # A lane the box does not hold is still answered by the caching proxy when it has a repo to read
+    # remotely (0.30, `services/lanes.py`); upstream's map is the one the pull itself uses.
+    from just_dna_enricher.locations import SNAPSHOT_REPO_IDS
+
+    published = set(SNAPSHOT_REPO_IDS)
     for name, lane in lanes.items():
         where = present.get(name)
         release: str | None = None
@@ -790,6 +795,7 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
             licence_skip=skip,
             read_here=bool(readers.get(name)),
             readers=list(readers.get(name, ())),
+            proxied="local" if state == "present" else "remote" if name in published else "unavailable",
             group=LANE_GROUPS.get(name),
             configured=configured.get(name) is not None,
             parents=list(lane.parents),

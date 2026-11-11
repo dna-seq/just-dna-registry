@@ -40,8 +40,12 @@ def test_the_lanes_0_28_3_called_unread() -> None:
     readers = lane_readers()
     for lane in ("pubmind", "civic", "clinvar_gkm", "strchive", "mitomap_miss", "mitomap"):
         assert readers[lane], f"{lane} is opened by something here"
-    assert readers["alphagenome_avi"] == ()
     assert reader_tag(()) == "[nothing here]"
+    # 0.30: the caching proxy's keyed lookup answers every lane, so none is unread any more; a lane only
+    # it reads is one the box can drop and still serve remotely (see test_drop_caches).
+    assert readers["alphagenome_avi"] == ("proxy: lookup",)
+    assert all("proxy: lookup" in found for found in readers.values())
+    assert set(readers["opentargets"]) >= {"proxy: passes", "proxy: lookup"}
 
 
 def test_proxy_lanes_carry_their_build_parents() -> None:
@@ -77,7 +81,7 @@ def test_exclude_overrides_all_proxy_and_the_default_pair(tmp_path: Path, monkey
                 "--exclude", "ensembl")
     queued = _queued(out)
     assert queued and "alphagenome_avi" not in queued and "ensembl" not in queued, out
-    assert "alphagenome_avi [nothing here]: excluded" in out
+    assert "alphagenome_avi [proxy: lookup]: excluded" in out
     assert "clinvar" in queued
 
 

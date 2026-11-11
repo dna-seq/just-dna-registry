@@ -464,6 +464,7 @@ export interface CacheLaneStatus {
   licence_skip: string | null;
   read_here: boolean;
   readers: string[] | null;
+  proxied: string | null;
   group: string | null;
   configured: boolean;
   parents: string[];

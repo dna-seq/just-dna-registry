@@ -7,6 +7,8 @@ from `GET /caches`' `readers` field, and `client_cli` may import nothing from `s
 
 PUBLISH = "publish"
 PROXY_PREFIX = "proxy: "
+#: The caching proxy's keyed lookup (0.30), which answers every lane: from this box, or remotely.
+LOOKUP = PROXY_PREFIX + "lookup"
 
 
 def reader_tag(readers: tuple[str, ...] | list[str], *, where: str = "here") -> str:

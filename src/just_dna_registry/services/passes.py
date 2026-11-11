@@ -54,6 +54,14 @@ PASS_UPSTREAMS: dict[str, tuple[str, ...]] = {
 }
 
 
+#: The snapshot lane each snapshot-backed pass opens on this box, for `lane_readers` (`proxy: passes`).
+PASS_LANES: dict[str, str] = {
+    "opentargets enrich": "opentargets",
+    "assertions": "clinvar",
+    "gene-metrics": "constraint",
+}
+
+
 @dataclass(frozen=True)
 class ExpressionInterval:
     """The one gene interval an `alphagenome expression` request scores (0.30)."""

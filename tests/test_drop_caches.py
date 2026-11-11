@@ -94,8 +94,8 @@ def test_with_no_lane_it_lists_what_holds_the_disk_largest_first(box) -> None:
     assert set(rows) == {*box.dirs, "mane"} and rows[0] == "alphagenome_avi" and rows[-1] == "mane", out
     assert "mane partial (not a snapshot)" in out and "--leftovers --apply" in out, out
     clinvar = next(line for line in out.splitlines() if line.startswith("  clinvar"))
-    assert "[publish; check: resolution; builds: mitomap_miss; proxy: derived, hints, drafts]" in clinvar, out
-    assert "alphagenome_avi [nothing here]" in out
+    assert "[publish; check: resolution; builds: mitomap_miss; proxy: derived, hints, drafts, passes, lookup]" in clinvar, out
+    assert "alphagenome_avi [proxy: lookup]" in out
     _intact(box)
 
 
@@ -158,7 +158,7 @@ def test_a_lane_only_the_proxy_or_an_enrichment_reads_needs_force(box) -> None:
 
 def test_a_partial_directory_is_removable_and_says_so(box) -> None:
     code, out = _run("--lane", "mane", "--apply")
-    assert code == 0 and "mane [nothing here] partial" in out, out
+    assert code == 0 and "mane [proxy: lookup] partial" in out, out
     assert not box.partial.exists()
 
 
@@ -226,3 +226,12 @@ def test_a_directory_holding_anything_else_is_refused_even_with_force(box, tmp_p
 def test_an_unknown_lane_is_a_usage_error(box) -> None:
     code, out = _run("--lane", "alphagenom")
     assert code == 2 and "unknown lane(s): alphagenom" in out, out
+
+
+def test_a_published_lane_only_the_lookup_reads_drops_without_force(box) -> None:
+    """0.30: the keyed lookup reads a published lane remotely once it is gone from here, so a lane only it
+    reads is no reason for `--force`; an unpublished one it can answer only from this copy."""
+    code, out = _run("--lane", "alphagenome_avi")
+    assert code == 0 and "needs --force: read here" not in out, out
+    code, out = _run("--lane", "pharmvar")
+    assert "needs --force" in out, out

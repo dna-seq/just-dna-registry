@@ -1612,6 +1612,14 @@ class CacheLaneStatus(BaseModel):
             "here reads it; `null` means the server predates the field, so read `group` instead."
         ),
     )
+    proxied: str | None = Field(
+        default=None,
+        description=(
+            "How the caching proxy answers keyed lookups of this lane (0.30, `POST /lanes/{lane}/{table}`): "
+            "`local` (this box holds it), `remote` (read from the lane's published repo), or "
+            "`unavailable` (neither held nor published). `null` means the server predates the field."
+        ),
+    )
     group: str | None = Field(
         default=None,
         description=(

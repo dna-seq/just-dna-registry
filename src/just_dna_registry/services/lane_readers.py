@@ -18,10 +18,11 @@ The same answer reaches `GET /caches` as each lane's `readers` (0.28.5), and bot
 same box may run `just-dna-enricher` by hand, which is why `warm-caches --all` still offers every lane.
 """
 
-from just_dna_registry.lane_tags import PROXY_PREFIX, PUBLISH
+from just_dna_registry.lane_tags import LOOKUP, PROXY_PREFIX, PUBLISH
 from just_dna_registry.services.drafting import DRAFT_SOURCES
 from just_dna_registry.services.enrich import ENRICH_LANES, LANE_GROUPS, cache_lanes
 from just_dna_registry.services.hints import HINT_LANES
+from just_dna_registry.services.passes import PASS_LANES
 
 
 def lane_readers() -> dict[str, tuple[str, ...]]:
@@ -48,12 +49,23 @@ def lane_readers() -> dict[str, tuple[str, ...]]:
         if readers[name]:
             for parent in lane.parents:
                 add(parent, f"builds: {name}")
+    # The derived passes that read a snapshot on this box (0.30, `POST .../derived?passes=`).
+    for lane in PASS_LANES.values():
+        add(lane, f"{PROXY_PREFIX}passes")
+    # The keyed lookup route answers every lane (0.30): `POST /lanes/{lane}/{table}`.
+    for name in lanes:
+        add(name, LOOKUP)
     return {name: tuple(found) for name, found in readers.items()}
 
 
 def proxy_lanes() -> frozenset[str]:
     """The lanes the caching proxy's routes open (hints, drafts, derived), and the parents they build from."""
     readers = lane_readers()
-    direct = {name for name, found in readers.items() if any(r.startswith(PROXY_PREFIX) for r in found)}
+    # The keyed lookup answers every lane, held or not (it reads a published repo remotely), so it is not
+    # a reason to provision one; `--proxy` keeps meaning the routes that need the lane on this box.
+    direct = {
+        name for name, found in readers.items()
+        if any(r.startswith(PROXY_PREFIX) and r != LOOKUP for r in found)
+    }
     lanes = cache_lanes()
     return frozenset(direct | {parent for name in direct for parent in lanes[name].parents})

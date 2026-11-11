@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from just_dna_registry.config import Settings
-from just_dna_registry.lane_tags import PUBLISH, reader_tag
+from just_dna_registry.lane_tags import LOOKUP, PUBLISH, reader_tag
 from just_dna_registry.maintenance import run_root
 from just_dna_registry.services.enrich import (
     RESOLUTION_REFERENCES,
@@ -198,7 +198,13 @@ def plan_drops(settings: Settings, names: list[str], *, leftovers: bool) -> Drop
         readers = readers_of.get(name, ())
         route = _route(lane)
         force: list[str] = []
-        if readers:
+        # The keyed lookup (0.30) reads a published lane remotely once it is gone from here, so on its
+        # own it is no reason to keep the copy; an unpublished lane it can answer only from this copy.
+        if readers == (LOOKUP,) and route == "pull":
+            readers_that_need_it: tuple[str, ...] = ()
+        else:
+            readers_that_need_it = readers
+        if readers_that_need_it:
             if name in RESOLUTION_REFERENCES:
                 consequence = "publishing an rsID-authored module refuses without it"
             elif PUBLISH in readers:
