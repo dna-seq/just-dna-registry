@@ -942,9 +942,15 @@ check, a drafter or a build is *read* here but not *proxied*. The guards count o
 2. **Eligibility is read from the lane's own fields in `CACHE_LANES`, never from a list of ours.** A lane
    with a `publish_repo` is eligible. A lane whose `unpublished` reason is a derivation from published
    parents (`mitomap_miss`) is eligible from a local build. A lane whose `unpublished` reason is a refusal
-   under its terms (`pharmvar`, `pubmind`) or is unestablished (`mane`, `acmg`) is exempt by default, with
-   that reason as the exemption's reason, until the person rules otherwise (questions below). The premise
-   "cached means published, no key" holds for the published lanes and not for these four.
+   under its terms (`pharmvar`, `pubmind`) or is unestablished (`mane`, `acmg`) is **not served**, with
+   that reason as the exemption's reason. The person, 2026-11-11: "don't serve forbidden, serve what allows
+   redistribution". This binds every proxy route, including the ones that serve such a lane today:
+   `/hint/*` stops answering from `pubmind`, and `/drafts` and `POST .../derived` hand back no row taken
+   from it (its drafter, and its calls in `clin_sig_authority_calls.csv`). A check that reads a lane and
+   reports findings without handing rows back (`/check` over `acmg` or `pharmvar`) is not serving, and
+   stays. Still open, for the lead to measure and put to the person: a module **published** here that
+   was enriched against `pubmind` carries rows derived from it in its artifact, so does the publish path
+   count as serving?
 3. **Every producer runs through the registry, or is exempt with a reason.** The roster is
    `DERIVED_PRODUCERS`, keyed on `(table, command)`, because `gene_metrics.csv` and `gwas_effects.csv` each
    have two producers and a guard keyed on tables passes with half a table served. A pass reads the
@@ -993,13 +999,11 @@ opens a local path only. The variant-impact check (`alphagenome_check`) reads `a
 so remote reads of it may need upstream first. If so, the lane is exempt until upstream ships the reader,
 with that as its checkable reason. Which lanes need it is the lead's first measurement.
 
-**Questions for the person** (in chat 2026-11-11; each has a default, and the build goes on under it):
-(a) PharmVar: exempt, because its terms §2 make the bulk download personal to an account and serving its
-rows to anonymous callers is redistribution (default: exempt). (b) PubMind: CC BY-NC-ND and refused
-publication upstream, yet `/hint/*` already serves keyed answers from it (default: keep serving single
-answers with attribution, exempt the bulk derived table). (c) `alphagenome_avi`: is a remote snapshot read
-enough, or must the live Atlas check also run here with no snapshot (default: snapshot read, plus the
-Atlas under the override)?
+**Questions for the person** (in chat 2026-11-11). Answered: PharmVar, PubMind, MANE and ACMG are not
+served, by the rule in requirement 2 ("don't serve forbidden, serve what allows redistribution"). Open,
+with its default (the build goes on under it): `alphagenome_avi`, is a remote snapshot read enough, or must
+the live Atlas check also run here with no snapshot? Default: the snapshot read, plus the Atlas only under
+the override.
 
 ## Next registry version (post-0.11)
 
