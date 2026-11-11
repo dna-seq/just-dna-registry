@@ -142,7 +142,9 @@ registry-client commands, docs: all done (8fde925, a73f8a8, f2ed121). **0.30.0 b
 rerun; dists in `dist/`). DM'd; desk #262 (publish, default: waits). Tag `v0.30.0` on 5a8c0d3 once on PyPI, then
 unlock `.wt/0.30`.
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
-desk #263 (defaults recommended, build proceeds under them); a critic's review running. Production answered 502 from
+desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
+(89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
+`0.31` branch/worktree under those defaults; first block the projection table + publish hook + projector version. Production answered 502 from
 06:18 UTC 2026-11-11 (polygon fine); DM'd the person marked urgent.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
