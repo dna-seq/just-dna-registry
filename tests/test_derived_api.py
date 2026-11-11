@@ -282,7 +282,7 @@ _SNAPSHOT_PASSES = ("opentargets enrich", "assertions", "gene-metrics")
 def _post_passes(client: TestClient, passes: tuple[str, ...], **query):
     return client.post(
         _URL, files=_parts(), headers=_AUTH,
-        params=[("pass", p) for p in passes] + list(query.items()),
+        params=[("passes", p) for p in passes] + list(query.items()),
     )
 
 

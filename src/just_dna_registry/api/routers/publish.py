@@ -636,7 +636,7 @@ async def derived_tables(
     name: str,
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI default, never mutated
     archive: Annotated[UploadFile | None, File()] = None,
-    passes: Annotated[list[str], Query(alias="pass")] = [],  # noqa: B006 — FastAPI default, never mutated
+    passes: Annotated[list[str], Query()] = [],  # noqa: B006 — FastAPI default, never mutated
     offline: bool = True,
     gene: str | None = None,
     chrom: str | None = None,
@@ -645,7 +645,7 @@ async def derived_tables(
 ) -> Response:
     """Run the network tier over an uploaded spec and hand back `derived/` as a `.tar.gz`.
 
-    **`pass=` (repeatable, 0.30) runs upstream's other derived-table passes too**, by their upstream
+    **`passes=` (repeatable, 0.30) runs upstream's other derived-table passes too**, by their upstream
     command names (`opentargets enrich`, `assertions`, `gene-metrics`, ...), after `enrich`, each on its
     own; `check.json`'s `passes` says what each did. `offline=true` (the default) answers from this
     box's snapshots only; a pass's live leg needs `offline=false`. `alphagenome expression` scores one

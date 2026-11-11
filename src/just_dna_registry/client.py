@@ -891,6 +891,12 @@ class RegistryClient:
         *,
         pack: bool = False,
         dest: Path | None = None,
+        passes: list[str] | None = None,
+        offline: bool = True,
+        gene: str | None = None,
+        chrom: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
     ) -> bytes:
         """Enrich a spec on the server and get its `derived/` tables back as a `.tar.gz`.
 
@@ -905,17 +911,27 @@ class RegistryClient:
         carries the one caveat that bites, which is that `derived/licensing.csv` and an existing
         `sources.csv` are two spellings of one table and the next upload refuses rather than choosing.
 
-        Runs what a publish runs, not what `check()` runs: no frequency, literature, identifier, ACMG
-        or PGx pass, because those are egress spent on a verdict and this call is for the bytes. Use
-        `check()` when you want the verdict.
+        By default it runs what a publish runs, not what `check()` runs. **`passes` (0.30)** adds upstream's
+        other derived-table passes by their command names (`gwas`, `opentargets enrich`, `assertions`,
+        `frequencies`, `gene-metrics`, `dosage`, `gene-validity`, `ld-pairs`, `literature`,
+        `alphagenome expression`); `check.json`'s `passes` says what each did. `offline=True` answers from
+        the server's snapshots only (free); `offline=False` lets a pass's live leg run, charged to you per
+        upstream. `alphagenome expression` scores one gene interval (`gene`, `chrom`, `start`, `end`) and
+        only where the operator turned it on.
 
         `spec_dir` may be a directory or a `.tar.gz`/`.zip`; `pack=True` compresses a directory
         client-side. With `dest`, the archive is written there as well as returned.
         """
         self.assert_compatible()
+        params: list[tuple[str, str | int]] = [("passes", p) for p in passes or []]
+        params.append(("offline", "true" if offline else "false"))
+        for key, value in (("gene", gene), ("chrom", chrom), ("start", start), ("end", end)):
+            if value is not None:
+                params.append((key, value))
         resp = self._http.post(
             f"/modules/{namespace}/{name}/derived",
             files=spec_upload(spec_dir, pack=pack),
+            params=params,
         )
         self._raise_for_status(resp)
         if dest is not None:
@@ -1262,6 +1278,18 @@ class RegistryClient:
                 json={"name": name, "dry_run": dry_run, "allow_test_data": allow_test_data},
             )
         )
+
+    def lane_tables(self, lane: str) -> dict:
+        """What one snapshot lane holds (0.30): its tables and the key columns each answers by, and
+        `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo)."""
+        return self._json(self._http.get(f"/lanes/{lane}"))
+
+    def lane_rows(self, lane: str, table: str, keys: dict[str, list]) -> dict:
+        """The rows of one lane table matching identifier keys (0.30), e.g. `{"gene": ["LPA"]}` or
+        `{"chrom": ["22"], "start": [17000001]}`. Keyed and bounded per request; `truncated` says more
+        matched than the server returns. Read from the server's snapshot, or remotely from the lane's
+        published repo when the server does not hold it."""
+        return self._json(self._http.post(f"/lanes/{lane}/{table}", json={"keys": keys}))
 
     def rename_namespace(
         self, namespace: str, name: str, *, dry_run: bool = True, allow_test_data: bool = False

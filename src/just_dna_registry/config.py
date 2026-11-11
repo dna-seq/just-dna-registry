@@ -473,6 +473,12 @@ class Settings(BaseSettings):
     # minute), because a gene with its flanks is ~50 minutes and would hold a worker for all of it.
     proxy_alphagenome: bool = False
     proxy_alphagenome_max_bp: int = 20_000
+    # Keyed lane lookups (0.30, `POST /lanes/{lane}/{table}`): per-request bounds, so no request
+    # enumerates a lane ("any subslice is a derivative work"; the whole snapshot is never served), and a
+    # remote table bigger than this many bytes needs a position key to bound its read.
+    lane_max_keys: int = 100
+    lane_max_rows: int = 1_000
+    lane_remote_max_scan_bytes: int = 2_000_000_000
     # A batch is bounded by what can finish inside the request, not by a round number: an online batch
     # runs its misses sequentially at the upstream's own pace.
     hint_max_batch: int = 256
