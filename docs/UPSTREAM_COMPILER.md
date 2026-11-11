@@ -452,6 +452,26 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
+  triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads
+  remotely through the enricher, since a URL collapses in `Path`, every `resolve_*_reference` and
+  `snapshot.read_release` answer `None`, and the connectors check locally; plus an rsID index for the Ensembl split
+  repo, keys on the whole-table readers (ClinPGx, drug labels, CIViC, ClinVar GKM), a keyed Open Targets function, and
+  fsspec in `read_local_scores`. The lead measured the keyed SQL pruning over `hf://` (ClinVar 3.1 s / ~2.4 MB,
+  resolver by position 3.5 s / ~5.4 MB of 200 MB). S146: `gene_metrics.lookup_snapshot` and the CIViC row reader
+  return `{}` / `[]` over an unreadable snapshot. Also learned: the ClinPGx and CPIC mirrors read anonymously
+  (public, ungated); duckdb `httpfs` must be preinstalled on a server with no route to the extension repo.
+  **Answered 2026-11-11** (archived, open, their pm sizes): S145 is **RM430** (asks 1-3; the format tier never fetches,
+  so a remote `release.json` is read by the enricher, not `just_dna_format.snapshot`) and **RM431** (asks 4-7); S146
+  is **RM432**. Lead told.
+  **RM432 landed** (`ac3f1bc`, 2026-11-11, unreleased): `gene_metrics.lookup_snapshot` and `civic_snapshot_rows` raise
+  `FileNotFoundError` on a reference with no parquet (no new name); inside the enricher the gene-metrics pass reads it
+  as not consulted (offline it had written `not_found` rows for a snapshot it never opened), the CIViC refutation
+  check skips with a could-not-read warning, the citations pass warns. We call neither reader directly; we reach
+  them only through `enrich()`'s gene-metrics pass, whose reference we resolve first (`resolve_constraint_reference`
+  already answers `None` without parquet), so the new arm is unreachable here today. Nothing moves; a direct keyed
+  read in 0.30 catches it as "snapshot unreadable", never as empty.
+
 - **S129** (filed 2026-11-04, appended to the compiler checkout's inbox, uncommitted; its triage told): a strict
   refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the
   unresolved aggregate (per-row) without reading wording; asks for coded errors / an `errors_summary`, or a

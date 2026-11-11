@@ -1001,7 +1001,13 @@ check, a drafter or a build is *read* here but not *proxied*. The guards count o
 **Upstream, through the liaison.** A keyed reader that accepts a remote path, for any lane whose reader
 opens a local path only. The variant-impact check (`alphagenome_check`) reads `alphagenome_avi` locally,
 so remote reads of it may need upstream first. If so, the lane is exempt until upstream ships the reader,
-with that as its checkable reason. Which lanes need it is the lead's first measurement.
+with that as its checkable reason. Which lanes need it is the lead's first measurement. **Measured
+(2026-11-11): none.** Every lane resolver and `read_release` answers `None` for a URL, although upstream's
+keyed SQL prunes fine over `hf://` (ClinVar, 3.1 s and 2.4 MB, measured by the lead). Filed as S145 and
+S146 and answered as RM430 (asks 1 to 3, which unblock the rest), RM431 (asks 4 to 7) and RM432 (two
+readers that answered an unreadable snapshot as empty now raise; landed). Until RM430 ships, a lane the
+box does not hold is exempt with "RM430 not released" as its reason, and the check is the installed
+enricher's version against the release that carries it.
 
 **Questions for the person** (in chat 2026-11-11), all answered and recorded in requirement 2: a keyed
 lookup is a derivative and every held lane answers one; no route hands out a whole snapshot of a lane whose

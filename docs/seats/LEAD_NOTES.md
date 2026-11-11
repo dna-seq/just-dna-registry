@@ -98,7 +98,7 @@ the namespace rename, the person's "1a 2a 3a"; plan e68d89a; built and reviewed 
 pass found 11 gaps, all addressed); uncommitted on the branch at 23:15. Left: commit, the full suite, the
 plan's Facts corrected, and the console banner (needs Node). Worktree tests need
 `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`.
-**0.29.1 built** (release head e70207a; full suite 872 passed, 1 skipped; dists in `dist/`); tag `v0.29.1` on e70207a once it is on PyPI. Was: **0.29.1 waits on upstream's GWAS fix** (the person, 2026-11-11: "rebuild once gwas fix drops in"). RM428
+**0.29.1 built** (release head e70207a; full suite 872 passed, 1 skipped; dists in `dist/`); **published and tagged** (v0.29.1 on e70207a, 2026-11-11; PyPI wheel's per-file hashes match a rebuild at e70207a). 0.30 started on branch `0.30` (worktree `.wt/0.30`, locked). Was: **0.29.1 waits on upstream's GWAS fix** (the person, 2026-11-11: "rebuild once gwas fix drops in"). RM428
 (their triage, from module-creator's S143): enricher 0.8.3 asks GWAS Catalog v2 `/associations` for `size=1000`,
 which answers 400 above 500, so the GWAS pass returns nothing in every installable release. `after: the release
 carrying RM428 is on PyPI`; then floor the enricher there, relock, full suite, build, DM the person. The liaison is
@@ -120,6 +120,26 @@ derivative work" (594e618 reverses 0a7cfc3). Every held lane answers keyed looku
 `/drafts`, `.../derived` stay; no unkeyed or enumerating query over a lane whose terms refuse redistribution or
 are unestablished, and a per-request bound on keys and rows; a lane neither held nor published is exempt. Publishing a module enriched against pubmind is not serving (the person: "We do not vet modules for
 abuse/violating terms, authors liability"); alphagenome_avi is the default ("alphag - default"). First measurement: which lane readers open a local path only (the liaison's upstream ask).
+**0.30 build plan** (branch `0.30`, worktree `.wt/0.30`, locked; guards c131a33, red on purpose):
+1. Producers: `POST .../derived` gains `passes=` (upstream `DerivedProducer.command` values, `422 unknown_pass`) and
+   `offline` (`/hint`'s tiers: offline free, online needs a token and charges `PaceLedger` before the run, estimated
+   from the spec). Per pass: `download=False`, configured caches, `mode=settings.enrich_mode`, one `try` each with the
+   `*Unavailable` arm first, a per-pass outcome in check.json (`ran | skipped | unavailable | not_requested`), paths
+   scrubbed. Order: enrich, gwas, opentargets enrich, assertions, frequencies, gene-metrics, dosage, gene-validity,
+   ld-pairs, literature. New `UPSTREAMS`: gwas_catalog, clingen, gencc. Commits: (a) snapshot passes opentargets
+   enrich, assertions, gene-metrics; (b) keyless live passes + frequencies behind REGISTRY_HINT_ALLOW_GNOMAD;
+   (c) expression on its own route behind REGISTRY_PROXY_ALPHAGENOME (until then EXEMPT_PRODUCERS names the setting).
+2. Lanes: keyed lookup route per the subagent's measurement (which readers take a remote path); exempt with a
+   checkable reason where upstream needs a new reader (the liaison files it).
+3. AST guard (unavailability subclass first) must cover `services/passes.py`. Client surface line: `derived` moves.
+Progress 2026-11-11: blocks (a) 6c118ff and (b) 66ae788 on `0.30` (10 of 11 passes; only alphagenome expression left).
+Lane measurement: no lane reads remotely through upstream as shipped; upstream RM430 (asks 1-3, unblockers), RM431
+(asks 5-8), S146's item (ask 4) filed by the liaison. Lanes exempt with those RM numbers as checkable reasons until shipped,
+except where our own keyed duckdb/polars read over `hf://` works (measured: clinvar, constraint, cpic, alphagenome_avi by position).
+Built on `0.30` (pushed): passes (a) 6c118ff, (b) 66ae788, (c) 7420586; lanes aa05740 (generic polars keyed read, local or
+hf:// remote, bounded). Both guards green. Left: GET /caches per-lane `proxied` (req 5) + lane_readers/warm-caches tags,
+registry-client commands (lanes, derived --passes), docs (API-REFERENCE, CLIENT, CLAUDE.md caching proxy, CHANGELOG
+0.30.0, UPGRADE), full suite, cut 0.30.0.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
