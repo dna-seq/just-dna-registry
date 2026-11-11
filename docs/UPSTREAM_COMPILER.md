@@ -452,6 +452,17 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
+  triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads
+  remotely through the enricher, since a URL collapses in `Path`, every `resolve_*_reference` and
+  `snapshot.read_release` answer `None`, and the connectors check locally; plus an rsID index for the Ensembl split
+  repo, keys on the whole-table readers (ClinPGx, drug labels, CIViC, ClinVar GKM), a keyed Open Targets function, and
+  fsspec in `read_local_scores`. The lead measured the keyed SQL pruning over `hf://` (ClinVar 3.1 s / ~2.4 MB,
+  resolver by position 3.5 s / ~5.4 MB of 200 MB). S146: `gene_metrics.lookup_snapshot` and the CIViC row reader
+  return `{}` / `[]` over an unreadable snapshot. Also learned: the ClinPGx and CPIC mirrors read anonymously
+  (public, ungated); duckdb `httpfs` must be preinstalled on a server with no route to the extension repo. **Owed to
+  the lead: the RM numbers** once sized.
+
 - **S129** (filed 2026-11-04, appended to the compiler checkout's inbox, uncommitted; its triage told): a strict
   refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the
   unresolved aggregate (per-row) without reading wording; asks for coded errors / an `errors_summary`, or a
