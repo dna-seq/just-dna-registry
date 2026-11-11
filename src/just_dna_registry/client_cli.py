@@ -575,6 +575,46 @@ def _echo_namespace_rename(report: dict) -> None:
                        + (f" (+{len(value) - 8} more)" if len(value) > 8 else ""))
 
 
+@app.command("lanes")
+def lanes(
+    lane: str = typer.Argument(..., help="A snapshot lane, e.g. clinvar, opentargets, alphagenome_avi"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """What one lane holds on the registry (0.30): its tables and the keys each answers by, and whether
+    the registry reads it locally or from the lane's published repo."""
+    with _client(url, token) as c:
+        found = c.lane_tables(lane)
+    typer.echo(f"{found['lane']} ({found['served_from']})")
+    for table in found["tables"]:
+        typer.echo(f"  {table['table']:<28} keys: {', '.join(table['keys']) or '-'}  ({table['files']} file(s))")
+
+
+@app.command("lane-rows")
+def lane_rows(
+    lane: str = typer.Argument(...),
+    table: str = typer.Argument(...),
+    key: list[str] = typer.Option(
+        [], "--key", help="column=value, repeatable (rsid=rs4244285, gene=LPA, chrom=22, start=17000001)"
+    ),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """The rows of one lane table matching identifier keys, as JSON lines (0.30). Keyed and bounded."""
+    keys: dict[str, list[str]] = {}
+    for pair in key:
+        column, _, value = pair.partition("=")
+        if not value:
+            raise typer.BadParameter(f"--key takes column=value, got {pair!r}")
+        keys.setdefault(column, []).append(value)
+    with _client(url, token) as c:
+        found = c.lane_rows(lane, table, keys)
+    for row in found["rows"]:
+        typer.echo(json.dumps(row, sort_keys=True))
+    note = " (truncated: more matched than one request returns)" if found["truncated"] else ""
+    typer.secho(f"{len(found['rows'])} row(s) from {found['served_from']}{note}", fg=typer.colors.GREEN, err=True)
+
+
 @app.command("find-by-hash")
 def find_by_hash(
     digest: str | None = typer.Argument(None, help="sha256:… artifact digest"),
@@ -1181,6 +1221,19 @@ def derived(
         None, "--out", help="Write the archive here instead of unpacking into the spec directory"
     ),
     pack: bool = typer.Option(False, "--pack", help=_PACK_HELP),
+    passes: list[str] = typer.Option(
+        [], "--pass",
+        help="Also run an upstream pass by its command name (gwas, opentargets enrich, assertions, "
+             "frequencies, gene-metrics, dosage, gene-validity, ld-pairs, literature, alphagenome "
+             "expression); repeatable",
+    ),
+    online: bool = typer.Option(
+        False, "--online", help="Let a pass's live leg run, charged to you per upstream (default: snapshots only)"
+    ),
+    gene: str | None = typer.Option(None, "--gene", help="alphagenome expression: the gene"),
+    chrom: str | None = typer.Option(None, "--chrom", help="alphagenome expression: the chromosome"),
+    start: int | None = typer.Option(None, "--start", help="alphagenome expression: interval start"),
+    end: int | None = typer.Option(None, "--end", help="alphagenome expression: interval end"),
     url: str | None = UrlOpt,
     token: str | None = TokenOpt,
 ) -> None:
@@ -1199,7 +1252,10 @@ def derived(
     one that silently found nothing.
     """
     with _client(url, token, need_token=True) as c:
-        blob = c.derived(namespace, name, spec_dir, pack=pack)
+        blob = c.derived(
+            namespace, name, spec_dir, pack=pack, passes=passes, offline=not online,
+            gene=gene, chrom=chrom, start=start, end=end,
+        )
 
     if out is not None:
         out.parent.mkdir(parents=True, exist_ok=True)
