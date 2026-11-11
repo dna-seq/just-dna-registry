@@ -47,6 +47,7 @@ from just_dna_registry.permissions import Capability
 from just_dna_registry.proxy_coverage import ENRICH_PRODUCERS, proxies
 from just_dna_registry.services import derived as derived_service
 from just_dna_registry.services import enrich as enrich_service
+from just_dna_registry.services import passes as passes_service
 from just_dna_registry.services import publish as publish_service
 from just_dna_registry.specfiles import REQUIRED_SPEC_FILES
 from just_dna_registry.storage.base import StorageBackend, version_key
@@ -618,7 +619,10 @@ async def check_spec(
 
 @router.post(
     "/{namespace}/{name}/derived",
-    dependencies=[Depends(rate_limit("enrich")), Depends(proxies(producers=ENRICH_PRODUCERS))],
+    dependencies=[
+        Depends(rate_limit("enrich")),
+        Depends(proxies(producers=ENRICH_PRODUCERS + passes_service.served_producers())),
+    ],
     responses={200: {"content": {"application/gzip": {}}, "description": "The derived tables"}},
     summary="Enrich a spec and return its derived tables",
 )
@@ -631,8 +635,15 @@ async def derived_tables(
     name: str,
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI default, never mutated
     archive: Annotated[UploadFile | None, File()] = None,
+    passes: Annotated[list[str], Query(alias="pass")] = [],  # noqa: B006 — FastAPI default, never mutated
+    offline: bool = True,
 ) -> Response:
     """Run the network tier over an uploaded spec and hand back `derived/` as a `.tar.gz`.
+
+    **`pass=` (repeatable, 0.30) runs upstream's other derived-table passes too**, by their upstream
+    command names (`opentargets enrich`, `assertions`, `gene-metrics`, ...), after `enrich`, each on its
+    own; `check.json`'s `passes` says what each did. `offline=true` (the default) answers from this
+    box's snapshots only; a pass's live leg needs `offline=false`.
 
     **The one thing a client without the snapshot caches cannot make for itself.** The compiler never
     fetches, so `resolution.csv` is what places rsID-authored rows onto coordinates and it has to
@@ -658,6 +669,17 @@ async def derived_tables(
     archive: this route's contract is to produce, not to report.
     """
     require_capability(repo, account, namespace, Capability.PUBLISH)
+    unknown = sorted(set(passes) - set(passes_service.SERVED_PASSES))
+    if unknown:
+        refund_rate_charge(request)
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "error": "unknown_pass",
+                "errors": [f"not a pass this server runs: {', '.join(unknown)}"],
+                "served": list(passes_service.SERVED_PASSES),
+            },
+        )
     gate = request.app.state.enrichment_gate
     client_format = _client_format(request)
     try:
@@ -678,7 +700,7 @@ async def derived_tables(
                     derived_service.build_derived_tree,
                     settings=settings, repo=repo, uploads=uploads,
                     namespace=namespace, name=name,
-                    client_format=client_format, gate=gate,
+                    client_format=client_format, gate=gate, passes=passes, offline=offline,
                 ),
                 timeout=settings.enrich_timeout_seconds,
             )

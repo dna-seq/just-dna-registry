@@ -31,7 +31,14 @@ from typing import Any
 
 from just_dna_registry.config import Settings
 from just_dna_registry.models.api import ValidationReport
-from just_dna_registry.services.enrich import EnrichOutcome, enrich_spec, validation_report
+from just_dna_registry.services.enrich import (
+    EnrichOutcome,
+    enrich_spec,
+    shared_lookup_clients,
+    validation_report,
+)
+from just_dna_registry.services.hints import HintScrubber
+from just_dna_registry.services.passes import PassOutcome, run_passes
 from just_dna_registry.services.publish import PublishError, normalize_spec
 from just_dna_registry.specfiles import (
     DERIVED_DIR,
@@ -88,6 +95,8 @@ class DerivedArchive:
     filename: str
     validation: ValidationReport
     enrichment: EnrichOutcome
+    #: What each requested pass did (0.30), in the order they ran.
+    passes: list[PassOutcome] = field(default_factory=list)
     #: `{name, sha256, size}` per member, in the `sha256:` lowercase-hex convention the manifest uses.
     files: list[dict[str, Any]] = field(default_factory=list)
 
@@ -105,6 +114,8 @@ def build_derived_tree(
     name: str,
     client_format: str | None = None,
     gate: Any = None,
+    passes: list[str] | None = None,
+    offline: bool = True,
 ) -> DerivedArchive:
     """Normalize, validate, enrich, and hand the derived tables back as a `.tar.gz`.
 
@@ -151,7 +162,17 @@ def build_derived_tree(
                 )
 
             enrichment = enrich_spec(spec_dir, settings)
-            return _pack(spec_dir, namespace, name, validation, enrichment)
+            # Upstream's other passes (0.30), after `enrich`, whose `resolution.csv` two of them read.
+            # The deployment's own `enrich_offline` wins over a caller asking online.
+            offline_run = offline or settings.enrich_offline
+            outcomes = run_passes(
+                spec_dir, settings, passes or [], offline=offline_run,
+                clients=None if offline_run else shared_lookup_clients(),
+            ) if passes else []
+            scrub = HintScrubber.build(settings)
+            for outcome in outcomes:
+                outcome.detail = scrub.text(outcome.detail)
+            return _pack(spec_dir, namespace, name, validation, enrichment, outcomes)
     finally:
         if gate is not None:
             gate.release()
@@ -163,6 +184,7 @@ def _pack(
     name: str,
     validation: ValidationReport,
     enrichment: EnrichOutcome,
+    outcomes: list[PassOutcome] | None = None,
 ) -> DerivedArchive:
     """Gather whatever `DERIVED_FILES` the run actually produced and tar them under `DERIVED_DIR`.
 
@@ -207,6 +229,13 @@ def _pack(
         },
         "files": listing,
         "files_absent": absent,
+        # Per requested pass (0.30): `ran`, `skipped`, `unavailable` or `failed`, with the detail and the
+        # tables it produces. A pass not requested is not listed; a table in `files_absent` whose pass
+        # is listed here says why it is absent.
+        "passes": [
+            {"command": o.command, "status": o.status, "detail": o.detail, "tables": o.tables}
+            for o in outcomes or []
+        ],
     }
     extras = [
         (DERIVED_REPORT_FILE, json.dumps(report, indent=2, sort_keys=True).encode()),
@@ -229,5 +258,6 @@ def _pack(
         filename=f"{name}-derived.tar.gz",
         validation=validation,
         enrichment=enrichment,
+        passes=list(outcomes or []),
         files=listing,
     )

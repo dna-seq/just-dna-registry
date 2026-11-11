@@ -1109,9 +1109,12 @@ def test_no_adapter_catches_an_unavailability_subclass_with_its_parent_first() -
     self-test below so the two cannot drift.
     """
     from just_dna_registry.services import enrich as enrich_service
+    from just_dna_registry.services import passes as passes_service
 
-    source = Path(enrich_service.__file__).read_text(encoding="utf-8")
-    assert _shadowed_handlers(source) == []
+    # And the caching proxy's pass adapters (0.30), which catch the same upstream families.
+    for module in (enrich_service, passes_service):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert _shadowed_handlers(source) == [], module.__name__
 
 
 def test_the_shadowed_handler_walk_can_actually_fail() -> None:

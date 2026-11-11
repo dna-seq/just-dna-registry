@@ -271,3 +271,69 @@ def test_the_report_says_what_the_enrichment_actually_did(tmp_path, field: str) 
     enrichment = json.loads(_members(_post(client).content)[DERIVED_REPORT_FILE])["enrichment"]
 
     assert field in enrichment
+
+
+# ── 0.30: upstream's other passes, through `pass=` ────────────────────────────────────────────────────
+
+_CACHE = __import__("pathlib").Path("/data/just-dna-cache")
+_SNAPSHOT_PASSES = ("opentargets enrich", "assertions", "gene-metrics")
+
+
+def _post_passes(client: TestClient, passes: tuple[str, ...], **query):
+    return client.post(
+        _URL, files=_parts(), headers=_AUTH,
+        params=[("pass", p) for p in passes] + list(query.items()),
+    )
+
+
+def test_an_unknown_pass_is_refused_naming_what_is_served(tmp_path) -> None:
+    client = _app(tmp_path)
+    resp = _post_passes(client, ("enrich-everything",))
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["error"] == "unknown_pass" and set(_SNAPSHOT_PASSES) <= set(detail["served"])
+
+
+def test_a_pass_with_no_snapshot_says_so_and_never_reads_as_ran(tmp_path) -> None:
+    """The empty-list trap one level up: a table missing from the archive is either nothing to say or a
+    pass that could not ask, and `passes` names which."""
+    client = _app(tmp_path, opentargets_cache=tmp_path / "no-cache")
+    resp = _post_passes(client, _SNAPSHOT_PASSES)
+    assert resp.status_code == 200, resp.text
+    report = json.loads(_members(resp.content)[DERIVED_REPORT_FILE])
+    outcomes = {p["command"]: p for p in report["passes"]}
+    assert set(outcomes) == set(_SNAPSHOT_PASSES)
+    assert outcomes["assertions"]["status"] == "skipped", outcomes["assertions"]
+    assert outcomes["opentargets enrich"]["status"] in {"skipped", "failed"}, outcomes["opentargets enrich"]
+    assert "gene_metrics.csv" in outcomes["gene-metrics"]["tables"]
+    # No path of this box in any detail (the scrubber's backstop).
+    assert str(tmp_path) not in json.dumps(report["passes"])
+
+
+def test_no_pass_runs_unless_asked(tmp_path) -> None:
+    report = json.loads(_members(_post(_app(tmp_path)).content)[DERIVED_REPORT_FILE])
+    assert report["passes"] == []
+
+
+@pytest.mark.skipif(
+    not all((_CACHE / d).is_dir() for d in ("clinvar", "opentargets", "gnomad_constraint")),
+    reason="needs this machine's ClinVar, Open Targets and constraint snapshots",
+)
+def test_the_snapshot_passes_run_from_this_boxs_snapshots_with_no_egress(tmp_path) -> None:
+    """Served from snapshots, the passes spend nothing upstream: `no_network` (autouse) fails any socket."""
+    client = _app(
+        tmp_path, clinvar_cache=_CACHE / "clinvar", opentargets_cache=_CACHE / "opentargets",
+        constraint_cache=_CACHE / "gnomad_constraint",
+    )
+    resp = _post_passes(client, _SNAPSHOT_PASSES)
+    assert resp.status_code == 200, resp.text
+    members = _members(resp.content)
+    report = json.loads(members[DERIVED_REPORT_FILE])
+    outcomes = {p["command"]: p for p in report["passes"]}
+    for command in _SNAPSHOT_PASSES:
+        assert outcomes[command]["status"] == "ran", outcomes[command]
+    # Every table a pass that ran says it produced either arrived or is named absent, never neither.
+    produced = {name.split("/", 1)[1] for name in members if name.startswith(f"{DERIVED_DIR}/")}
+    for outcome in outcomes.values():
+        for table in outcome["tables"]:
+            assert table in produced or table in report["files_absent"], table

@@ -210,6 +210,9 @@ class Settings(BaseSettings):
     # every lane `enrich()` takes must be: omitted, the enricher would find one ambiently.
     clinvar_gkm_cache: Path | None = None
     constraint_cache: Path | None = None
+    # The Open Targets lane (0.30): the caching proxy runs `opentargets enrich` from it. `None` follows the
+    # lane's own ladder (`JUST_DNA_OPENTARGETS_CACHE`, the shared cache base), as every unset lane does.
+    opentargets_cache: Path | None = None
     # The licence-gated PGx snapshots (enricher 0.5.1 / RM38). Only the `?pgx=` check reads these, so
     # a deployment that never uses it needs none of them — but a *hosted* one that does needs all
     # three, because the alternative is fetching a gated source live, per request, on the operator's

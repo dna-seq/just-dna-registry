@@ -413,6 +413,7 @@ def configured_caches(settings: Settings) -> dict[str, Path | None]:
         # same call as PubMind and CIViC: an optional lane must not raise a boot warning.
         "clinvar_gkm": settings.clinvar_gkm_cache,
         "constraint": settings.constraint_cache,
+        "opentargets": settings.opentargets_cache,
         "cpic": settings.cpic_cache,
         "pharmvar": settings.pharmvar_cache,
         "clinpgx": settings.clinpgx_cache,
