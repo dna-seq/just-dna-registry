@@ -5,7 +5,7 @@ import io
 
 import polars as pl
 from fastapi.testclient import TestClient
-from test_handle_rename import _auth, _publish, _user
+from test_handle_rename import _publish, _user
 
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.services import claims
