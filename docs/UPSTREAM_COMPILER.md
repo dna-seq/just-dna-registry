@@ -460,8 +460,10 @@ lock (1.44.2, 1.5.5, 2.3.3).
   fsspec in `read_local_scores`. The lead measured the keyed SQL pruning over `hf://` (ClinVar 3.1 s / ~2.4 MB,
   resolver by position 3.5 s / ~5.4 MB of 200 MB). S146: `gene_metrics.lookup_snapshot` and the CIViC row reader
   return `{}` / `[]` over an unreadable snapshot. Also learned: the ClinPGx and CPIC mirrors read anonymously
-  (public, ungated); duckdb `httpfs` must be preinstalled on a server with no route to the extension repo. **Owed to
-  the lead: the RM numbers** once sized.
+  (public, ungated); duckdb `httpfs` must be preinstalled on a server with no route to the extension repo.
+  **Answered 2026-11-11** (archived, open, their pm sizes): S145 is **RM430** (asks 1-3; the format tier never fetches,
+  so a remote `release.json` is read by the enricher, not `just_dna_format.snapshot`) and **RM431** (asks 4-7); S146
+  is **RM432**. Lead told.
 
 - **S129** (filed 2026-11-04, appended to the compiler checkout's inbox, uncommitted; its triage told): a strict
   refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the

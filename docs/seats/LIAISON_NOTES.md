@@ -98,8 +98,8 @@ reset").
 - **Owed to the lead** (asked 2026-11-11, 639314607, on the person's "rebuild once gwas fix drops in"): when the
   enricher release carrying RM428 (`f0433de`, 0.8.4 expected) is on PyPI, say so in `#just-dna-registry > upstream`;
   the lead floors it as 0.29.1. Woken by the `compiler` tag watcher; check PyPI before telling.
-- **Owed to the lead** (handoff 2026-11-11, 0.30's remote keyed lane reads): the RM numbers for S145 and S146
-  once the compiler's triage sizes them (ledger Outbound). **Their live inbox is `/data/sources/just-dna-format`**;
+- **0.30's remote keyed lane reads** (handoff 2026-11-11): S145/S146 filed, answered as RM430, RM431, RM432, lead
+  told; at each one's landing, read it for the lead (ledger Outbound). **Their live inbox is `/data/sources/just-dna-format`**;
   `/data/sources/just-dna-compiler` is the watcher clone, 672 commits behind on 2026-11-11, so read upstream there
   only through `origin/main` (`git show`, `git grep origin/main`), never the working tree.
 
