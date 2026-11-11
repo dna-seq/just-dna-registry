@@ -1058,6 +1058,38 @@ Atlas only under the override (the person: "alphag - default").
   position" hint. Questions for the person on the desk (each with a default; the build waits on a critic's
   review, not on them).
 
+  **Critic's review (2026-11-11, an Opus pass) and the design as revised.**
+  1. *Direction is per allele*: `direction` signs `effect_allele`, `state` signs the genotype (format
+     `spec.py:808,839,735`); 8 of the polygon's 18 opposite pairs are one claim seen from opposite alleles.
+     The marker orients each claim to one canonical allele first; no `effect_allele`, or one that cannot be
+     oriented, is *incomparable*. Older modules carry `state` only (379 of 401 reference rows): derive from it,
+     with `significant`/`alt`/`ref`/`unknown`/`contested` *not compared* (upstream's `effective_direction` uses
+     the weight sign for `significant`, which this never does).
+  2. *Silence is not agreement*: every answer carries pairs compared, incomparable pairs by reason (no trait,
+     other trait, no effect allele, no canonical key, other build) and versions in scope not yet projected.
+  3. *No verdict on a card*: the marker lives on the variant and gene views only (a card gets a neutral link),
+     never sorts, filters or colours; blacklisted (and on production, test) namespaces are not partners; claim
+     lists do not inherit the listing's featured-first order.
+  4. *Builds and keys*: `genome_build` on every claim and alias; across builds only through the rsID, unjoined
+     rows counted; rsID → key is many-to-many (62 polygon rows with `locus_count > 1`); columns read by presence
+     (0.7-compiled parquets have no `vrs_id`).
+  5. *Per-table shapes*: only `weights` carries direction and weight; `pharm_variants` (string genotype, no
+     direction), `heteroplasmy` (ranges, no genotype) and `haplotypes` (`allele`) project as their own kinds and
+     never enter the marker. `study_count` is not a column; it would reimplement upstream's private
+     `_StudyIndex`, so it is an upstream ask (they already write per-locus study facts into `weights`).
+  6. *Same DB, with cascades* (reverses the separate-DB idea): `revert-run` snapshots only the catalog DB,
+     cascades cannot cross files, and `versions.id` is reused after a delete, so a separate file goes stale or
+     attaches orphans. Keyed by version id, never a namespace string (0.29 renames rewrite `modules` only).
+  7. *Projector version* stored per version, compared on `--missing` like `registry upgrade`'s versions.
+  8. *Publish never fails over it*: rows computed from `out_dir` before `_COMMIT_LOCK`, inserted after ingest
+     in their own `try`; a failure leaves NULL and a response warning.
+  9. *Latest non-yanked version per module* is projected (sweeps mint near-identical PATCHes); history on
+     demand. Backfill reads only the needed columns (polars over `hf://`), latest first, commit per version.
+  10. *Routes*: the listing's visibility rules (blacklist, `group_filters` per instance, S17), a registered rate
+     bucket, one key per request, no batch and no genotype parameter: an authoring surface, never a per-person
+     annotation service (STRATEGY). `?gene=` and `/genes/{symbol}/claims` derive from one gene source, or the
+     narrower one says why.
+
   **Limits it keeps.** It reports what modules say and never ranks one claim over another
   (`docs/STRATEGY.md`: not a judge of the science). A disagreement shown is a fact about two modules,
   not a verdict on either. Every new route gets a `RegistryClient` method and a parity row in the same
