@@ -8,6 +8,16 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### On upstream 0.8.4
+
+All three tiers floor at 0.8.4, whose release record moves nothing, so `registry upgrade` has nothing to do.
+Its point is upstream's GWAS fix (RM428: the GWAS Catalog refuses more than 500 rows a page, and 0.8.3 asked
+for 1000, so its GWAS pass found nothing). No route of this server runs that pass; the fix reaches whoever
+runs `just-dna-enricher` against a box's install. The `gene_loci` field description and CLIENT.md no longer
+repeat the guess upstream retracted (RM426): either half of a gene/locus mismatch may be the wrong one.
+
+**Client surface:** unchanged.
+
 ## [0.29.0] — 2026-11-11
 
 ### A namespace renames, and its old name stays an alias (S28, reversed)

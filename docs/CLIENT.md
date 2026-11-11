@@ -558,9 +558,10 @@ The other two print as their own line since
 0.13. `unreachable_rsids` names rsIDs live Ensembl never answered about — they appear in `unresolved`
 too, but an unanswered request is a re-run rather than an authoring fix, so do not go writing
 coordinates for a variant on the strength of an unresolved list alone. And `--identifiers` now also
-compares each row's `gene` against the chromosome its own variant sits on: a real symbol beside an
-invented rsID satisfies every other check, because both halves are true and only the relationship is
-false. When that comparison could not run, the report says so instead of coming back empty.
+compares each row's `gene` against the chromosome its own variant sits on: such a row satisfies every
+other check, because both halves are true and only the relationship is false. Either half may be the
+wrong one (a made-up rsID that resolves anyway, or a real rsID beside the wrong gene); looking the rsID
+up tells them apart. When that comparison could not run, the report says so instead of coming back empty.
 
 The server's variant ceiling bounds outbound pacing, so it applies to **online** runs only: `--offline`
 has no ceiling and answers everything the deployment's snapshots can. Above it an online run is

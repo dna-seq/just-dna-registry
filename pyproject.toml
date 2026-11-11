@@ -79,7 +79,8 @@ dependencies = [
     # **0.8.3 is the soft kind here** (registry 0.28.6). Upstream's release record for 0.8.2 -> 0.8.3 measures
     # every axis `False` with nothing declared, and no public name, field, table or warning code moved. It is
     # the floor because the enricher 0.8.3 the `server` extra needs floors all three tiers at `>=0.8.3`.
-    "just-dna-format>=0.8.3",
+    # 0.8.4 likewise (0.29.1): the enricher 0.8.4 floors all three tiers at `>=0.8.4`.
+    "just-dna-format>=0.8.4",
 ]
 
 [project.optional-dependencies]
@@ -126,7 +127,7 @@ dependencies = [
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.8.3",  # lockstep with the format floor above
+    "just-dna-compiler>=0.8.4",  # lockstep with the format floor above
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -341,8 +342,15 @@ server = [
     # present pulled lane. Probes, run 2026-11-10 on the installed enricher, both `True`:
     # `uv run python -c "import inspect,just_dna_enricher.net as n; print('_service_gate' in inspect.getsource(n))"`
     # `uv run python -c "import inspect,just_dna_enricher.download as d; print('_follow_hub' in inspect.signature(d.ensure_constraint_snapshot).parameters)"`
-    "just-dna-compiler>=0.8.3",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.3",  # RM418 under the narrowed lock, see the 0.8.3 note above
+    #
+    # **0.8.4 (upstream `v0.8.4`, all three tiers) is the soft kind, taken on the person's word** ("rebuild once
+    # gwas fix drops in", 2026-11-11). Release record: a measured zero, nothing declared. RM428 makes the GWAS
+    # Catalog pass ask for 500 rows a page (the Catalog refuses 1000, so 0.8.3's pass returned nothing), but no
+    # route here runs that pass: `enrich()` does not call it and neither does the proxy. It reaches whoever runs
+    # `just-dna-enricher` on the box against this install. RM425-RM427 move only wording. Probe, run 2026-11-11:
+    # `uv run python -c "import just_dna_enricher.gwas as g; print(g._PAGE_SIZE)"` answers `500` (0.8.3: `1000`).
+    "just-dna-compiler>=0.8.4",  # lockstep with the format floor above
+    "just-dna-enricher>=0.8.4",  # soft: RM428 (GWAS pass) reaches no route here, see the 0.8.4 note above
 ]
 
 [build-system]

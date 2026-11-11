@@ -1239,10 +1239,11 @@ class IdentifierCheck(BaseModel):
         description=(
             "Rows whose `gene` names a chromosome the row's own variant is not on (enricher 0.5.4 / "
             "S24). A different question from `stale_genes`, which only asks whether HGNC approves the "
-            "symbol: here both halves are individually true and the *relationship* is false — the "
-            "signature of a machine-written citation, a real symbol beside an invented rsID that "
-            "resolves anyway because dbSNP is dense enough that almost any number hits something. "
-            "Chromosome granularity only, so a row naming a distal regulatory target is not accused"
+            "symbol: here both halves are individually true and the *relationship* is false. Either "
+            "half may be the wrong one: a made-up rsID that resolves anyway (dbSNP is dense enough "
+            "that almost any number hits something), or a real rsID beside the wrong gene; looking the "
+            "rsID up tells them apart (upstream RM426). Chromosome granularity only, so a row naming a "
+            "distal regulatory target is not accused"
         ),
     )
     gene_loci_not_checked: str | None = Field(
