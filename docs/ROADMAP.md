@@ -823,7 +823,7 @@ committed; a site-admin key for their seat is the person's to issue.
 check on for its online modules), RM401, RM403 (retry lines counted as `network`). Next on the polygon: deploy,
 `replay-upgrade --online` to re-measure (upstream reads it by run id), then the 12 held modules.
 
-## 0.29 — a namespace renames, and the old name stays an alias (planned 2026-11-10, the lead)
+## 0.29 — a namespace renames, and the old name stays an alias (planned 2026-11-10, the lead; published 2026-11-11) ✅
 
 **Decided by the person 2026-11-10** in the lead's session, reversing S28's decline (triage, 185a8c7): "Redesign
 the rename. It shound rename the namespace as follows: rename old to new, leave old one as alias pointer.
