@@ -151,6 +151,18 @@ UPSTREAMS: dict[str, UpstreamTerms] = {
             "Run just-dna-enricher yourself against a local copy if you need more."
         ),
     ),
+    "alphagenome": UpstreamTerms(
+        name="alphagenome",
+        # One unit per request; each is up to `proxy_alphagenome_max_bp` bases of scoring on the
+        # operator's key, which is the scarce thing, so the allowance is small.
+        base_interval=60.0,
+        free_daily_units=16,
+        remedy=(
+            "AlphaGenome's Atlas runs on this operator's personal API key; the budget keeps one caller "
+            "from spending it for everyone. Get your own key from AlphaGenome and run just-dna-enricher's "
+            "`alphagenome expression` yourself."
+        ),
+    ),
     "gnomad": UpstreamTerms(
         name="gnomad",
         # 10 per 60s, published, keyed on our IP.
@@ -168,6 +180,12 @@ UPSTREAMS: dict[str, UpstreamTerms] = {
         ),
     ),
 }
+
+
+#: Upstreams charged per whole run rather than per lookup (0.30): a ClinGen or GenCC unit is one file
+#: download, an AlphaGenome unit one interval scored on the operator's key. Their budgets and spacings are
+#: in other units from the per-lookup ones, so a relation stated over lookups excludes them.
+PER_RUN_UPSTREAMS: frozenset[str] = frozenset({"clingen", "gencc", "alphagenome"})
 
 
 @dataclass

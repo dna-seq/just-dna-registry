@@ -386,3 +386,58 @@ def test_gnomad_stays_shut_to_the_proxy_unless_the_operator_opened_it(tmp_path) 
     assert "gnomad" not in estimate_charges(uploads, ["frequencies", "gene-metrics"], Settings())
     opened = estimate_charges(uploads, ["frequencies", "gene-metrics"], Settings(hint_allow_gnomad=True))
     assert opened == {"gnomad": 4}
+
+
+_EXPR = ("alphagenome expression",)
+_INTERVAL = {"gene": "CYP2C19", "chrom": "10", "start": "94762000", "end": "94772000"}
+
+
+def test_alphagenome_is_shut_unless_the_operator_opened_it(tmp_path) -> None:
+    resp = _post_passes(_app(tmp_path), _EXPR, offline="false", **_INTERVAL)
+    assert resp.status_code == 200, resp.text
+    [outcome] = json.loads(_members(resp.content)[DERIVED_REPORT_FILE])["passes"]
+    assert outcome["status"] == "skipped" and "REGISTRY_PROXY_ALPHAGENOME" in outcome["detail"]
+
+
+def test_an_expression_request_names_one_bounded_interval(tmp_path) -> None:
+    client = _app(tmp_path, proxy_alphagenome=True, proxy_alphagenome_max_bp=5_000)
+    missing = _post_passes(client, _EXPR, offline="false", gene="CYP2C19")
+    assert missing.status_code == 422 and missing.json()["detail"]["error"] == "expression_needs_interval"
+    wide = _post_passes(client, _EXPR, offline="false", **_INTERVAL)  # 10 kb against a 5 kb bound
+    assert wide.status_code == 422 and wide.json()["detail"]["error"] == "expression_interval_too_large"
+
+
+def test_an_opened_atlas_runs_the_pass_and_reports_upstreams_result(tmp_path, monkeypatch) -> None:
+    """Stub the Atlas, never the report: the adapter reads upstream's own `ExpressionResult`."""
+    import just_dna_enricher.expression as expression
+
+    seen: list[tuple] = []
+
+    def atlas(spec_dir, gene, *, chrom, start, end, **_kw):
+        seen.append((gene, chrom, start, end))
+        return expression.ExpressionResult(gene=gene, interval=(chrom, start, end), candidates=3, written=0)
+
+    from just_dna_registry.services import derived as derived_service
+
+    monkeypatch.setattr(expression, "enrich_expression", atlas)
+    # An online deployment, with enrich() itself kept on the snapshot so nothing else egresses here.
+    client = _app(tmp_path, proxy_alphagenome=True, enrich_offline=False)
+    real_enrich = derived_service.enrich_spec
+    monkeypatch.setattr(
+        derived_service, "enrich_spec",
+        lambda spec_dir, settings: real_enrich(spec_dir, settings.model_copy(update={"enrich_offline": True})),
+    )
+    monkeypatch.setattr(derived_service, "shared_lookup_clients", lambda *a, **k: None)
+    resp = _post_passes(client, _EXPR, offline="false", **_INTERVAL)
+    assert resp.status_code == 200, resp.text
+    [outcome] = json.loads(_members(resp.content)[DERIVED_REPORT_FILE])["passes"]
+    assert outcome["status"] == "ran" and seen == [("CYP2C19", "10", 94762000, 94772000)], outcome
+    spent = {up: e.spent for (_who, up), e in client.app.state.pace_ledger._entries.items()}
+    assert spent.get("alphagenome") == 1, spent
+
+
+def test_every_served_pass_has_a_place_in_the_run_order() -> None:
+    """A pass the route accepts and `run_passes` never reaches would answer 200 with nothing said."""
+    from just_dna_registry.services.passes import PASS_ORDER, SERVED_PASSES
+
+    assert len(SERVED_PASSES) >= 5 and set(SERVED_PASSES) <= set(PASS_ORDER)

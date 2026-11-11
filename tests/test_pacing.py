@@ -234,6 +234,7 @@ def test_every_upstream_carries_a_remedy_and_none_of_them_sells_a_key_we_do_not_
     """
     assert set(pacing.UPSTREAMS) == {
         "ncbi", "ensembl", "gnomad", "literature", "ontology", "gwas_catalog", "clingen", "gencc",
+        "alphagenome",
     }
 
     for name, terms in pacing.UPSTREAMS.items():
@@ -273,7 +274,10 @@ def test_the_spacing_can_be_grounded_in_the_client_that_actually_paces(clock: Fa
 def test_gnomad_is_budgeted_far_below_the_others_because_its_limit_cannot_be_bought() -> None:
     """The one budget relation that is a design decision rather than a tuning choice."""
     gnomad = pacing.UPSTREAMS["gnomad"]
-    others = [t.free_daily_units for name, t in pacing.UPSTREAMS.items() if name != "gnomad"]
+    # Per lookup: a unit of the per-run upstreams (0.30) is a whole download or an interval, not a call.
+    per_lookup = {n: t for n, t in pacing.UPSTREAMS.items() if n not in pacing.PER_RUN_UPSTREAMS}
+    assert len(per_lookup) >= 5 and set(pacing.UPSTREAMS) >= pacing.PER_RUN_UPSTREAMS
+    others = [t.free_daily_units for name, t in per_lookup.items() if name != "gnomad"]
     assert gnomad.free_daily_units < min(others) // 10
     assert gnomad.base_interval == 6.0, "gnomAD publishes 10 requests per 60 seconds"
-    assert gnomad.base_interval == max(t.base_interval for t in pacing.UPSTREAMS.values())
+    assert gnomad.base_interval == max(t.base_interval for t in per_lookup.values())

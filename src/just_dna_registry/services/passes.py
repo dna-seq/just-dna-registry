@@ -31,14 +31,14 @@ logger = logging.getLogger("registry.passes")
 #: `opentargets enrich` fills columns on the rows `gwas` wrote; `gene-metrics` and `dosage` share one table.
 PASS_ORDER: tuple[str, ...] = (
     "gwas", "opentargets enrich", "assertions", "frequencies", "gene-metrics", "dosage",
-    "gene-validity", "ld-pairs", "literature",
+    "gene-validity", "ld-pairs", "literature", "alphagenome expression",
 )
 
 #: The passes this server runs on request. Grows to `PASS_ORDER` (0.30); the coverage guard reads the
 #: routes, and a route marks what it serves from this.
 SERVED_PASSES: tuple[str, ...] = (
     "gwas", "opentargets enrich", "assertions", "frequencies", "gene-metrics", "dosage",
-    "gene-validity", "ld-pairs", "literature",
+    "gene-validity", "ld-pairs", "literature", "alphagenome expression",
 )
 
 #: Which `pacing.UPSTREAMS` budget each pass's live leg spends, for the charge taken before it runs.
@@ -50,7 +50,18 @@ PASS_UPSTREAMS: dict[str, tuple[str, ...]] = {
     "gene-validity": ("clingen", "gencc"),
     "ld-pairs": ("ensembl",),
     "literature": ("ncbi", "literature"),
+    "alphagenome expression": ("alphagenome",),
 }
+
+
+@dataclass(frozen=True)
+class ExpressionInterval:
+    """The one gene interval an `alphagenome expression` request scores (0.30)."""
+
+    gene: str
+    chrom: str
+    start: int
+    end: int
 
 
 @dataclass
@@ -194,6 +205,8 @@ def estimate_charges(uploads: dict[str, bytes], commands: list[str], settings: S
     if "literature" in commands:
         add("ncbi", len(pmids))
         add("literature", len(pmids))
+    if "alphagenome expression" in commands and settings.proxy_alphagenome:
+        add("alphagenome", 1)
     return charges
 
 
@@ -333,8 +346,43 @@ def _literature(spec_dir: Path, settings: Settings, offline: bool, clients: Any)
     )
 
 
+def _expression(
+    spec_dir: Path, settings: Settings, offline: bool, interval: ExpressionInterval | None
+) -> PassOutcome:
+    from just_dna_enricher.expression import ExpressionError, ExpressionUnavailable, enrich_expression
+
+    if not settings.proxy_alphagenome:
+        return PassOutcome(
+            "alphagenome expression", "skipped",
+            "the operator has not opened AlphaGenome's Atlas to the proxy (REGISTRY_PROXY_ALPHAGENOME)",
+        )
+    if offline:
+        return PassOutcome(
+            "alphagenome expression", "skipped",
+            "offline: the Atlas is live only, there is no snapshot (ask with offline=false)",
+        )
+    if interval is None:  # the route refuses this before the run; said here so the pass never guesses
+        return PassOutcome("alphagenome expression", "skipped", "no gene interval was given")
+    try:
+        result = enrich_expression(
+            spec_dir, interval.gene, chrom=interval.chrom, start=interval.start, end=interval.end,
+            declared_use=settings.declared_use, offline=False, write=True,
+        )
+    except ExpressionUnavailable as exc:
+        return PassOutcome("alphagenome expression", "unavailable", str(exc))
+    except ExpressionError as exc:
+        return PassOutcome("alphagenome expression", "failed", str(exc))
+    if result.skipped:
+        return PassOutcome("alphagenome expression", "skipped", str(result.skipped))
+    return PassOutcome(
+        "alphagenome expression", "ran",
+        f"{len(result.rows)} row(s) for {interval.gene} {interval.chrom}:{interval.start}-{interval.end}",
+    )
+
+
 def run_passes(
-    spec_dir: Path, settings: Settings, commands: list[str], *, offline: bool, clients: Any = None
+    spec_dir: Path, settings: Settings, commands: list[str], *, offline: bool, clients: Any = None,
+    interval: ExpressionInterval | None = None,
 ) -> list[PassOutcome]:
     """Run each requested pass in `PASS_ORDER`, each on its own, and say what happened to every one."""
     runners = {
@@ -347,6 +395,7 @@ def run_passes(
         "gene-validity": lambda: _gene_validity(spec_dir, settings, offline),
         "ld-pairs": lambda: _ld_pairs(spec_dir, settings, offline),
         "literature": lambda: _literature(spec_dir, settings, offline, clients),
+        "alphagenome expression": lambda: _expression(spec_dir, settings, offline, interval),
     }
     outcomes = []
     for command in PASS_ORDER:

@@ -466,6 +466,13 @@ class Settings(BaseSettings):
     # pacing and 85% of what gnomAD grants the WHOLE deployment in an hour — the same allowance
     # `/check?frequencies=true` draws on to gate a publish.
     hint_allow_gnomad: bool = False
+    # The AlphaGenome Atlas through the caching proxy (0.30; the person: "Add override"). Off by default:
+    # the Atlas runs on this operator's ALPHAGENOME_API_KEY and declared terms, so turning it on is the
+    # operator accepting that callers spend that key. Each request is one gene interval, at most
+    # `proxy_alphagenome_max_bp` bases (upstream measures ~1,091 SNVs/s, 3 per base: 20 kb is about a
+    # minute), because a gene with its flanks is ~50 minutes and would hold a worker for all of it.
+    proxy_alphagenome: bool = False
+    proxy_alphagenome_max_bp: int = 20_000
     # A batch is bounded by what can finish inside the request, not by a round number: an online batch
     # runs its misses sequentially at the upstream's own pace.
     hint_max_batch: int = 256

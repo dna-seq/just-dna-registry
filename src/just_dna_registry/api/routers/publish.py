@@ -638,13 +638,19 @@ async def derived_tables(
     archive: Annotated[UploadFile | None, File()] = None,
     passes: Annotated[list[str], Query(alias="pass")] = [],  # noqa: B006 — FastAPI default, never mutated
     offline: bool = True,
+    gene: str | None = None,
+    chrom: str | None = None,
+    start: int | None = None,
+    end: int | None = None,
 ) -> Response:
     """Run the network tier over an uploaded spec and hand back `derived/` as a `.tar.gz`.
 
     **`pass=` (repeatable, 0.30) runs upstream's other derived-table passes too**, by their upstream
     command names (`opentargets enrich`, `assertions`, `gene-metrics`, ...), after `enrich`, each on its
     own; `check.json`'s `passes` says what each did. `offline=true` (the default) answers from this
-    box's snapshots only; a pass's live leg needs `offline=false`.
+    box's snapshots only; a pass's live leg needs `offline=false`. `alphagenome expression` scores one
+    gene interval (`gene`, `chrom`, `start`, `end`, at most `proxy_alphagenome_max_bp` bases) on the
+    operator's AlphaGenome key, only where `REGISTRY_PROXY_ALPHAGENOME` is on.
 
     **The one thing a client without the snapshot caches cannot make for itself.** The compiler never
     fetches, so `resolution.csv` is what places rsID-authored rows onto coordinates and it has to
@@ -681,6 +687,27 @@ async def derived_tables(
                 "served": list(passes_service.SERVED_PASSES),
             },
         )
+    interval = None
+    if "alphagenome expression" in passes:
+        if None in (gene, chrom, start, end):
+            refund_rate_charge(request)
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"error": "expression_needs_interval", "errors": [
+                    "`alphagenome expression` scores one gene interval: give gene, chrom, start and end"
+                ]},
+            )
+        if not 0 < end - start <= settings.proxy_alphagenome_max_bp:
+            refund_rate_charge(request)
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"error": "expression_interval_too_large", "errors": [
+                    f"{end - start:,} bp; this server scores at most {settings.proxy_alphagenome_max_bp:,} "
+                    f"bp per request (a gene with its flanks is ~50 minutes of Atlas time). Split the "
+                    f"interval, or run just-dna-enricher's `alphagenome expression` on your own key."
+                ]},
+            )
+        interval = passes_service.ExpressionInterval(gene, chrom, start, end)
     gate = request.app.state.enrichment_gate
     client_format = _client_format(request)
     try:
@@ -708,6 +735,7 @@ async def derived_tables(
                     settings=settings, repo=repo, uploads=uploads,
                     namespace=namespace, name=name,
                     client_format=client_format, gate=gate, passes=passes, offline=offline,
+                    interval=interval,
                 ),
                 timeout=settings.enrich_timeout_seconds,
             )

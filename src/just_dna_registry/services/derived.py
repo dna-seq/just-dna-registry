@@ -116,6 +116,7 @@ def build_derived_tree(
     gate: Any = None,
     passes: list[str] | None = None,
     offline: bool = True,
+    interval: Any = None,
 ) -> DerivedArchive:
     """Normalize, validate, enrich, and hand the derived tables back as a `.tar.gz`.
 
@@ -167,7 +168,7 @@ def build_derived_tree(
             offline_run = offline or settings.enrich_offline
             outcomes = run_passes(
                 spec_dir, settings, passes or [], offline=offline_run,
-                clients=None if offline_run else shared_lookup_clients(),
+                clients=None if offline_run else shared_lookup_clients(), interval=interval,
             ) if passes else []
             scrub = HintScrubber.build(settings)
             for outcome in outcomes:
