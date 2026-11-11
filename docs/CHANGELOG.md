@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-11-11
+
 ### A caching proxy by lane and by pass, held to upstream's rosters
 
 The person: "we have a goddamn CACHING PROXY feature, not a transit." Through 0.29 the proxy was built per
