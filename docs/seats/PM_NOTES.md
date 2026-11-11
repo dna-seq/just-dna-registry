@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-10)
+## Now (2026-11-11)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -11,11 +11,11 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   marked ✅. The C8/C17 "you may move them" reminder is moot: they shipped in it. 0.28.1 and 0.28.2 (maintenance
   runs, replay, pruning, parallel re-publish) are the lead's patches, not scope. Deploying is the person's,
   `docs/UPGRADE.md` 0.28; the sweep's operator question is the lead's desk #218.
-- **0.29 is sized, by the person, not by the pm**: the namespace rename (2026-11-10 in the lead's session,
-  "rename old to new, leave old one as alias pointer", then "1a 2a 3a"; reverses S28). Minor. The lead wrote its
-  roadmap section on branch `0.29` (e68d89a) and builds it there; the section lands on main with the merge.
-  Nothing for the pm until then. The row catalog plus gene facet (below) is the next candidate after it.
-  0.28.6 (upstream 0.8.3: RM418, RM420) is the lead's patch, not scope.
+- **0.29 published** (2026-11-11, `v0.29.0`; heading marked ✅, c17af6e): the namespace rename, sized by the
+  person in the lead's session ("1a 2a 3a", reversing S28). 0.29.1 (rebuild once the enricher carrying RM428, the
+  GWAS page-size fix, is on PyPI) is the lead's patch, not scope.
+- **Next: 0.30 is not sized.** First candidate: the row catalog plus a gene-level facet (below). Size it when the
+  person asks or when the lead runs out of decided work.
 - **Upstream parked RM378** (coded strict errors): the strict-phrase match in *Next registry version* may be
   permanent (da9d8b8).
 - **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled;
