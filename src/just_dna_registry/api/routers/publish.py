@@ -39,6 +39,7 @@ from just_dna_registry.api.deps import (
     require_capability,
     settings_dep,
 )
+from just_dna_registry.api.routers import hints as hint_router
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.lowpriority import run_at_low_priority
@@ -684,6 +685,12 @@ async def derived_tables(
     client_format = _client_format(request)
     try:
         uploads = await _preflight_uploads(files, archive, settings)
+        # A live leg is charged per upstream before it runs (0.30), as `/hint/*` is: a caller past their
+        # allowance learns it before the work, from the same ledger and the same 429.
+        if passes and not (offline or settings.enrich_offline):
+            await hint_router.meter(
+                request, settings, passes_service.estimate_charges(uploads, passes, settings)
+            )
         if not gate.try_acquire():
             # The gate refused before anything ran, so the `enrich` token the route dependency
             # spent priced nothing — hand it back. `Retry-After` stays a flat 60: the gate has no

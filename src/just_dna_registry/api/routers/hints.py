@@ -87,7 +87,7 @@ def _resolve_offline(settings: Settings, account: Account | None, offline: bool)
     return False
 
 
-async def _meter(request: Request, settings: Settings, charges: dict[str, int]) -> HintCost:
+async def meter(request: Request, settings: Settings, charges: dict[str, int]) -> HintCost:
     """Commit the charge, then absorb a short wait here or refuse a long one.
 
     Absorbed **in the coroutine**: an `asyncio.sleep` costs a task, while sleeping on a threadpool
@@ -175,7 +175,7 @@ async def hint_variant(
         )
 
     scrub = hint_service.HintScrubber.build(settings)
-    cost = await _meter(request, settings, hint_service.variant_charges(
+    cost = await meter(request, settings, hint_service.variant_charges(
         rsid=rsid, frequencies=frequencies, offline=resolved_offline,
     ))
     answer = await run_in_threadpool(
@@ -253,7 +253,7 @@ async def hint_variants(
     for answer in answers:
         for upstream, units in answer.charges.items():
             total[upstream] = total.get(upstream, 0) + units
-    cost = await _meter(request, settings, total)
+    cost = await meter(request, settings, total)
 
     results = []
     for answer in answers:
@@ -300,7 +300,7 @@ async def hint_citation(
             charges["ncbi"] = 1
         if doi:
             charges["literature"] = 1
-    cost = await _meter(request, settings, charges)
+    cost = await meter(request, settings, charges)
     scrub = hint_service.HintScrubber.build(settings)
     answer = await run_in_threadpool(
         hint_service.run_citation,
@@ -320,7 +320,7 @@ async def hint_gene(
     """
     _require_enabled(settings)
     _resolve_offline(settings, account, False)
-    cost = await _meter(request, settings, {"ontology": 1})
+    cost = await meter(request, settings, {"ontology": 1})
     answer = await run_in_threadpool(hint_service.run_gene, symbol=symbol)
     return GeneHintReport(**answer.payload, cost=cost)
 
@@ -332,7 +332,7 @@ async def hint_trait(
     """Is this trait CURIE current, obsolete or unknown? OLS4, online only for the same reason."""
     _require_enabled(settings)
     _resolve_offline(settings, account, False)
-    cost = await _meter(request, settings, {"ontology": 1})
+    cost = await meter(request, settings, {"ontology": 1})
     answer = await run_in_threadpool(hint_service.run_trait, curie=curie)
     return TraitHintReport(**answer.payload, cost=cost)
 
@@ -360,7 +360,7 @@ async def hint_old_assembly(
     """
     _require_enabled(settings)
     resolved_offline = _resolve_offline(settings, account, offline)
-    cost = await _meter(request, settings, {} if resolved_offline else {"ncbi": 1})
+    cost = await meter(request, settings, {} if resolved_offline else {"ncbi": 1})
     scrub = hint_service.HintScrubber.build(settings)
     answer = await run_in_threadpool(
         hint_service.run_old_assembly,

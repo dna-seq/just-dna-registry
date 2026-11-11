@@ -16,6 +16,8 @@ with the rules every pass on this server keeps:
 The enricher is imported lazily, as in `services/enrich.py`: a client install has none.
 """
 
+import csv
+import io
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +36,21 @@ PASS_ORDER: tuple[str, ...] = (
 
 #: The passes this server runs on request. Grows to `PASS_ORDER` (0.30); the coverage guard reads the
 #: routes, and a route marks what it serves from this.
-SERVED_PASSES: tuple[str, ...] = ("opentargets enrich", "assertions", "gene-metrics")
+SERVED_PASSES: tuple[str, ...] = (
+    "gwas", "opentargets enrich", "assertions", "frequencies", "gene-metrics", "dosage",
+    "gene-validity", "ld-pairs", "literature",
+)
+
+#: Which `pacing.UPSTREAMS` budget each pass's live leg spends, for the charge taken before it runs.
+PASS_UPSTREAMS: dict[str, tuple[str, ...]] = {
+    "gwas": ("gwas_catalog",),
+    "frequencies": ("gnomad",),
+    "gene-metrics": ("gnomad",),
+    "dosage": ("clingen",),
+    "gene-validity": ("clingen", "gencc"),
+    "ld-pairs": ("ensembl",),
+    "literature": ("ncbi", "literature"),
+}
 
 
 @dataclass
@@ -135,14 +151,202 @@ def _gene_metrics(spec_dir: Path, settings: Settings, offline: bool, clients: An
     )
 
 
+def _csv_column(data: bytes | None, column: str) -> set[str]:
+    """The distinct non-empty values of one column of an uploaded CSV, for estimating a charge."""
+    if not data:
+        return set()
+    rows = csv.DictReader(io.StringIO(data.decode("utf-8", errors="replace")))
+    return {value.strip() for row in rows if (value := (row.get(column) or "").strip())}
+
+
+def estimate_charges(uploads: dict[str, bytes], commands: list[str], settings: Settings) -> dict[str, int]:
+    """What the requested passes' live legs will spend, per `pacing.UPSTREAMS` budget, read off the spec
+    before anything runs, so a caller past their allowance is told before the work rather than after.
+
+    An upper bound by construction: a variant the snapshot answers costs nothing upstream, and the
+    estimate charges it anyway, which is the same side `/hint/variants` errs on."""
+    def table(name: str) -> bytes | None:
+        return next((data for rel, data in uploads.items() if rel.rsplit("/", 1)[-1] == name), None)
+
+    rsids = _csv_column(table("variants.csv"), "rsid")
+    genes = _csv_column(table("variants.csv"), "gene")
+    proxies = _csv_column(table("studies.csv"), "proxy_rsid")
+    pmids = _csv_column(table("studies.csv"), "pmid")
+    charges: dict[str, int] = {}
+
+    def add(upstream: str, units: int) -> None:
+        if units:
+            charges[upstream] = charges.get(upstream, 0) + units
+
+    if "gwas" in commands:
+        add("gwas_catalog", len(rsids))
+    if "frequencies" in commands and settings.hint_allow_gnomad:
+        add("gnomad", len(rsids))
+    if "gene-metrics" in commands and settings.hint_allow_gnomad:
+        add("gnomad", len(genes))
+    if "dosage" in commands:
+        add("clingen", 1)
+    if "gene-validity" in commands:
+        add("clingen", 1)
+        add("gencc", 1)
+    if "ld-pairs" in commands:
+        add("ensembl", len(proxies))
+    if "literature" in commands:
+        add("ncbi", len(pmids))
+        add("literature", len(pmids))
+    return charges
+
+
+def _skipped_or(result: Any, command: str, ran: str) -> PassOutcome:
+    if getattr(result, "skipped_offline", False):
+        return PassOutcome(command, "skipped", "offline: this pass needs a live source (ask with offline=false)")
+    return PassOutcome(command, "ran", ran)
+
+
+def _gwas(spec_dir: Path, settings: Settings, offline: bool) -> PassOutcome:
+    from just_dna_enricher.gwas import GwasError, GwasNotFound, GwasRetired, enrich_gwas
+
+    try:
+        result = enrich_gwas(
+            spec_dir, mode=settings.enrich_mode, offline=offline, write=True,
+            declared_use=settings.declared_use,
+        )
+    except (GwasRetired, GwasNotFound) as exc:
+        return PassOutcome("gwas", "unavailable", str(exc))
+    except GwasError as exc:
+        return PassOutcome("gwas", "failed", str(exc))
+    return _skipped_or(
+        result, "gwas",
+        f"{len(result.rows)} association(s); {len(result.covered)} variant(s) covered, "
+        f"{len(result.missing)} with none",
+    )
+
+
+def _frequencies(spec_dir: Path, settings: Settings, offline: bool, clients: Any) -> PassOutcome:
+    from just_dna_enricher.frequencies import (
+        FrequencyEnrichmentError,
+        FrequencyUnavailable,
+        enrich_frequencies,
+    )
+
+    if not offline and not settings.hint_allow_gnomad:
+        return PassOutcome(
+            "frequencies", "skipped",
+            "gnomAD's allowance is this deployment's and cannot be bought; the operator has not opened it "
+            "to the proxy (REGISTRY_HINT_ALLOW_GNOMAD)",
+        )
+    try:
+        result = enrich_frequencies(
+            spec_dir, mode=settings.enrich_mode, offline=offline, write=True,
+            client=clients.gnomad if clients is not None and not offline else None,
+        )
+    except FrequencyUnavailable as exc:
+        return PassOutcome("frequencies", "unavailable", str(exc))
+    except FrequencyEnrichmentError as exc:
+        return PassOutcome("frequencies", "failed", str(exc))
+    return _skipped_or(
+        result, "frequencies", f"{len(result.rows)} row(s); {len(result.covered)} variant(s) covered",
+    )
+
+
+def _dosage(spec_dir: Path, settings: Settings, offline: bool) -> PassOutcome:
+    from just_dna_enricher.clingen import (
+        ClinGenError,
+        ClinGenRetired,
+        ClinGenUnavailable,
+        enrich_dosage_sensitivity,
+    )
+
+    try:
+        result = enrich_dosage_sensitivity(
+            spec_dir, mode=settings.enrich_mode, declared_use=settings.declared_use, offline=offline,
+            write=True,
+        )
+    except (ClinGenUnavailable, ClinGenRetired) as exc:
+        return PassOutcome("dosage", "unavailable", str(exc))
+    except ClinGenError as exc:
+        return PassOutcome("dosage", "failed", str(exc))
+    return _skipped_or(result, "dosage", f"{len(result.rows)} gene(s) with a dosage call")
+
+
+def _gene_validity(spec_dir: Path, settings: Settings, offline: bool) -> PassOutcome:
+    from just_dna_enricher.gene_validity import (
+        GeneValidityError,
+        GeneValidityRetired,
+        GeneValidityUnavailable,
+        enrich_gene_validity,
+    )
+
+    # Both authorities upstream names for the table, one run each; each run merges into the table.
+    said: list[str] = []
+    for source in ("clingen", "gencc"):
+        try:
+            result = enrich_gene_validity(
+                spec_dir, source=source, mode=settings.enrich_mode, offline=offline, write=True,
+            )
+        except (GeneValidityUnavailable, GeneValidityRetired) as exc:
+            return PassOutcome("gene-validity", "unavailable", f"{source}: {exc}")
+        except GeneValidityError as exc:
+            return PassOutcome("gene-validity", "failed", f"{source}: {exc}")
+        if getattr(result, "skipped_offline", False):
+            return _skipped_or(result, "gene-validity", "")
+        said.append(f"{source} {len(result.rows)} assertion(s)")
+    return PassOutcome("gene-validity", "ran", "; ".join(said))
+
+
+def _ld_pairs(spec_dir: Path, settings: Settings, offline: bool) -> PassOutcome:
+    from just_dna_enricher.ld_pairs import LdError, LdRetired, LdUnavailable, enrich_ld_pairs
+
+    try:
+        result = enrich_ld_pairs(spec_dir, offline=offline, write=True)
+    except (LdUnavailable, LdRetired) as exc:
+        return PassOutcome("ld-pairs", "unavailable", str(exc))
+    except LdError as exc:
+        return PassOutcome("ld-pairs", "failed", str(exc))
+    return _skipped_or(result, "ld-pairs", f"{len(result.rows)} pair(s)")
+
+
+def _literature(spec_dir: Path, settings: Settings, offline: bool, clients: Any) -> PassOutcome:
+    from just_dna_enricher.literature import (
+        FulltextRetired,
+        FulltextUnavailable,
+        LiteratureEnrichmentError,
+        LiteratureRetired,
+        LiteratureUnavailable,
+        enrich_literature,
+    )
+
+    shared = {} if clients is None or offline else {
+        "eutils": clients.eutils, "europepmc": clients.europepmc, "crossref": clients.crossref,
+    }
+    try:
+        result = enrich_literature(
+            spec_dir, mode=settings.enrich_mode, offline=offline, write=True, **shared,
+        )
+    except (LiteratureUnavailable, LiteratureRetired, FulltextUnavailable, FulltextRetired) as exc:
+        return PassOutcome("literature", "unavailable", str(exc))
+    except LiteratureEnrichmentError as exc:
+        return PassOutcome("literature", "failed", str(exc))
+    return PassOutcome(
+        "literature", "ran",
+        f"{len(result.rows)} citation row(s)" + ("; offline: nothing was looked up" if offline else ""),
+    )
+
+
 def run_passes(
     spec_dir: Path, settings: Settings, commands: list[str], *, offline: bool, clients: Any = None
 ) -> list[PassOutcome]:
     """Run each requested pass in `PASS_ORDER`, each on its own, and say what happened to every one."""
     runners = {
+        "gwas": lambda: _gwas(spec_dir, settings, offline),
         "opentargets enrich": lambda: _opentargets(spec_dir, settings, offline),
         "assertions": lambda: _assertions(spec_dir, settings, offline),
+        "frequencies": lambda: _frequencies(spec_dir, settings, offline, clients),
         "gene-metrics": lambda: _gene_metrics(spec_dir, settings, offline, clients),
+        "dosage": lambda: _dosage(spec_dir, settings, offline),
+        "gene-validity": lambda: _gene_validity(spec_dir, settings, offline),
+        "ld-pairs": lambda: _ld_pairs(spec_dir, settings, offline),
+        "literature": lambda: _literature(spec_dir, settings, offline, clients),
     }
     outcomes = []
     for command in PASS_ORDER:

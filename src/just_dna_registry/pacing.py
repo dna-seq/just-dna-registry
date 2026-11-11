@@ -118,6 +118,39 @@ UPSTREAMS: dict[str, UpstreamTerms] = {
             "deployment's standing with them; run just-dna-enricher yourself if you need more."
         ),
     ),
+    # The caching proxy's live passes (0.30). None of the three sells a key, so the remedy is the one
+    # true everywhere: ask offline, or run just-dna-enricher yourself.
+    "gwas_catalog": UpstreamTerms(
+        name="gwas_catalog",
+        # The Catalog's REST v2 publishes no figure; the client's own gate spacing is read at boot.
+        base_interval=0.5,
+        free_daily_units=512,
+        remedy=(
+            "The GWAS Catalog issues no key. The budget is per caller so one client cannot spend this "
+            "deployment's standing with it; run just-dna-enricher's gwas pass yourself if you need more."
+        ),
+    ),
+    "clingen": UpstreamTerms(
+        name="clingen",
+        # One download of ClinGen's curation list per run (dosage, gene validity), so a unit is a run.
+        base_interval=1.0,
+        # A unit is a whole-file download; gnomAD's per-request allowance still sits ten times below.
+        free_daily_units=256,
+        remedy=(
+            "ClinGen publishes its curation lists as files and issues no key; each run here fetches one. "
+            "Run just-dna-enricher yourself against a local copy if you need more."
+        ),
+    ),
+    "gencc": UpstreamTerms(
+        name="gencc",
+        base_interval=1.0,
+        # A unit is a whole-file download; gnomAD's per-request allowance still sits ten times below.
+        free_daily_units=256,
+        remedy=(
+            "GenCC publishes its submissions as one file and issues no key; each run here fetches it. "
+            "Run just-dna-enricher yourself against a local copy if you need more."
+        ),
+    ),
     "gnomad": UpstreamTerms(
         name="gnomad",
         # 10 per 60s, published, keyed on our IP.

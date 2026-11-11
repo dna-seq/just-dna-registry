@@ -337,3 +337,52 @@ def test_the_snapshot_passes_run_from_this_boxs_snapshots_with_no_egress(tmp_pat
     for outcome in outcomes.values():
         for table in outcome["tables"]:
             assert table in produced or table in report["files_absent"], table
+
+
+_ALL_PASSES = (
+    "gwas", "opentargets enrich", "assertions", "frequencies", "gene-metrics", "dosage", "gene-validity",
+    "ld-pairs", "literature",
+)
+
+
+def test_every_served_pass_answers_offline_with_no_egress_and_says_what_it_did(tmp_path) -> None:
+    """Offline (the default, the free tier) every pass either answers from a snapshot or says it could not
+    ask; none reads as ran-with-nothing when it never asked. `no_network` fails any socket."""
+    client = _app(tmp_path, opentargets_cache=tmp_path / "no-cache")
+    resp = _post_passes(client, _ALL_PASSES)
+    assert resp.status_code == 200, resp.text
+    outcomes = {p["command"]: p for p in json.loads(_members(resp.content)[DERIVED_REPORT_FILE])["passes"]}
+    assert set(outcomes) == set(_ALL_PASSES)
+    for command in ("gwas", "dosage", "gene-validity", "ld-pairs"):
+        assert outcomes[command]["status"] == "skipped" and "offline" in outcomes[command]["detail"], (
+            outcomes[command]
+        )
+    assert all(o["status"] in {"ran", "skipped", "unavailable", "failed"} for o in outcomes.values())
+
+
+def test_an_online_pass_is_charged_before_it_runs(tmp_path, monkeypatch) -> None:
+    """Charged on the same ledger `/hint/*` spends, per upstream, from the spec, before the gate."""
+    from just_dna_registry.services import derived as derived_service
+    from just_dna_registry.services.publish import PublishError
+
+    client = _app(tmp_path, enrich_offline=False)
+
+    def stop(**_kw):  # after the charge, before any enrichment: nothing egresses
+        raise PublishError("stopped_by_test", errors=["the run itself is not under test"])
+
+    monkeypatch.setattr(derived_service, "build_derived_tree", stop)
+    resp = _post_passes(client, ("gwas", "gene-validity", "literature"), offline="false")
+    assert resp.status_code == 422 and "stopped_by_test" in resp.text, resp.text
+    ledger = client.app.state.pace_ledger
+    spent = {up: e.spent for (who, up), e in ledger._entries.items()}
+    assert spent.get("gwas_catalog") == 1 and spent.get("clingen") == 1 and spent.get("gencc") == 1, spent
+
+
+def test_gnomad_stays_shut_to_the_proxy_unless_the_operator_opened_it(tmp_path) -> None:
+    from just_dna_registry.config import Settings
+    from just_dna_registry.services.passes import estimate_charges
+
+    uploads = {"variants.csv": b"rsid,gene\nrs1,A\nrs2,B\n"}
+    assert "gnomad" not in estimate_charges(uploads, ["frequencies", "gene-metrics"], Settings())
+    opened = estimate_charges(uploads, ["frequencies", "gene-metrics"], Settings(hint_allow_gnomad=True))
+    assert opened == {"gnomad": 4}

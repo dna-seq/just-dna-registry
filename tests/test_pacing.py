@@ -232,7 +232,9 @@ def test_every_upstream_carries_a_remedy_and_none_of_them_sells_a_key_we_do_not_
     not be sent here. Both remedies have to say the general escape — provision the snapshot, or run
     the enricher yourself — because that is the one answer that is true for every upstream.
     """
-    assert set(pacing.UPSTREAMS) == {"ncbi", "ensembl", "gnomad", "literature", "ontology"}
+    assert set(pacing.UPSTREAMS) == {
+        "ncbi", "ensembl", "gnomad", "literature", "ontology", "gwas_catalog", "clingen", "gencc",
+    }
 
     for name, terms in pacing.UPSTREAMS.items():
         assert terms.name == name
