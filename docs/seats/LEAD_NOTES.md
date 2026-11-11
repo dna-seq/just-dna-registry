@@ -138,8 +138,9 @@ Lane measurement: no lane reads remotely through upstream as shipped; upstream R
 except where our own keyed duckdb/polars read over `hf://` works (measured: clinvar, constraint, cpic, alphagenome_avi by position).
 Built on `0.30` (pushed): passes (a) 6c118ff, (b) 66ae788, (c) 7420586; lanes aa05740 (generic polars keyed read, local or
 hf:// remote, bounded). Both guards green. Left: GET /caches per-lane `proxied` (req 5) + lane_readers/warm-caches tags,
-registry-client commands, docs: all done (8fde925, a73f8a8, f2ed121). **0.30.0 stamped** on `0.30` (27addb2), full suite
-running (worktree, JUST_DNA_PIPELINES_CACHE_DIR set). Then: fast-forward main to it, build, DM the person, tag after PyPI.
+registry-client commands, docs: all done (8fde925, a73f8a8, f2ed121). **0.30.0 built** (release head 5a8c0d3 on main, pushed; full suite 888 passed, its 2 failures fixed in 015b7c6 and
+rerun; dists in `dist/`). DM'd; desk #262 (publish, default: waits). Tag `v0.30.0` on 5a8c0d3 once on PyPI, then
+unlock `.wt/0.30`.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
