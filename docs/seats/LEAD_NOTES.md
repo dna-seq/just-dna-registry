@@ -117,8 +117,8 @@ behind `REGISTRY_PROXY_ALPHAGENOME`; upstream asked for keyed remote readers whe
 Requirements filed by the pm (5a09830, 0a7cfc3). The person on licences (via the pm): "simply: don't serve
 forbidden, serve what allows redistribution": pharmvar, pubmind, mane, acmg served by no route, so `/hint` stops
 answering from pubmind and `/drafts` / `.../derived` hand back no pubmind row; a `/check` returning findings
-stays. Mine to measure and put to the person: whether publishing a module enriched against pubmind counts as
-serving. First measurement: which lane readers open a local path only (the liaison's upstream ask).
+stays. Publishing a module enriched against pubmind is not serving (the person: "We do not vet modules for
+abuse/violating terms, authors liability"); alphagenome_avi is the default ("alphag - default"). First measurement: which lane readers open a local path only (the liaison's upstream ask).
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
