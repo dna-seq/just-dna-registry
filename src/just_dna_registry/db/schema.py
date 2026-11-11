@@ -159,7 +159,44 @@ CREATE TABLE IF NOT EXISTS version_clin_sig (
     PRIMARY KEY (version_id, tier)
 );
 
+-- The variant-level catalog (0.31): what each module's latest version says about each variant, read
+-- from its stored parquets (`services/claims.py`). A projection, rebuildable from storage; in this DB,
+-- not beside it, so a revert, a cascade and an id reuse all keep it consistent (the critic's item 7).
+CREATE TABLE IF NOT EXISTS version_claims (
+    version_id        INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    kind              TEXT NOT NULL,     -- weight | pharm | heteroplasmy | haplotype
+    variant_key       TEXT NOT NULL,
+    rsid              TEXT,
+    genome_build      TEXT,
+    genotype          TEXT,              -- normalised `A/G`, alleles sorted; NULL where the table has none
+    effect_allele     TEXT,
+    direction         TEXT,              -- risk | protective | neutral, or NULL: not comparable
+    direction_source  TEXT,              -- direction | state | NULL
+    weight            REAL,
+    trait_efo_id      TEXT,
+    clin_sig          TEXT,
+    stat_significance TEXT,
+    gene              TEXT               -- authored, never assigned by position
+);
+CREATE TABLE IF NOT EXISTS claim_aliases (
+    version_id   INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    alias        TEXT NOT NULL,          -- an rsID, a VRS id, or `chrom:start:ref:alt`
+    variant_key  TEXT NOT NULL,
+    genome_build TEXT
+);
+CREATE TABLE IF NOT EXISTS version_pgs (
+    version_id   INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    pgs_id       TEXT NOT NULL,
+    trait_efo_id TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_versions_module ON versions(module_id);
+CREATE INDEX IF NOT EXISTS idx_version_claims_key ON version_claims(variant_key);
+CREATE INDEX IF NOT EXISTS idx_version_claims_version ON version_claims(version_id);
+CREATE INDEX IF NOT EXISTS idx_version_claims_gene ON version_claims(gene);
+CREATE INDEX IF NOT EXISTS idx_claim_aliases_alias ON claim_aliases(alias);
+CREATE INDEX IF NOT EXISTS idx_claim_aliases_version ON claim_aliases(version_id);
+CREATE INDEX IF NOT EXISTS idx_version_pgs ON version_pgs(pgs_id);
 CREATE INDEX IF NOT EXISTS idx_version_genes ON version_genes(gene);
 CREATE INDEX IF NOT EXISTS idx_version_categories ON version_categories(category);
 CREATE INDEX IF NOT EXISTS idx_namespace_members_account ON namespace_members(account_id);
@@ -222,6 +259,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email "
         "ON accounts(email) WHERE email IS NOT NULL"
     )
+
+    version_cols = {row["name"] for row in conn.execute("PRAGMA table_info(versions)").fetchall()}
+    if "claims_projector" not in version_cols:
+        # The variant-level catalog (0.31): which projector wrote this version's claims, NULL when none
+        # has (not projected is not "no claims"); compared by version on a backfill, as `upgrade` does.
+        conn.execute("ALTER TABLE versions ADD COLUMN claims_projector TEXT")
 
     ns_cols = {row["name"] for row in conn.execute("PRAGMA table_info(namespaces)").fetchall()}
     if "featured" not in ns_cols:

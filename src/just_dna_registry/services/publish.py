@@ -21,7 +21,9 @@ metadata, then recompiling — same trust guarantee.
 """
 
 import io
+import logging
 import shutil
+import sqlite3
 import tarfile
 import tempfile
 import threading
@@ -56,6 +58,7 @@ from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import NamespaceReserved, Repository
+from just_dna_registry.services import claims as claims_service
 from just_dna_registry.services.enrich import (
     enrich_spec,
     enricher_available,
@@ -179,6 +182,7 @@ def normalize_module_block(spec_dir: Path) -> list[str]:
 #: deployment is one process over one SQLite file, and a second replica would need the same
 #: exclusion from the database rather than from here.
 _COMMIT_LOCK = threading.Lock()
+_claims_log = logging.getLogger("registry.claims")
 
 
 class PublishError(Exception):
@@ -808,6 +812,14 @@ def _finalize(
             # file is the readme* now is — so a reindex no longer has to know the convention, and if
             # upstream's `README_CANDIDATES` ladder ever resolves a spelling ours does not, this
             # follows it rather than silently projecting nothing.
+            # The variant-level catalog (0.31), computed before the lock from the bytes about to be stored,
+            # and never a reason to fail the publish: a version whose projection failed is catalogued with
+            # `claims_projector` NULL, which the claim routes report as not projected.
+            try:
+                projection = claims_service.project(stored.get, manifest.genome_build)
+            except Exception as exc:  # noqa: BLE001 - any parquet the projector cannot read is one warning
+                _claims_log.warning("%s/%s@%s: claims not projected: %s", namespace, name, version, exc)
+                projection = None
             readme_name = manifest.readme.name if manifest.readme is not None else README_FILE
             readme_bytes = stored.get(readme_name)
             with _COMMIT_LOCK:
@@ -831,7 +843,7 @@ def _finalize(
                     )
                 storage.store_module(key, stored)
                 try:
-                    ingest_manifest(
+                    version_id = ingest_manifest(
                         repo,
                         manifest,
                         changelog=changelog,
@@ -846,6 +858,11 @@ def _finalize(
                         errors=[f"{exc.name} was renamed to {exc.current} while this run compiled; "
                                 f"publish again"],
                     ) from exc
+            if projection is not None:
+                try:
+                    repo.store_claims(version_id, projection, claims_service.PROJECTOR_VERSION)
+                except sqlite3.Error as exc:
+                    _claims_log.warning("%s/%s@%s: claims not stored: %s", namespace, name, version, exc)
             action.add_success_fields(
                 digest=manifest.artifact.digest,
                 content_signature=manifest.content_signature,
