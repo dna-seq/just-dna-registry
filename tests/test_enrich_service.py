@@ -857,8 +857,9 @@ def test_every_lane_the_enricher_knows_is_reported_by_warm_caches(
     for name in provisionable_lanes():
         assert name in result.output, f"{name} is a lane and warm-caches never mentions it"
     assert set(provisionable_lanes()) == set(cache_lanes())
-    assert "alphagenome_avi [nothing here]" in result.output
-    assert "pubmind [publish; proxy: derived, hints, drafts]" in result.output, result.output
+    # Since 0.30 the keyed lookup answers every lane, so AlphaGenome's tag is that, never "nothing here".
+    assert "alphagenome_avi [proxy: lookup]" in result.output
+    assert "pubmind [publish; proxy: derived, hints, drafts, lookup]" in result.output, result.output
 
 
 def test_every_lane_a_pass_here_reads_is_configurable_and_resolvable() -> None:
