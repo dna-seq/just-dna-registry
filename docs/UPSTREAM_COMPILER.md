@@ -141,7 +141,8 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   v2 `/associations` with `size=1000`, which the Catalog answers 400 above 500, and 0.7.3's v1 path now answers 410, so
   `enrich_gwas` returns nothing on every installable release. Only `gwas.py` and the enricher's CLI call it; we import
   neither, and `enrich()` does not reach it. We only read a published `gwas_effects` sidecar (`services/catalog.py:251`).
-  Nothing moves here; at 0.8.4, check that the fix stays private.
+  Nothing moves here. **Landed** as `f0433de` (2026-11-11): `_PAGE_SIZE` 500, a refused first page asked once more
+  with no size, a `size_refusals` count on the pass's own report; nothing we read. Unreleased (0.8.4).
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
