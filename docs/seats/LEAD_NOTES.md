@@ -144,7 +144,11 @@ unlock `.wt/0.30`.
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
-`0.31` branch/worktree under those defaults; first block the projection table + publish hook + projector version. Production answered 502 from
+`0.31` branch/worktree under those defaults; first block the projection table + publish hook + projector version: **done** on branch `0.31` (worktree `.wt/0.31`,
+locked; 77eae3e). Next blocks: (2) `registry project-claims [--missing|--all]` backfill as a maintenance run reading
+parquets via `_storage()`, latest first; reproject on yank/unyank; (3) routes `GET /variants?key=` (aliases, visibility
+rules, conflict marker oriented by allele + counts by reason), `GET /genes/{symbol}/claims`, `?pgs_id=` on /modules,
+rate bucket, client methods + parity; (4) docs, changelog, full suite, cut 0.31.0. Production answered 502 from
 06:18 UTC 2026-11-11 (polygon fine); DM'd the person marked urgent.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
