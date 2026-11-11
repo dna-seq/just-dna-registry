@@ -464,6 +464,13 @@ lock (1.44.2, 1.5.5, 2.3.3).
   **Answered 2026-11-11** (archived, open, their pm sizes): S145 is **RM430** (asks 1-3; the format tier never fetches,
   so a remote `release.json` is read by the enricher, not `just_dna_format.snapshot`) and **RM431** (asks 4-7); S146
   is **RM432**. Lead told.
+  **RM432 landed** (`ac3f1bc`, 2026-11-11, unreleased): `gene_metrics.lookup_snapshot` and `civic_snapshot_rows` raise
+  `FileNotFoundError` on a reference with no parquet (no new name); inside the enricher the gene-metrics pass reads it
+  as not consulted (offline it had written `not_found` rows for a snapshot it never opened), the CIViC refutation
+  check skips with a could-not-read warning, the citations pass warns. We call neither reader directly; we reach
+  them only through `enrich()`'s gene-metrics pass, whose reference we resolve first (`resolve_constraint_reference`
+  already answers `None` without parquet), so the new arm is unreachable here today. Nothing moves; a direct keyed
+  read in 0.30 catches it as "snapshot unreadable", never as empty.
 
 - **S129** (filed 2026-11-04, appended to the compiler checkout's inbox, uncommitted; its triage told): a strict
   refusal's errors carry no code, so `build_disagreement_error` (module-level) cannot be told from the
