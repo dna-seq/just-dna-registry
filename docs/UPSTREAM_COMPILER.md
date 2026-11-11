@@ -147,7 +147,8 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
 - **Cut as `v0.8.4`** (`36cbc20` on their `main`, 2026-11-11 01:15 CET; read untagged; **on PyPI** when checked 2026-11-11, tagged `v0.8.4` at that commit later the same day): all three
   to 0.8.4, inter-package floors `>=0.8.4` (the compiler's source is unchanged; it moves only for the floor). Carries
   RM425 to RM428, each read above, their fence-test fix and their own lock bump; no published requirement moved, no
-  public name, field, table, flag or warning code. Release record `0.8.4` (from 0.8.3, 22 reference modules): a
+  field, table, flag or warning code. One public name after all (their CHANGELOG, corrected in `aec2b74`):
+  `GwasCatalogClient.size_refusals`, which nothing here reads (we never build that client). Release record `0.8.4` (from 0.8.3, 22 reference modules): a
   measured zero on every axis, so `registry upgrade` acts on nothing. RM428's 0.7.4 was declined (their desk #252).
   **The lead waits on it**: the person's "rebuild once gwas fix drops in" (2026-11-11), floored as registry 0.29.1;
   told in `#just-dna-registry > upstream` 2026-11-11, once on PyPI. RM426's wording fix (`models/api.py:1181`,
