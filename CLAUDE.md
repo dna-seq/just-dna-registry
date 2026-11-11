@@ -518,6 +518,21 @@ control: it is the only thing holding our aggregate rate inside a limit we canno
 
 ## The caching proxy (0.25) — what this box holds, other people can borrow
 
+**Since 0.30 it is defined by lane and by pass, and two guards hold it to upstream's rosters** (the
+person, 2026-11-11: "we have a goddamn CACHING PROXY feature, not a transit"; the pm's requirements in
+docs/ROADMAP.md, 0.30). Through 0.29 it was built per surface, so 14 of 17 lanes and 13 of 16 producers
+had no route and nothing noticed. Now: every lane upstream registers (`CACHE_LANES`) answers keyed lookups
+(`POST /lanes/{lane}/{table}`, `services/lanes.py`), from this box's snapshot or read remotely from the
+lane's published repo (polars `hf://` with predicate pushdown, because upstream's readers open local paths
+only, RM430/RM431); every producer (`DERIVED_PRODUCERS`, keyed `(table, command)`) runs through
+`POST .../derived?passes=` (`services/passes.py`). A route says what it serves with
+`proxy_coverage.proxies(...)`, and `tests/test_proxy_coverage.py` reads the routes, so a lane or pass
+upstream adds fails a test until it is served or named in `EXEMPT_LANES`/`EXEMPT_PRODUCERS` with a
+checkable reason. **Keyed, always, and bounded per request**: serving is handing out a whole snapshot, a
+keyed lookup is a derivative (the person), so no route enumerates any lane whatever its terms. Live legs
+are charged per upstream before they run; gnomAD (`REGISTRY_HINT_ALLOW_GNOMAD`) and AlphaGenome's Atlas
+(`REGISTRY_PROXY_ALPHAGENOME`, one bounded interval) are operator switches, off by default.
+
 **A thin client's cache miss is answered by the registry, and the registry's own miss is answered by
 the remote source.** The enricher's snapshot lanes are artifacts running to tens of
 gigabytes, and every consumer that is not a provisioned server — a module author, an agent, a

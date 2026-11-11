@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.29.x**, API `v1` (**0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.30.x**, API `v1` (**0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -191,6 +191,8 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 43 | GET | `/api/v1/admin/runs/{run_id}` | site admin | One run's record and its structured per-module sweep (0.28.3) |
 | 44 | GET | `/api/v1/admin/runs/{run_id}/log?tail=` | site admin | One run's `run.log` as text, paths scrubbed (0.28.3) |
 | 45 | POST | `/api/v1/namespaces/{ns}/rename` | owner / site admin | Rename a namespace; the old name stays an alias that reads and publishes follow (0.29) |
+| 46 | GET | `/api/v1/lanes/{lane}` | — | A snapshot lane's tables and the key columns each answers by (0.30) |
+| 47 | POST | `/api/v1/lanes/{lane}/{table}` | — | Keyed lookup of a lane's rows, local or from its published repo (0.30) |
 
 ---
 
@@ -1392,6 +1394,43 @@ nothing, so an old link answers `404` rather than reaching whoever claims the fr
 the rename took is a complete revert; the new copies are then orphaned files. The one exception is a
 rename back to an old name (`a → b → a`), which rewrites the `manifest.json` kept under `a/` (same
 bytes but for the amended fields). A CLI rename is also a maintenance run that `revert-run` undoes.
+
+---
+
+### 46–47. `GET /api/v1/lanes/{lane}`, `POST /api/v1/lanes/{lane}/{table}`  *(anonymous, `hint` bucket)*
+
+The caching proxy by lane (0.30). Every snapshot lane upstream registers answers keyed lookups here: from
+this box's snapshot when it holds the lane, otherwise **read remotely from the lane's published repo**
+(HuggingFace parquet, filtered by the key, so a lookup reads only the row groups it needs). `GET` lists
+the lane's tables, each with its key columns and file count, and `served_from` (`local`, or
+`remote:<repo>`). `POST` body `{"keys": {"<column>": [values], ...}}`: the rows matching every column
+given (values ORed within a column, columns ANDed). Key columns are identifiers only (`rsid`, `id`,
+`gene`, `genes`, `symbol`, `variant_id`, `variation_id`, `pmid`, `allele`, `study_locus_id`, and
+`chrom` + `start` together; `start` reads a table's `pos` where it has no `start`).
+
+**Nothing enumerates a lane**: a request needs keys, at most `lane_max_keys` values (100), and returns at
+most `lane_max_rows` rows (1,000) with `truncated: true` past that. A remote table larger than
+`lane_remote_max_scan_bytes` (2 GB) needs a position key, which narrows the read to that chromosome's
+files (Ensembl by rsID alone cannot be bounded remotely; upstream RM431 asks for an index). A lane
+neither held nor published is `404 lane_not_available`.
+
+`200 → {"lane", "table", "served_from", "rows": [...], "truncated"}`. Errors: `404 unknown_lane`,
+`404 unknown_table`, `404 lane_not_available`, `422 lane_needs_keys`, `422 unknown_key`,
+`422 position_needs_both`, `422 too_many_keys`, `422 remote_needs_position`, `429`. Client:
+`RegistryClient.lane_tables(lane)`, `lane_rows(lane, table, keys)`; `registry-client lanes LANE`,
+`registry-client lane-rows LANE TABLE --key column=value`.
+
+**`POST .../derived` gains `passes=`** (repeatable; 0.30): upstream's derived-table passes by their
+command names (`gwas`, `opentargets enrich`, `assertions`, `frequencies`, `gene-metrics`, `dosage`,
+`gene-validity`, `ld-pairs`, `literature`, `alphagenome expression`), run after `enrich`, each on its own;
+`check.json` gains `passes: [{command, status: ran|skipped|unavailable|failed, detail, tables}]`.
+`offline=true` (the default) answers from snapshots only and costs nothing; `offline=false` lets a pass's
+live leg run, charged per upstream on the `/hint` ledger before it runs (`429 hint_pace_decayed` past the
+allowance). gnomAD's legs need `REGISTRY_HINT_ALLOW_GNOMAD`; `alphagenome expression` needs
+`REGISTRY_PROXY_ALPHAGENOME` and one interval (`gene`, `chrom`, `start`, `end`, at most
+`REGISTRY_PROXY_ALPHAGENOME_MAX_BP`). Errors added: `422 unknown_pass`, `422 expression_needs_interval`,
+`422 expression_interval_too_large`. `GET /caches` gains each lane's `proxied` (`local`, `remote`,
+`unavailable`).
 
 ---
 

@@ -1,5 +1,15 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.30 — the caching proxy by lane and by pass (operator note — nothing required)
+
+No catalog moves. Two switches to decide on, both off by default: `REGISTRY_PROXY_ALPHAGENOME=true` lets
+callers spend this box's `ALPHAGENOME_API_KEY` on one bounded interval at a time, and
+`REGISTRY_HINT_ALLOW_GNOMAD=true` (already there) lets the proxy's passes spend gnomAD's per-IP allowance.
+Set `REGISTRY_OPENTARGETS_CACHE` if the Open Targets lane is not under the shared cache base. A lane this box
+does not hold is read from its published repo on the hub, so the box needs outbound HTTPS to
+huggingface.co for those lookups; dropping a large published lane (`drop-caches`) no longer stops it
+being served.
+
 ## 0.29 — namespace rename (operator note — nothing to run)
 
 The `namespace_aliases` table is created at boot. No catalog row moves until somebody renames a

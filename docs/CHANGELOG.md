@@ -8,6 +8,32 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### A caching proxy by lane and by pass, held to upstream's rosters
+
+The person: "we have a goddamn CACHING PROXY feature, not a transit." Through 0.29 the proxy was built per
+surface, so 14 of upstream's 17 snapshot lanes and 13 of its 16 derived-table producers had no route here.
+
+- **Every lane answers keyed lookups**: `GET /lanes/{lane}` (its tables and key columns) and
+  `POST /lanes/{lane}/{table}` (rows by rsID, gene, chromosome and position, ...), from this box's snapshot
+  or, when it does not hold the lane, read remotely from the lane's published repo: a dropped
+  `alphagenome_avi` answers two chr22 positions in about 4 s. Keyed and bounded per request; nothing
+  enumerates a lane. `registry-client lanes` / `lane-rows`.
+- **Every producer runs through `POST .../derived?passes=`**: GWAS, Open Targets, ClinVar assertions,
+  frequencies, gene metrics, dosage, gene validity, LD pairs, literature, AlphaGenome expression.
+  Snapshot answers are free; a live leg needs `offline=false` and is charged per upstream first (three new
+  budgets: GWAS Catalog, ClinGen, GenCC). `check.json` says what each pass did.
+- **Operator switches, off by default**: `REGISTRY_PROXY_ALPHAGENOME` (the Atlas on the operator's key, one
+  interval up to `REGISTRY_PROXY_ALPHAGENOME_MAX_BP`), and the existing `REGISTRY_HINT_ALLOW_GNOMAD`.
+  New: `REGISTRY_OPENTARGETS_CACHE`, `REGISTRY_LANE_MAX_KEYS`, `REGISTRY_LANE_MAX_ROWS`,
+  `REGISTRY_LANE_REMOTE_MAX_SCAN_BYTES`.
+- **Coverage guards**: a lane or producer upstream adds fails a test until served or exempted with a reason.
+- `GET /caches` says per lane how it is proxied (`proxied`); `warm-caches` and `drop-caches` tag every lane
+  `proxy: lookup` and stop calling any "nothing here"; a published lane only the lookup reads drops without
+  `--force`.
+
+**Client surface:** `derived` gains `passes`, `offline`, `gene`, `chrom`, `start`, `end` (all optional;
+existing calls unchanged); `lane_tables` and `lane_rows` are new.
+
 ## [0.29.1] — 2026-11-11
 
 ### On upstream 0.8.4
