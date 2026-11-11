@@ -132,6 +132,10 @@ abuse/violating terms, authors liability"); alphagenome_avi is the default ("alp
 2. Lanes: keyed lookup route per the subagent's measurement (which readers take a remote path); exempt with a
    checkable reason where upstream needs a new reader (the liaison files it).
 3. AST guard (unavailability subclass first) must cover `services/passes.py`. Client surface line: `derived` moves.
+Progress 2026-11-11: blocks (a) 6c118ff and (b) 66ae788 on `0.30` (10 of 11 passes; only alphagenome expression left).
+Lane measurement: no lane reads remotely through upstream as shipped; upstream RM430 (asks 1-3, unblockers), RM431
+(asks 5-8), S146's item (ask 4) filed by the liaison. Lanes exempt with those RM numbers as checkable reasons until shipped,
+except where our own keyed duckdb/polars read over `hf://` works (measured: clinvar, constraint, cpic, alphagenome_avi by position).
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
