@@ -98,7 +98,7 @@ the namespace rename, the person's "1a 2a 3a"; plan e68d89a; built and reviewed 
 pass found 11 gaps, all addressed); uncommitted on the branch at 23:15. Left: commit, the full suite, the
 plan's Facts corrected, and the console banner (needs Node). Worktree tests need
 `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`.
-**0.29.1 built** (release head e70207a; full suite 872 passed, 1 skipped; dists in `dist/`); tag `v0.29.1` on e70207a once it is on PyPI. Was: **0.29.1 waits on upstream's GWAS fix** (the person, 2026-11-11: "rebuild once gwas fix drops in"). RM428
+**0.29.1 built** (release head e70207a; full suite 872 passed, 1 skipped; dists in `dist/`); **published and tagged** (v0.29.1 on e70207a, 2026-11-11; PyPI wheel's per-file hashes match a rebuild at e70207a). 0.30 started on branch `0.30` (worktree `.wt/0.30`, locked). Was: **0.29.1 waits on upstream's GWAS fix** (the person, 2026-11-11: "rebuild once gwas fix drops in"). RM428
 (their triage, from module-creator's S143): enricher 0.8.3 asks GWAS Catalog v2 `/associations` for `size=1000`,
 which answers 400 above 500, so the GWAS pass returns nothing in every installable release. `after: the release
 carrying RM428 is on PyPI`; then floor the enricher there, relock, full suite, build, DM the person. The liaison is
