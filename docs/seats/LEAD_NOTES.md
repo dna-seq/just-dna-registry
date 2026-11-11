@@ -98,6 +98,14 @@ the namespace rename, the person's "1a 2a 3a"; plan e68d89a; built and reviewed 
 pass found 11 gaps, all addressed); uncommitted on the branch at 23:15. Left: commit, the full suite, the
 plan's Facts corrected, and the console banner (needs Node). Worktree tests need
 `JUST_DNA_PIPELINES_CACHE_DIR=/data/just-dna-cache`.
+**0.29.1 waits on upstream's GWAS fix** (the person, 2026-11-11: "rebuild once gwas fix drops in"). RM428
+(their triage, from module-creator's S143): enricher 0.8.3 asks GWAS Catalog v2 `/associations` for `size=1000`,
+which answers 400 above 500, so the GWAS pass returns nothing in every installable release. `after: the release
+carrying RM428 is on PyPI`; then floor the enricher there, relock, full suite, build, DM the person. The liaison is
+asked to say when it lands. Check (run 2026-11-11 on the installed enricher: `1000`; a value of 500 or less is the
+prompt to read the release, not proof):
+`uv run python -c "import just_dna_enricher.gwas as g; print(g._PAGE_SIZE)"` and
+`curl -s https://pypi.org/pypi/just-dna-enricher/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])"`.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
