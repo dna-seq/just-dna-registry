@@ -948,9 +948,10 @@ check, a drafter or a build is *read* here but not *proxied*. The guards count o
    `/hint/*` stops answering from `pubmind`, and `/drafts` and `POST .../derived` hand back no row taken
    from it (its drafter, and its calls in `clin_sig_authority_calls.csv`). A check that reads a lane and
    reports findings without handing rows back (`/check` over `acmg` or `pharmvar`) is not serving, and
-   stays. Still open, for the lead to measure and put to the person: a module **published** here that
-   was enriched against `pubmind` carries rows derived from it in its artifact, so does the publish path
-   count as serving?
+   stays. **Publishing is not serving**: a module an author publishes here carries what its author put in
+   it, and the registry does not vet modules for terms; the licence is the author's liability (the person,
+   2026-11-11: "We do not vet modules for abuse/violating terms, authors liability"). The publish path is
+   unchanged by this rule.
 3. **Every producer runs through the registry, or is exempt with a reason.** The roster is
    `DERIVED_PRODUCERS`, keyed on `(table, command)`, because `gene_metrics.csv` and `gwas_effects.csv` each
    have two producers and a guard keyed on tables passes with half a table served. A pass reads the
@@ -1000,10 +1001,9 @@ so remote reads of it may need upstream first. If so, the lane is exempt until u
 with that as its checkable reason. Which lanes need it is the lead's first measurement.
 
 **Questions for the person** (in chat 2026-11-11). Answered: PharmVar, PubMind, MANE and ACMG are not
-served, by the rule in requirement 2 ("don't serve forbidden, serve what allows redistribution"). Open,
-with its default (the build goes on under it): `alphagenome_avi`, is a remote snapshot read enough, or must
-the live Atlas check also run here with no snapshot? Default: the snapshot read, plus the Atlas only under
-the override.
+served, by the rule in requirement 2 ("don't serve forbidden, serve what allows redistribution"); the
+publish path is the author's liability, not serving. `alphagenome_avi`: the snapshot read, plus the live
+Atlas only under the override (the person: "alphag - default").
 
 ## Next registry version (post-0.11)
 
