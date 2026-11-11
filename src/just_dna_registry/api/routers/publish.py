@@ -44,6 +44,7 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.lowpriority import run_at_low_priority
 from just_dna_registry.models.api import CheckReport, ValidationReport
 from just_dna_registry.permissions import Capability
+from just_dna_registry.proxy_coverage import ENRICH_PRODUCERS, proxies
 from just_dna_registry.services import derived as derived_service
 from just_dna_registry.services import enrich as enrich_service
 from just_dna_registry.services import publish as publish_service
@@ -617,7 +618,7 @@ async def check_spec(
 
 @router.post(
     "/{namespace}/{name}/derived",
-    dependencies=[Depends(rate_limit("enrich"))],
+    dependencies=[Depends(rate_limit("enrich")), Depends(proxies(producers=ENRICH_PRODUCERS))],
     responses={200: {"content": {"application/gzip": {}}, "description": "The derived tables"}},
     summary="Enrich a spec and return its derived tables",
 )

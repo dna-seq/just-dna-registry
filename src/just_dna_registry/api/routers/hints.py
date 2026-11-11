@@ -39,8 +39,10 @@ from just_dna_registry.models.api import (
     VariantHintBatchResponse,
     VariantHintReport,
 )
+from just_dna_registry.proxy_coverage import proxies
 from just_dna_registry.services import hints as hint_service
 from just_dna_registry.services.enrich import enricher_available
+from just_dna_registry.services.hints import HINT_LANES
 
 router = APIRouter(prefix="/hint", tags=["hints"])
 
@@ -126,7 +128,7 @@ async def _meter(request: Request, settings: Settings, charges: dict[str, int]) 
 
 
 @router.get("/variant", response_model=VariantHintReport,
-            dependencies=[Depends(rate_limit("hint"))])
+            dependencies=[Depends(rate_limit("hint")), Depends(proxies(lanes=HINT_LANES))])
 async def hint_variant(
     request: Request,
     settings: SettingsDep,
@@ -186,7 +188,7 @@ async def hint_variant(
 
 
 @router.post("/variants", response_model=VariantHintBatchResponse,
-             dependencies=[Depends(rate_limit("hint"))])
+             dependencies=[Depends(rate_limit("hint")), Depends(proxies(lanes=HINT_LANES))])
 async def hint_variants(
     request: Request,
     settings: SettingsDep,
