@@ -143,6 +143,14 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   neither, and `enrich()` does not reach it. We only read a published `gwas_effects` sidecar (`services/catalog.py:251`).
   Nothing moves here. **Landed** as `f0433de` (2026-11-11): `_PAGE_SIZE` 500, a refused first page asked once more
   with no size, a `size_refusals` count on the pass's own report; nothing we read. Unreleased (0.8.4).
+- **Cut as `v0.8.4`** (`36cbc20` on their `main`, 2026-11-11 01:15 CET; untagged and not on PyPI when read): all three
+  to 0.8.4, inter-package floors `>=0.8.4` (the compiler's source is unchanged; it moves only for the floor). Carries
+  RM425 to RM428, each read above, their fence-test fix and their own lock bump; no published requirement moved, no
+  public name, field, table, flag or warning code. Release record `0.8.4` (from 0.8.3, 22 reference modules): a
+  measured zero on every axis, so `registry upgrade` acts on nothing. RM428's 0.7.4 was declined (their desk #252).
+  **The lead waits on it**: the person's "rebuild once gwas fix drops in" (2026-11-11), floored as registry 0.29.1;
+  tell the lead in `#just-dna-registry > upstream` once on PyPI. RM426's wording fix (`models/api.py:1181`,
+  `docs/CLIENT.md:555`) can ride the same patch.
 - **RM404** (`enrich()` takes the eutils client, from S133): the lead asked their triage (2026-11-07) for it in a
   0.8.x patch; their pm keeps it in 0.9, since no new public parameter lands on their `main`, even an additive one.
   `_UNSHARED_EGRESS` stays the answer until 0.9.
