@@ -120,6 +120,18 @@ derivative work" (594e618 reverses 0a7cfc3). Every held lane answers keyed looku
 `/drafts`, `.../derived` stay; no unkeyed or enumerating query over a lane whose terms refuse redistribution or
 are unestablished, and a per-request bound on keys and rows; a lane neither held nor published is exempt. Publishing a module enriched against pubmind is not serving (the person: "We do not vet modules for
 abuse/violating terms, authors liability"); alphagenome_avi is the default ("alphag - default"). First measurement: which lane readers open a local path only (the liaison's upstream ask).
+**0.30 build plan** (branch `0.30`, worktree `.wt/0.30`, locked; guards c131a33, red on purpose):
+1. Producers: `POST .../derived` gains `passes=` (upstream `DerivedProducer.command` values, `422 unknown_pass`) and
+   `offline` (`/hint`'s tiers: offline free, online needs a token and charges `PaceLedger` before the run, estimated
+   from the spec). Per pass: `download=False`, configured caches, `mode=settings.enrich_mode`, one `try` each with the
+   `*Unavailable` arm first, a per-pass outcome in check.json (`ran | skipped | unavailable | not_requested`), paths
+   scrubbed. Order: enrich, gwas, opentargets enrich, assertions, frequencies, gene-metrics, dosage, gene-validity,
+   ld-pairs, literature. New `UPSTREAMS`: gwas_catalog, clingen, gencc. Commits: (a) snapshot passes opentargets
+   enrich, assertions, gene-metrics; (b) keyless live passes + frequencies behind REGISTRY_HINT_ALLOW_GNOMAD;
+   (c) expression on its own route behind REGISTRY_PROXY_ALPHAGENOME (until then EXEMPT_PRODUCERS names the setting).
+2. Lanes: keyed lookup route per the subagent's measurement (which readers take a remote path); exempt with a
+   checkable reason where upstream needs a new reader (the liaison files it).
+3. AST guard (unavailability subclass first) must cover `services/passes.py`. Client surface line: `derived` moves.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
 **M12 is unblocked** (RM381 shipped in the cut): the upgrade sweep re-enriches with `rederive`, online for
