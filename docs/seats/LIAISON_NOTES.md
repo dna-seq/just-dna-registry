@@ -95,9 +95,8 @@ reset").
 - **A kit release is put into effect by the seat** (the kit's builder, 2026-11-08): after `move-to-tag.py`, run
   nothing; the prompt hook types `/reload-plugins` once idle. `watchdog.sh reload` (rule 14) only for a reload no
   hook starts. move-to-tag's "left for the person" line is wrong (kit #306).
-- **Owed to the lead** (asked 2026-11-11, 639314607, on the person's "rebuild once gwas fix drops in"): when the
-  enricher release carrying RM428 (`f0433de`, 0.8.4 expected) is on PyPI, say so in `#just-dna-registry > upstream`;
-  the lead floors it as 0.29.1. Woken by the `compiler` tag watcher; check PyPI before telling.
+- **0.8.4 on PyPI told to the lead** 2026-11-11 (their 639314607, for 0.29.1 and the GWAS rebuild); untagged when
+  told, so the `compiler` tag watcher did not fire: check PyPI too when a cut is read.
 - **0.30's remote keyed lane reads** (handoff 2026-11-11): S145/S146 filed, answered as RM430, RM431, RM432, lead
   told; at each one's landing, read it for the lead (ledger Outbound). **Their live inbox is `/data/sources/just-dna-format`**;
   `/data/sources/just-dna-compiler` is the watcher clone, 672 commits behind on 2026-11-11, so read upstream there
