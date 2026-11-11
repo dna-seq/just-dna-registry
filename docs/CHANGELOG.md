@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.29.1] — 2026-11-11
+
 ### On upstream 0.8.4
 
 All three tiers floor at 0.8.4, whose release record moves nothing, so `registry upgrade` has nothing to do.
