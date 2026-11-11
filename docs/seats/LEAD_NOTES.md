@@ -115,9 +115,10 @@ proxied, and it is readable remotely (per-chromosome parquet on the hub). Draft:
 the local snapshot or the published repo; a guard over CACHE_LANES and _FACT_TABLES; the live expression pass
 behind `REGISTRY_PROXY_ALPHAGENOME`; upstream asked for keyed remote readers where a lane lacks one.
 Requirements filed by the pm (5a09830, 0a7cfc3). The person on licences (via the pm): "simply: don't serve
-forbidden, serve what allows redistribution": pharmvar, pubmind, mane, acmg served by no route, so `/hint` stops
-answering from pubmind and `/drafts` / `.../derived` hand back no pubmind row; a `/check` returning findings
-stays. Publishing a module enriched against pubmind is not serving (the person: "We do not vet modules for
+forbidden, serve what allows redistribution", then corrected: "Serving = proxying to full snapsot. Any subslice =
+derivative work" (594e618 reverses 0a7cfc3). Every held lane answers keyed lookups whatever its terms; `/hint`,
+`/drafts`, `.../derived` stay; no unkeyed or enumerating query over a lane whose terms refuse redistribution or
+are unestablished, and a per-request bound on keys and rows; a lane neither held nor published is exempt. Publishing a module enriched against pubmind is not serving (the person: "We do not vet modules for
 abuse/violating terms, authors liability"); alphagenome_avi is the default ("alphag - default"). First measurement: which lane readers open a local path only (the liaison's upstream ask).
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.
