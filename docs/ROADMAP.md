@@ -1030,6 +1030,34 @@ Atlas only under the override (the person: "alphag - default").
   gene through the enricher (HGNC currency, gene loci), snapshot-only on the request path as every proxy
   route is. A `pgs_id` facet comes with it, since modules already carry `pgs.csv`.
 
+  **Survey (2026-11-11, the lead, an Opus subagent; polygon measured, production was down, 502).** Keys:
+  `variant_key` is the rsID, else a VRS id, else `chrom:start:ref[:alts]` (format `base.py:472`), so one
+  variant can carry two keys across modules; 98.7% of polygon `weights` rows carry `vrs_id` and
+  `resolution_loci`, so an alias table resolves them. `weights` has no gene and no pmid (evidence is in
+  `studies`, joined by upstream's `study_coordinate_key`); `diplotypes` and `pgs` carry no variant key.
+  `weight` is per-module scale (`manifest.weighting`), never comparable. Polygon: 12,128 weights rows, 3,743
+  keys, 448 in more than one module; 18 key+genotype pairs with opposite `direction`, **0 once
+  `trait_efo_id` must match** (every example crosses traits). Scale: the August mirror's 944k rows load into
+  SQLite at ~92 B/row, 0.06 ms per key. No reindex command exists; a backfill must read parquets from storage.
+  Upstream's `gene_spans` says a MANE span "is a QUERY HINT, never an attribution", and HGNC is live-only, so
+  attaching position-keyed rows to genes "through the enricher" is not available as the dream assumed.
+
+  **Draft design (the lead).** Tables rebuildable from storage: `version_claims` (version, table,
+  variant_key, genotype normalised, effect_allele, direction, weight, trait_efo_id, clin_sig,
+  stat_significance, authored gene or NULL, study_count), `claim_aliases` (rsid, vrs_id, coordinate → key),
+  `version_pgs`; `versions.claims_projected` (NULL not projected, 0 projected-empty: the empty-list trap).
+  Sources: `weights` (+`annotations` for gene), `pharm_variants`, `heteroplasmy`, `haplotypes` as membership.
+  Filled at publish (parquets already in `out_dir`), so the upgrade sweep inherits it; `registry
+  project-claims [--missing|--all]` backfills as a maintenance run through `_storage()`. Routes: `GET
+  /variants?key=` (keys contain `:`), `GET /genes/{symbol}/claims`, `?pgs_id=` on `GET /modules`; client
+  methods, parity rows, console panels. **Conflict marker**: two latest non-yanked versions of different
+  modules, same canonical key, same genotype, same non-null `trait_efo_id`, one `risk` and one `protective`;
+  `incomparable` counts the pairs with no or different traits beside it; weight sign and clin_sig never used
+  (upstream's `opposed` covers clin_sig). Empty on the polygon today, and that is the honest answer. **Gene
+  facet**: authored genes only, with `rows_without_gene`; MANE candidates at most as a labelled "near this
+  position" hint. Questions for the person on the desk (each with a default; the build waits on a critic's
+  review, not on them).
+
   **Limits it keeps.** It reports what modules say and never ranks one claim over another
   (`docs/STRATEGY.md`: not a judge of the science). A disagreement shown is a fact about two modules,
   not a verdict on either. Every new route gets a `RegistryClient` method and a parity row in the same
