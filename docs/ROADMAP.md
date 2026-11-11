@@ -939,19 +939,22 @@ check, a drafter or a build is *read* here but not *proxied*. The guards count o
    predicate pushdown, only the rows for the key), and never downloaded whole on a request path. The
    CLAUDE.md rule "a request path never downloads" stands. A bounded keyed read is not a download, and the
    bound must be stated in code (rows, bytes, time).
-2. **Eligibility is read from the lane's own fields in `CACHE_LANES`, never from a list of ours.** A lane
-   with a `publish_repo` is eligible. A lane whose `unpublished` reason is a derivation from published
-   parents (`mitomap_miss`) is eligible from a local build. A lane whose `unpublished` reason is a refusal
-   under its terms (`pharmvar`, `pubmind`) or is unestablished (`mane`, `acmg`) is **not served**, with
-   that reason as the exemption's reason. The person, 2026-11-11: "don't serve forbidden, serve what allows
-   redistribution". This binds every proxy route, including the ones that serve such a lane today:
-   `/hint/*` stops answering from `pubmind`, and `/drafts` and `POST .../derived` hand back no row taken
-   from it (its drafter, and its calls in `clin_sig_authority_calls.csv`). A check that reads a lane and
-   reports findings without handing rows back (`/check` over `acmg` or `pharmvar`) is not serving, and
-   stays. **Publishing is not serving**: a module an author publishes here carries what its author put in
-   it, and the registry does not vet modules for terms; the licence is the author's liability (the person,
-   2026-11-11: "We do not vet modules for abuse/violating terms, authors liability"). The publish path is
-   unchanged by this rule.
+2. **Serving a lane means handing out its whole snapshot; a keyed lookup is a derivative, and every lane
+   may answer one** (the person, 2026-11-11: "don't serve forbidden, serve what allows redistribution", then
+   "Serving = proxying to full snapsot. Any subslice = derivative work"). So:
+   - **Keyed lookups**: every lane the box holds answers them, whatever its terms, including `pharmvar`,
+     `pubmind`, `mane` and `acmg`. What `/hint/*`, `/drafts` and `POST .../derived` do today stands.
+   - **The whole snapshot** is never handed out by any route for a lane whose `unpublished` reason is a
+     refusal under its terms or unestablished (read from `CACHE_LANES`, never a list of ours). No route
+     relays such a lane whole. The proxy offers no other way to the same bytes either: no unkeyed or
+     enumerating query over it, and a per-request bound on keys and rows, so paging through keys cannot
+     rebuild the snapshot.
+   - **Remote reads** need a `publish_repo`, so a lane with none is answered only when the box holds it. A
+     lane neither held nor published is exempt, and the reason ("not held here, no published repo") is
+     checkable through `GET /caches`.
+   - **Publishing is not serving.** A module an author publishes here carries what its author put in it.
+     The registry does not vet modules for terms, and the licence is the author's liability (the person,
+     2026-11-11: "We do not vet modules for abuse/violating terms, authors liability").
 3. **Every producer runs through the registry, or is exempt with a reason.** The roster is
    `DERIVED_PRODUCERS`, keyed on `(table, command)`, because `gene_metrics.csv` and `gwas_effects.csv` each
    have two producers and a guard keyed on tables passes with half a table served. A pass reads the
@@ -1000,9 +1003,9 @@ opens a local path only. The variant-impact check (`alphagenome_check`) reads `a
 so remote reads of it may need upstream first. If so, the lane is exempt until upstream ships the reader,
 with that as its checkable reason. Which lanes need it is the lead's first measurement.
 
-**Questions for the person** (in chat 2026-11-11). Answered: PharmVar, PubMind, MANE and ACMG are not
-served, by the rule in requirement 2 ("don't serve forbidden, serve what allows redistribution"); the
-publish path is the author's liability, not serving. `alphagenome_avi`: the snapshot read, plus the live
+**Questions for the person** (in chat 2026-11-11), all answered and recorded in requirement 2: a keyed
+lookup is a derivative and every held lane answers one; no route hands out a whole snapshot of a lane whose
+terms refuse it; publishing is the author's liability. `alphagenome_avi`: the snapshot read, plus the live
 Atlas only under the override (the person: "alphag - default").
 
 ## Next registry version (post-0.11)

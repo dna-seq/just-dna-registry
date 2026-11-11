@@ -16,8 +16,8 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   GWAS page-size fix, is on PyPI) is the lead's patch, not scope.
 - **0.30 is the caching proxy by lane and by pass** (the person, 2026-11-11, forwarded by the lead; requirements
   in the roadmap's 0.30 section). The lead builds it. All three questions answered by the person and recorded
-  there: serve only what allows redistribution (pharmvar, pubmind, mane, acmg not served); publishing is the
-  author's liability, not serving; alphagenome_avi as defaulted. Nothing open for the pm. The row catalog plus
+  there: a keyed lookup is a derivative, so every held lane answers one; no route hands out a whole snapshot
+  of a lane whose terms refuse it; publishing is the author's liability; alphagenome_avi as defaulted. Nothing open for the pm. The row catalog plus
   gene facet moves behind it, to 0.31.
 - **Upstream parked RM378** (coded strict errors): the strict-phrase match in *Next registry version* may be
   permanent (da9d8b8).
