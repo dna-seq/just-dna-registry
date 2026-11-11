@@ -87,6 +87,9 @@ reset").
   react to may come from it).
 - reflect after 2026-11-18: classes/base/BASE.md as of v0.1.176 (a secret seen in a message is never repeated,
   quoted or stored; the seat it was meant for asks the poster to rotate it; deletion is the secretary's, L127).
+- reflect after 2026-11-18: classes/base/BASE.md as of v0.1.185 (which messages wake a seat and which wait for its
+  next prompt, kit #431: a post to every seat and an `info:` wait; a release announcement wakes the seat that moves
+  the pin, which is me).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
