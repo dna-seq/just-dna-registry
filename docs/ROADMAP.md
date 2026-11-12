@@ -1024,6 +1024,12 @@ Atlas only under the override (the person: "alphag - default").
   upstream's licence fields from `CACHE_LANES`, never a sentence of ours. Sizing: **minor** (a new response
   field, `LaneRows` and the console's types, a client docstring). Severity: low; the consumer can read
   `GET /caches` meanwhile.
+- **An instance says up front which live legs it runs** (proposed by S30, just-module-creator, 2026-11-12;
+  **the lead's call, undecided**). Since the fix in `dac4ccf`, a caller's `offline=false` reaches every
+  live pass, except where the operator kept a source closed (`REGISTRY_HINT_ALLOW_GNOMAD`,
+  `REGISTRY_PROXY_ALPHAGENOME`). The skip detail names that switch, but a client learns about it only
+  after spending a run. Exposing the two switches on `GET /caches` would let a client tell beforehand.
+  Sizing: **minor** (a response field). Severity: low.
 
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";

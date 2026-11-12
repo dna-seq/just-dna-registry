@@ -14,7 +14,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 enrichment, override a caller's `offline=false` on `POST .../derived?passes=`. Every live pass, AlphaGenome
 included, answered "skipped: offline" whatever the operator's switches said. The caller now decides, as on
 `/hint/*`: live legs are charged per caller and gated per source (`REGISTRY_HINT_ALLOW_GNOMAD`,
-`REGISTRY_PROXY_ALPHAGENOME`), and the box's publish enrichment stays offline. The build backend is bounded
+`REGISTRY_PROXY_ALPHAGENOME`), and the box's publish enrichment stays offline (also reported as S30 by
+just-module-creator). The build backend is bounded
 (`uv-build>=0.12.23,<0.13`), which silences `uv build`'s upper-bound warning.
 
 ### Documentation
