@@ -714,7 +714,7 @@ async def derived_tables(
         uploads = await _preflight_uploads(files, archive, settings)
         # A live leg is charged per upstream before it runs (0.30), as `/hint/*` is: a caller past their
         # allowance learns it before the work, from the same ledger and the same 429.
-        if passes and not (offline or settings.enrich_offline):
+        if passes and not offline:
             await hint_router.meter(
                 request, settings, passes_service.estimate_charges(uploads, passes, settings)
             )

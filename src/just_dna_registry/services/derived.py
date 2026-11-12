@@ -164,8 +164,11 @@ def build_derived_tree(
 
             enrichment = enrich_spec(spec_dir, settings)
             # Upstream's other passes (0.30), after `enrich`, whose `resolution.csv` two of them read.
-            # The deployment's own `enrich_offline` wins over a caller asking online.
-            offline_run = offline or settings.enrich_offline
+            # The caller decides, as on `/hint/*` (0.30.1): `enrich_offline` governs this box's own publish
+            # enrichment, not the proxy, whose live legs are charged per caller and gated per source
+            # (gnomAD, AlphaGenome). Through 0.30.0 it won here, and its default (on) made every live pass
+            # answer "skipped: offline" whatever the caller or the operator's switches asked.
+            offline_run = offline
             outcomes = run_passes(
                 spec_dir, settings, passes or [], offline=offline_run,
                 clients=None if offline_run else shared_lookup_clients(), interval=interval,

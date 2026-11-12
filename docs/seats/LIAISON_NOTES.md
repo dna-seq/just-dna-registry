@@ -87,6 +87,9 @@ reset").
   react to may come from it).
 - reflect after 2026-11-18: classes/base/BASE.md as of v0.1.176 (a secret seen in a message is never repeated,
   quoted or stored; the seat it was meant for asks the poster to rotate it; deletion is the secretary's, L127).
+- reflect after 2026-11-18: classes/base/BASE.md as of v0.1.185 (which messages wake a seat and which wait for its
+  next prompt, kit #431: a post to every seat and an `info:` wait; a release announcement wakes the seat that moves
+  the pin, which is me).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
@@ -98,9 +101,14 @@ reset").
 - **0.8.4 on PyPI told to the lead** 2026-11-11 (their 639314607, for 0.29.1 and the GWAS rebuild); untagged when
   told, so the `compiler` tag watcher did not fire: check PyPI too when a cut is read.
 - **0.30's remote keyed lane reads** (handoff 2026-11-11): S145/S146 filed, answered as RM430, RM431, RM432, lead
-  told; at each one's landing, read it for the lead (ledger Outbound). **Their live inbox is `/data/sources/just-dna-format`**;
-  `/data/sources/just-dna-compiler` is the watcher clone, 672 commits behind on 2026-11-11, so read upstream there
-  only through `origin/main` (`git show`, `git grep origin/main`), never the working tree.
+  told; at each one's landing, read it for the lead (ledger Outbound). Since 2026-11-12
+  `/data/sources/just-dna-compiler` is a symlink to the live clone `/data/sources/just-dna-format` (the maintainer: two
+  copies with different content "unacceptable"; the old one is `just-dna-compiler.old-2026-11-12`). Read by tag or
+  `origin/main`; fetching is the watchers'.
+- **Bump of 2026-11-12**: `94ce3e0` on main (fast-forwarded, not pushed), nine moves (fastapi 0.162.5, typer 0.29.1,
+  pydantic 2.14.3 and six small), duckdb 2.0 still held for `deps/majors-2026-11-05`; 890 passed, ruff clean, no Node
+  here for the console's tsc. Worktree `/data/sources/just-dna-registry-deps-2026-11-12` unlocked, done. The old
+  `-deps` worktree still holds last week's uncommitted lock edits (superseded by `bb42dbd`); left, not discarded.
 
 ## Backlog, in order
 

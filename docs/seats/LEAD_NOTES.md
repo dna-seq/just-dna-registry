@@ -141,10 +141,25 @@ hf:// remote, bounded). Both guards green. Left: GET /caches per-lane `proxied` 
 registry-client commands, docs: all done (8fde925, a73f8a8, f2ed121). **0.30.0 built** (release head 5a8c0d3 on main, pushed; full suite 888 passed, its 2 failures fixed in 015b7c6 and
 rerun; dists in `dist/`). DM'd; desk #262 (publish, default: waits). Tag `v0.30.0` on 5a8c0d3 once on PyPI, then
 unlock `.wt/0.30`.
+**0.30.0 published and tagged** (v0.30.0 on 5a8c0d3, 2026-11-12; PyPI files match; desks #262, #267 withdrawn: production
+serves 0.30.0). On main since (0.30.1 material): dac4ccf (proxy passes follow the caller's offline, not enrich_offline;
+uv-build bounded <0.13). **Prod upgrade sweep (read from the public catalog; runs need a site-admin token)**: 19 of 24
+modules on compiler 0.8.4; 5 held `needs_online` (indels): blood_groups (7 subjects), pharmgkb (154), cardio (57,696),
+cancer (70,658), pathogenic (308,990). Local online scratch runs: blood_groups and pharmgkb hold only for drift, both
+safe to accept (checked against the 0.8 Ensembl snapshot); cardio measured online in the background (scratchpad
+cardio-online.log).
+**Pending on the person (2026-11-12)**: yes/no on the seat-builder's handoff (L136 pypi reader rule in LEAD.md, `pypi`
+watcher and `on_publish.sweep` in .blueprints.toml; dry run clean: 6 branches matched, all in worktrees, none go);
+builder told it waits; desk #272 (default: no change). Quota pause lifted (the window reset to 79%; the maintainer:
+deferring on a stale 95% was wrong). cardio online measurement still running detached (scratchpad cardio-online.log).
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
-`0.31` branch/worktree under those defaults; first block the projection table + publish hook + projector version. Production answered 502 from
+`0.31` branch/worktree under those defaults; first block the projection table + publish hook + projector version: **done** on branch `0.31` (worktree `.wt/0.31`,
+locked; 77eae3e). Next blocks: (2) `registry project-claims [--missing|--all]` backfill as a maintenance run reading
+parquets via `_storage()`, latest first; reproject on yank/unyank; (3) routes `GET /variants?key=` (aliases, visibility
+rules, conflict marker oriented by allele + counts by reason), `GET /genes/{symbol}/claims`, `?pgs_id=` on /modules,
+rate bucket, client methods + parity; (4) docs, changelog, full suite, cut 0.31.0. Production answered 502 from
 06:18 UTC 2026-11-11 (polygon fine); DM'd the person marked urgent.
 **Next**: after 0.28, the variant-level catalog with a gene facet, design first (roadmap).
 **Full 0.28, no lean cut** (the person, 2026-11-06: "Keep full 0.28"; roadmap): the release waits for the whole list.

@@ -354,7 +354,9 @@ server = [
 ]
 
 [build-system]
-requires = ["uv-build"]
+# Bounded below the next minor (uv's own advice): an unbounded backend lets a future breaking uv_build
+# break `pip install` of the sdist. Raise it after building with the new minor once.
+requires = ["uv-build>=0.12.23,<0.13"]
 build-backend = "uv_build"
 
 # Defensive: never let secrets / editor junk into the sdist or wheel, regardless of what the
