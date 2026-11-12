@@ -104,6 +104,10 @@ reset").
   told; at each one's landing, read it for the lead (ledger Outbound). **Their live inbox is `/data/sources/just-dna-format`**;
   `/data/sources/just-dna-compiler` is the watcher clone, 672 commits behind on 2026-11-11, so read upstream there
   only through `origin/main` (`git show`, `git grep origin/main`), never the working tree.
+- **Bump of 2026-11-12**: `94ce3e0` on main (fast-forwarded, not pushed), nine moves (fastapi 0.162.5, typer 0.29.1,
+  pydantic 2.14.3 and six small), duckdb 2.0 still held for `deps/majors-2026-11-05`; 890 passed, ruff clean, no Node
+  here for the console's tsc. Worktree `/data/sources/just-dna-registry-deps-2026-11-12` unlocked, done. The old
+  `-deps` worktree still holds last week's uncommitted lock edits (superseded by `bb42dbd`); left, not discarded.
 
 ## Backlog, in order
 

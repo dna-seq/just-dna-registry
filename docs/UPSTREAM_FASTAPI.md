@@ -7,8 +7,8 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.162.5`** read (2026-11-11; 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.0`
-(`uv.lock`, the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
+**`0.162.5`** read (2026-11-11; 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.5`
+(`uv.lock`, the bump of 2026-11-12, `94ce3e0`; 0.162.0 from the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
 
 ## Backlog
 
