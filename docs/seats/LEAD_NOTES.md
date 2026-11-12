@@ -150,8 +150,8 @@ safe to accept (checked against the 0.8 Ensembl snapshot); cardio measured onlin
 cardio-online.log).
 **Pending on the person (2026-11-12)**: yes/no on the seat-builder's handoff (L136 pypi reader rule in LEAD.md, `pypi`
 watcher and `on_publish.sweep` in .blueprints.toml; dry run clean: 6 branches matched, all in worktrees, none go);
-builder told it waits. **Quota: the 7-day window at 95% (resets Fri 03:00 CET)**: no subagents, no full suites until
-then; 0.31 blocks 3-4 wait. cardio online measurement still running detached (scratchpad cardio-online.log).
+builder told it waits; desk #272 (default: no change). Quota pause lifted (the window reset to 79%; the maintainer:
+deferring on a stale 95% was wrong). cardio online measurement still running detached (scratchpad cardio-online.log).
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
