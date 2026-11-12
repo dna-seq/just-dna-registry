@@ -1014,6 +1014,48 @@ lookup is a derivative and every held lane answers one; no route hands out a who
 terms refuse it; publishing is the author's liability. `alphagenome_avi`: the snapshot read, plus the live
 Atlas only under the override (the person: "alphag - default").
 
+## 0.30.1 — on upstream 0.8.5, and the sweep says which modules need re-deriving (requirements by the pm, 2026-11-12)
+
+**Asked by the person 2026-11-12**, in the pm's session: adopt 0.8.5 now ("yes"), "and build some
+discriminator to detrermine which items need rederivation". The lead builds it. Sizing: **patch**: a floor
+inside the 0.8 minor plus a detector in an ops command, with no route or client method moved, so the
+client surface is unchanged.
+
+**Why now and not at Thursday's bump.** The liaison's word on 0.8.5 (c036c70; RM432, RM434, RM436, RM438;
+a measured-zero release record): five modules still hold pre-0.8 tables (cancer, cardio, pathogenic
+2.0.0, blood_groups, pharmgkb), to be re-derived on 0.8.5 and not before. And 0.8.5's record does not
+declare RM438's `resolution.csv` correction (an rsID back-filled at a position two rsIDs share now follows
+the row's genotype), so `registry upgrade` would not act on it by itself.
+
+**The discriminator.** A per-module verdict in `registry upgrade --dry-run`, over the latest non-yanked
+version, each module with every reason that applies, read from its stored tables. CLAUDE.md's rule
+holds: compare versions, never test for a landmark. Four arms:
+
+1. **`no_source_release`**: rows naming no `source_release`, written before 0.8. This is today's
+   `resolution_needs_rederive` and stays as it is.
+2. **`older_snapshot_release`**: rows naming an Ensembl release other than the installed snapshot's,
+   read through upstream's pull record. This is the half that function's docstring says it does not
+   see. It is detected now, before the next snapshot move makes it matter.
+3. **`declared_correction`**: the table was written by an enricher older than a release whose record
+   declares a correction to `resolution.csv`, read through `rebuild.declared_movement` as for compiled
+   output. RM438 is not declared, so two things follow. The liaison asks upstream to declare it (a
+   record amendment, or in 0.8.6). Meanwhile a **probe** measures it: re-run the back-fill offline on the
+   installed enricher for the rows RM438 can reach, compare, and report drift. It is bounded the way
+   `RebuildVerdict` is: it refuses on the identical enricher, so it converges, and a disagreeing input
+   makes it `cannot_say`, never drift. The liaison measured those rows on production: 7, none refuted.
+4. **`cannot_say`**: a table missing what an arm needs. It is counted and named, never folded into
+   "current".
+
+What a verdict carries: the codes, whether the module needs `--online` (the existing
+`needs_online_rederive`), the row counts behind each code, and the same in `sweep.json` by code. `--apply`
+re-derives exactly the modules with a reason and carries the rest, as M12 already does. The
+drift-needs-reading hold (`--accept-drift`) is unchanged.
+
+**Acceptance.** A test per arm through a real stored table, including one that a plain dry run, before
+this patch, reports as current. The five modules the liaison named come back flagged on a production
+dry run, which is read-only. A second dry run right after an `--apply` reports none of them (it
+converges).
+
 ## Next registry version (post-0.11)
 
 - **A lane lookup's answer carries its lane's terms** (proposed by S29, just-module-creator, 2026-11-12;
