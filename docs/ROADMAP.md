@@ -1017,7 +1017,9 @@ Atlas only under the override (the person: "alphag - default").
 ## Next registry version (post-0.11)
 
 - **A lane lookup's answer carries its lane's terms** (proposed by S29, just-module-creator, 2026-11-12;
-  **the lead's call, undecided**). `POST /lanes/{lane}/{table}` answers `pharmvar`, `pubmind`, `mane` and
+  **decided by the pm 2026-11-12: in 0.31**, riding the catalog's minor, or 0.32 if 0.31 is cut first. It
+  completes 0.30's requirement 2: a keyed read is allowed, and saying the lane's terms beside it is what
+  lets a caller honour them). `POST /lanes/{lane}/{table}` answers `pharmvar`, `pubmind`, `mane` and
   `acmg` rows with nothing saying that their terms forbid passing the snapshot on. An agent then leans a
   module on NC-ND rows without knowing it. The ruling that a keyed read is a derivative stands (0.30,
   requirement 2). This would only put the lane's terms in the answer: an optional `terms` field, or
@@ -1025,7 +1027,9 @@ Atlas only under the override (the person: "alphag - default").
   field, `LaneRows` and the console's types, a client docstring). Severity: low; the consumer can read
   `GET /caches` meanwhile.
 - **An instance says up front which live legs it runs** (proposed by S30, just-module-creator, 2026-11-12;
-  **the lead's call, undecided**). Since the fix in `dac4ccf`, a caller's `offline=false` reaches every
+  **decided by the pm 2026-11-12: in 0.31**, with the item above. It completes 0.30's requirement 5:
+  `GET /caches` already says per lane how it is proxied, and a source the operator closed is part of that
+  answer). Since the fix in `dac4ccf`, a caller's `offline=false` reaches every
   live pass, except where the operator kept a source closed (`REGISTRY_HINT_ALLOW_GNOMAD`,
   `REGISTRY_PROXY_ALPHAGENOME`). The skip detail names that switch, but a client learns about it only
   after spending a run. Exposing the two switches on `GET /caches` would let a client tell beforehand.
