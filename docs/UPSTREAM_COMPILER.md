@@ -148,6 +148,10 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
   to threshold on a common scale. A description only, no digest moves. We name the column only as one of the 0.3
   columns `upgrade` back-populates and never restate its meaning. Nothing moves.
+- **RM436** (`0ccd50f`, 2026-11-12, for 0.8.5, from just-dna-lite's S149): the enricher's `tenacity` floor drops
+  from `>=9.2.1` to `>=9.0.0`, so it resolves beside `google-genai` (which caps `<9.2.0`); a private shim picks the
+  backoff keyword by the installed constructor. We have no `google-genai` and lock tenacity 9.2.1, which still
+  satisfies it. Nothing moves.
 - **RM438** (open, a patch, for 0.8.5 if it lands first; from just-dna-lite's S151, S152 folded in): one hosting rule
   for both rsID back-fill paths. `enrich` keeps pick-and-flag but narrows candidates by the row's `alts`, else its
   genotype, so a row moves `ambiguous` → `resolved` only where one rsID hosts it; declared a **corrected
