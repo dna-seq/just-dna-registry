@@ -1041,7 +1041,11 @@ holds: compare versions, never test for a landmark. Four arms:
    output. RM438 is not declared, so two things follow. The liaison asked upstream to declare it (S153,
    2026-11-12: release records have no output axis for a derived table, so 0.8.5's reads as a measured
    zero; the ask is that axis, a `requires` for its reach, and RM438 declared on it in 0.8.6's record or
-   an amended 0.8.5). Meanwhile a **probe** measures it: re-run the back-fill offline on the
+   an amended 0.8.5). Upstream answered it as **RM441, a minor, so 0.9 at the earliest**: such an
+   axis would join `RECOMPILE_DRIVING_AXES` by default and needs its own re-derive route (ours too), and
+   RM438's reach is not stated in today's `requires` grammar, so acting on a declaration would visit every
+   module, bounded at one PATCH each. **So the probe is RM438's path until 0.9**, not a stopgap for a
+   patch. Meanwhile a **probe** measures it: re-run the back-fill offline on the
    installed enricher for the rows RM438 can reach, compare, and report drift. It is bounded the way
    `RebuildVerdict` is: it refuses on the identical enricher, so it converges, and a disagreeing input
    makes it `cannot_say`, never drift. The liaison measured those rows on production: 7, none refuted.
