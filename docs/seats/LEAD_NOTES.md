@@ -145,7 +145,9 @@ unlock `.wt/0.30`.
 serves 0.30.0). On main since (0.30.1 material): dac4ccf (proxy passes follow the caller's offline, not enrich_offline;
 uv-build bounded <0.13). **Prod upgrade sweep (read from the public catalog; runs need a site-admin token)**: 19 of 24
 modules on compiler 0.8.4; 5 held `needs_online` (indels): blood_groups (7 subjects), pharmgkb (154), cardio (57,696),
-cancer (70,658), pathogenic (308,990). Local online scratch runs: blood_groups and pharmgkb hold only for drift, both
+cancer (70,658), pathogenic (308,990). **Hold all five re-derivations until the enricher carries RM438** (the liaison, 2026-11-12: RM438 corrects the rsID
+back-fill at a position two rsIDs share; 0 such rows in published tables, but these five were never re-derived; RM438 is
+open, maybe 0.8.5). Local online scratch runs: blood_groups and pharmgkb hold only for drift, both
 safe to accept (checked against the 0.8 Ensembl snapshot); cardio measured online in the background (scratchpad
 cardio-online.log).
 **Pending on the person (2026-11-12)**: yes/no on the seat-builder's handoff (L136 pypi reader rule in LEAD.md, `pypi`
