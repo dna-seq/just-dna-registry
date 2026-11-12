@@ -144,6 +144,15 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   neither, and `enrich()` does not reach it. We only read a published `gwas_effects` sidecar (`services/catalog.py:251`).
   Nothing moves here. **Landed** as `f0433de` (2026-11-11): `_PAGE_SIZE` 500, a refused first page asked once more
   with no size, a `size_refusals` count on the pass's own report; nothing we read. Unreleased (0.8.4).
+- **Cut as `v0.8.5`** (`c036c70` on their `main`, 2026-11-12; untagged and not on PyPI when read): all three to
+  0.8.5, floors `>=0.8.5`, the enricher's `tenacity` floor down to `>=9.0.0`. Carries RM432, RM434, RM436 and RM438,
+  each read in this file (RM433 is a roadmap note only); no public name, field, table, flag or warning code. Two
+  behaviours change for a direct caller: RM432's raises and RM438's withheld rsID; we call neither directly.
+  Release record `0.8.5` (from 0.8.4, 22 reference modules): a measured zero on every axis, and it **does not
+  measure** RM438's `resolution.csv` correction, so `declared_movement` will not act on it. Measured here: nothing
+  published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
+  weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
+  `blood_groups`, `pharmgkb`) are re-derived on it, not before.
 - **Their `main` past the 0.8.4 cut**: **RM434** (`5e124df`, from longevity-loci's S147, for 0.8.5): `StudyRow.stat_significance`'s
   description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
   to threshold on a common scale. A description only, no digest moves. We name the column only as one of the 0.3

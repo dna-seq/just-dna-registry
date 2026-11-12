@@ -109,6 +109,8 @@ reset").
   pydantic 2.14.3 and six small), duckdb 2.0 still held for `deps/majors-2026-11-05`; 890 passed, ruff clean, no Node
   here for the console's tsc. Worktree `/data/sources/just-dna-registry-deps-2026-11-12` unlocked, done. The old
   `-deps` worktree still holds last week's uncommitted lock edits (superseded by `bb42dbd`); left, not discarded.
+- **Owed to the lead**: when compiler 0.8.5 is on PyPI (cut `c036c70`, 2026-11-12, untagged), say so in
+  `#just-dna-registry > upstream` with the re-derive advice (ledger, "Cut as v0.8.5"). Check PyPI, not only the tag.
 
 ## Backlog, in order
 
