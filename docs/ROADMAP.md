@@ -1038,8 +1038,10 @@ holds: compare versions, never test for a landmark. Four arms:
    see. It is detected now, before the next snapshot move makes it matter.
 3. **`declared_correction`**: the table was written by an enricher older than a release whose record
    declares a correction to `resolution.csv`, read through `rebuild.declared_movement` as for compiled
-   output. RM438 is not declared, so two things follow. The liaison asks upstream to declare it (a
-   record amendment, or in 0.8.6). Meanwhile a **probe** measures it: re-run the back-fill offline on the
+   output. RM438 is not declared, so two things follow. The liaison asked upstream to declare it (S153,
+   2026-11-12: release records have no output axis for a derived table, so 0.8.5's reads as a measured
+   zero; the ask is that axis, a `requires` for its reach, and RM438 declared on it in 0.8.6's record or
+   an amended 0.8.5). Meanwhile a **probe** measures it: re-run the back-fill offline on the
    installed enricher for the rows RM438 can reach, compare, and report drift. It is bounded the way
    `RebuildVerdict` is: it refuses on the identical enricher, so it converges, and a disagreeing input
    makes it `cannot_say`, never drift. The liaison measured those rows on production: 7, none refuted.
