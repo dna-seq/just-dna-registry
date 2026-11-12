@@ -490,6 +490,10 @@ lock (1.44.2, 1.5.5, 2.3.3).
   derived table, so 0.8.5's record reads as "nothing moved" though RM438 corrects `resolution.csv`. Asks: an axis
   for derived tables, a `requires` that names the reach, RM438 declared on it in the next record. Our side, once it
   exists: `declared_movement` acting on that axis means a re-derive, not a recompile.
+  **Answered 2026-11-12** as **RM441, a minor** (their pm sizes it; 0.9 at the earliest). Two design points: a new
+  axis would join `RECOMPILE_DRIVING_AXES` by default, so it needs a re-derive route of its own; and RM438's reach is
+  `None` (not stated) in today's `requires` grammar, which our `declared_movement` keeps, so a sweep would over-reach,
+  bounded at one PATCH per module. Pm told.
 
 - **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
   triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads
