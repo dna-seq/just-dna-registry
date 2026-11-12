@@ -31,7 +31,7 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   the lead (637623436, after 0.28, so now due for 0.29's sizing); nine ideas on `docs/TO_RESEARCH.md`.
 - **Push works**; commits go by path, `git commit --only -- <paths>` (base, kit #286), after a race on
   2026-11-05 put a pm roadmap paragraph inside the liaison's 7e88e7d.
-- **Auto-mode rules** still stale for the person to apply (rule 14 older), `automode.py --apply`, told 2026-11-10.
+- **Auto-mode rules**: current (checked 2026-11-12, `automode.py --check`); the pm runs `--apply` itself when stale.
 
 ## Tools
 
