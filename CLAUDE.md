@@ -531,7 +531,8 @@ upstream adds fails a test until it is served or named in `EXEMPT_LANES`/`EXEMPT
 checkable reason. **Keyed, always, and bounded per request**: serving is handing out a whole snapshot, a
 keyed lookup is a derivative (the person), so no route enumerates any lane whatever its terms. Live legs
 are charged per upstream before they run; gnomAD (`REGISTRY_HINT_ALLOW_GNOMAD`) and AlphaGenome's Atlas
-(`REGISTRY_PROXY_ALPHAGENOME`, one bounded interval) are operator switches, off by default.
+(`REGISTRY_PROXY_ALPHAGENOME`, one bounded interval) are operator switches, off by default. The caller's
+`offline` decides a proxy pass, never `enrich_offline`, which is this box's publish enrichment (0.30.1).
 
 **A thin client's cache miss is answered by the registry, and the registry's own miss is answered by
 the remote source.** The enricher's snapshot lanes are artifacts running to tens of

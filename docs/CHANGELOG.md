@@ -8,6 +8,17 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### The proxy's live passes follow the caller, not the box's `enrich_offline`
+
+0.30.0 let `REGISTRY_ENRICH_OFFLINE`, which is on by default and governs this box's own publish
+enrichment, override a caller's `offline=false` on `POST .../derived?passes=`. Every live pass, AlphaGenome
+included, answered "skipped: offline" whatever the operator's switches said. The caller now decides, as on
+`/hint/*`: live legs are charged per caller and gated per source (`REGISTRY_HINT_ALLOW_GNOMAD`,
+`REGISTRY_PROXY_ALPHAGENOME`), and the box's publish enrichment stays offline. The build backend is bounded
+(`uv-build>=0.12.23,<0.13`), which silences `uv build`'s upper-bound warning.
+
+**Client surface:** unchanged.
+
 ## [0.30.0] — 2026-11-11
 
 ### A caching proxy by lane and by pass, held to upstream's rosters

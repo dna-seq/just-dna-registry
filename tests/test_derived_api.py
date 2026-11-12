@@ -420,13 +420,10 @@ def test_an_opened_atlas_runs_the_pass_and_reports_upstreams_result(tmp_path, mo
     from just_dna_registry.services import derived as derived_service
 
     monkeypatch.setattr(expression, "enrich_expression", atlas)
-    # An online deployment, with enrich() itself kept on the snapshot so nothing else egresses here.
-    client = _app(tmp_path, proxy_alphagenome=True, enrich_offline=False)
-    real_enrich = derived_service.enrich_spec
-    monkeypatch.setattr(
-        derived_service, "enrich_spec",
-        lambda spec_dir, settings: real_enrich(spec_dir, settings.model_copy(update={"enrich_offline": True})),
-    )
+    # The box's own enrichment stays offline (the default): the caller's offline=false still reaches the
+    # Atlas (0.30.1; through 0.30.0 the box's setting won and the pass answered "skipped: offline").
+    client = _app(tmp_path, proxy_alphagenome=True)
+    assert client.app.state.settings.enrich_offline is True
     monkeypatch.setattr(derived_service, "shared_lookup_clients", lambda *a, **k: None)
     resp = _post_passes(client, _EXPR, offline="false", **_INTERVAL)
     assert resp.status_code == 200, resp.text
