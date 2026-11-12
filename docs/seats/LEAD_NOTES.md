@@ -141,6 +141,13 @@ hf:// remote, bounded). Both guards green. Left: GET /caches per-lane `proxied` 
 registry-client commands, docs: all done (8fde925, a73f8a8, f2ed121). **0.30.0 built** (release head 5a8c0d3 on main, pushed; full suite 888 passed, its 2 failures fixed in 015b7c6 and
 rerun; dists in `dist/`). DM'd; desk #262 (publish, default: waits). Tag `v0.30.0` on 5a8c0d3 once on PyPI, then
 unlock `.wt/0.30`.
+**0.30.0 published and tagged** (v0.30.0 on 5a8c0d3, 2026-11-12; PyPI files match; desks #262, #267 withdrawn: production
+serves 0.30.0). On main since (0.30.1 material): dac4ccf (proxy passes follow the caller's offline, not enrich_offline;
+uv-build bounded <0.13). **Prod upgrade sweep (read from the public catalog; runs need a site-admin token)**: 19 of 24
+modules on compiler 0.8.4; 5 held `needs_online` (indels): blood_groups (7 subjects), pharmgkb (154), cardio (57,696),
+cancer (70,658), pathogenic (308,990). Local online scratch runs: blood_groups and pharmgkb hold only for drift, both
+safe to accept (checked against the 0.8 Ensembl snapshot); cardio measured online in the background (scratchpad
+cardio-online.log).
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
