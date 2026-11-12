@@ -486,6 +486,34 @@ def rename_namespace_command(
     typer.echo(f"renamed {done.namespace} to {done.name}: {done.copied} version(s) moved")
 
 
+@app.command("project-claims")
+def project_claims_command(
+    every: bool = typer.Option(
+        False, "--all", help="Re-project every latest version, not only the unprojected or out-of-date ones"
+    ),
+    namespace: str = typer.Option(None, "--namespace", "-n", help="Limit to one namespace"),
+) -> None:
+    """Fill the variant-level catalog (0.31) for modules published before it, or after a projector change:
+    each module's latest non-yanked version, read from its stored parquets. A maintenance run, so it is
+    logged, snapshotted and revertible; running it again finishes what a failure left."""
+    from just_dna_registry.services.claims import backfill
+
+    settings = get_settings()
+    namespace = _current_namespace(settings, namespace)
+    _echo_mode(settings)
+    repo = _open_existing_db(settings)
+    report = backfill(repo, _storage(settings), every=every, namespace=namespace)
+    for label in report.projected:
+        typer.echo(f"  ✓ {label}")
+    for line in report.failed:
+        typer.secho(f"  ✗ {line}", fg=typer.colors.RED)
+    typer.echo(
+        f"{len(report.projected)} projected, {report.current} already current, {len(report.failed)} failed"
+    )
+    if report.failed:
+        raise typer.Exit(code=1)
+
+
 @app.command("export-keys")
 def export_keys(
     out: Path = typer.Option(None, "--out", "-o", help="Write JSON here (default: stdout)"),

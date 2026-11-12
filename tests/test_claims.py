@@ -89,3 +89,20 @@ def test_columns_are_read_by_presence_and_each_table_is_its_own_kind() -> None:
     assert kinds == {("weight", None), ("haplotype", None)}
     assert all(c.genome_build == "GRCh37" for c in got.claims)
     assert ("rs9", "rs9", "GRCh37") in got.aliases and got.pgs == [("PGS000001", "EFO_0001645")]
+
+
+def test_a_backfill_projects_what_was_published_before_and_skips_what_is_current(
+    client: TestClient, repo: Repository, app
+) -> None:
+    key = _user(repo, "antonkulaga", namespace="just-dna-seq")
+    _publish(client, key, "just-dna-seq", "coronary", "1.0.0")
+    repo.conn.execute("DELETE FROM version_claims")
+    repo.conn.execute("UPDATE versions SET claims_projector = NULL")
+    repo.conn.commit()
+
+    first = claims.backfill(repo, app.state.storage)
+    assert first.projected == ["just-dna-seq/coronary@1.0.0"] and first.failed == []
+    assert _claims(repo, "just-dna-seq", "coronary", "1.0.0")
+    again = claims.backfill(repo, app.state.storage)
+    assert (again.projected, again.current) == ([], 1)
+    assert claims.backfill(repo, app.state.storage, every=True).projected == ["just-dna-seq/coronary@1.0.0"]

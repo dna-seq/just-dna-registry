@@ -17,6 +17,7 @@ and the projection can be rebuilt from storage. The design and its review are in
 """
 
 import io
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -155,3 +156,51 @@ def _aliases(row: dict[str, Any], key: str, genome_build: str | None) -> list[tu
         if locus.get("chrom") and locus.get("start") and locus.get("ref"):
             found.add(f"{locus['chrom']}:{locus['start']}:{locus['ref']}:{locus.get('alts') or ''}".rstrip(":"))
     return [(alias, key, genome_build) for alias in found]
+
+
+#: The parquet files a projection reads, so a backfill fetches only these from storage.
+PROJECTED_FILES: tuple[str, ...] = (
+    "weights.parquet", "annotations.parquet", "pharm_variants.parquet", "heteroplasmy.parquet",
+    "haplotypes.parquet", "pgs.parquet",
+)
+
+
+@dataclass
+class BackfillReport:
+    projected: list[str] = field(default_factory=list)
+    current: int = 0
+    failed: list[str] = field(default_factory=list)
+
+
+def backfill(repo: Any, storage: Any, *, every: bool = False, namespace: str | None = None) -> BackfillReport:
+    """Project each module's latest non-yanked version that has no projection, or one an older projector
+    wrote (`every` re-projects all of them). Reads only `PROJECTED_FILES` from storage, latest versions
+    only, and stores each version on its own, so a failure leaves that one unprojected and the rest done."""
+    from just_dna_registry.storage.base import version_key
+
+    report = BackfillReport()
+    rows = repo.conn.execute(
+        "SELECT v.id, m.namespace, m.name, v.version, v.claims_projector, v.manifest_json "
+        "FROM versions v JOIN modules m ON m.id = v.module_id "
+        "WHERE v.version = m.latest_version AND v.yanked = 0 AND (? IS NULL OR m.namespace = ?) "
+        "ORDER BY m.namespace, m.name",
+        (namespace, namespace),
+    ).fetchall()
+    for row in rows:
+        label = f"{row['namespace']}/{row['name']}@{row['version']}"
+        if not every and row["claims_projector"] == PROJECTOR_VERSION:
+            report.current += 1
+            continue
+        key = version_key(row["namespace"], row["name"], row["version"])
+
+        def read(name: str, key: str = key) -> bytes | None:
+            return storage.read_file(key, name) if storage.exists(key, name) else None
+
+        try:
+            build = json.loads(row["manifest_json"]).get("genome_build")
+            repo.store_claims(int(row["id"]), project(read, build), PROJECTOR_VERSION)
+        except Exception as exc:  # noqa: BLE001 - one version's failure is reported, the rest go on
+            report.failed.append(f"{label}: {type(exc).__name__}: {exc}")
+            continue
+        report.projected.append(label)
+    return report
