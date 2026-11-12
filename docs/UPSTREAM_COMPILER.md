@@ -144,6 +144,10 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   neither, and `enrich()` does not reach it. We only read a published `gwas_effects` sidecar (`services/catalog.py:251`).
   Nothing moves here. **Landed** as `f0433de` (2026-11-11): `_PAGE_SIZE` 500, a refused first page asked once more
   with no size, a `size_refusals` count on the pass's own report; nothing we read. Unreleased (0.8.4).
+- **Their `main` past the 0.8.4 cut**: **RM434** (`5e124df`, from longevity-loci's S147, for 0.8.5): `StudyRow.stat_significance`'s
+  description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
+  to threshold on a common scale. A description only, no digest moves. We name the column only as one of the 0.3
+  columns `upgrade` back-populates and never restate its meaning. Nothing moves.
 - **Cut as `v0.8.4`** (`36cbc20` on their `main`, 2026-11-11 01:15 CET; read untagged; **on PyPI** when checked 2026-11-11, tagged `v0.8.4` at that commit later the same day): all three
   to 0.8.4, inter-package floors `>=0.8.4` (the compiler's source is unchanged; it moves only for the floor). Carries
   RM425 to RM428, each read above, their fence-test fix and their own lock bump; no published requirement moved, no
