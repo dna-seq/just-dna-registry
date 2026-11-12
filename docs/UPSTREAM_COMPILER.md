@@ -148,6 +148,15 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
   to threshold on a common scale. A description only, no digest moves. We name the column only as one of the 0.3
   columns `upgrade` back-populates and never restate its meaning. Nothing moves.
+- **RM438** (open, a patch, for 0.8.5 if it lands first; from just-dna-lite's S151, S152 folded in): one hosting rule
+  for both rsID back-fill paths. `enrich` keeps pick-and-flag but narrows candidates by the row's `alts`, else its
+  genotype, so a row moves `ambiguous` → `resolved` only where one rsID hosts it; declared a **corrected
+  derivation**. Their triage asked us to size the exposure. **Measured 2026-11-12 on production** (latest version of
+  all 24 modules, downloaded read-only): 439,752 `resolution.csv` rows, **0 `ambiguous`**, 0 with
+  `rsid_alternates`, so nothing published changes. But only 1,632 rows name a `source_release`: the three ClinVar
+  panels `just-dna-seq/cancer` 2.0.0, `cardio` 2.0.0 and `pathogenic` 2.0.0 (141,331 coordinate-keyed rows between
+  them) plus `blood_groups` and `pharmgkb` still carry pre-0.8 tables, never re-derived. **Their re-derivation
+  is where RM438 bites**, so it is best run with RM438 installed. Polygon not measured (rehearsal data).
 - **Cut as `v0.8.4`** (`36cbc20` on their `main`, 2026-11-11 01:15 CET; read untagged; **on PyPI** when checked 2026-11-11, tagged `v0.8.4` at that commit later the same day): all three
   to 0.8.4, inter-package floors `>=0.8.4` (the compiler's source is unchanged; it moves only for the floor). Carries
   RM425 to RM428, each read above, their fence-test fix and their own lock bump; no published requirement moved, no
