@@ -80,7 +80,7 @@ dependencies = [
     # every axis `False` with nothing declared, and no public name, field, table or warning code moved. It is
     # the floor because the enricher 0.8.3 the `server` extra needs floors all three tiers at `>=0.8.3`.
     # 0.8.4 likewise (0.29.1): the enricher 0.8.4 floors all three tiers at `>=0.8.4`.
-    "just-dna-format>=0.8.4",
+    "just-dna-format>=0.8.5",
 ]
 
 [project.optional-dependencies]
@@ -127,7 +127,7 @@ dependencies = [
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.8.4",  # lockstep with the format floor above
+    "just-dna-compiler>=0.8.5",  # lockstep with the format floor above
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -349,8 +349,11 @@ server = [
     # route here runs that pass: `enrich()` does not call it and neither does the proxy. It reaches whoever runs
     # `just-dna-enricher` on the box against this install. RM425-RM427 move only wording. Probe, run 2026-11-11:
     # `uv run python -c "import just_dna_enricher.gwas as g; print(g._PAGE_SIZE)"` answers `500` (0.8.3: `1000`).
-    "just-dna-compiler>=0.8.4",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.4",  # soft: RM428 (GWAS pass) reaches no route here, see the 0.8.4 note above
+    # **0.8.5** (0.30.1, the person: "yes" to adopting it before the five pre-0.8 modules re-derive). Soft for
+    # compiled output (a measured-zero record), load-bearing for re-derivation: RM438 back-fills an rsID at a
+    # shared position only where it can host the row's genotype; `upgrade`'s `declared_correction` arm probes it.
+    "just-dna-compiler>=0.8.5",  # lockstep with the format floor above
+    "just-dna-enricher>=0.8.5",  # RM438 (re-derivation back-fill), see the 0.8.5 note above
 ]
 
 [build-system]

@@ -8,6 +8,18 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### On upstream 0.8.5, and `registry upgrade` says which modules need re-deriving
+
+All three tiers floor at 0.8.5 (RM438: the rsID back-fill at a position two rsIDs share follows the row's
+genotype). The person asked for "some discriminator to determine which items need rederivation": the dry
+run now names, per module, every reason its `resolution.csv` needs re-deriving, with the rows behind it:
+`no_source_release` (written before 0.8; authored rows no longer count, since they name no release by
+construction), `older_snapshot_release` (rows from a snapshot older than the one this box holds, which 0.28
+did not see), `declared_correction` (RM438, undeclared in 0.8.5's release record, probed from the table: a
+back-filled rsID that cannot hold the authored genotype), and `cannot_say` (the installed snapshot's release
+unreadable). A reason now acts on its own, so `--apply` re-derives exactly the flagged modules, whatever
+their compiler gap; it converges, since a re-derived table names the installed release on every answered row.
+
 ### The proxy's live passes follow the caller, not the box's `enrich_offline`
 
 0.30.0 let `REGISTRY_ENRICH_OFFLINE`, which is on by default and governs this box's own publish
