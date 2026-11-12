@@ -204,3 +204,147 @@ def backfill(repo: Any, storage: Any, *, every: bool = False, namespace: str | N
             continue
         report.projected.append(label)
     return report
+
+
+# ── Reading the catalog (0.31) ──────────────────────────────────────────────────────────────────────
+
+#: Opposite directions, for the conflict marker.
+_OPPOSITE = {("risk", "protective"), ("protective", "risk")}
+_COMPLEMENT = str.maketrans("ACGT", "TGCA")
+
+
+def _visible_versions_sql(exclude: list[str]) -> tuple[str, list[Any]]:
+    """The listing's rules for which modules a reader sees: the latest non-yanked version, never a
+    blacklisted namespace, and (on production) never a test/sandbox one."""
+    sql = (
+        "v.version = m.latest_version AND v.yanked = 0 "
+        "AND COALESCE((SELECT blacklisted FROM namespaces n WHERE n.name = m.namespace), 0) = 0"
+    )
+    params: list[Any] = []
+    if exclude:
+        sql += f" AND m.namespace NOT IN ({','.join('?' * len(exclude))})"
+        params += exclude
+    return sql, params
+
+
+def _oriented(claim: dict[str, Any]) -> tuple[str, str] | None:
+    """`(allele, direction)` for a weight claim, signed for one allele so two modules compare: `direction`
+    signs `effect_allele`. `None` when the claim names no effect allele or no comparable direction."""
+    allele, direction = claim.get("effect_allele"), claim.get("direction")
+    if not allele or direction not in ("risk", "protective") or claim.get("direction_source") != "direction":
+        return None
+    return allele.upper(), direction
+
+
+def _same_allele(a: str, b: str) -> bool | None:
+    """Whether two effect alleles are one allele: equal, or the reverse complement of each other only when
+    neither could be read on its own strand (an A/T or C/G pair is ambiguous, so `None`)."""
+    if a == b:
+        return True
+    # A strand flip would make them one allele, but nothing in a row says which strand it was authored on,
+    # so a complement is never assumed: the pair is not compared rather than guessed at.
+    if a.translate(_COMPLEMENT)[::-1] == b:
+        return None
+    return False
+
+
+def conflicts(claims: list[dict[str, Any]]) -> dict[str, Any]:
+    """The cross-module disagreement marker over one variant's weight claims, and why each other pair was
+    not compared. Two claims conflict only when they come from different modules and share the genotype,
+    a non-null trait, and the effect allele, and one says `risk` while the other says `protective`. It is a
+    fact about two modules' statements, never a verdict on either."""
+    weights = [c for c in claims if c["kind"] == "weight"]
+    pairs: list[dict[str, Any]] = []
+    incomparable: dict[str, int] = {}
+    compared = 0
+
+    def skip(reason: str) -> None:
+        incomparable[reason] = incomparable.get(reason, 0) + 1
+
+    for i, a in enumerate(weights):
+        for b in weights[i + 1:]:
+            if a["module"] == b["module"]:
+                continue
+            if (a.get("genome_build") or "") != (b.get("genome_build") or ""):
+                skip("other_build")
+                continue
+            if a.get("genotype") != b.get("genotype"):
+                continue  # different genotypes are different statements, not a disagreement
+            if not a.get("trait_efo_id") or not b.get("trait_efo_id"):
+                skip("no_trait")
+                continue
+            if a["trait_efo_id"] != b["trait_efo_id"]:
+                skip("other_trait")
+                continue
+            oa, ob = _oriented(a), _oriented(b)
+            if oa is None or ob is None:
+                skip("no_effect_allele_or_direction")
+                continue
+            same = _same_allele(oa[0], ob[0])
+            if same is None:
+                skip("allele_not_orientable")
+                continue
+            if not same:
+                skip("other_effect_allele")
+                continue
+            compared += 1
+            if (oa[1], ob[1]) in _OPPOSITE:
+                pairs.append({"modules": [a["module"], b["module"]], "genotype": a["genotype"],
+                              "trait_efo_id": a["trait_efo_id"], "effect_allele": oa[0],
+                              "directions": [oa[1], ob[1]]})
+    return {"pairs": pairs, "compared": compared, "incomparable": incomparable}
+
+
+def variant_claims(repo: Any, key: str, *, exclude_namespaces: list[str]) -> dict[str, Any]:
+    """Every visible module's claims about one variant, by any spelling of it (rsID, VRS id, coordinates),
+    with the conflict marker and how many visible versions are not yet projected."""
+    visible, params = _visible_versions_sql(exclude_namespaces)
+    keys = {r[0] for r in repo.conn.execute(
+        "SELECT DISTINCT variant_key FROM claim_aliases WHERE alias = ?", (key,)
+    ).fetchall()} | {key}
+    marks = ",".join("?" * len(keys))
+    rows = [dict(r) for r in repo.conn.execute(
+        f"SELECT m.namespace || '/' || m.name AS module, v.version AS version, c.* "
+        f"FROM version_claims c JOIN versions v ON v.id = c.version_id JOIN modules m ON m.id = v.module_id "
+        f"WHERE c.variant_key IN ({marks}) AND {visible} ORDER BY m.namespace, m.name, c.kind",
+        [*keys, *params],
+    ).fetchall()]
+    for row in rows:
+        row.pop("version_id", None)
+    return {
+        "key": key,
+        "variant_keys": sorted(keys),
+        "claims": rows,
+        "modules": sorted({r["module"] for r in rows}),
+        "conflicts": conflicts(rows),
+        "not_projected": _not_projected(repo, exclude_namespaces),
+    }
+
+
+def gene_claims(repo: Any, symbol: str, *, exclude_namespaces: list[str]) -> dict[str, Any]:
+    """Every visible module's claims that name `symbol` as the authored gene (never assigned by position)."""
+    visible, params = _visible_versions_sql(exclude_namespaces)
+    rows = [dict(r) for r in repo.conn.execute(
+        f"SELECT m.namespace || '/' || m.name AS module, v.version AS version, c.* "
+        f"FROM version_claims c JOIN versions v ON v.id = c.version_id JOIN modules m ON m.id = v.module_id "
+        f"WHERE UPPER(c.gene) = UPPER(?) AND {visible} ORDER BY c.variant_key, m.namespace, m.name",
+        [symbol, *params],
+    ).fetchall()]
+    for row in rows:
+        row.pop("version_id", None)
+    return {
+        "gene": symbol,
+        "claims": rows,
+        "modules": sorted({r["module"] for r in rows}),
+        "variants": len({r["variant_key"] for r in rows}),
+        "not_projected": _not_projected(repo, exclude_namespaces),
+    }
+
+
+def _not_projected(repo: Any, exclude_namespaces: list[str]) -> int:
+    """Visible latest versions with no projection yet: silence from them is not agreement."""
+    visible, params = _visible_versions_sql(exclude_namespaces)
+    return int(repo.conn.execute(
+        f"SELECT count(*) FROM versions v JOIN modules m ON m.id = v.module_id "
+        f"WHERE {visible} AND v.claims_projector IS NULL", params,
+    ).fetchone()[0])

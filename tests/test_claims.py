@@ -106,3 +106,62 @@ def test_a_backfill_projects_what_was_published_before_and_skips_what_is_current
     again = claims.backfill(repo, app.state.storage)
     assert (again.projected, again.current) == ([], 1)
     assert claims.backfill(repo, app.state.storage, every=True).projected == ["just-dna-seq/coronary@1.0.0"]
+
+
+def _weight(module: str, **kw) -> dict:
+    base = {"kind": "weight", "module": module, "genome_build": "GRCh38", "genotype": "C/C",
+            "trait_efo_id": "EFO_1", "effect_allele": "C", "direction": "risk", "direction_source": "direction"}
+    return {**base, **kw}
+
+
+def test_the_conflict_marker_compares_one_allele_one_trait_one_genotype() -> None:
+    """Opposite directions are a conflict only for the same effect allele, genotype and trait; everything else
+    is counted as not compared, by reason, so silence never reads as agreement."""
+    out = claims.conflicts([_weight("a/m"), _weight("b/m", direction="protective")])
+    assert len(out["pairs"]) == 1 and out["compared"] == 1
+    # One claim seen from opposite alleles is not a conflict (the critic's 8 of 18).
+    other = claims.conflicts([_weight("a/m"), _weight("b/m", effect_allele="T", direction="protective")])
+    assert other["pairs"] == [] and other["incomparable"] == {"other_effect_allele": 1}
+    traits = claims.conflicts([_weight("a/m"), _weight("b/m", trait_efo_id="EFO_2", direction="protective")])
+    assert traits["pairs"] == [] and traits["incomparable"] == {"other_trait": 1}
+    none = claims.conflicts([_weight("a/m", trait_efo_id=None), _weight("b/m", direction="protective")])
+    assert none["incomparable"] == {"no_trait": 1}
+    state = claims.conflicts([_weight("a/m", direction_source="state"), _weight("b/m", direction="protective")])
+    assert state["incomparable"] == {"no_effect_allele_or_direction": 1}
+    strand = claims.conflicts([_weight("a/m", effect_allele="A"), _weight("b/m", effect_allele="T", direction="protective")])
+    assert strand["incomparable"] == {"allele_not_orientable": 1}
+    assert claims.conflicts([_weight("a/m"), _weight("a/m", direction="protective")])["pairs"] == []
+
+
+def test_the_routes_answer_by_any_spelling_and_say_what_is_not_projected(
+    client: TestClient, repo: Repository
+) -> None:
+    from sdk_transport import sdk_transport
+
+    from just_dna_registry.client import RegistryClient
+
+    key = _user(repo, "antonkulaga", namespace="just-dna-seq")
+    _publish(client, key, "just-dna-seq", "coronary", "1.0.0")
+    sdk = RegistryClient("http://testserver", transport=sdk_transport(client), check_version=False)
+    found = sdk.variant_claims("rs4244285")
+    assert found["modules"] == ["just-dna-seq/coronary"] and found["claims"][0]["genotype"] == "A/G"
+    assert found["not_projected"] == 0 and found["conflicts"]["pairs"] == []
+    by_gene = sdk.gene_claims("cyp2c19")
+    assert by_gene["modules"] == ["just-dna-seq/coronary"] and by_gene["variants"] == 1
+    assert sdk.variant_claims("rs999999999")["claims"] == []
+
+    repo.conn.execute("UPDATE versions SET claims_projector = NULL")
+    repo.conn.execute("DELETE FROM version_claims")
+    repo.conn.commit()
+    unprojected = sdk.variant_claims("rs4244285")
+    assert unprojected["claims"] == [] and unprojected["not_projected"] == 1
+
+
+def test_a_test_namespace_is_hidden_on_production(client: TestClient, repo: Repository) -> None:
+    key = _user(repo, "sandboxer", namespace="test-space")
+    client.post("/api/v1/modules/test-space/coronary/versions",
+                data={"version": "1.0.0", "allow_test_data": "true"},
+                files=[("files", (n, d, "text/plain")) for n, d in __import__("test_handle_rename")._spec("coronary").items()],
+                headers={"Authorization": f"Bearer {key}"})
+    assert repo.get_module_row("test-space", "coronary") is not None
+    assert client.get("/api/v1/variants", params={"key": "rs4244285"}).json()["modules"] == []

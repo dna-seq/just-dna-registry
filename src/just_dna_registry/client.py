@@ -1279,6 +1279,18 @@ class RegistryClient:
             )
         )
 
+    def variant_claims(self, key: str) -> dict:
+        """What every visible module's latest version says about one variant (0.31), by rsID, VRS id or
+        `chrom:start:ref:alt`: the claims, the modules, the conflict marker (two modules giving one allele
+        opposite directions for the same genotype and trait) with the pairs not compared by reason, and
+        `not_projected` (modules whose silence is not agreement)."""
+        return self._json(self._http.get("/variants", params={"key": key}))
+
+    def gene_claims(self, symbol: str) -> dict:
+        """What every visible module's latest version says about the variants it names under `symbol` (0.31;
+        authored genes only, never assigned by position)."""
+        return self._json(self._http.get(f"/genes/{symbol}/claims"))
+
     def lane_tables(self, lane: str) -> dict:
         """What one snapshot lane holds (0.30): its tables and the key columns each answers by, and
         `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo)."""
