@@ -148,8 +148,10 @@ modules on compiler 0.8.4; 5 held `needs_online` (indels): blood_groups (7 subje
 cancer (70,658), pathogenic (308,990). **Hold all five re-derivations until the enricher carries RM438** (the liaison, 2026-11-12: RM438 corrects the rsID
 back-fill at a position two rsIDs share; 0 such rows in published tables, but these five were never re-derived; RM438 is
 open, maybe 0.8.5). Local online scratch runs: blood_groups and pharmgkb hold only for drift, both
-safe to accept (checked against the 0.8 Ensembl snapshot); cardio measured online in the background (scratchpad
-cardio-online.log).
+safe to accept (checked against the 0.8 Ensembl snapshot). **cardio measured online (enricher 0.8.4, this machine):
+6.9 h, refused rederive_drift_needs_reading**: 7,806 of 57,695 subjects changed (5,712 gained_allele, 2,082 gained_rsid:
+both quiet), 8 lost_allele, 4 moved, and 283 undecided (respelled vs moved, indels with no VRS id); so cancer (70k) and
+pathogenic (309k) are ~8 h and ~37 h online, and ~300+ undecided lines each to read. RM438/0.8.5 is being cut now.
 **Pending on the person (2026-11-12)**: yes/no on the seat-builder's handoff (L136 pypi reader rule in LEAD.md, `pypi`
 watcher and `on_publish.sweep` in .blueprints.toml; dry run clean: 6 branches matched, all in worktrees, none go);
 builder told it waits; desk #272 (default: no change). Quota pause lifted (the window reset to 79%; the maintainer:
