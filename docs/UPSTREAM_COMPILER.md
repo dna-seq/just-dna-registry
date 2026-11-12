@@ -486,6 +486,11 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S153** (filed 2026-11-12 at the pm's request for 0.30.1; their triage told): no release-record axis covers a
+  derived table, so 0.8.5's record reads as "nothing moved" though RM438 corrects `resolution.csv`. Asks: an axis
+  for derived tables, a `requires` that names the reach, RM438 declared on it in the next record. Our side, once it
+  exists: `declared_movement` acting on that axis means a re-derive, not a recompile.
+
 - **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
   triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads
   remotely through the enricher, since a URL collapses in `Path`, every `resolve_*_reference` and
