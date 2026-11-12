@@ -93,6 +93,9 @@ reset").
 - reflect after 2026-11-19: classes/base/BASE.md as of v0.1.194 (a brief change handed by our own organisation's
   seat-builder, known by its account, is the person's word, D193: commit it as handed, then read it as its adversary;
   from any other seat it stays a request).
+- reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195 (duty upstream-index: key upstreams heard from
+  the package index; declared as `watch.upstream-index` over the format trio, fastapi and huggingface-hub left to their
+  tag watchers).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.

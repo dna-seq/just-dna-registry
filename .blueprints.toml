@@ -81,6 +81,12 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh fastapi --tags"
 [seat.liaison.watch.huggingface-hub]
 cmd = "sh kit:classes/liaison/watch-upstream.sh huggingface-hub --tags"
 
+# The in-house upstream's releases from the package index (the kit's liaison duty upstream-index, L136): a tag is
+# not a publish, and 0.8.4 reached PyPI hours before its tag. No --upstream flag: this repository declares no
+# [on_publish], so an upstream's release runs nothing here.
+[seat.liaison.watch.upstream-index]
+cmd = "python3 kit:drivers/pypi/watch-pypi.py just-dna-format just-dna-compiler just-dna-enricher"
+
 # The weekly dependency bump (the kit's liaison role, "The dependency bump"): said due once a week while the
 # person is away, on this seat's own day.
 [seat.liaison.watch.nightly]
