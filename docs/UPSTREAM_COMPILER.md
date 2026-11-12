@@ -161,6 +161,12 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   panels `just-dna-seq/cancer` 2.0.0, `cardio` 2.0.0 and `pathogenic` 2.0.0 (141,331 coordinate-keyed rows between
   them) plus `blood_groups` and `pharmgkb` still carry pre-0.8 tables, never re-derived. **Their re-derivation
   is where RM438 bites**, so it is best run with RM438 installed. Polygon not measured (rehearsal data).
+  **Landed** as `d71a850` and `9d08278` (2026-11-12, unreleased): `resolver._hosting_rsids`, private; their
+  declaration names our 0 and an unmeasured resolved arm (a single back-filled rsID the genotype refutes now gets
+  none). **That arm measured the same day**: 7 coordinate-keyed rows carry a snapshot (`cache`) back-filled rsID,
+  all in `antonkulaga/smell` 0.1.1, each one's authored genotypes within the row's own ref/alts, so none is refuted.
+  51,249 more carry a ClinVar back-fill, all in the three un-re-derived panels; ClinVar is RM438's fall-through,
+  not narrowed by it.
 - **Cut as `v0.8.4`** (`36cbc20` on their `main`, 2026-11-11 01:15 CET; read untagged; **on PyPI** when checked 2026-11-11, tagged `v0.8.4` at that commit later the same day): all three
   to 0.8.4, inter-package floors `>=0.8.4` (the compiler's source is unchanged; it moves only for the floor). Carries
   RM425 to RM428, each read above, their fence-test fix and their own lock bump; no published requirement moved, no
