@@ -17,6 +17,12 @@ included, answered "skipped: offline" whatever the operator's switches said. The
 `REGISTRY_PROXY_ALPHAGENOME`), and the box's publish enrichment stays offline. The build backend is bounded
 (`uv-build>=0.12.23,<0.13`), which silences `uv build`'s upper-bound warning.
 
+### Documentation
+
+- API-REFERENCE.md (endpoints 46–47) now says that a keyed lane lookup answers every held lane whatever
+  its terms, and that the refusal `GET /caches` gives covers only the whole snapshot. This is the
+  maintainer's 0.30 ruling, which had been written only in the roadmap (S29, just-module-creator).
+
 **Client surface:** unchanged.
 
 ## [0.30.0] — 2026-11-11

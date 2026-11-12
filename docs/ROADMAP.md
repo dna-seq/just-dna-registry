@@ -1016,6 +1016,15 @@ Atlas only under the override (the person: "alphag - default").
 
 ## Next registry version (post-0.11)
 
+- **A lane lookup's answer carries its lane's terms** (proposed by S29, just-module-creator, 2026-11-12;
+  **the lead's call, undecided**). `POST /lanes/{lane}/{table}` answers `pharmvar`, `pubmind`, `mane` and
+  `acmg` rows with nothing saying that their terms forbid passing the snapshot on. An agent then leans a
+  module on NC-ND rows without knowing it. The ruling that a keyed read is a derivative stands (0.30,
+  requirement 2). This would only put the lane's terms in the answer: an optional `terms` field, or
+  upstream's licence fields from `CACHE_LANES`, never a sentence of ours. Sizing: **minor** (a new response
+  field, `LaneRows` and the console's types, a client docstring). Severity: low; the consumer can read
+  `GET /caches` meanwhile.
+
 - **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
   after 0.28**; owner: lead; filed by the pm). Sizing: **minor**, a few weeks. Its design is the lead's
