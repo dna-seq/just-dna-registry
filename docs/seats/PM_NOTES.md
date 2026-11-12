@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-11)
+## Now (2026-11-12)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -14,11 +14,15 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **0.29 published** (2026-11-11, `v0.29.0`; heading marked ✅, c17af6e): the namespace rename, sized by the
   person in the lead's session ("1a 2a 3a", reversing S28). 0.29.1 (rebuild once the enricher carrying RM428, the
   GWAS page-size fix, is on PyPI) is the lead's patch, not scope.
-- **0.30 is the caching proxy by lane and by pass** (the person, 2026-11-11, forwarded by the lead; requirements
-  in the roadmap's 0.30 section). The lead builds it. All three questions answered by the person and recorded
-  there: a keyed lookup is a derivative, so every held lane answers one; no route hands out a whole snapshot
-  of a lane whose terms refuse it; publishing is the author's liability; alphagenome_avi as defaulted. Nothing open for the pm. The row catalog plus
-  gene facet moves behind it, to 0.31.
+- **0.30 published** (2026-11-11, `v0.30.0`, heading marked ✅; both servers run it, measured 2026-11-12). Its
+  requirements and the person's licence rulings are in its section. Remote lane reads wait on upstream RM430.
+- **0.31 is the variant-level catalog**, sized and designed by the lead (roadmap *Next registry version*, desk #263
+  defaults); block 1 of 4 built on branch `0.31`. The pm marks it when tagged.
+- **Duty: milestones** (kit v0.1.187, `PM.md` of the kit): the `state` post in `#just-dna-registry>state` is kept
+  from `docs/seats/PM_STATE.md` with `watchdog.py keep pm state '#just-dna-registry>state' docs/seats/PM_STATE.md`;
+  rewrite it when the standing, a headline result or the next actions change. One post per landed result in
+  `#just-dna-registry>milestones`. The repo is public: no machine names or paths in either. Links go to
+  `github.com/dna-seq/just-dna-registry` (tags; there are no GitHub releases).
 - **Upstream parked RM378** (coded strict errors): the strict-phrase match in *Next registry version* may be
   permanent (da9d8b8).
 - **Strategy** (`docs/STRATEGY.md`): who it serves first (installers) and what it will not become are settled;

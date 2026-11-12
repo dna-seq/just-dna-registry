@@ -899,7 +899,7 @@ old name, which rewrote that name's kept manifests.
 **Review** (2026-11-10, an Opus "what did I miss" pass over the plan and the draft): eleven items, all
 addressed in the build; the plan above is corrected to match.
 
-## 0.30 — the caching proxy, by lane and by pass (requirements by the pm, 2026-11-11)
+## 0.30 — the caching proxy, by lane and by pass (requirements by the pm, 2026-11-11; published 2026-11-11) ✅
 
 **Asked by the person 2026-11-11**, in the lead's session, forwarded to the pm: "we have a goddamn CACHING
 PROXY feature, not a transit. Make sure to have some proper requerements and tests on coverage". Also from
