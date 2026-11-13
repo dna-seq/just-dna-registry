@@ -157,7 +157,7 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   is the module author's verdict across the evidence; a description only, as RM434. **RM440** (`5da19a3`): a
   re-derivation that drops a back-filled rsID on RM438's no-host arm now logs one warning (the count and the first
   five keys); no warning code, table unchanged. Reaches us in `registry upgrade`'s re-derive of the five pre-0.8
-  modules: the line lands in the run's log and the sweep counts it as `network`/package by logger, never by its
+  modules: the line lands in the run's log and the sweep counts it under its logger's package, never by its
   sentence. Nothing moves.
 - **Their `main` past the 0.8.4 cut**: **RM434** (`5e124df`, from longevity-loci's S147, for 0.8.5): `StudyRow.stat_significance`'s
   description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
