@@ -1085,7 +1085,10 @@ converges).
   Sizing: **minor** (a response field). Severity: low.
 
 - **`whoami` says which namespaces the caller may publish to, and which orgs it is in** (proposed by S31,
-  just-module-creator, 2026-11-13; **undecided**, the lead's call). `WhoAmI.namespaces` and the key-issuing
+  just-module-creator, 2026-11-13; **decided by the pm 2026-11-13: in 0.32**, with the two items above: a third
+  additive answer to the same consumer, at the same grain, and none of the three moves a field a caller
+  already reads. The consumer's shape as proposed, on the caller's own account only, and no new route: the
+  `orgs` field is what lets a caller list its orgs). `WhoAmI.namespaces` and the key-issuing
   response list the ownership grant only (`namespaces_for_account`), so a namespace an org owns and a
   membership of somebody else's namespace are invisible, though `effective_role()` lets the caller publish
   there. No route lists the caller's orgs (`GET /orgs/{org}/members` needs the name first). The open note
