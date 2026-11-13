@@ -41,6 +41,7 @@ from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
+from just_dna_registry.services.held import HeldRederivation
 from just_dna_registry.services.publish import (
     _REGISTRY_OWNED_MODULE_KEYS,
     publish_version,
@@ -61,7 +62,7 @@ from just_dna_registry.specfiles import (
     has_spec_data,
 )
 from just_dna_registry.storage.base import StorageBackend, version_key
-from just_dna_registry.sweep_report import HELD_NEEDS_ONLINE
+from just_dna_registry.sweep_report import HELD_NEEDS_ONLINE, HELD_STALE
 from just_dna_registry.version import contract_compatible, installed_compiler, installed_enricher
 
 # The columns `VariantRow.upgraded()` may set, mirrored back into the CSV. `state` stays present
@@ -967,7 +968,9 @@ def upgrade_version(
     trim: bool = False,
     prepared: VersionUpgradePlan | None = None,
     online: bool = False,
-    accept_drift: bool = False,
+    drift_out: list[str] | None = None,
+    withhold: bool = False,
+    from_held: HeldRederivation | None = None,
 ) -> tuple[str, ModuleManifest] | None:
     """Re-publish a version's spec as the next PATCH after migrating it to the current contract.
 
@@ -982,8 +985,11 @@ def upgrade_version(
     parquet schema anyway (a non-lossy schema migration). `prepared` reuses a plan already computed
     by `prepare_version_upgrade` (same `trim`), avoiding a second storage read.
 
-    A plan that re-derives (M12) passes `rederive=True` to the publish, which refuses unread drift as
-    `rederive_drift_needs_reading` unless `accept_drift`. One that also `needs_online` raises
+    A plan that re-derives (M12) passes `rederive=True` to the publish, which publishes and lists the
+    drift worth reading into `drift_out` (0.31.1). `withhold` gates that drift instead, keeping the
+    re-derived spec for `--accept-drift` (`services/held.py`); `from_held` publishes such a kept spec, with
+    no re-derivation and no egress, its changelog carrying the held run's paragraph. One that also
+    `needs_online` raises
     `UpgradeHeld` unless `online` permits egress, and then runs that one publish with
     `enrich_offline=False`: the shared clients and their pacing are untouched, and every module that
     does not need the network still re-derives from the snapshot alone."""
@@ -995,6 +1001,22 @@ def upgrade_version(
     )
     if prep is None or not prep.would_act(recompile=recompile):
         return None
+    if from_held is not None:
+        stale = from_held.stale_reason()
+        if stale:
+            raise UpgradeHeld(f"the kept re-derivation is stale: {stale}", code=HELD_STALE)
+        new_version = _next_free_patch(repo, namespace, name, version)
+        new_manifest = publish_version(
+            repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
+            version=new_version,
+            changelog=(changelog or _upgrade_changelog(prep, version)) + from_held.changelog,
+            owner=manifest.owner or namespace, files=from_held.files(),
+            allow_test_data=True,  # the identifier is already admitted; see the publish below
+        )
+        if drift_out is not None:
+            drift_out.extend(from_held.drift_to_read)
+        from_held.release()
+        return new_version, new_manifest
     if prep.needs_online and not online:
         raise UpgradeHeld(
             "its re-derivation needs the network: it carries an indel, and offline 0.8 cannot left-align "
@@ -1034,6 +1056,7 @@ def upgrade_version(
         # data remains as findable as it was before this re-publish.
         allow_test_data=True,
         rederive=prep.rederive,
-        accept_drift=accept_drift,
+        drift_out=drift_out,
+        hold_as=version if withhold else None,
     )
     return new_version, new_manifest

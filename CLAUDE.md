@@ -169,10 +169,15 @@ a row naming an *older* release is the same staleness after the next switch and 
 condition is in `resolution_needs_rederive`). **Only `registry upgrade` passes `rederive`**: an author's
 uploaded table is theirs, and it is a parameter, never a setting. **The network only where offline cannot
 answer**: a module with an allele that is not a single-base substitution is held without `--online`,
-since offline 0.8 cannot left-align an indel (RM385). **Drift a person must read holds the module**:
-`QUIET_DRIFT` names the arms that publish (written as the quiet set, so an arm upstream adds later
-holds), and the rest refuse as `rederive_drift_needs_reading` until `--accept-drift`, because the
-successor is immutable. **The snapshot is checked before the first PATCH**, through upstream's
+since offline 0.8 cannot left-align an indel (RM385); that hold is decided at planning, before any request.
+**Drift is reported, and a hold keeps what it holds (0.31.1)**: by default the module publishes, the arms
+outside `QUIET_DRIFT` counted on its line and listed in the run's log. `--withhold-rederive` refuses it as
+`rederive_drift_needs_reading` but first keeps the re-derived spec (`services/held.py`), and
+`--accept-drift` publishes that copy with no re-derivation. Through 0.31.0 the hold dropped the spec with
+its temporary directory and `--accept-drift` re-derived, so every online request was spent twice for a
+result already in hand (the person: "a pathway that does dry run under disguise of upgrade"); tolerable,
+if ever, only while a re-derivation read nothing but the local Ensembl parquet. **A gate placed after an
+expensive step keeps that step's result, or it is a dry run that costs the full price.** **The snapshot is checked before the first PATCH**, through upstream's
 `download.pulled_from_elsewhere`; the pull record spells the repo as its fsspec prefix, so comparing it
 with `ensembl_reference` would refuse every correctly pulled cache. It converges: a re-derived table
 names its release on every row, so the next sweep carries it. And one module's refusal no longer ends

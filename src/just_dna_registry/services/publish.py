@@ -58,7 +58,9 @@ from pydantic import BaseModel, Field
 
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import NamespaceReserved, Repository
+from just_dna_registry.maintenance import active_run
 from just_dna_registry.services import claims as claims_service
+from just_dna_registry.services import held
 from just_dna_registry.services.enrich import (
     enrich_spec,
     enricher_available,
@@ -478,14 +480,15 @@ def publish_version(
     gate: Any | None = None,
     allow_test_data: bool = False,
     rederive: bool = False,
-    accept_drift: bool = False,
+    drift_out: list[str] | None = None,
+    hold_as: str | None = None,
 ) -> ModuleManifest:
     """Publish from individually-uploaded spec files.
 
     `gate` is an already-acquired `EnrichmentGate` permit, released here in the worker's own
     `finally` — see `import_archive` for why the release cannot live on the caller's side.
 
-    `rederive` and `accept_drift` are `registry upgrade`'s (M12) and no router passes them; see
+    `rederive`, `drift_out` and `hold_as` are `registry upgrade`'s (M12) and no router passes them; see
     `_finalize`.
     """
     try:
@@ -507,7 +510,7 @@ def publish_version(
                 repo=repo, storage=storage, settings=settings, namespace=namespace, name=name,
                 version=version, changelog=changelog, owner=owner, published_by=published_by,
                 spec_dir=spec_dir, allow_test_data=allow_test_data,
-                rederive=rederive, accept_drift=accept_drift,
+                rederive=rederive, drift_out=drift_out, hold_as=hold_as,
             )
     finally:
         if gate is not None:
@@ -582,18 +585,26 @@ def _finalize(
     published_by: int | None = None,
     allow_test_data: bool = False,
     rederive: bool = False,
-    accept_drift: bool = False,
+    drift_out: list[str] | None = None,
+    hold_as: str | None = None,
 ) -> ModuleManifest:
     """Validate, enrich, recompile a prepared spec dir, store the version, and index it.
 
     `allow_test_data` waves a `test-`/`test_`prefixed identifier onto production deliberately (0.14).
     Off by default, so the guard still catches the typo it was built for.
 
-    `rederive` re-asks every recorded resolution (M12; only `registry upgrade` sets it). The successor
-    is immutable, so drift a person has to read (`enrich.QUIET_DRIFT`'s complement) refuses here, after
-    the enrich and before the compile, as `rederive_drift_needs_reading` naming each subject, unless
-    `accept_drift` says somebody read it. Whatever publishes, its changelog says what the re-derivation
-    moved: the drift is permanent, so its record is too.
+    `rederive` re-asks every recorded resolution (M12; only `registry upgrade` sets it). It publishes
+    whatever the re-derivation answered, and reports the drift rather than holding on it (0.31.1): the
+    drift a person may want to read (`enrich.QUIET_DRIFT`'s complement) is logged here, one subject a
+    line, and handed to `drift_out` for the sweep's report; the changelog counts every arm. Through
+    0.31.0 that drift refused the publish until `--accept-drift`, which threw away a finished, paced
+    re-derivation and made the accepting run ask every source again (the person, 2026-11-13: "a
+    pathway that does dry run under disguise of upgrade"). The predecessor stays, a successor can be
+    yanked, and the record of what moved is permanent in its changelog.
+
+    `hold_as` (`--withhold-rederive`, the predecessor's version) gates it as 0.31.0 did, refusing as
+    `rederive_drift_needs_reading`, but keeps the re-derived spec first (`services/held.py`), so
+    `--accept-drift` publishes it without asking any source again.
     """
     with start_action(
         action_type="publish_finalize", namespace=namespace, name=name, version=version
@@ -668,12 +679,23 @@ def _finalize(
         # Writes `resolution.csv` into the spec dir; the compiler reads it from there.
         enriched = enrich_spec(spec_dir, settings, action=action, rederive=rederive)
         if enriched.rederived:
-            if enriched.drift_to_read and not accept_drift:
-                raise PublishError(
-                    "rederive_drift_needs_reading",
-                    errors=enriched.drift_to_read,
-                    extra={"drift": enriched.drift},
-                )
+            if enriched.drift_to_read:
+                action.log(message_type="rederive_drift_to_read", subjects=enriched.drift_to_read)
+                if drift_out is not None:
+                    drift_out.extend(enriched.drift_to_read)
+                if hold_as is not None:
+                    run = active_run()
+                    kept = held.hold(
+                        settings, namespace, name, hold_as, spec_dir,
+                        drift=enriched.drift, drift_to_read=enriched.drift_to_read,
+                        changelog=rederive_changelog(enriched), offline=enriched.offline,
+                        run=run.path.name if run is not None else None,
+                    )
+                    raise PublishError(
+                        "rederive_drift_needs_reading",
+                        errors=enriched.drift_to_read,
+                        extra={"drift": enriched.drift, "held": kept.path.name},
+                    )
             changelog = changelog + rederive_changelog(enriched)
 
         with tempfile.TemporaryDirectory() as tmp:

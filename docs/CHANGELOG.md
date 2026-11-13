@@ -8,6 +8,26 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.31.1] — 2026-11-13
+
+### A re-derivation publishes in one pass
+
+`registry upgrade --apply` re-derives a module and publishes it in the same run. Through 0.31.0 a module
+whose re-derivation moved an answer was refused after the whole re-derivation had run, and
+`--accept-drift` ran it again, asking every online source a second time. Now the module's line ends
+`drift to read: N`, the run's log lists each subject before → after, and the successor's changelog counts
+every arm, as before. A successor you disagree with is yanked.
+
+To read before publishing, `--withhold-rederive` holds such a module as 0.31.0 did but keeps the
+re-derived spec beside the catalog, and `--accept-drift` now publishes what was kept without asking any
+source again (and acts on nothing else). A kept result made under another compiler or enricher is never
+published. Modules a 0.31.0 run held were not kept, and re-derive once more.
+
+Ctrl-C during `registry upgrade --apply` names the modules still running; a second Ctrl-C exits at once.
+Through 0.31.0 it waited for them, hours on an online sweep, and swallowed every further Ctrl-C.
+
+**Client surface:** unchanged.
+
 ## [0.31.0] — 2026-11-13
 
 ### A variant-level catalog: what published modules say about one variant, or one gene

@@ -59,7 +59,7 @@ NOT_REPLAYED = "not replayed"
 
 #: Settings that place files beside the DB unless set. Each is pointed into the workdir, so a sweep
 #: that snapshots or logs does it to the copy's side and never into an operator's configured dir.
-_SCRATCH_DIRS = ("backup_dir", "run_dir", "run_log_dir")
+_SCRATCH_DIRS = ("backup_dir", "run_dir", "run_log_dir", "held_dir")
 
 
 class ReplayRefused(Exception):
@@ -82,7 +82,6 @@ class Sweep(Protocol):
         trim: bool,
         limit: int,
         online: bool,
-        accept_drift: bool,
         jobs: int,
     ) -> SweepResult: ...
 
@@ -452,7 +451,7 @@ def replay_upgrade(
     swept = sweep(
         scratch_settings, repo, overlay,
         namespace=namespace, module=module, apply=True, force=False, trim=False, limit=0,
-        online=online, accept_drift=False, jobs=jobs,
+        online=online, jobs=jobs,
     )
     lines = SweepLines.parse(swept.text())
 

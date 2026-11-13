@@ -243,16 +243,17 @@ class EnrichOutcome:
     rederived: bool = False
     #: Under `rederived`, how many re-asked subjects moved, per upstream `DRIFT_CASES` arm (RM394).
     drift: dict[str, int] = field(default_factory=dict)
-    #: Under `rederived`, the drift a person has to read before the change is published: one line per
-    #: subject in an arm outside `QUIET_DRIFT`, upstream's own rendering (`str(SubjectDrift)`).
+    #: Under `rederived`, the drift a person may want to read: one line per subject in an arm outside
+    #: `QUIET_DRIFT`, upstream's own rendering (`str(SubjectDrift)`). Reported, never a hold (0.31.1).
     drift_to_read: list[str] = field(default_factory=list)
 
 
-#: The re-derivation arms that publish without a person reading them (upstream's guide § 2 step 5:
-#: `respelled` "nothing to do", `gained_allele` and `gained_rsid` the source naming more of the same
-#: events). Written as the quiet set rather than the holding one, so an arm upstream adds later holds
-#: until somebody reads what it means: `moved`, `lost_allele` and `renamed` want reading, and
-#: `undecided` asks for an online re-run.
+#: The re-derivation arms the sweep reports as counts only (upstream's guide § 2 step 5: `respelled`
+#: "nothing to do", `gained_allele` and `gained_rsid` the source naming more of the same events). Every
+#: other arm is listed subject by subject in the run's log and counted on the module's line: `moved`,
+#: `lost_allele` and `renamed` want reading, and `undecided` asks for an online re-run. Written as the
+#: quiet set, so an arm upstream adds later is listed until somebody decides it is quiet. Since 0.31.1
+#: nothing here holds a publish; it decides what the report spells out.
 QUIET_DRIFT: frozenset[str] = frozenset({"respelled", "gained_allele", "gained_rsid"})
 
 
@@ -1034,12 +1035,7 @@ def rederive_changelog(outcome: EnrichOutcome) -> str:
     else:
         moved = ", ".join(f"{count} {case}" for case, count in sorted(outcome.drift.items()))
         moved = f"re-asked subjects that answer differently: {moved}"
-    accepted = (
-        f" {len(outcome.drift_to_read)} of them were read and accepted by the operator before publishing."
-        if outcome.drift_to_read
-        else ""
-    )
-    return f"\n\nResolutions re-derived ({where}) against the current reference snapshot; {moved}.{accepted}"
+    return f"\n\nResolutions re-derived ({where}) against the current reference snapshot; {moved}."
 
 
 def enrich_spec(

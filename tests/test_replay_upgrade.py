@@ -116,7 +116,7 @@ def test_the_online_mark_is_what_a_re_derivation_writes() -> None:
 def test_sweep_lines_attach_indented_detail_to_their_label() -> None:
     text = (
         "mode=test db=x\n"
-        "✗ ns/a@1.0.0: rederive_drift_needs_reading\n"
+        "✗ ns/a@1.0.0: compile_failed\n"
         "    rs1 moved: the source names a different event\n"
         "    rs2 lost_allele\n"
         "✓ ns/b@1.0.0 → 1.0.1 (contract recompile)\n"
@@ -163,12 +163,12 @@ def _replay(settings: Settings, workdir: Path, **kwargs) -> object:
 
 
 def _refusing(real):
-    """`upgrade_version` refusing `coronary_two` with drift to read, and running for real otherwise."""
+    """`upgrade_version` refusing `coronary_two`, and running for real otherwise."""
 
     def upgrade_version(**kwargs):
         if kwargs["name"] == "coronary_two":
             raise PublishError(
-                "rederive_drift_needs_reading", errors=["rs1801133 moved: the source names a different event"]
+                "compile_failed", errors=["rs1801133 moved: the source names a different event"]
             )
         return real(**kwargs)
 
@@ -230,7 +230,7 @@ def test_the_replay_reproduces_the_run_and_touches_nothing_real(
     assert f"{_NS}/{_NAME}@1.0.0 → 1.0.1: {entry.status}" in out
     # The refusal the original printed and lost is in the report with its detail.
     refused = report.sweep.refused[f"{_NS}/coronary_two@1.0.0"]
-    assert refused[0].endswith("rederive_drift_needs_reading")
+    assert refused[0].endswith("compile_failed")
     assert "rs1801133 moved: the source names a different event" in refused[1]
     assert "refused in the replay, no successor in the catalog (1)" in out
     assert "rs1801133 moved" in out.split("── replay against the original run ──")[1]

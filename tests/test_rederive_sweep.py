@@ -36,6 +36,7 @@ from just_dna_registry.db.schema import connect
 from just_dna_registry.maintenance import SNAPSHOT_FILE, db_digest
 from just_dna_registry.replay import SweepLines
 from just_dna_registry.services import enrich as enrich_service
+from just_dna_registry.services import held
 from just_dna_registry.services.enrich import QUIET_DRIFT, snapshot_not_current
 from just_dna_registry.services.publish import PublishError
 from just_dna_registry.services.upgrade import (
@@ -47,7 +48,7 @@ from just_dna_registry.services.upgrade import (
 )
 from just_dna_registry.specfiles import RESOLUTION_CSV
 from just_dna_registry.storage.base import version_key
-from just_dna_registry.sweep_report import HELD_SNAPSHOT
+from just_dna_registry.sweep_report import HELD_SNAPSHOT, HELD_STALE
 
 _NS, _NAME = "just-dna-seq", "coronary"
 _YAML = """\
@@ -159,7 +160,7 @@ def test_only_an_allele_offline_cannot_place_asks_for_the_network() -> None:
     assert not needs_online_rederive({"variants.csv": (var + "rs1,,,,,A/G\n").encode()})
 
 
-def test_an_arm_upstream_adds_holds_until_somebody_reads_it() -> None:
+def test_an_arm_upstream_adds_is_listed_until_somebody_decides_it_is_quiet() -> None:
     # Floored: an emptied foreign set would make "every quiet arm is upstream's" vacuous.
     assert len(DRIFT_CASES) >= 7
     assert QUIET_DRIFT < DRIFT_CASES
@@ -216,9 +217,14 @@ def test_a_table_already_on_0_8_is_carried_as_before(
     assert "re-derived" not in _changelog(app, result[0])
 
 
-def test_drift_that_wants_reading_holds_the_successor_until_accepted(
-    client: TestClient, api_key: str, app, settings: Settings, monkeypatch
+def test_drift_worth_reading_publishes_in_the_one_run_and_is_listed(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, enrich_calls: list[dict]
 ) -> None:
+    """0.31.1: a re-derivation publishes what it answered and reports the drift; it never holds.
+
+    Through 0.31.0 a `moved` subject refused the publish until `--accept-drift`, after the paced
+    re-derivation had run, so accepting asked every source a second time.
+    """
     manifest = _publish(client, api_key)
     _as_0_7_table(app)
     moved = SubjectDrift(
@@ -226,23 +232,17 @@ def test_drift_that_wants_reading_holds_the_successor_until_accepted(
         respelled=False, case="moved",
     )
     _inject_drift(monkeypatch, moved)
-    args = {
-        "repo": app.state.repo, "storage": app.state.storage, "settings": settings,
-        "namespace": _NS, "name": _NAME, "version": "1.0.0", "manifest": manifest,
-    }
-
-    with pytest.raises(PublishError) as refused:
-        upgrade_version(**args)
-    assert refused.value.detail == "rederive_drift_needs_reading"
-    assert refused.value.errors == [str(moved)]
-    assert refused.value.extra["drift"] == {"moved": 1}
-    # Nothing was published: the refusal is before the compile.
-    assert not app.state.repo.version_exists(_NS, _NAME, "1.0.1")
-
-    result = upgrade_version(**args, accept_drift=True)
-    assert result is not None
+    enrich_calls.clear()
+    drift: list[str] = []
+    result = upgrade_version(
+        repo=app.state.repo, storage=app.state.storage, settings=settings,
+        namespace=_NS, name=_NAME, version="1.0.0", manifest=manifest, drift_out=drift,
+    )
+    assert result is not None and result[0] == "1.0.1"
+    assert app.state.repo.version_exists(_NS, _NAME, "1.0.1")
+    assert [call["rederive"] for call in enrich_calls] == [True]  # one re-derivation, not two
+    assert drift == [str(moved)]
     assert "1 moved" in _changelog(app, result[0])
-    assert "read and accepted by the operator" in _changelog(app, result[0])
 
 
 def test_quiet_drift_publishes_and_is_recorded(
@@ -406,7 +406,7 @@ def test_one_refusal_does_not_end_the_sweep(
 
     def refuse(**kwargs):
         attempted.append(kwargs["name"])
-        raise PublishError("rederive_drift_needs_reading", errors=["rs1 moved: the source names a different event"])
+        raise PublishError("compile_failed", errors=["rs1: strict refused the row"])
 
     monkeypatch.setattr(cli, "upgrade_version", refuse)
     monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
@@ -414,8 +414,7 @@ def test_one_refusal_does_not_end_the_sweep(
     assert sorted(attempted) == ["coronary", "coronary_two"]
     assert out.count("✗ just-dna-seq/") == 2
     assert "2 refused" in out
-    assert "--accept-drift" in out
-    assert "by type: drift to read 2 (refused rederive_drift_needs_reading 2)" in out
+    assert "by type: validation 2 (refused compile_failed 2)" in out
 
 
 def test_the_terminal_gets_one_line_per_module_and_the_log_gets_the_rest(
@@ -436,7 +435,7 @@ def test_the_terminal_gets_one_line_per_module_and_the_log_gets_the_rest(
         # RM403's retry line (0.8.1): its own logger, counted as network, not as the enricher's.
         logging.getLogger("just_dna_enricher.net").warning("_rest_rsid(rs1): attempt 1 of 3 failed; retrying")
         if kwargs["name"] == "coronary_two":
-            raise PublishError("rederive_drift_needs_reading", errors=["rs1 moved: the source names a different event"])
+            raise PublishError("compile_failed", errors=["rs1 moved: the source names a different event"])
         return real(**kwargs)
 
     monkeypatch.setattr(cli, "upgrade_version", upgrade_version)
@@ -447,7 +446,7 @@ def test_the_terminal_gets_one_line_per_module_and_the_log_gets_the_rest(
     module_lines = [line for line in out.splitlines() if f" {_NS}/" in line]
     assert len(module_lines) == 2, out
     assert any(line.startswith(f"✓ {_NS}/coronary@1.0.0 → 1.0.1 [") for line in module_lines), out
-    assert f"✗ {_NS}/coronary_two@1.0.0: rederive_drift_needs_reading" in module_lines
+    assert f"✗ {_NS}/coronary_two@1.0.0: compile_failed" in module_lines
     assert "rs1 moved" not in out and "digest sha256:" not in out
     assert "Re-derivation: 1 of 2" not in out
     assert "logged warnings: enrichment 2 (just_dna_enricher.enrich 2); network 2 (just_dna_enricher.net 2)" in out
@@ -730,3 +729,128 @@ def test_a_table_the_installed_enricher_wrote_has_converged() -> None:
     assert rederive_converged("0.7.0", "0.8.5") is False
     assert rederive_converged("0.8.5", "0.8.5") is True
     assert rederive_converged(None, "0.8.5") is None
+
+
+def test_a_published_re_derivation_counts_its_drift_on_the_line_and_lists_it_in_the_log(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, tmp_path: Path
+) -> None:
+    """0.31.1: the module's line says how many subjects want reading; the log lists each; it published."""
+    _publish(client, api_key, name="coronary")
+    real = cli.upgrade_version
+    line = "rs4244285 moved: 10:94781859 G>A -> 10:94781860 G>A"
+
+    def upgrade_version(**kwargs):
+        kwargs["drift_out"].append(line)
+        return real(**kwargs)
+
+    monkeypatch.setattr(cli, "upgrade_version", upgrade_version)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(tmp_path / "runs"))
+    out = _sweep(settings, monkeypatch, "--apply", "--force")
+
+    [head] = [row for row in out.splitlines() if f" {_NS}/coronary@" in row]
+    assert head.startswith(f"✓ {_NS}/coronary@1.0.0 → 1.0.1 [") and head.endswith(" drift to read: 1"), head
+    assert "1 re-derived module(s) published with drift worth reading (1 subject(s)" in out
+    assert line not in out
+    assert f"    drift: {line}" in _run_log(tmp_path)
+    assert app.state.repo.version_exists(_NS, "coronary", "1.0.1")
+
+
+# ── --withhold-rederive keeps the re-derivation; --accept-drift publishes it (0.31.1) ────────────────
+
+_MOVED = SubjectDrift(
+    variant_key="rs4244285", before="10:94781859 G>A", after="10:94781860 G>A", respelled=False, case="moved",
+)
+
+
+def test_withheld_drift_is_kept_and_accepting_publishes_it_without_re_deriving(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, enrich_calls: list[dict]
+) -> None:
+    """Through 0.31.0 the held re-derivation was dropped with its temporary directory, so accepting it
+    re-derived the module again and spent every online request twice."""
+    manifest = _publish(client, api_key)
+    _as_0_7_table(app)
+    _inject_drift(monkeypatch, _MOVED)
+    enrich_calls.clear()
+    args = {
+        "repo": app.state.repo, "storage": app.state.storage, "settings": settings,
+        "namespace": _NS, "name": _NAME, "version": "1.0.0", "manifest": manifest,
+    }
+
+    with pytest.raises(PublishError) as refused:
+        upgrade_version(**args, withhold=True)
+    assert refused.value.detail == "rederive_drift_needs_reading"
+    assert refused.value.errors == [str(_MOVED)]
+    assert not app.state.repo.version_exists(_NS, _NAME, "1.0.1")
+    kept = held.find(settings, _NS, _NAME, "1.0.0")
+    assert kept is not None and kept.stale_reason() is None
+    assert kept.drift_to_read == [str(_MOVED)]
+    kept_table = kept.files()[RESOLUTION_CSV]
+    assert not resolution_needs_rederive(kept_table.decode())  # the 0.8 table, not the 0.7 one
+
+    drift: list[str] = []
+    result = upgrade_version(**args, from_held=kept, drift_out=drift)
+    assert result is not None and result[0] == "1.0.1"
+    # One re-derivation in all: the accepting publish only merges into the kept, complete table.
+    assert [call["rederive"] for call in enrich_calls] == [True, False]
+    assert drift == [str(_MOVED)]
+    assert "1 moved" in _changelog(app, "1.0.1")
+    stored = app.state.storage.read_file(version_key(_NS, _NAME, "1.0.1"), RESOLUTION_CSV)
+    assert stored == kept_table
+    assert held.find(settings, _NS, _NAME, "1.0.0") is None  # consumed
+
+
+def test_a_kept_re_derivation_from_another_toolchain_is_never_published(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch
+) -> None:
+    manifest = _publish(client, api_key)
+    _as_0_7_table(app)
+    _inject_drift(monkeypatch, _MOVED)
+    args = {
+        "repo": app.state.repo, "storage": app.state.storage, "settings": settings,
+        "namespace": _NS, "name": _NAME, "version": "1.0.0", "manifest": manifest,
+    }
+    with pytest.raises(PublishError):
+        upgrade_version(**args, withhold=True)
+    kept = held.find(settings, _NS, _NAME, "1.0.0")
+    assert kept is not None
+    real = held.toolchain()
+    monkeypatch.setattr(held, "toolchain", lambda: {**real, "just-dna-enricher": "0.0.1"})
+    assert "just-dna-enricher" in (kept.stale_reason() or "")
+    with pytest.raises(UpgradeHeld) as stale:
+        upgrade_version(**args, from_held=kept)
+    assert stale.value.code == HELD_STALE
+    assert not app.state.repo.version_exists(_NS, _NAME, "1.0.1")
+
+
+def test_the_sweep_withholds_then_accepts_with_one_re_derivation(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, enrich_calls: list[dict]
+) -> None:
+    _publish(client, api_key)
+    _publish(client, api_key, name="coronary_two")
+    _as_0_7_table(app)
+    _inject_drift(monkeypatch, _MOVED)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    enrich_calls.clear()
+
+    out = _sweep(settings, monkeypatch, "--apply", "--withhold-rederive", "-m", _NAME)
+    assert f"✗ {_NS}/{_NAME}@1.0.0: rederive_drift_needs_reading" in out
+    assert "--accept-drift" in out
+    assert not app.state.repo.version_exists(_NS, _NAME, "1.0.1")
+    # A second withholding sweep reports the kept result again and re-derives nothing.
+    out = _sweep(settings, monkeypatch, "--apply", "--withold-rederive", "-m", _NAME)
+    assert f"✗ {_NS}/{_NAME}@1.0.0: rederive_drift_needs_reading" in out
+    assert [call["rederive"] for call in enrich_calls] == [True]
+
+    out = _sweep(settings, monkeypatch, "--apply", "--accept-drift")
+    published = [row for row in out.splitlines() if row.startswith(f"✓ {_NS}/{_NAME}@1.0.0 → 1.0.1")]
+    assert len(published) == 1 and " kept" in published[0] and published[0].endswith("drift to read: 1"), out
+    # coronary_two was never kept, so --accept-drift leaves it alone rather than re-deriving it.
+    assert f"· {_NS}/coronary_two@1.0.0: unchanged not_kept" in out
+    assert [call["rederive"] for call in enrich_calls] == [True, False]
+    assert not app.state.repo.version_exists(_NS, "coronary_two", "1.0.1")
+
+
+def test_withholding_and_accepting_at_once_is_refused(settings: Settings, monkeypatch) -> None:
+    out = _sweep(settings, monkeypatch, "--apply", "--withhold-rederive", "--accept-drift", exit_code=2)
+    assert "not both" in out

@@ -1,5 +1,33 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.31.1 — a re-derivation publishes in one pass (operator note)
+
+`registry upgrade --apply` no longer holds a re-derived module on drift. Through 0.31.0 a module whose
+re-derivation moved an answer (`moved`, `lost_allele`, `renamed`, `undecided`) was refused as
+`rederive_drift_needs_reading` after the whole re-derivation had run, and `--accept-drift` ran it again,
+spending every online request twice. Now it publishes what it answered: the module's line ends
+`drift to read: N`, the run's `run.log` lists each subject before → after, and the successor's changelog
+counts every arm. The predecessor is untouched; a successor you disagree with is yanked, never edited.
+
+To read the drift before anything publishes, gate it: `--withhold-rederive` refuses such a module as
+0.31.0 did, but first keeps the re-derived spec under `held/` beside the catalog (`REGISTRY_HELD_DIR`).
+`--accept-drift` then publishes what was kept, asking no source again, and acts on nothing else. A kept
+result is never published under another compiler or enricher than the one that derived it
+(`held_result_stale`). Runs of 0.31.0 and earlier kept nothing, so a module they held re-derives once
+more.
+
+```
+uv run registry upgrade --dry-run
+uv run registry upgrade --apply --online                          # re-derive and publish, drift reported
+# or, gated:
+uv run registry upgrade --apply --online --withhold-rederive      # re-derive, keep, hold
+uv run registry upgrade --apply --accept-drift [-m <module>]      # publish what was kept, no re-derivation
+```
+
+Ctrl-C during `--apply` waits for the modules already running (a worker thread cannot be stopped) and
+names them; a second Ctrl-C exits at once and abandons them. Through 0.31.0 every further Ctrl-C was
+swallowed until those modules finished.
+
 ## 0.31 — the variant-level catalog (operator note — one backfill)
 
 The new tables are created at boot. Published versions have no recorded claims until projected, and the routes
@@ -50,7 +78,8 @@ which is exactly the state of the polygon's 12 held modules.
    `uv run registry --mode test replay-upgrade --compiler 0.8 --online`
    Its run is readable afterwards at `GET /api/v1/admin/runs?command=replay-upgrade` (site admin).
 3. Read the replay. The four that refused on `lost_allele` should now publish with nothing to accept; the
-   eight with drift to read still need `--accept-drift`, each read first. A module the dbSNP witness
+   eight with drift to read still need `--accept-drift`, each read first (since 0.31.1 they publish in
+   the sweep and the drift is listed in `run.log`; see the 0.31.1 note). A module the dbSNP witness
    now withholds a row of, or refuses over a withdrawn rsID, is new information: read it before acting.
 4. Apply per module, as in the 0.28 note below.
 
@@ -130,8 +159,8 @@ prior bytes are gzipped; a 0.28.1 run's raw copies still revert). Every run ends
 (`REGISTRY_RUN_KEEP`, default 2: the newest two revertible runs and the newest two replays stay whole, the
 rest keep only `run.log` and `run.json`), so revert a run before two newer changing commands follow it,
 or set `REGISTRY_RUN_KEEP` higher for the sweep. `registry prune-runs` frees room by hand; `list-runs`
-shows each run's size. The path is printed first and last. Read the held modules
-out of `run.log` before `--accept-drift`; `registry revert-run <id>` undoes an `--apply`, stored files
+shows each run's size. The path is printed first and last. Read the drift each re-derived module
+published with out of `run.log`; `registry revert-run <id>` undoes an `--apply`, stored files
 included (stop the server first). On 0.28.0, `tee` the output and `registry backup` by hand.
 
 **Lost a sweep's output?** `registry replay-upgrade --since <the run's date> --compiler 0.8` replays it on a
@@ -191,18 +220,13 @@ the waiting, not the snapshot pass: an offline re-derivation spends ~9 s of its 
 the Ensembl snapshot by rsID, which already use every core, so six modules took 45 s on one worker and
 50 s on four. Expect `--jobs` to pay off on `--online` and leave the offline sweep where it was.
 
-**5. Read the drift the sweep held.** A re-derivation reports each subject whose answer changed, in one of
-upstream's seven arms. `respelled`, `gained_allele` and `gained_rsid` publish and are counted in the
-successor's changelog. Every other arm (`moved`, `lost_allele`, `renamed`, `undecided`) refuses that
-module as `rederive_drift_needs_reading`, listing each subject before → after in `run.log` (or on the
-terminal with `--verbose`), and publishes nothing,
-because the successor is immutable. Read them, and for each module you accept:
-
-```
-uv run registry upgrade --apply -m <module> --accept-drift          # add --online if it was held for an indel
-```
-
-That re-runs the module's whole re-derivation, so an online module's requests are spent twice.
+**5. Read the drift the sweep published.** A re-derivation reports each subject whose answer changed, in
+one of upstream's seven arms, and publishes (since 0.31.1; 0.28.0 to 0.31.0 held the module and made
+`--accept-drift` re-derive it a second time). Every arm is counted in the successor's changelog. The arms
+outside `respelled`, `gained_allele` and `gained_rsid` (`moved`, `lost_allele`, `renamed`, `undecided`)
+are counted on the module's line as `drift to read: N` and listed subject by subject, before → after, in
+`run.log` (or on the terminal with `--verbose`). A successor you disagree with is yanked; the predecessor
+is untouched. To read before publishing, `--withhold-rederive` then `--accept-drift` (the 0.31.1 note).
 
 **What moves on a successor, and is not a fault.** `artifact.digest` on every one. `content_signature`
 only where a module wrote `chr`-prefixed contigs on its positional tables (upstream RM363, guide § 1.22).

@@ -8,6 +8,7 @@ import logging
 import os
 import secrets
 import shlex
+import signal
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +48,7 @@ from just_dna_registry.maintenance import (
 from just_dna_registry.models.api import VALID_ACCOUNT_TYPES, AccountRename, NamespaceRename
 from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
 from just_dna_registry.replay import ReplayRefused, replay_upgrade
+from just_dna_registry.services import held as held_store
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.namespaces import NamespaceRenameRefused, rename_namespace
@@ -75,6 +77,7 @@ from just_dna_registry.sweep_report import (
     HELD,
     HELD_NEEDS_ONLINE,
     HELD_SNAPSHOT,
+    HELD_STALE,
     PUBLISHED,
     REFUSED,
     UNCHANGED,
@@ -987,10 +990,16 @@ def upgrade(
         help="Let a re-derivation that needs the network (a module carrying an indel) ask live sources. "
              "Without it such a module is held; every other module re-derives from the snapshot",
     ),
+    withhold: bool = typer.Option(
+        False, "--withhold-rederive", "--withold-rederive",
+        help="Hold a re-derivation whose drift wants reading (moved, lost_allele, renamed, undecided) "
+             "instead of publishing it. The re-derived spec is kept, so --accept-drift publishes it "
+             "without asking any source again",
+    ),
     accept_drift: bool = typer.Option(
         False, "--accept-drift",
-        help="Publish a re-derivation whose drift wants reading (moved, lost_allele, renamed, "
-             "undecided) after you have read it. Aim it with -m",
+        help="Publish the re-derivations --withhold-rederive kept, without re-deriving; nothing else "
+             "acts. Aim it with -m",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
@@ -1026,9 +1035,12 @@ def upgrade(
 
     **A stored `resolution.csv` written before format 0.8 is re-derived, not carried** (M12): detected
     from its rows, never a flag. It needs the new Ensembl snapshot on the box (checked before anything
-    re-derives), the network for a module with an indel (`--online`), and a person to read drift that
-    moved an answer (`--accept-drift`, after reading). A held or refused module is reported and the
-    sweep goes on.
+    re-derives) and the network for a module with an indel (`--online`). A re-derivation publishes
+    whatever it answered: drift that moved an answer (moved, lost_allele, renamed, undecided) is counted
+    on the module's line and listed subject by subject in the run's log, and the successor's changelog
+    counts every arm. `--withhold-rederive` holds such a module instead, keeping its re-derived spec,
+    and `--accept-drift` then publishes what was kept without re-deriving. A held or refused module is
+    reported and the sweep goes on.
 
     **The terminal gets one line per module** (published, refused/held with its code, unchanged with
     its bucket, failed with the exception's type) and, at the end, counts by type; every detail line and
@@ -1039,13 +1051,16 @@ def upgrade(
     one thread; each module's line is printed whole when it finishes, so the order is completion order."""
     if trim and not force:
         raise typer.BadParameter("--trim is lossy (it drops columns); re-run with --force to confirm")
+    if withhold and accept_drift:
+        raise typer.BadParameter("--withhold-rederive or --accept-drift, not both")
     settings = get_settings()
     namespace = _current_namespace(settings, namespace)
     conn = connect(settings.db_path)
     init_db(conn)
     result = _upgrade_sweep(
         settings, Repository(conn), _storage(settings), namespace=namespace, module=module,
-        apply=apply, force=force, trim=trim, limit=limit, online=online, accept_drift=accept_drift,
+        apply=apply, force=force, trim=trim, limit=limit, online=online,
+        withhold=withhold, accept_drift=accept_drift,
         verbose=verbose, jobs=jobs or settings.upgrade_jobs,
     )
     if result.count(FAILED):
@@ -1104,6 +1119,8 @@ class _ToPublish:
     codes: str
     described: str
     online_subjects: int
+    #: A re-derivation `--withhold-rederive` kept, published as it is instead of re-deriving.
+    kept: held_store.HeldRederivation | None = None
 
 
 def _sweep_one(
@@ -1117,6 +1134,8 @@ def _sweep_one(
     online: bool,
     snapshot_problem: str | None,
     installed_releases: dict[str, str | None] | None = None,
+    withhold: bool = False,
+    accept_drift: bool = False,
 ) -> SweepItem | _ToPublish:
     """One latest version's plan: what became of it, or, under `--apply`, the re-publish to run."""
     ns, name, ver = row["namespace"], row["name"], row["version"]
@@ -1144,6 +1163,27 @@ def _sweep_one(
             else "current"
         )
         return SweepItem(label, UNCHANGED, bucket, f"· {label}: unchanged {bucket}")
+    kept = held_store.find(settings, ns, name, ver) if prep.rederive else None
+    if accept_drift and kept is None:
+        return SweepItem(label, UNCHANGED, "not_kept", f"· {label}: unchanged not_kept")
+    if kept is not None:
+        # Published from what was kept, so neither the snapshot nor the network is asked: both
+        # checks below are about a re-derivation, and this one already ran.
+        stale = kept.stale_reason()
+        if stale:
+            return SweepItem(label, HELD, HELD_STALE, f"… held {label}: {HELD_STALE}", [stale])
+        codes = f"{_act_codes(prep, recompile=force)} kept"
+        described = f"{_describe_upgrade(prep, recompile=force)}; the re-derivation kept by run {kept.run}"
+        if withhold:
+            return SweepItem(
+                label, REFUSED, "rederive_drift_needs_reading", f"✗ {label}: rederive_drift_needs_reading",
+                [f"kept by run {kept.run}; --accept-drift -m {name} publishes it", *kept.drift_to_read],
+            )
+        if not apply:
+            return SweepItem(
+                label, WOULD_UPGRADE, "next_patch", f"⇧ {label}: would publish {codes} → next PATCH", [described],
+            )
+        return _ToPublish(label, ns, name, ver, manifest, prep, codes, described, 0, kept)
     if prep.rederive and snapshot_problem:
         return SweepItem(label, HELD, HELD_SNAPSHOT, f"… held {label}: {HELD_SNAPSHOT}", [snapshot_problem])
     if prep.needs_online and not online:
@@ -1160,6 +1200,11 @@ def _sweep_one(
             online_subjects=online_subjects,
         )
     return _ToPublish(label, ns, name, ver, manifest, prep, codes, described, online_subjects)
+
+
+def _exit_now(_signum: int, _frame: Any) -> None:
+    """A second Ctrl-C in a sweep: leave without joining the worker threads."""
+    os._exit(130)
 
 
 def _failed(label: str, exc: Exception) -> SweepItem:
@@ -1200,17 +1245,19 @@ def _publish_one(
     force: bool,
     trim: bool,
     online: bool,
-    accept_drift: bool,
+    withhold: bool = False,
 ) -> SweepItem:
     """One planned re-publish, on a worker thread, as the item the main thread prints and counts."""
     label, manifest = todo.label, todo.manifest
+    drift: list[str] = []
     try:
         own = Repository(connect(Path(db_file))) if db_file else repo
         try:
             result = upgrade_version(
                 repo=own, storage=storage, settings=settings,
                 namespace=todo.namespace, name=todo.name, version=todo.version, manifest=manifest,
-                recompile=force, trim=trim, prepared=todo.prep, online=online, accept_drift=accept_drift,
+                recompile=force, trim=trim, prepared=todo.prep, online=online, drift_out=drift,
+                withhold=withhold, from_held=todo.kept,
             )
         finally:
             if own is not repo:
@@ -1218,8 +1265,12 @@ def _publish_one(
     except UpgradeHeld as exc:
         return SweepItem(label, HELD, exc.code, f"… held {label}: {exc.code}", [str(exc)])
     except PublishError as exc:
+        kept = (
+            [f"kept; --accept-drift -m {todo.name} publishes it without re-deriving"]
+            if exc.extra.get("held") else []
+        )
         return SweepItem(
-            label, REFUSED, exc.detail, f"✗ {label}: {exc.detail}", list(exc.errors),
+            label, REFUSED, exc.detail, f"✗ {label}: {exc.detail}", [*kept, *exc.errors],
             online_subjects=todo.online_subjects,
         )
     except Exception as exc:  # one module's failure is reported, not fatal
@@ -1227,11 +1278,17 @@ def _publish_one(
     if result is None:
         return SweepItem(label, UNCHANGED, "current", f"· {label}: unchanged current")
     new_version, new_manifest = result
+    to_read = f" drift to read: {len(drift)}" if drift else ""
     return SweepItem(
-        label, PUBLISHED, new_version, f"✓ {label} → {new_version} {todo.codes}",
-        [todo.described, f"digest {manifest.artifact.digest[:23]}… → {new_manifest.artifact.digest[:23]}…"],
+        label, PUBLISHED, new_version, f"✓ {label} → {new_version} {todo.codes}{to_read}",
+        [
+            todo.described,
+            f"digest {manifest.artifact.digest[:23]}… → {new_manifest.artifact.digest[:23]}…",
+            *(f"drift: {line}" for line in drift),
+        ],
         warnings_summary=dict(new_manifest.compilation.warnings_summary),
         online_subjects=todo.online_subjects,
+        drift_to_read=len(drift),
     )
 
 
@@ -1247,9 +1304,10 @@ def _upgrade_sweep(
     trim: bool,
     limit: int,
     online: bool,
-    accept_drift: bool,
     verbose: bool = False,
     jobs: int = 1,
+    withhold: bool = False,
+    accept_drift: bool = False,
 ) -> SweepResult:
     """The sweep `registry upgrade` runs, over a given catalog and storage.
 
@@ -1290,6 +1348,7 @@ def _upgrade_sweep(
     workers = max(1, jobs)
     db_file = _sweep_db_file(repo)
     pending: set[Future[SweepItem]] = set()
+    running: dict[Future[SweepItem], str] = {}
     handed = 0
 
     def report(item: SweepItem) -> None:
@@ -1333,7 +1392,7 @@ def _upgrade_sweep(
                     planned = _sweep_one(
                         settings, storage, row, apply=apply, force=force, trim=trim,
                         online=online, snapshot_problem=snapshot_problem,
-                        installed_releases=installed_releases,
+                        installed_releases=installed_releases, withhold=withhold, accept_drift=accept_drift,
                     )
                 except Exception as exc:  # one module's failure is reported, not fatal
                     planned = _failed(label, exc)
@@ -1344,11 +1403,27 @@ def _upgrade_sweep(
                 # At most `workers` running: their files are in memory until they finish.
                 collect(at_most=workers - 1)
                 handed += 1
-                pending.add(pool.submit(
+                future = pool.submit(
                     _publish_one, settings, repo, db_file, storage, planned,
-                    force=force, trim=trim, online=online, accept_drift=accept_drift,
-                ))
+                    force=force, trim=trim, online=online, withhold=withhold,
+                )
+                running[future] = planned.label
+                pending.add(future)
             collect(at_most=0)
+        except KeyboardInterrupt:
+            # A worker thread cannot be stopped, and the pool (and the interpreter, at exit) joins it, so
+            # through 0.31.0 Ctrl-C waited out every running module, hours on an online sweep, and every
+            # further Ctrl-C landed in that join (the person: "I'll have to kill the process"). Say what
+            # is running, and make the next one exit at once.
+            still = sorted(running[f] for f in pending if not f.done())
+            typer.secho(
+                f"\ninterrupted: {len(still)} module(s) still running ({', '.join(still) or 'none'}) and "
+                "waited for; Ctrl-C again exits now and abandons them (what a module already committed "
+                "stays, and `registry revert-run` undoes it)",
+                fg=typer.colors.YELLOW, err=True,
+            )
+            signal.signal(signal.SIGINT, _exit_now)
+            raise
         finally:
             if pool is not None:
                 # Reached early only by an interrupt: what has not started is dropped, what is running
@@ -1401,8 +1476,17 @@ def _sweep_summary(result: SweepResult, *, apply: bool, force: bool) -> None:
         )
     if any(item.status == REFUSED and item.code == "rederive_drift_needs_reading" for item in result.items):
         typer.echo(
-            "A `rederive_drift_needs_reading` refusal lists each subject before → after in the run's log; "
-            "once read, re-run with -m <module> --accept-drift."
+            "A held re-derivation (`rederive_drift_needs_reading`) is kept beside the catalog and its drift "
+            "is listed before → after in the run's log; once read, `registry upgrade --apply --accept-drift` "
+            "(-m <module> for one) publishes what was kept without re-deriving."
+        )
+    drifted = [item for item in result.items if item.drift_to_read]
+    if drifted:
+        typer.echo(
+            f"{len(drifted)} re-derived module(s) published with drift worth reading "
+            f"({sum(item.drift_to_read for item in drifted)} subject(s): moved, lost_allele, renamed or "
+            "undecided); each is listed before → after in the run's log. A successor that is wrong is "
+            "yanked (`RegistryClient.yank`, or the console), never edited; the predecessor is untouched."
         )
     # **An anomaly is not a gap and is not actionable, so it is said on its own.** Drift measured
     # against the identical compiler cannot be repaired by recompiling — the recompile derives the same

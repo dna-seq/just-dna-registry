@@ -37,6 +37,8 @@ PROBLEMS: tuple[str, ...] = (REFUSED, FAILED, HELD, BLOCKED, ANOMALY)
 #: The sweep's own hold codes. Before 0.28.2 a hold was a sentence; the sentence is the detail now.
 HELD_SNAPSHOT = "snapshot_not_current"
 HELD_NEEDS_ONLINE = "needs_online"
+#: A kept re-derivation (`--withhold-rederive`) that another toolchain derived: never published.
+HELD_STALE = "held_result_stale"
 
 #: How a problem's code is grouped on the summary line. Keyed by `(status, code)` for codes this
 #: service emits; a failure is keyed by its exception's class name.
@@ -63,6 +65,7 @@ TYPE_OF: dict[tuple[str, str], str] = {
     (REFUSED, "test_data_on_prod"): "catalog",
     (HELD, HELD_SNAPSHOT): "snapshot",
     (HELD, HELD_NEEDS_ONLINE): "network",
+    (HELD, HELD_STALE): "held result",
     (BLOCKED, "contract_rejects"): "contract",
     (ANOMALY, "identical_compiler_drift"): "reliability",
 }
@@ -121,6 +124,9 @@ class SweepItem:
     warnings_summary: dict[str, int] = field(default_factory=dict)
     #: Recorded subjects an online re-derivation re-asked (or, in a dry run, would): its egress budget.
     online_subjects: int = 0
+    #: A published re-derivation's subjects in an arm worth reading (`enrich.QUIET_DRIFT`'s complement),
+    #: listed in `detail`; counted here so the summary need not parse a line.
+    drift_to_read: int = 0
 
     def block(self) -> str:
         """The head with its detail indented under it: the shape `replay.SweepLines.parse` reads."""
@@ -215,6 +221,7 @@ class SweepResult:
                     "problem_type": item.problem_type, "head": item.head, "detail": list(item.detail),
                     "warnings_summary": dict(item.warnings_summary),
                     "online_subjects": item.online_subjects,
+                    "drift_to_read": item.drift_to_read,
                 }
                 for item in self.items
             ],

@@ -115,6 +115,10 @@ class Settings(BaseSettings):
     # log, the catalog snapshot taken before it acted, and its storage journal. Default `runs/` beside
     # `db_path`.
     run_dir: Path | None = None
+    # Where `registry upgrade --withhold-rederive` keeps a re-derivation it refused on drift, for
+    # `--accept-drift` to publish without re-deriving (`services/held.py`). Default `held/` beside
+    # `db_path`; not inside a run, because runs are pruned.
+    held_dir: Path | None = None
     # How many revertible runs (and `replay-upgrade` scratch trees) every run keeps whole when it ends;
     # older runs keep `run.log` and `run.json` and lose their snapshot, journal, `storage/` and `replay/`
     # (`maintenance.plan_prune`). `0` turns the automatic prune off; `registry prune-runs` still works.
