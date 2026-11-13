@@ -1014,7 +1014,7 @@ lookup is a derivative and every held lane answers one; no route hands out a who
 terms refuse it; publishing is the author's liability. `alphagenome_avi`: the snapshot read, plus the live
 Atlas only under the override (the person: "alphag - default").
 
-## 0.30.1 — on upstream 0.8.5, and the sweep says which modules need re-deriving (requirements by the pm, 2026-11-12)
+## 0.30.1 — on upstream 0.8.5, and the sweep says which modules need re-deriving (requirements by the pm, 2026-11-12; published 2026-11-13) ✅
 
 **Asked by the person 2026-11-12**, in the pm's session: adopt 0.8.5 now ("yes"), "and build some
 discriminator to detrermine which items need rederivation". The lead builds it. Sizing: **patch**: a floor
@@ -1065,7 +1065,8 @@ converges).
 ## Next registry version (post-0.11)
 
 - **A lane lookup's answer carries its lane's terms** (proposed by S29, just-module-creator, 2026-11-12;
-  **decided by the pm 2026-11-12: in 0.31**, riding the catalog's minor, or 0.32 if 0.31 is cut first. It
+  **decided by the pm 2026-11-12: in 0.31**, riding the catalog's minor, or 0.32 if 0.31 is cut first;
+  **0.31.0 was cut 2026-11-13 without it, so 0.32**. It
   completes 0.30's requirement 2: a keyed read is allowed, and saying the lane's terms beside it is what
   lets a caller honour them). `POST /lanes/{lane}/{table}` answers `pharmvar`, `pubmind`, `mane` and
   `acmg` rows with nothing saying that their terms forbid passing the snapshot on. An agent then leans a
@@ -1075,7 +1076,7 @@ converges).
   field, `LaneRows` and the console's types, a client docstring). Severity: low; the consumer can read
   `GET /caches` meanwhile.
 - **An instance says up front which live legs it runs** (proposed by S30, just-module-creator, 2026-11-12;
-  **decided by the pm 2026-11-12: in 0.31**, with the item above. It completes 0.30's requirement 5:
+  **decided by the pm 2026-11-12: in 0.31**, with the item above, **so 0.32 as well**. It completes 0.30's requirement 5:
   `GET /caches` already says per lane how it is proxied, and a source the operator closed is part of that
   answer). Since the fix in `dac4ccf`, a caller's `offline=false` reaches every
   live pass, except where the operator kept a source closed (`REGISTRY_HINT_ALLOW_GNOMAD`,

@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-12)
+## Now (2026-11-13)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -16,8 +16,11 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   GWAS page-size fix, is on PyPI) is the lead's patch, not scope.
 - **0.30 published** (2026-11-11, `v0.30.0`, heading marked ✅; both servers run it, measured 2026-11-12). Its
   requirements and the person's licence rulings are in its section. Remote lane reads wait on upstream RM430.
-- **0.31 is the variant-level catalog**, sized and designed by the lead (roadmap *Next registry version*, desk #263
-  defaults); block 1 of 4 built on branch `0.31`. The pm marks it when tagged.
+- **0.30.1 published** (2026-11-13, `v0.30.1`, heading marked ✅): upstream 0.8.5 and the re-derivation
+  discriminator. The five pre-0.8 modules re-derive in the maintainer's production run after a deploy.
+- **0.31.0 built** (merge 0f2d3ab, floors upstream 0.8.6), the variant-level catalog; not yet tagged. It has no
+  heading of its own in the roadmap (its design sits under *Next registry version*); when it is tagged, mark that
+  item shipped and post the milestone. S29/S30 (lane terms, closed live legs) were not in it: moved to 0.32.
 - **Duty: milestones** (kit v0.1.187, `PM.md` of the kit): the `state` post in `#just-dna-registry>state` is kept
   from `docs/seats/PM_STATE.md` with `watchdog.py keep pm state '#just-dna-registry>state' docs/seats/PM_STATE.md`;
   rewrite it when the standing, a headline result or the next actions change. One post per landed result in
