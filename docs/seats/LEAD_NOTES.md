@@ -165,6 +165,16 @@ after PyPI (the pypi watcher says so). Then the person's prod run: `upgrade --dr
 pushed; the variant-level catalog; floors upstream 0.8.6 for RM440's dropped-rsID log line before the five re-derive).
 Full suite 906 passed, 0 failed. Dists in `dist/`; DM'd with `project-claims --all` as the one operator step.
 Tag `v0.31.0` on 0f2d3ab after PyPI. Worktree `.wt/0.31` unlocked; branch `0.31` merged.
+**0.31.0 published and tagged** (v0.31.0 on 0f2d3ab). Prod ran `project-claims`: 24 projected. Prod's first
+`upgrade --apply --online` held blood_groups and pharmgkb on drift and discarded the re-derivation (0.31.0 kept it
+in a temp dir), and Ctrl-C could not stop the pool; the person killed it. The line I gave was wrong (memory:
+operator-commands-state-the-outcome). **0.31.1 built** (2026-11-13, release head 6e91333 on main, pushed): a
+re-derivation publishes and reports `drift to read: N`; `--withhold-rederive` keeps the result under `held/` and
+`--accept-drift` publishes it with no egress; stale on a toolchain change; a second Ctrl-C exits. Full suite 910
+passed, 1 failed (`.env.template` lacked REGISTRY_HELD_DIR; fixed in 6e91333, startup tests green). Dists in `dist/`;
+DM'd with per-module outcomes. Tag `v0.31.1` on 6e91333 after PyPI. Worktree `.wt/0.31.1` unlocked. Branches `0.31`
+and `0.31.1` go with `git branch -d` once the person removes their worktrees. Then the person's prod run (quiet
+window): deploy, `upgrade --dry-run`, `upgrade --apply --online` (the five re-derive and publish; cardio ~7 h).
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
