@@ -49,6 +49,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S28** namespace rename — declined, then reversed: shipped 0.29.0
 - **S29** lane lookup serves refused lanes — by design, documented; terms field filed
 - **S30** proxy passes skipped by enrich_offline — fixed dac4ccf (unreleased)
+- **S31** `whoami` omits member-of namespaces and orgs — filed for a minor
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2899,3 +2900,50 @@ test; I did not re-run the polygon call. Candidate 2, an instance saying beforeh
 is a new response field, so a minor release: it is filed in ROADMAP.md's *Next registry version* as
 undecided, the lead's call. The changelog's unreleased entry now names this item.
 <!-- triaged: 0.30.0 · sha 20639bdc73c8 -->
+
+# Field notes from just-module-creator, 2026-11-13
+
+## S31 — `whoami` lists only owned namespaces, so a client cannot learn which namespaces it may publish to, or which orgs it belongs to
+
+**What we ran.** Registry client 0.30.0 against the polygon (registry 0.30.0), with a saved user account:
+`whoami()` returns `namespaces: ["test-sheep"]` and no field naming an org or a membership. Reading the
+installed package: `Account.namespaces` is `repo.namespaces_for_account()`, the ownership grant only, and
+`api/deps.py` already says so ("`GET /auth/whoami` and the `issue-key` response under-report what the caller
+can actually publish to ... Widening it to the union ... is a response-shape change, so it is written down
+here rather than done in passing"). Nothing on the roadmap or in this intake tracks it, so this files it with
+a consumer's reason.
+
+**Why it matters to a client.** The plugin picks a saved token per call by the namespace the call names:
+the account whose `whoami().namespaces` holds it. Two cases then fail with no token, though authorization
+would allow the call (`effective_role()` reads the membership and the org cascade):
+
+1. A namespace claimed with `create_org_namespace(org, ns)`: the org owns it, the caller reaches it through
+   its org role, and no account's `whoami` lists it. We can record it on our side right after the claim, but
+   the next `whoami` refresh of the saved account replaces the list and drops it again.
+2. A non-owner member of somebody else's namespace (`add_member`): same.
+
+Separately, there is no call that answers "which orgs am I in, with what role": `org_members(org)` needs the
+org's name first. A client wrapping `create_org_namespace` or `add_org_member` can only ask the author to type
+an org name from memory.
+
+**What we did meanwhile.** Nothing that hides it: the plugin's new `create_org_namespace` tool records the
+namespace on the saved account after the claim and says, in its result, that a later account refresh will
+drop it until the registry lists it. No workaround that reads memberships another way.
+
+**Candidate.** `whoami` (and the `issue-key` response) gains, without changing `namespaces`' meaning:
+`member_of: [{namespace, role, via: "member" | "org:<name>"}]` and `orgs: [{org, role}]`. Additive fields,
+so a client on the current minor ignores them. Widening `namespaces` itself to the union would also work,
+but changes what an existing field means.
+
+**Status — accepted as a reporting gap; filed for the next minor, the lead's call.** Your reading is right on
+every point. `WhoAmI.namespaces` is `namespaces_for_account()`, the ownership grant only, and the `issue-key`
+response reads the same list; authorization never consults it (`effective_role()` reads the per-namespace
+membership and the org cascade). The gap was noted in 0.18.2 and left open because it changes a response, and
+nothing tracked it since. Both your cases fail as you describe: an org-owned namespace and a membership of
+somebody else's namespace are invisible to `whoami`. There is no route that lists the caller's orgs either:
+the only org read is `GET /orgs/{org}/members` (`org_members(org)`), keyed by a name you must already know. Your additive shape is the one filed (`member_of` with the `via` that grants it, and `orgs` with the
+role), leaving `namespaces` meaning what it means now; widening `namespaces` itself was the 0.18.2 note's
+first idea and is the one we pass over, for the reason you give. It is a new response field, so a minor
+release: filed in ROADMAP.md's *Next registry version* as undecided. Your plugin's record-and-say-so behaviour
+in the meantime is the honest one; nothing on our side changes before that release.
+<!-- triaged: 0.31.0 · sha c50a57f498e3 -->

@@ -1084,6 +1084,16 @@ converges).
   after spending a run. Exposing the two switches on `GET /caches` would let a client tell beforehand.
   Sizing: **minor** (a response field). Severity: low.
 
+- **`whoami` says which namespaces the caller may publish to, and which orgs it is in** (proposed by S31,
+  just-module-creator, 2026-11-13; **undecided**, the lead's call). `WhoAmI.namespaces` and the key-issuing
+  response list the ownership grant only (`namespaces_for_account`), so a namespace an org owns and a
+  membership of somebody else's namespace are invisible, though `effective_role()` lets the caller publish
+  there. No route lists the caller's orgs (`GET /orgs/{org}/members` needs the name first). The open note
+  from 0.18.2 beside `effective_role` in `api/deps.py` is this item. The consumer's shape, additive so
+  `namespaces` keeps its meaning: `member_of: [{namespace, role, via: "member" | "org:<name>"}]` and
+  `orgs: [{org, role}]`. Sizing: **minor** (new response fields on `WhoAmI` and the key response, the
+  console's types, the client docstring). Severity: low; authorization is right, only the report is short.
+
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
