@@ -115,6 +115,8 @@ reset").
   pydantic 2.14.3 and six small), duckdb 2.0 still held for `deps/majors-2026-11-05`; 890 passed, ruff clean, no Node
   here for the console's tsc. Worktree `/data/sources/just-dna-registry-deps-2026-11-12` unlocked, done. The old
   `-deps` worktree still holds last week's uncommitted lock edits (superseded by `bb42dbd`); left, not discarded.
+  Its `nightly.py done deps` was missed, so the nightly said deps due again on 2026-11-13; marked done then. **End
+  every bump with `done deps`**, or the watcher re-asks.
 - **Compiler 0.8.5 on PyPI told to the lead** 2026-11-12, with the re-derive advice for the five modules on pre-0.8
   tables (ledger, "Cut as v0.8.5").
 
