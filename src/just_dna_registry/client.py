@@ -407,6 +407,7 @@ class RegistryClient:
         has_frequencies: bool | None = None,
         weighting_declared: bool | None = None,
         clin_sig: str | None = None,
+        pgs_id: str | None = None,
         group: str | None = None,
         sort: str = "name",
         page: int = 1,
@@ -439,6 +440,7 @@ class RegistryClient:
             "has_frequencies": has_frequencies,
             "weighting_declared": weighting_declared,
             "clin_sig": clin_sig,
+            "pgs_id": pgs_id,
             "sort": sort, "page": page, "per_page": per_page,
         }
         clean = {k: v for k, v in params.items() if v is not None}

@@ -1387,6 +1387,7 @@ class Repository:
         has_frequencies: bool | None = None,
         weighting_declared: bool | None = None,
         clin_sig: str | None = None,
+        pgs_id: str | None = None,
         sort: str = "name",
         limit: int = 20,
         offset: int = 0,
@@ -1460,6 +1461,14 @@ class Repository:
                 "AND cs.tier = ? AND cs.variants > 0)"
             )
             params.append(clin_sig)
+        if pgs_id:
+            # The current version names this PGS Catalog score (0.31, `version_pgs` from its `pgs.parquet`).
+            # A version not yet projected has no rows and never matches: absent is not "does not carry it".
+            where.append(
+                "EXISTS (SELECT 1 FROM versions v JOIN version_pgs p ON p.version_id = v.id "
+                "WHERE v.module_id = m.id AND v.version = m.latest_version AND p.pgs_id = ?)"
+            )
+            params.append(pgs_id.strip().upper())
         for column, wanted in (
             ("has_gene_validity", has_gene_validity),
             ("has_clinical_assertions", has_clinical_assertions),

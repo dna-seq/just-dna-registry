@@ -165,3 +165,32 @@ def test_a_test_namespace_is_hidden_on_production(client: TestClient, repo: Repo
                 headers={"Authorization": f"Bearer {key}"})
     assert repo.get_module_row("test-space", "coronary") is not None
     assert client.get("/api/v1/variants", params={"key": "rs4244285"}).json()["modules"] == []
+
+
+def test_the_listing_filters_by_pgs_id_and_the_clients_print_claims(client: TestClient, repo: Repository) -> None:
+    from sdk_transport import sdk_transport
+    from typer.testing import CliRunner
+
+    from just_dna_registry import client_cli
+    from just_dna_registry.client import RegistryClient
+
+    key = _user(repo, "antonkulaga", namespace="just-dna-seq")
+    _publish(client, key, "just-dna-seq", "coronary", "1.0.0")
+    version_id = repo.conn.execute("SELECT id FROM versions").fetchone()[0]
+    repo.conn.execute("INSERT INTO version_pgs(version_id, pgs_id, trait_efo_id) VALUES (?, 'PGS000001', NULL)",
+                      (version_id,))
+    repo.conn.commit()
+    sdk = RegistryClient("http://testserver", transport=sdk_transport(client), check_version=False)
+    assert [m["name"] for m in sdk.list_modules(pgs_id="pgs000001")["items"]] == ["coronary"]
+    assert sdk.list_modules(pgs_id="PGS999999")["items"] == []
+
+    original = client_cli._client
+    client_cli._client = lambda url, token, **_k: RegistryClient(
+        "http://testserver", transport=sdk_transport(client), check_version=False
+    )
+    try:
+        out = CliRunner().invoke(client_cli.app, ["variant", "rs4244285"]).output
+        assert "just-dna-seq/coronary" in out and "pair(s) compared" in out, out
+        assert "1 variant(s) in 1 module(s)" in CliRunner().invoke(client_cli.app, ["gene", "CYP2C19"]).output
+    finally:
+        client_cli._client = original
