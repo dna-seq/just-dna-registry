@@ -153,6 +153,11 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Cut as `v0.8.6`** (`2f03ab4` on their `main`, 2026-11-13; untagged and not on PyPI when read): all three to
+  0.8.6, floors `>=0.8.6`, no third-party floor. Carries RM439 and RM440 (read below) and RM437's doc half; no
+  public name, field, table, flag or warning code, no behaviour change for a direct caller. Release record `0.8.6`:
+  a measured zero. **Not a hard floor here**; worth taking before the lead's re-derive of the five pre-0.8 modules,
+  since RM440's log line says which back-filled rsIDs that re-derive drops. Heard on PyPI by `watch.upstream-index`.
 - **Their `main` past the 0.8.5 cut**: **RM439** (`2fe759a`): a variant row's `stat_significance` description says it
   is the module author's verdict across the evidence; a description only, as RM434. **RM440** (`5da19a3`): a
   re-derivation that drops a back-filled rsID on RM438's no-host arm now logs one warning (the count and the first
