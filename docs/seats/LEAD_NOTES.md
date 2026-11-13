@@ -156,6 +156,11 @@ pathogenic (309k) are ~8 h and ~37 h online, and ~300+ undecided lines each to r
 watcher and `on_publish.sweep` in .blueprints.toml; dry run clean: 6 branches matched, all in worktrees, none go);
 builder told it waits; desk #272 (default: no change). Quota pause lifted (the window reset to 79%; the maintainer:
 deferring on a stale 95% was wrong). cardio online measurement still running detached (scratchpad cardio-online.log).
+**0.30.1 built** (2026-11-13, release head 118e4ef on main, pushed; floors 0.8.5; the re-derivation discriminator,
+converging on verification.json's producer; proxy passes follow the caller). Full suite 904 passed; the one failure
+(upgrade/apply/jobs, `database is locked` under load) passed alone. Dists in `dist/`; DM'd. Tag `v0.30.1` on 118e4ef
+after PyPI (the pypi watcher says so). Then the person's prod run: `upgrade --dry-run` (the five flagged), `--apply`,
+`--apply --online` for the indel ones. 0.31 complete on its branch (d0e3b12); stamp after 0.30.1 is out.
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
