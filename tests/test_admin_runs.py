@@ -131,6 +131,16 @@ def test_a_leftover_path_is_masked_and_an_allele_is_not(settings: Settings) -> N
     )
 
 
+def test_a_held_dir_set_apart_is_named_as_held(settings: Settings, tmp_path: Path) -> None:
+    """`REGISTRY_HELD_DIR` (0.31.1) is a root this service writes to, so it gets its own label rather
+    than the generic mask; a held result named in a sweep's detail says where it is kept."""
+    elsewhere = tmp_path / "kept-apart"
+    scrub = PathScrubber(settings.model_copy(update={"held_dir": elsewhere}))
+    line = f"held at {elsewhere}/ns/mod/1.0.0/spec"
+    assert scrub(line) == "held at <held>/ns/mod/1.0.0/spec"
+    assert str(tmp_path) not in scrub(line)
+
+
 def test_a_real_upgrade_dry_run_keeps_its_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REGISTRY_DB_PATH", str(tmp_path / "registry.db"))
     monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(tmp_path / "artifacts"))

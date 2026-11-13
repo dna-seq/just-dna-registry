@@ -8,6 +8,11 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### Fixed
+
+- A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`
+  serves, as every other root this service writes to is, rather than falling to the generic `<path>`.
+
 ## [0.31.1] — 2026-11-13
 
 ### A re-derivation publishes in one pass

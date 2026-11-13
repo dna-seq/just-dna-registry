@@ -35,6 +35,7 @@ from just_dna_registry.maintenance import (
 )
 from just_dna_registry.models.api import RunDetail, RunSummary, RunSweep
 from just_dna_registry.services.cache_drop import lane_directories
+from just_dna_registry.services.held import held_root
 
 #: The commands whose runs are served: the ones that call the enricher or provision its snapshots.
 DIAGNOSTIC_COMMANDS: frozenset[str] = frozenset({"upgrade", "replay-upgrade", "revalidate", "warm-caches"})
@@ -51,6 +52,7 @@ class PathScrubber:
         roots: list[tuple[Path, str]] = [
             (run_root(settings), "<runs>"),
             (settings.db_path.resolve().parent, "<data>"),
+            (held_root(settings), "<held>"),  # 0.31.1: may be set apart from <data>
             (settings.local_storage_dir, "<storage>"),
             (Path(sys.prefix), "<venv>"),
             (Path(sys.base_prefix), "<python>"),
