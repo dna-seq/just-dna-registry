@@ -99,6 +99,9 @@ reset").
 - reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.200 (a repository's `[on_publish]` runs only on its
   own packages' release, whatever the watcher is given, L143; the lead's branch sweep, added 44843de after my
   upstream-index line said there was none, had run on each of compiler 0.8.6's three publishes under v0.1.196).
+- reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.201 (`--final` drops pre-releases and dev builds
+  from an upstream-index watcher, #470). Not taken: the format trio has published none (60 releases, checked
+  2026-11-13), and a minor is a lockstep cut here, so a `0.9.0rc` is one to read ahead of it.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
