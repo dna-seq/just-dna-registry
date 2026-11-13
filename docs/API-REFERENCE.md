@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.30.x**, API `v1` (**0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.31.x**, API `v1` (**0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -193,6 +193,8 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 45 | POST | `/api/v1/namespaces/{ns}/rename` | owner / site admin | Rename a namespace; the old name stays an alias that reads and publishes follow (0.29) |
 | 46 | GET | `/api/v1/lanes/{lane}` | — | A snapshot lane's tables and the key columns each answers by (0.30) |
 | 47 | POST | `/api/v1/lanes/{lane}/{table}` | — | Keyed lookup of a lane's rows, local or from its published repo (0.30) |
+| 48 | GET | `/api/v1/variants?key=` | — | What every visible module says about one variant, with the disagreement marker (0.31) |
+| 49 | GET | `/api/v1/genes/{symbol}/claims` | — | What every visible module says about the variants it names under a gene (0.31) |
 
 ---
 
@@ -1440,6 +1442,32 @@ allowance). gnomAD's legs need `REGISTRY_HINT_ALLOW_GNOMAD`; `alphagenome expres
 `REGISTRY_PROXY_ALPHAGENOME_MAX_BP`). Errors added: `422 unknown_pass`, `422 expression_needs_interval`,
 `422 expression_interval_too_large`. `GET /caches` gains each lane's `proxied` (`local`, `remote`,
 `unavailable`).
+
+---
+
+### 48–49. `GET /api/v1/variants?key=`, `GET /api/v1/genes/{symbol}/claims`  *(anonymous, `search` bucket)*
+
+The variant-level catalog (0.31). Every publish records what its version says about each variant, read
+from its own parquets (`weights`, `pharm_variants`, `heteroplasmy`, `haplotypes`, and `pgs` ids); only each
+module's latest non-yanked version is kept. `registry project-claims` fills it for versions published
+before 0.31. `GET /variants?key=` takes one spelling of a variant (rsID, VRS id, or `chrom:start:ref:alt`)
+and resolves the others through the recorded aliases; `GET /genes/{symbol}/claims` takes an authored gene
+symbol (a row's gene is never assigned from its position). Visibility follows the listing: no blacklisted
+namespace, and on production no test/sandbox one.
+
+Each claim carries `module`, `version`, `kind` (`weight`, `pharm`, `heteroplasmy`, `haplotype`),
+`variant_key`, `genotype` (alleles sorted, `A/G`), `effect_allele`, `direction` (`risk`, `protective`,
+`neutral`, or null: not comparable; from `direction`, else an older module's `state`, never a weight's sign),
+`weight` (per-module scale, never comparable across modules), `trait_efo_id`, `clin_sig`, `gene`.
+
+**`conflicts`** is a fact about two modules' statements, never a verdict: a pair is listed only when two
+different modules give the **same effect allele**, genotype and non-null trait opposite directions. Every
+other pair is counted in `incomparable` by reason (`no_trait`, `other_trait`, `other_effect_allele`,
+`allele_not_orientable` for a possible strand flip, `no_effect_allele_or_direction`, `other_build`), beside
+`compared`. **`not_projected`** counts visible modules with no recorded claims yet: their silence is not
+agreement. `?pgs_id=` on `GET /modules` keeps modules whose current version names that PGS Catalog score.
+Client: `RegistryClient.variant_claims(key)`, `gene_claims(symbol)`, `list_modules(pgs_id=)`;
+`registry-client variant KEY`, `registry-client gene SYMBOL`.
 
 ---
 
