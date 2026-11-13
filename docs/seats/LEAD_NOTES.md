@@ -161,6 +161,10 @@ converging on verification.json's producer; proxy passes follow the caller). Ful
 (upgrade/apply/jobs, `database is locked` under load) passed alone. Dists in `dist/`; DM'd. Tag `v0.30.1` on 118e4ef
 after PyPI (the pypi watcher says so). Then the person's prod run: `upgrade --dry-run` (the five flagged), `--apply`,
 `--apply --online` for the indel ones. 0.31 complete on its branch (d0e3b12); stamp after 0.30.1 is out.
+**0.30.1 published and tagged** (v0.30.1 on 118e4ef). **0.31.0 built** (2026-11-13, release head 0f2d3ab on main,
+pushed; the variant-level catalog; floors upstream 0.8.6 for RM440's dropped-rsID log line before the five re-derive).
+Full suite 906 passed, 0 failed. Dists in `dist/`; DM'd with `project-claims --all` as the one operator step.
+Tag `v0.31.0` on 0f2d3ab after PyPI. Worktree `.wt/0.31` unlocked; branch `0.31` merged.
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
