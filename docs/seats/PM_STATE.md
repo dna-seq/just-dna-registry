@@ -1,6 +1,6 @@
 **just-dna-registry, where it stands** (kept by the pm; updated 2026-11-13)
 
-0.31.0, the variant-level catalog, is released, after 0.30.1 earlier the same day. Both servers still run 0.30.0 until they are deployed.
+0.31.0, the variant-level catalog, is released, after 0.30.1 earlier the same day. Production is down for planned maintenance (the 0.31.0 upgrade and the re-derivation of the pre-0.8 modules, hours); the polygon serves meanwhile.
 
 **Results**
 - ✅ 0.31.0: which modules say what about one variant or gene, with a marker where two modules disagree. It moves to upstream 0.8.6, which logs the rsIDs a re-derivation drops.
@@ -11,5 +11,5 @@
 **Next**
 1. Deploy 0.31.0 to both servers, with `project-claims --all` as the one operator step (the maintainer).
 2. Re-derive the five modules still on pre-0.8 tables (cancer, cardio, pathogenic, blood groups, pharmgkb) once a release with the sweep is deployed (the maintainer's production run, the lead beside it).
-3. 0.32: a lane lookup states its licence terms, the server says which live sources it has switched off, and a key says every namespace it may publish to and every org it is in (three small additions from consumers; lead).
+3. 0.32: a lane lookup states its licence terms, the server says which live sources it has switched off, and a key says every namespace it may publish to and every org it is in (three small additions from consumers; built by the lead, not yet released).
 4. Remote lane reads, once upstream releases RM430 (liaison watches, lead adopts).
