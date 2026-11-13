@@ -138,6 +138,19 @@ def _drop_db(box: Box) -> dict[str, str]:
     return {}
 
 
+def _unproject(box: Box) -> dict[str, str]:
+    """Every version's claims cleared, as on a catalog published before 0.31: the state `project-claims` fills."""
+    conn = sqlite3.connect(box.db)
+    try:
+        for table in ("version_claims", "claim_aliases", "version_pgs"):
+            conn.execute(f"DELETE FROM {table}")
+        conn.execute("UPDATE versions SET claims_projector = NULL")
+        conn.commit()
+    finally:
+        conn.close()
+    return {}
+
+
 def _a_run_to_revert(box: Box) -> dict[str, str]:
     """A cheap changing run for the `revert-run` row to undo."""
     before = _run_names(box)
@@ -160,6 +173,9 @@ ROWS: tuple[Row, ...] = (
     Row("rename-account/dry", ("rename-account", "antonkulaga", "anton-renamed"), False),
     Row("rename-namespace/apply", ("rename-namespace", NS, "renamed-space", "--apply", "--yes"), True),
     Row("rename-namespace/dry", ("rename-namespace", NS, "renamed-space"), False),
+    # Scoped to the sandbox namespace: the box's legacy module stores placeholder bytes for its parquets,
+    # which a projection rightly refuses (exit 1).
+    Row("project-claims", ("project-claims", "--namespace", TEST_NS), True, setup=_unproject),
     Row("export-keys/stdout", ("export-keys",), False),
     Row("export-keys/file", ("export-keys", "--out", "{root}/auth-export.json"), False),
     Row("import-keys", ("import-keys", "{inputs}/import.json"), True),

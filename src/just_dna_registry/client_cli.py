@@ -575,6 +575,55 @@ def _echo_namespace_rename(report: dict) -> None:
                        + (f" (+{len(value) - 8} more)" if len(value) > 8 else ""))
 
 
+@app.command("variant")
+def variant(
+    key: str = typer.Argument(..., help="An rsID, a VRS id, or chrom:start:ref:alt"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """What every visible module's latest version says about one variant (0.31), with the modules that
+    disagree about one allele (same genotype and trait) and the pairs not compared, by reason."""
+    with _client(url, token) as c:
+        found = c.variant_claims(key)
+    for claim in found["claims"]:
+        typer.echo(
+            f"  {claim['module']:<40} {claim['kind']:<12} {claim.get('genotype') or '-':<8} "
+            f"{claim.get('direction') or '-':<11} {claim.get('trait_efo_id') or '-':<14} {claim.get('gene') or ''}"
+        )
+    conflicts = found["conflicts"]
+    for pair in conflicts["pairs"]:
+        typer.secho(
+            f"  ≠ {' vs '.join(pair['modules'])}: {pair['effect_allele']} {pair['genotype']} "
+            f"{pair['trait_efo_id']} ({' / '.join(pair['directions'])})", fg=typer.colors.YELLOW,
+        )
+    skipped = ", ".join(f"{k} {v}" for k, v in sorted(conflicts["incomparable"].items())) or "none"
+    typer.echo(
+        f"{len(found['modules'])} module(s); {conflicts['compared']} pair(s) compared, not compared: {skipped}; "
+        f"{found['not_projected']} module(s) not yet projected"
+    )
+
+
+@app.command("gene")
+def gene(
+    symbol: str = typer.Argument(...),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """What every visible module's latest version says about the variants it names under SYMBOL (0.31;
+    authored genes only)."""
+    with _client(url, token) as c:
+        found = c.gene_claims(symbol)
+    for claim in found["claims"]:
+        typer.echo(
+            f"  {claim['variant_key']:<24} {claim['module']:<40} {claim['kind']:<12} "
+            f"{claim.get('genotype') or '-':<8} {claim.get('direction') or '-'}"
+        )
+    typer.echo(
+        f"{found['variants']} variant(s) in {len(found['modules'])} module(s); "
+        f"{found['not_projected']} module(s) not yet projected"
+    )
+
+
 @app.command("lanes")
 def lanes(
     lane: str = typer.Argument(..., help="A snapshot lane, e.g. clinvar, opentargets, alphagenome_avi"),

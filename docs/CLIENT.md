@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.30.x** against a server speaking API `v1` (0.30 adds `lane_tables`, `lane_rows`, and `derived(passes=, offline=, gene=, chrom=, start=, end=)`; 0.29 adds `rename_namespace`; 0.25 added nine methods
+**Normative for:** client **0.14.x–0.31.x** against a server speaking API `v1` (0.31 adds `variant_claims`, `gene_claims` and `list_modules(pgs_id=)`; 0.30 adds `lane_tables`, `lane_rows`, and `derived(passes=, offline=, gene=, chrom=, start=, end=)`; 0.29 adds `rename_namespace`; 0.25 added nine methods
 and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`;
 0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server;
 0.28 adds `merge_accounts`, `rename_account` and `admin_rename_account`, gives `publish` `recover_within=`

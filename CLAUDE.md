@@ -516,6 +516,21 @@ control: it is the only thing holding our aggregate rate inside a limit we canno
 
 ---
 
+## The variant-level catalog (0.31) — what modules say, never which is right
+
+`services/claims.py` projects each published version's parquets into `version_claims` / `claim_aliases` /
+`version_pgs` (same DB, cascading, so a revert or a delete keeps them consistent), for each module's latest
+non-yanked version only; `versions.claims_projector` says which projector wrote them (NULL: not projected,
+never "no claims"). Filled at publish, before the commit lock and stored after ingest, and **never a reason to
+fail a publish**; `registry project-claims` backfills. Four rules from its critic's review. **Direction is per
+allele**: `direction` signs `effect_allele`, `state` the genotype; only risk/protective/neutral project, never
+a weight's sign (weights are per-module scale). **The conflict marker compares one effect allele, genotype and
+non-null trait** across two modules, never guesses a strand, and counts every other pair by reason, so silence
+never reads as agreement. **Genes are authored**: upstream's MANE spans are query hints, not attributions.
+**It is a fact about statements, never a verdict**: nothing sorts, filters or colours by it, and claim lists
+do not inherit the listing's featured-first order. One key per request: an authoring surface, never a
+per-person annotation service.
+
 ## The caching proxy (0.25) — what this box holds, other people can borrow
 
 **Since 0.30 it is defined by lane and by pass, and two guards hold it to upstream's rosters** (the

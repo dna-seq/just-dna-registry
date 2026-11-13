@@ -20,6 +20,7 @@ from just_dna_registry.api.routers import (
     admin,
     auth,
     caches,
+    claims,
     drafts,
     hints,
     lanes,
@@ -153,6 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(drafts.router, prefix=API_PREFIX)
     app.include_router(hints.router, prefix=API_PREFIX)
     app.include_router(lanes.router, prefix=API_PREFIX)
+    app.include_router(claims.router, prefix=API_PREFIX)
     app.include_router(modules.router, prefix=API_PREFIX)
     app.include_router(stats.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)

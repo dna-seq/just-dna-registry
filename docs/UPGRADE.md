@@ -1,5 +1,12 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.31 — the variant-level catalog (operator note — one backfill)
+
+The new tables are created at boot. Published versions have no recorded claims until projected, and the routes
+say so (`not_projected`). After deploying, once: `uv run registry project-claims` (a maintenance run: logged,
+snapshotted, revertible; it reads each module's latest version's parquets from storage). Running it again
+finishes what a failure left. New publishes record their own.
+
 ## 0.30 — the caching proxy by lane and by pass (operator note — nothing required)
 
 No catalog moves. Two switches to decide on, both off by default: `REGISTRY_PROXY_ALPHAGENOME=true` lets

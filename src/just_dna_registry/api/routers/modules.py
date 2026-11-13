@@ -75,6 +75,13 @@ def list_modules(
     caller: CallerDep,
     q: str | None = None,
     category: str | None = None,
+    pgs_id: str | None = Query(
+        None,
+        description=(
+            "Modules whose current version carries this PGS Catalog score id (0.31, e.g. `PGS000001`). "
+            "A version not yet projected (`registry project-claims`) never matches: absent is not 'none'."
+        ),
+    ),
     clin_sig: str | None = Query(
         None,
         description=(
@@ -139,6 +146,7 @@ def list_modules(
         q=q,
         category=category,
         clin_sig=clin_sig,
+        pgs_id=pgs_id,
         gene=gene,
         genome_build=genome_build,
         # A retired handle lists the account's modules under its current one (0.28): old links work.

@@ -701,6 +701,7 @@ class Repository:
         (accounts/api_keys/namespaces/members) is kept unless `keep_auth=False`. Does NOT touch
         artifact storage — clear the bucket/HF repo separately if a full reset is wanted."""
         catalog = ("reviews", "module_stars", "version_genes", "version_categories", "version_clin_sig",
+                   "version_claims", "claim_aliases", "version_pgs",
                    "versions", "modules")  # child → parent (FK-safe)
         for table in catalog:
             self.conn.execute(f"DELETE FROM {table}")
@@ -1050,6 +1051,61 @@ class Repository:
         self.conn.commit()
         return version_id
 
+    def store_claims(self, version_id: int, projection: Any, projector: str) -> None:
+        """Write one version's variant claims (0.31, `services/claims.py`) and keep only the module's latest
+        non-yanked version projected: a sweep mints near-identical PATCHes, and history is asked for on demand.
+        One transaction."""
+        c = self.conn
+        c.commit()
+        try:
+            c.execute("DELETE FROM version_claims WHERE version_id = ?", (version_id,))
+            c.execute("DELETE FROM claim_aliases WHERE version_id = ?", (version_id,))
+            c.execute("DELETE FROM version_pgs WHERE version_id = ?", (version_id,))
+            c.executemany(
+                "INSERT INTO version_claims(version_id, kind, variant_key, rsid, genome_build, genotype, "
+                "effect_allele, direction, direction_source, weight, trait_efo_id, clin_sig, "
+                "stat_significance, gene) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (version_id, x.kind, x.variant_key, x.rsid, x.genome_build, x.genotype, x.effect_allele,
+                     x.direction, x.direction_source, x.weight, x.trait_efo_id, x.clin_sig,
+                     x.stat_significance, x.gene)
+                    for x in projection.claims
+                ],
+            )
+            c.executemany(
+                "INSERT INTO claim_aliases(version_id, alias, variant_key, genome_build) VALUES (?,?,?,?)",
+                [(version_id, *a) for a in projection.aliases],
+            )
+            c.executemany(
+                "INSERT INTO version_pgs(version_id, pgs_id, trait_efo_id) VALUES (?,?,?)",
+                [(version_id, *p) for p in projection.pgs],
+            )
+            c.execute("UPDATE versions SET claims_projector = ? WHERE id = ?", (projector, version_id))
+            self._drop_claims_of_superseded(version_id)
+        except sqlite3.Error:
+            c.rollback()
+            raise
+        c.commit()
+
+    def _drop_claims_of_superseded(self, version_id: int) -> None:
+        """Clear the projection of every version of this module that is not its latest non-yanked one."""
+        row = self.conn.execute(
+            "SELECT v.module_id, m.latest_version FROM versions v JOIN modules m ON m.id = v.module_id "
+            "WHERE v.id = ?", (version_id,),
+        ).fetchone()
+        if row is None:
+            return
+        stale = [
+            r["id"] for r in self.conn.execute(
+                "SELECT id FROM versions WHERE module_id = ? AND (version IS NOT ? OR yanked = 1)",
+                (row["module_id"], row["latest_version"]),
+            ).fetchall()
+        ]
+        for stale_id in stale:
+            for table in ("version_claims", "claim_aliases", "version_pgs"):
+                self.conn.execute(f"DELETE FROM {table} WHERE version_id = ?", (stale_id,))
+            self.conn.execute("UPDATE versions SET claims_projector = NULL WHERE id = ?", (stale_id,))
+
     def recompute_latest(self, module_id: int) -> None:
         """Set `modules.latest_version` to the highest non-yanked SemVer, or NULL if none."""
         rows = self.get_versions(module_id, include_yanked=False)
@@ -1331,6 +1387,7 @@ class Repository:
         has_frequencies: bool | None = None,
         weighting_declared: bool | None = None,
         clin_sig: str | None = None,
+        pgs_id: str | None = None,
         sort: str = "name",
         limit: int = 20,
         offset: int = 0,
@@ -1404,6 +1461,14 @@ class Repository:
                 "AND cs.tier = ? AND cs.variants > 0)"
             )
             params.append(clin_sig)
+        if pgs_id:
+            # The current version names this PGS Catalog score (0.31, `version_pgs` from its `pgs.parquet`).
+            # A version not yet projected has no rows and never matches: absent is not "does not carry it".
+            where.append(
+                "EXISTS (SELECT 1 FROM versions v JOIN version_pgs p ON p.version_id = v.id "
+                "WHERE v.module_id = m.id AND v.version = m.latest_version AND p.pgs_id = ?)"
+            )
+            params.append(pgs_id.strip().upper())
         for column, wanted in (
             ("has_gene_validity", has_gene_validity),
             ("has_clinical_assertions", has_clinical_assertions),

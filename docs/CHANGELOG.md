@@ -8,6 +8,27 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-11-13
+
+### A variant-level catalog: what published modules say about one variant, or one gene
+
+Every publish now records what its version says about each variant (genotype, direction, trait, gene, every
+spelling of the variant), read from its parquets, for each module's latest version.
+`GET /variants?key=rs429358` answers by rsID, VRS id or coordinates; `GET /genes/{symbol}/claims` by authored
+gene; `?pgs_id=` filters the listing. A disagreement marker lists two modules giving the same allele, genotype
+and trait opposite directions, and counts every pair it could not compare, by reason, so silence never reads
+as agreement; it is a fact about two statements, never a verdict, and nothing ranks one claim over another.
+`registry project-claims` fills the catalog for versions published before this. `registry-client variant` and
+`gene` print it.
+
+### Upstream 0.8.6
+
+All three `just-dna-*` tiers floor at 0.8.6, a patch that moves nothing a caller reads. Taken before the five
+pre-0.8 modules re-derive: the enricher now logs which back-filled rsIDs a re-derivation drops (RM440), and
+`registry upgrade` counts that line in its summary and keeps it in the run's log.
+
+**Client surface:** unchanged (`variant_claims`, `gene_claims` and `list_modules(pgs_id=)` are new).
+
 ## [0.30.1] — 2026-11-13
 
 ### On upstream 0.8.5, and `registry upgrade` says which modules need re-deriving
