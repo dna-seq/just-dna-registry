@@ -47,6 +47,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S26** large publish lands but drops the response — race fixed, 0.27.0
 - **S27** `.env` loaded at import — enricher's (upstream S124); CLI fixed
 - **S28** namespace rename — declined, then reversed: shipped 0.29.0
+- **S29** lane lookup serves refused lanes — by design, documented; terms field filed
+- **S30** proxy passes skipped by enrich_offline — fixed dac4ccf (unreleased)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2788,3 +2790,112 @@ namespace spelled like the old handle, but `test-sheep` is not spelled like `she
 own. A `DELETE` addressed to the old name finds nothing; name the current one. Production still serves
 0.27.0, so none of this exists there yet. See CHANGELOG.md, 0.29.0.
 <!-- triaged: 0.29.0 · sha baf9b8cf97b2 -->
+
+# Field notes from just-module-creator — 2026-11-12
+
+## S29 — the 0.30 keyed lane lookup serves rows from lanes `/caches` refuses to redistribute, with no word of their terms
+
+*From just-module-creator (the liaison, on its tester's report, its F148), 2026-11-12.*
+
+What we ran: plugin 0.48.8, which wraps 0.30's `lane_rows` as `registry_lane_lookup`, against both instances
+(registry 0.30.0), with no token. Beside it, `registry_caches` (`GET /caches`) on the polygon.
+
+What we expected: a lane whose snapshot this registry declines to redistribute would decline a keyed read too, or
+the answer would carry the lane's terms.
+
+What happened: `GET /caches` gives these `remote_reason`s, among others:
+
+- `pharmvar`: "refused: the bulk data is pulled under a key PharmVar's terms §2 make personal and
+  non-transferable".
+- `pubmind`: "refused: the ANNOVAR-distributed table is CC BY-NC-ND 4.0, and the snapshot is adapted material
+  NoDerivatives forbids sharing".
+- `mane`: "unestablished: ... whether a snapshot of these bytes may be redistributed has never been answered".
+
+And the keyed lookup answers all three, anonymously, `served_from: "local"`:
+
+| call | instance | rows |
+|---|---|---|
+| `lane_rows("pharmvar", "alleles", {"allele": ["CYP2C19*2"]})` | production and polygon | 1: `function: "no function"`, `activity_value`, `evidence_level` |
+| `pubmind` / `pubmind`, chr19:44908684 (APOE rs429358) | polygon | 36, with `clin_sig` and `pathogenicity_score` |
+| `mane` / `summary`, `APOE` | polygon | the full MANE Select record |
+
+The production pharmvar call was re-run here at the liaison, with a bare `RegistryClient` and no key. 0.30's
+changelog says "Every lane answers keyed lookups ... Keyed and bounded per request; nothing enumerates a lane"
+and says nothing about the lanes' terms.
+
+Why it is yours to look at: your own `/caches` records that redistributing two of these lanes is refused and the
+third unanswered, and the lookup is a redistribution path the record does not mention. Whether a bounded, keyed
+read counts as redistribution under PharmVar's terms or NC-ND is a judgement for you and your maintainer, not us;
+we are reporting that the two surfaces now disagree.
+
+What we did meanwhile: nothing on the server side. On our side the lead is weighing whether our tool's answer
+should carry the lane's terms (its `remote_reason`), so an agent reading PubMind rows knows they are NC-ND
+material before a module leans on them.
+
+Candidates, either of which would make the two surfaces agree: (1) the lookup refuses a lane whose
+`remote_reason` is a refusal, as `/caches` does for a snapshot; or (2) it serves them and every answer carries the
+lane's terms (a `licence` or `terms` field, the same text `/caches` holds), with the decision that a keyed read is
+not redistribution written down where `/caches` states the refusal. If you decide a keyed read is fine as it is,
+saying so in the changelog or the API reference would answer the next reader.
+
+**Status — by design; the documentation half is fixed, unreleased (after 0.30.0); the terms field is filed
+for the lead.** Your reading of both surfaces is right, and the disagreement was ours to explain. The
+maintainer ruled on 2026-11-11, while 0.30 was being specified: "Serving = proxying to full snapsot. Any
+subslice = derivative work". That is requirement 2 of the 0.30 section of ROADMAP.md. Every lane this box
+holds answers a keyed lookup whatever its terms. The refusal `/caches` gives in `remote_reason` covers
+the whole snapshot only: no route hands one of those lanes out whole, and nothing enumerates a lane (at
+most 100 keys and 1,000 rows per request), so paging cannot rebuild it. So your three calls behave as
+decided, and I did not re-run them. What was missing is the one you named: the decision was in the
+roadmap and nowhere a caller reads. API-REFERENCE.md (endpoints 46–47) now says it, with a changelog line.
+Your candidate (2), the lane's terms carried on every answer, is a new response field, so a minor release
+and not mine to build. It is filed at the top of ROADMAP.md's *Next registry version* as undecided, the
+lead's call. Meanwhile, `GET /caches` is where your tool can read each lane's `remote_reason` and attach it.
+<!-- triaged: 0.30.0 · sha acf001513d27 -->
+
+## S30 — `derived?passes=…&offline=false` is skipped by the deployment's `enrich_offline`, and the skip tells the caller to send `offline=false`
+
+*From just-module-creator (the liaison, on its tester's report, its F150), 2026-11-12.*
+
+What we ran: plugin 0.48.8's `remote_derive(passes=["gwas"], live=true)` against the polygon (registry 0.30.0) on a
+copy of a one-variant module, which sends `POST .../derived` with `passes=gwas` and `offline=false`. The tester
+captured the returned archive.
+
+What we expected: the GWAS pass's live leg runs (it has no snapshot), charged on the `/hint` ledger, as
+API-REFERENCE.md's 0.30 paragraph says: "`offline=false` lets a pass's live leg run".
+
+What happened: `check.json` carries `"enrichment": {"offline": true, ...}` and
+`"passes": [{"command": "gwas", "status": "skipped", "detail": "offline: this pass needs a live source (ask with
+offline=false)", ...}]`. The cause, read in the 0.30.0 source: `api/routers/publish.py` runs the live leg only
+`if passes and not (offline or settings.enrich_offline)`, `services/derived.py` says "The deployment's own
+`enrich_offline` wins over a caller asking online", and `config.py` defaults `enrich_offline` to `True`. So on a
+deployment left at the default, no caller can reach a live leg, and the skip detail (`services/passes.py`,
+`_skipped_or`) tells a caller who already sent `offline=false` to send it.
+
+Why it is yours: the deployment's precedence is sound; the message and the reference are what mislead. A caller
+reads the skip as its own mistake and retries, and nothing in `/caches`, `/version` or the reference says the
+instance runs live legs at all.
+
+What we did meanwhile: nothing on the server side. Our own parsing of `passes` (we dropped the list) is ours and
+fixed separately (F150 on our side).
+
+Candidates: (1) the skip detail names which side was offline: the caller's flag, or the deployment's
+`REGISTRY_ENRICH_OFFLINE` (an operator setting the caller cannot change); (2) `GET /caches` or `/version` says up
+front whether this instance runs live legs, so a client can tell before it asks; (3) the API reference's 0.30
+paragraph adds that the deployment's setting outranks the caller's `offline=false`. Whether the polygon should run
+live legs is your operator's call, not something we ask for.
+
+**Status — accepted; already fixed on `main` in `dac4ccf` (unreleased, after 0.30.0); the polygon still
+serves 0.30.0, so it reproduces there until the next release is deployed.** Your reading of the 0.30.0
+source is right: `enrich_offline`, which governs this box's own publish enrichment and defaults to on,
+outranked the caller. So every live pass answered "skipped: offline" with advice the caller had already
+followed. The lead found the same defect and fixed it the way your candidates point. The proxy now takes
+the caller's `offline` (`services/derived.py`, as `/hint/*` always did), and `enrich_offline` governs only
+this box's publish. After that change, the "(ask with offline=false)" skip appears only when the caller
+did send `offline=true`, so the sentence is true again (your candidate 1). Where the operator keeps a
+source closed, the skip already names the switch (`REGISTRY_HINT_ALLOW_GNOMAD`, `REGISTRY_PROXY_ALPHAGENOME`).
+The API reference's 0.30 paragraph is now accurate as written (candidate 3), and `tests/test_derived_api.py`
+pins a caller's `offline=false` reaching the live leg on a box left at the default. I read the code and that
+test; I did not re-run the polygon call. Candidate 2, an instance saying beforehand which live legs it runs,
+is a new response field, so a minor release: it is filed in ROADMAP.md's *Next registry version* as
+undecided, the lead's call. The changelog's unreleased entry now names this item.
+<!-- triaged: 0.30.0 · sha 20639bdc73c8 -->

@@ -375,7 +375,8 @@ def test_the_dry_run_states_how_each_module_re_derives(
     out = _sweep(settings, monkeypatch, "--dry-run")
     assert "re-derive: snapshot only" in out
     # One line for the module, its reasons as codes; the sentence is the detail (log, or --verbose).
-    assert f"⇧ {_NS}/{_NAME}@1.0.0: would upgrade [" in out and "rederive_snapshot]" in out
+    # 0.30.1: the reasons follow the route code, each with its row count.
+    assert f"⇧ {_NS}/{_NAME}@1.0.0: would upgrade [" in out and "rederive_snapshot, no_source_release:" in out
     assert "re-derive 2 recorded subject(s) from the snapshot" not in out
     assert "1 version(s) would upgrade" in out
     verbose = _sweep(settings, monkeypatch, "--dry-run", "--verbose")
@@ -665,3 +666,55 @@ def test_a_sweep_that_publishes_kept_the_catalog_as_it_was_before(
     journal = [json.loads(line) for line in (run / "journal.jsonl").read_text().splitlines()]
     assert journal and {e["key"] for e in journal} == {f"{_NS}/{_NAME}/1.0.1"}
     assert {e["op"] for e in journal} == {"add"}
+
+
+# ── 0.30.1: the discriminator, one arm at a time ─────────────────────────────────────────────────────
+
+from just_dna_registry.services.upgrade import (  # noqa: E402 - grouped with the tests that use them
+    REDERIVE_CANNOT_SAY,
+    REDERIVE_DECLARED_CORRECTION,
+    REDERIVE_NO_SOURCE_RELEASE,
+    REDERIVE_OLDER_SNAPSHOT,
+    rederive_reasons,
+)
+
+_HEAD = "variant_key,rsid,chrom,start,ref,alts,source,authority,source_release\n"
+_ENS = "ensembl-variation-2026_07_13-vep116.0"
+_INSTALLED = {"ensembl": _ENS, "clinvar": "clinvar_2026-11-01"}
+
+
+def test_a_current_table_has_no_reason_and_an_authored_row_never_is_one() -> None:
+    """Authored rows name no release by construction; counting them would re-derive a module forever."""
+    table = _HEAD + f"rs1,rs1,1,10,G,A,cache,ensembl,{_ENS}\nrs9,rs9,1,90,C,T,authored,,\n"
+    assert rederive_reasons(table, None, _INSTALLED) == {}
+
+
+def test_a_pre_08_row_names_no_release() -> None:
+    table = _HEAD + "rs1,rs1,1,10,G,A,cache,ensembl,\nrs2,rs2,1,11,G,A,cache,ensembl,\n"
+    assert rederive_reasons(table, None, _INSTALLED) == {REDERIVE_NO_SOURCE_RELEASE: 2}
+    # A 0.7 table has no such column at all.
+    assert rederive_reasons("variant_key,chrom,start,ref,alts\nrs1,1,10,G,A\n", None, _INSTALLED) == {
+        REDERIVE_NO_SOURCE_RELEASE: 1
+    }
+
+
+def test_a_row_from_an_older_snapshot_is_the_half_0_28_did_not_see() -> None:
+    """The case a plain dry run before this patch called current: every row names a release, an older one."""
+    table = _HEAD + "rs1,rs1,1,10,G,A,cache,ensembl,ensembl-variation-2025_01_01-vep113.0\n"
+    assert not resolution_needs_rederive(table)
+    assert rederive_reasons(table, None, _INSTALLED) == {REDERIVE_OLDER_SNAPSHOT: 1}
+
+
+def test_an_unreadable_installed_release_is_cannot_say_never_current() -> None:
+    table = _HEAD + f"rs1,rs1,1,10,G,A,cache,ensembl,{_ENS}\n"
+    assert rederive_reasons(table, None, {"ensembl": None}) == {REDERIVE_CANNOT_SAY: 1}
+
+
+def test_rm438_a_backfilled_rsid_that_cannot_hold_the_authored_genotype() -> None:
+    """S151's shape: a coordinate-keyed row back-filled with an rsID whose alleles cannot be the row's genotype."""
+    key = "22:42130692:G:A"
+    table = _HEAD + f"{key},rs1065852,22,42130692,G,GTTTTTTTTTTTTTTTT,cache,ensembl,{_ENS}\n"
+    variants = "variant_key,chrom,start,ref,genotype\n" + f"{key},22,42130692,G,A/G\n"
+    assert rederive_reasons(table, variants, _INSTALLED) == {REDERIVE_DECLARED_CORRECTION: 1}
+    hosting = _HEAD + f"{key},rs1065852,22,42130692,G,A,cache,ensembl,{_ENS}\n"
+    assert rederive_reasons(hosting, variants, _INSTALLED) == {}

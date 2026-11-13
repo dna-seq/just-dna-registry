@@ -1,14 +1,15 @@
-**just-dna-registry, where it stands** (kept by the pm; updated 2026-11-12)
+**just-dna-registry, where it stands** (kept by the pm; updated 2026-11-13)
 
-0.30.0 is out, and both servers (production and the test server) run it: the registry now proxies the cached reference data it holds, lane by lane and pass by pass, and two coverage tests fail when upstream adds a lane or pass we do not cover. Next release, 0.31, is the variant-level catalog, being built.
+0.30.0 is live on both servers. 0.30.1 is built on main and not yet released: it moves to upstream 0.8.5 and makes the upgrade sweep say which modules need their data re-derived, and why. 0.31, the variant-level catalog, is being built.
 
 **Results**
-- ✅ 0.30.0 (caching proxy by lane and by pass): lookups by key from every held lane; whole snapshots of restricted data never handed out.
-- ✅ 0.29.1: upstream 0.8.4, which fixes the GWAS Catalog lookup that returned nothing.
-- ✅ 0.29.0: a namespace can be renamed; the old name stays as an alias.
-- ⚠ Reading a lane the server does not hold, straight from its published copy, waits on upstream (their RM430).
+- ✅ 0.30.0: the caching proxy, lane by lane and pass by pass; lookups by key from every held lane, whole restricted snapshots never handed out.
+- ✅ 0.29.1: upstream 0.8.4, fixing the GWAS Catalog lookup that returned nothing.
+- 🔄 0.30.1 built: four reasons a module needs re-deriving (written before format 0.8, against an older Ensembl release, an upstream correction since, or cannot tell).
+- ⚠ Upstream won't declare corrections like RM438 in its release records before 0.9 (their RM441), so 0.30.1 measures that one directly.
 
 **Next**
-1. 0.31, variant-level catalog with a gene facet: block 1 of 4 done; backfill next (lead, under desk #263's defaults).
-2. Production upgrade sweep: five modules held for reading (lead, then the maintainer).
-3. Remote lane reads: when upstream releases RM430 (liaison watches, lead adopts).
+1. Cut and release 0.30.1 (lead; publishing is the maintainer's).
+2. Re-derive the five modules still on pre-0.8 tables (cancer, cardio, pathogenic, blood groups, pharmgkb) on 0.8.5, after 0.30.1 is deployed (lead, then the maintainer).
+3. 0.31, the variant-level catalog, plus two small additions from consumers: a lane lookup states its licence terms, and the server says which live sources it has switched off (lead).
+4. Remote lane reads, once upstream releases RM430 (liaison watches, lead adopts).

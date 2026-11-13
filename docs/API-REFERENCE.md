@@ -1414,6 +1414,15 @@ most `lane_max_rows` rows (1,000) with `truncated: true` past that. A remote tab
 files (Ensembl by rsID alone cannot be bounded remotely; upstream RM431 asks for an index). A lane
 neither held nor published is `404 lane_not_available`.
 
+**Terms: a keyed lookup is not a snapshot, and every held lane answers one.** This is deliberate, and it
+includes the lanes whose `remote_reason` in `GET /caches` (endpoint 1a) is a refusal or unestablished
+(`pharmvar`, `pubmind`, `mane`, `acmg`). The maintainer ruled on 2026-11-11 that serving a lane means
+handing out its whole snapshot, and that any keyed subslice is a derivative. So the refusal in
+`remote_reason` covers the snapshot: no route hands one of those lanes out whole, and the bounds above
+are what keep paging through keys from rebuilding it. The answer does not carry the lane's terms. They
+still bind what a caller does with the rows, and `GET /caches` gives each lane's reason (S29; the ruling
+is requirement 2 of the 0.30 section of ROADMAP.md).
+
 `200 → {"lane", "table", "served_from", "rows": [...], "truncated"}`. Errors: `404 unknown_lane`,
 `404 unknown_table`, `404 lane_not_available`, `422 lane_needs_keys`, `422 unknown_key`,
 `422 position_needs_both`, `422 too_many_keys`, `422 remote_needs_position`, `429`. Client:

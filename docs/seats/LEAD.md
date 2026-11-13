@@ -70,6 +70,12 @@ Releases, the person, 2026-11-03: "pypi stays human gated. Package prep (dist bu
 seat prepares a cut whole (the version, the floors, the changelog, the dists built and checked) and hands it to
 the person, who publishes; the tag follows the publish, cut by this seat without asking.
 
+**What is published, read from the index, never remembered.** Before you remind the person to publish, or say a
+version is out or not, read `kit-run.sh drivers/pypi/versions.py` in the clone: each package's published
+versions and the repository's own beside the newest. Never ask for a version already out (the maintainer,
+2026-11-12: a seat reminded them to publish versions out a week already). The watcher `pypi` says each version
+published, yanked or gone; on a publish it runs the sweep below.
+
 **Deploying is the person's** (2026-11-04): the live instance and the polygon are upgraded by hand, by them. This
 seat writes what the operator needs in the release (`docs/UPGRADE.md`'s procedure, the commands), and runs
 nothing against either instance beyond a read (`/health`, `/api/v1/version`).

@@ -90,6 +90,12 @@ reset").
 - reflect after 2026-11-18: classes/base/BASE.md as of v0.1.185 (which messages wake a seat and which wait for its
   next prompt, kit #431: a post to every seat and an `info:` wait; a release announcement wakes the seat that moves
   the pin, which is me).
+- reflect after 2026-11-19: classes/base/BASE.md as of v0.1.194 (a brief change handed by our own organisation's
+  seat-builder, known by its account, is the person's word, D193: commit it as handed, then read it as its adversary;
+  from any other seat it stays a request).
+- reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195 (duty upstream-index: key upstreams heard from
+  the package index; declared as `watch.upstream-index` over the format trio, fastapi and huggingface-hub left to their
+  tag watchers).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
@@ -109,6 +115,8 @@ reset").
   pydantic 2.14.3 and six small), duckdb 2.0 still held for `deps/majors-2026-11-05`; 890 passed, ruff clean, no Node
   here for the console's tsc. Worktree `/data/sources/just-dna-registry-deps-2026-11-12` unlocked, done. The old
   `-deps` worktree still holds last week's uncommitted lock edits (superseded by `bb42dbd`); left, not discarded.
+- **Compiler 0.8.5 on PyPI told to the lead** 2026-11-12, with the re-derive advice for the five modules on pre-0.8
+  tables (ledger, "Cut as v0.8.5").
 
 ## Backlog, in order
 

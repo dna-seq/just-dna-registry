@@ -25,6 +25,7 @@ the column/key trim like `variants.csv` and `module_spec.yaml`.
 
 import csv
 import io
+from pathlib import Path
 
 import yaml
 from just_dna_compiler.compiler import _FACT_TABLES, _TABLE_KINDS, AUTHORED_NON_KIND_TABLES
@@ -484,6 +485,10 @@ class VersionUpgradePlan(BaseModel):
     needs_online: bool = False
     #: Recorded subjects the re-derivation re-asks: the run's size, and online its request budget.
     rederive_subjects: int = 0
+    #: Why it re-derives, by `rederive_reasons` code, with the rows behind each (0.30.1). A reason that is
+    #: not `cannot_say` is a reason to act on its own: the person asked that the sweep re-derive exactly
+    #: the modules that need it, whatever their compiler gap.
+    rederive_reasons: dict[str, int] = Field(default_factory=dict)
 
     @property
     def contract_acts(self) -> bool:
@@ -516,6 +521,7 @@ class VersionUpgradePlan(BaseModel):
             or bool(self.dropped)
             or self.contract_acts
             or self.verdict.acts_by_default
+            or any(code != REDERIVE_CANNOT_SAY for code in self.rederive_reasons)
             or recompile
         )
 
@@ -539,6 +545,99 @@ def resolution_needs_rederive(resolution_csv_text: str) -> bool:
     published `resolution.csv` names; until then every non-blank row is the current release's.
     """
     return any(not (row.get("source_release") or "").strip() for row in _rows(resolution_csv_text))
+
+
+#: The re-derivation discriminator's arms (0.30.1, the person: "build some discriminator to determine which
+#: items need rederivation"). Each is read off the stored `resolution.csv`, compared by value, never by a
+#: landmark; a module carries every arm that applies, with the rows behind it.
+REDERIVE_NO_SOURCE_RELEASE = "no_source_release"
+REDERIVE_OLDER_SNAPSHOT = "older_snapshot_release"
+REDERIVE_DECLARED_CORRECTION = "declared_correction"
+REDERIVE_CANNOT_SAY = "cannot_say"
+
+#: The authority a `source=cache` row names, to the snapshot lane whose release it would carry.
+_AUTHORITY_LANES: dict[str, str] = {"ensembl": "ensembl", "clinvar": "clinvar"}
+
+
+def installed_snapshot_releases(settings: Settings) -> dict[str, str | None]:
+    """The release label of each snapshot a `source=cache` row can name, as this box holds it; `None` for a
+    lane not held or whose label cannot be read (the arm is then `cannot_say` for its rows, never current)."""
+    from just_dna_registry.services.enrich import cache_lanes, lane_presence
+
+    present, lanes = lane_presence(settings), cache_lanes()
+    out: dict[str, str | None] = {}
+    for authority, lane in _AUTHORITY_LANES.items():
+        where = present.get(lane)
+        try:
+            out[authority] = lanes[lane].release_label(Path(where)) if where is not None else None
+        except Exception:  # noqa: BLE001 - an unreadable label is one honest "cannot say"
+            out[authority] = None
+    return out
+
+
+def _authored_genotype_alleles(variants_csv_text: str | None) -> dict[str, set[str]]:
+    """Every allele each `variant_key` (or rsID / coordinate) authors in a genotype, upper-cased."""
+    out: dict[str, set[str]] = {}
+    if not variants_csv_text:
+        return out
+    for row in _rows(variants_csv_text):
+        alleles = {a.strip().upper() for a in split_genotype(row.get("genotype") or "") if a.strip()}
+        if not alleles:
+            continue
+        for key in (row.get("variant_key"), row.get("rsid"),
+                    f"{row.get('chrom')}:{row.get('start')}:{row.get('ref')}" if row.get("chrom") else None):
+            if key:
+                out.setdefault(key, set()).update(alleles)
+    return out
+
+
+def rederive_reasons(
+    resolution_csv_text: str, variants_csv_text: str | None, installed: dict[str, str | None]
+) -> dict[str, int]:
+    """Why a stored `resolution.csv` needs re-deriving, with the rows behind each reason (0.30.1).
+
+    * `no_source_release`: a row a source answered (not `authored`) naming no `source_release`, which no
+      0.8 run writes. A table with no such column at all is entirely this.
+    * `older_snapshot_release`: a `source=cache` row naming a release other than the installed snapshot's
+      for its authority: the staleness after a snapshot move, which the 0.28 check did not see.
+    * `declared_correction`: upstream RM438 (enricher 0.8.5, undeclared in its release record) changed the
+      rsID back-fill at a position several rsIDs share to follow the row's genotype. Probed from the table:
+      a coordinate-keyed row with a back-filled rsID whose ref/alts cannot hold every allele its authored
+      genotype names is one 0.8.5 would no longer back-fill so. A necessary condition, so it can under-report
+      (two hosting rsIDs, now withheld, are not visible here) but never flags a row 0.8.5 would keep.
+    * `cannot_say`: a `source=cache` row whose authority's installed release cannot be read.
+    Converges: a table re-derived on the installed enricher names the installed release on every answered
+    row and back-fills only hosting rsIDs, so none of the first three arms fires again."""
+    reasons: dict[str, int] = {}
+
+    def add(code: str) -> None:
+        reasons[code] = reasons.get(code, 0) + 1
+
+    genotypes = _authored_genotype_alleles(variants_csv_text)
+    for row in _rows(resolution_csv_text):
+        source = (row.get("source") or "").strip()
+        if source == "authored":
+            continue
+        release = (row.get("source_release") or "").strip()
+        if not release:
+            add(REDERIVE_NO_SOURCE_RELEASE)
+            continue
+        if source == "cache":
+            authority = (row.get("authority") or "").strip()
+            want = installed.get(authority) if authority in _AUTHORITY_LANES else release
+            if want is None:
+                add(REDERIVE_CANNOT_SAY)
+            elif release != want:
+                add(REDERIVE_OLDER_SNAPSHOT)
+            key = row.get("variant_key") or ""
+            if row.get("rsid") and not key.startswith("rs"):
+                authored = genotypes.get(key) or genotypes.get(
+                    f"{row.get('chrom')}:{row.get('start')}:{row.get('ref')}", set()
+                )
+                hosted = {(row.get("ref") or "").upper(), *(a.upper() for a in (row.get("alts") or "").split(",") if a)}
+                if authored and not authored <= hosted:
+                    add(REDERIVE_DECLARED_CORRECTION)
+    return reasons
 
 
 def _not_substitutions(ref: str | None, alts: list[str]) -> bool:
@@ -582,6 +681,7 @@ def prepare_version_upgrade(
     manifest: ModuleManifest,
     *,
     trim: bool = False,
+    installed_releases: dict[str, str | None] | None = None,
 ) -> VersionUpgradePlan | None:
     """Compute the re-publish plan for a version from its stored spec inputs, or None when they
     aren't all retrievable (a legacy import — cannot be upgraded).
@@ -679,7 +779,14 @@ def prepare_version_upgrade(
         declared=declared,
     )
     resolution = files[RESOLUTION_CSV].decode("utf-8") if RESOLUTION_CSV in files else ""
-    rederive = bool(resolution) and resolution_needs_rederive(resolution)
+    reasons = (
+        rederive_reasons(
+            resolution,
+            files["variants.csv"].decode("utf-8") if "variants.csv" in files else None,
+            installed_releases if installed_releases is not None else {},
+        ) if resolution else {}
+    )
+    rederive = any(code != REDERIVE_CANNOT_SAY for code in reasons)
     return VersionUpgradePlan(
         variants_plan=plan,
         dropped=dropped,
@@ -690,6 +797,7 @@ def prepare_version_upgrade(
         rederive=rederive,
         needs_online=rederive and needs_online_rederive(files),
         rederive_subjects=rederive_subjects(resolution) if rederive else 0,
+        rederive_reasons=reasons,
     )
 
 
@@ -840,7 +948,8 @@ def upgrade_version(
     if not is_latest_version(repo, namespace, name, version):
         return None
     prep = prepared or prepare_version_upgrade(
-        storage, namespace, name, version, manifest, trim=trim
+        storage, namespace, name, version, manifest, trim=trim,
+        installed_releases=installed_snapshot_releases(settings),
     )
     if prep is None or not prep.would_act(recompile=recompile):
         return None

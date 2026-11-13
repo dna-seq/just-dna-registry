@@ -60,6 +60,7 @@ from just_dna_registry.services.upgrade import (
     GAP_UNKNOWN,
     UpgradeHeld,
     VersionUpgradePlan,
+    installed_snapshot_releases,
     is_latest_version,
     prepare_version_upgrade,
     upgrade_version,
@@ -1066,6 +1067,8 @@ def _act_codes(prep: VersionUpgradePlan, *, recompile: bool) -> str:
         codes.append("forced")
     if prep.rederive:
         codes.append("rederive_online" if prep.needs_online else "rederive_snapshot")
+        # Why (0.30.1): each discriminator arm that fired, with the rows behind it.
+        codes += [f"{code}:{rows}" for code, rows in sorted(prep.rederive_reasons.items())]
     return f"[{', '.join(codes)}]"
 
 
@@ -1113,12 +1116,15 @@ def _sweep_one(
     trim: bool,
     online: bool,
     snapshot_problem: str | None,
+    installed_releases: dict[str, str | None] | None = None,
 ) -> SweepItem | _ToPublish:
     """One latest version's plan: what became of it, or, under `--apply`, the re-publish to run."""
     ns, name, ver = row["namespace"], row["name"], row["version"]
     label = f"{ns}/{name}@{ver}"
     manifest = ModuleManifest.model_validate_json(row["manifest_json"])
-    prep = prepare_version_upgrade(storage, ns, name, ver, manifest, trim=trim)
+    prep = prepare_version_upgrade(
+        storage, ns, name, ver, manifest, trim=trim, installed_releases=installed_releases
+    )
     if prep is None:  # spec inputs not retrievable (legacy import)
         return SweepItem(label, UNCHANGED, "no_spec_inputs", f"· {label}: unchanged no_spec_inputs")
     if prep.blocked:
@@ -1269,6 +1275,7 @@ def _upgrade_sweep(
     )
     # Asked once, up front, and before any PATCH is minted: re-deriving against the old release reads
     # the old answers back into a permanent successor (`snapshot_not_current`).
+    installed_releases = installed_snapshot_releases(settings)
     snapshot_problem = (
         snapshot_not_current(settings) if enricher_available()
         else "just-dna-enricher is not installed (install the `server` extra)"
@@ -1326,6 +1333,7 @@ def _upgrade_sweep(
                     planned = _sweep_one(
                         settings, storage, row, apply=apply, force=force, trim=trim,
                         online=online, snapshot_problem=snapshot_problem,
+                        installed_releases=installed_releases,
                     )
                 except Exception as exc:  # one module's failure is reported, not fatal
                     planned = _failed(label, exc)

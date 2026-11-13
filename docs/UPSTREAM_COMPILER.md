@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
+**`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
 registry 0.29.1). **`v0.8.3`** read (2026-11-10: tagged `725eb2b`, the commit read at the cut on 2026-11-09, all three packages at 0.8.3 on PyPI; RM425 to RM427 are past it). **`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
 backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
@@ -144,10 +144,38 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   neither, and `enrich()` does not reach it. We only read a published `gwas_effects` sidecar (`services/catalog.py:251`).
   Nothing moves here. **Landed** as `f0433de` (2026-11-11): `_PAGE_SIZE` 500, a refused first page asked once more
   with no size, a `size_refusals` count on the pass's own report; nothing we read. Unreleased (0.8.4).
+- **Cut as `v0.8.5`** (`c036c70` on their `main`, 2026-11-12; read untagged, tagged `v0.8.5` at that commit and on PyPI the same day): all three to
+  0.8.5, floors `>=0.8.5`, the enricher's `tenacity` floor down to `>=9.0.0`. Carries RM432, RM434, RM436 and RM438,
+  each read in this file (RM433 is a roadmap note only); no public name, field, table, flag or warning code. Two
+  behaviours change for a direct caller: RM432's raises and RM438's withheld rsID; we call neither directly.
+  Release record `0.8.5` (from 0.8.4, 22 reference modules): a measured zero on every axis, and it **does not
+  measure** RM438's `resolution.csv` correction, so `declared_movement` will not act on it. Measured here: nothing
+  published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
+  weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
+  `blood_groups`, `pharmgkb`) are re-derived on it, not before.
 - **Their `main` past the 0.8.4 cut**: **RM434** (`5e124df`, from longevity-loci's S147, for 0.8.5): `StudyRow.stat_significance`'s
   description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
   to threshold on a common scale. A description only, no digest moves. We name the column only as one of the 0.3
   columns `upgrade` back-populates and never restate its meaning. Nothing moves.
+- **RM436** (`0ccd50f`, 2026-11-12, for 0.8.5, from just-dna-lite's S149): the enricher's `tenacity` floor drops
+  from `>=9.2.1` to `>=9.0.0`, so it resolves beside `google-genai` (which caps `<9.2.0`); a private shim picks the
+  backoff keyword by the installed constructor. We have no `google-genai` and lock tenacity 9.2.1, which still
+  satisfies it. Nothing moves.
+- **RM438** (open, a patch, for 0.8.5 if it lands first; from just-dna-lite's S151, S152 folded in): one hosting rule
+  for both rsID back-fill paths. `enrich` keeps pick-and-flag but narrows candidates by the row's `alts`, else its
+  genotype, so a row moves `ambiguous` → `resolved` only where one rsID hosts it; declared a **corrected
+  derivation**. Their triage asked us to size the exposure. **Measured 2026-11-12 on production** (latest version of
+  all 24 modules, downloaded read-only): 439,752 `resolution.csv` rows, **0 `ambiguous`**, 0 with
+  `rsid_alternates`, so nothing published changes. But only 1,632 rows name a `source_release`: the three ClinVar
+  panels `just-dna-seq/cancer` 2.0.0, `cardio` 2.0.0 and `pathogenic` 2.0.0 (141,331 coordinate-keyed rows between
+  them) plus `blood_groups` and `pharmgkb` still carry pre-0.8 tables, never re-derived. **Their re-derivation
+  is where RM438 bites**, so it is best run with RM438 installed. Polygon not measured (rehearsal data).
+  **Landed** as `d71a850` and `9d08278` (2026-11-12, unreleased): `resolver._hosting_rsids`, private; their
+  declaration names our 0 and an unmeasured resolved arm (a single back-filled rsID the genotype refutes now gets
+  none). **That arm measured the same day**: 7 coordinate-keyed rows carry a snapshot (`cache`) back-filled rsID,
+  all in `antonkulaga/smell` 0.1.1, each one's authored genotypes within the row's own ref/alts, so none is refuted.
+  51,249 more carry a ClinVar back-fill, all in the three un-re-derived panels; ClinVar is RM438's fall-through,
+  not narrowed by it.
 - **Cut as `v0.8.4`** (`36cbc20` on their `main`, 2026-11-11 01:15 CET; read untagged; **on PyPI** when checked 2026-11-11, tagged `v0.8.4` at that commit later the same day): all three
   to 0.8.4, inter-package floors `>=0.8.4` (the compiler's source is unchanged; it moves only for the floor). Carries
   RM425 to RM428, each read above, their fence-test fix and their own lock bump; no published requirement moved, no
@@ -457,6 +485,15 @@ lock (1.44.2, 1.5.5, 2.3.3).
 | `shared_lookup_clients()` eager construction | nothing (C2) | C2 built | 2026-11-04 |
 
 ## Outbound
+
+- **S153** (filed 2026-11-12 at the pm's request for 0.30.1; their triage told): no release-record axis covers a
+  derived table, so 0.8.5's record reads as "nothing moved" though RM438 corrects `resolution.csv`. Asks: an axis
+  for derived tables, a `requires` that names the reach, RM438 declared on it in the next record. Our side, once it
+  exists: `declared_movement` acting on that axis means a re-derive, not a recompile.
+  **Answered 2026-11-12** as **RM441, a minor** (their pm sizes it; 0.9 at the earliest). Two design points: a new
+  axis would join `RECOMPILE_DRIVING_AXES` by default, so it needs a re-derive route of its own; and RM438's reach is
+  `None` (not stated) in today's `requires` grammar, which our `declared_movement` keeps, so a sweep would over-reach,
+  bounded at one PATCH per module. Pm told.
 
 - **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
   triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads

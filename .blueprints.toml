@@ -13,6 +13,10 @@ wake_from = "just-dna-registry/triage just-dna-registry/liaison just-dna-registr
 [seat.lead.watch.desk]
 cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry lead"
 
+# Each version of this repository's packages the index publishes, yanks or drops (the kit's L136).
+[seat.lead.watch.pypi]
+cmd = "python3 kit:drivers/pypi/watch-pypi.py"
+
 [seat.lead.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
 
@@ -81,6 +85,12 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh fastapi --tags"
 [seat.liaison.watch.huggingface-hub]
 cmd = "sh kit:classes/liaison/watch-upstream.sh huggingface-hub --tags"
 
+# The in-house upstream's releases from the package index (the kit's liaison duty upstream-index, L136): a tag is
+# not a publish, and 0.8.4 reached PyPI hours before its tag. No --upstream flag: this repository declares no
+# [on_publish], so an upstream's release runs nothing here.
+[seat.liaison.watch.upstream-index]
+cmd = "python3 kit:drivers/pypi/watch-pypi.py just-dna-format just-dna-compiler just-dna-enricher"
+
 # The weekly dependency bump (the kit's liaison role, "The dependency bump"): said due once a week while the
 # person is away, on this seat's own day.
 [seat.liaison.watch.nightly]
@@ -88,3 +98,8 @@ cmd = "sh kit:bin/py.sh kit:classes/base/nightly.py deps"
 
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+# On a version published, the merged temporary branches deleted (the kit's L137); unmerged ones are listed
+# for the person through /seats:branch-sweep, never deleted by a seat.
+[on_publish.sweep]
+cmd = "python3 kit:bin/branch-sweep.py --apply --pattern 'deps/*' --pattern 'worktree-agent-*' --pattern 'release-prep-*'"
