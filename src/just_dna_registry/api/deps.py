@@ -127,13 +127,12 @@ def optional_account(
     return None
 
 
-#: `Account.namespaces` is `repo.namespaces_for_account()`, which is the **ownership** grant only —
-#: a non-owner member of somebody else's namespace does not appear in it, so `GET /auth/whoami` and
-#: the `issue-key` response under-report what the caller can actually publish to. This is a reporting
-#: gap, not an authorization one: every gate goes through `effective_role()` below, which reads the
-#: per-namespace membership and the org cascade directly and never consults this list. Widening it to
-#: the union of owned and member-of namespaces is the obvious fix and is a response-shape change, so
-#: it is written down here rather than done in passing.
+#: `Account.namespaces` is `repo.namespaces_for_account()`, which is the **ownership** grant only, and
+#: it keeps that meaning. What else the caller reaches (an explicit membership of somebody else's
+#: namespace, an org's namespaces by cascade) is `member_of` beside it on `GET /auth/whoami` and the
+#: `register` response since 0.32 (S31), from `repo.memberships()`, with the caller's orgs as `orgs`.
+#: Computed in those two handlers, never here: this runs on every authenticated request. Nothing that
+#: authorizes reads either list; every gate goes through `effective_role()` below.
 
 
 def effective_role(repo: Repository, account: Account, namespace: str) -> str | None:

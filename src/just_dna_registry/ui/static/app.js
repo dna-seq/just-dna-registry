@@ -350,6 +350,19 @@
             location.hash = `#/${qs({ namespace })}`;
           }) : h("span", { class: "faint" }, "none yet — claim one below")
         ),
+        // What else the caller may act in (0.32): one row per route; an older server sends neither key.
+        (me.member_of ?? []).length ? h(
+          "div",
+          {},
+          h("span", { class: "muted small" }, "member of: "),
+          (me.member_of ?? []).map((m) => badge("outline", `${m.namespace} · ${m.role} · ${m.via}`))
+        ) : null,
+        (me.orgs ?? []).length ? h(
+          "div",
+          {},
+          h("span", { class: "muted small" }, "orgs: "),
+          (me.orgs ?? []).map((o) => badge("outline", `${o.org} · ${o.role}`))
+        ) : null,
         profileForm(me)
       ));
       root.append(namespacePanel());

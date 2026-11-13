@@ -769,9 +769,9 @@ class Repository:
         been this one. The duplicate is gone rather than renamed because the query
         it ran was the wrong half regardless: claiming a namespace writes a `namespaces` row and
         **no** `namespace_members` row, so a plain owner is absent from that table and the 0.9.0
-        version would have answered `[]` for them. Neither query is the union, which is what
-        `whoami` arguably wants — see the note on `Account.namespaces` in `api/deps.py`.
-        Authorization does not read this: `effective_role()` reconciles the grant and the
+        version would have answered `[]` for them. The rest of what the account reaches is
+        `memberships` (0.32), which `whoami` and `register` report beside this as `member_of`.
+        Authorization does not read either: `effective_role()` reconciles the grant and the
         membership itself.
         """
         return [
@@ -779,6 +779,43 @@ class Repository:
                 "SELECT name FROM namespaces WHERE account_id = ? ORDER BY name", (account_id,)
             ).fetchall()
         ]
+
+    def memberships(self, account_id: int) -> list[sqlite3.Row]:
+        """Every namespace this account reaches without owning it (0.32, S31): `namespace`, `role`, `via`.
+
+        Two routes, each a row: an explicit `namespace_members` grant (`via = 'member'`) and the org
+        cascade, one row per namespace an org the account belongs to owns (`via = 'org:<org>'`, the org's
+        current handle). A namespace reached both ways is two rows; `effective_role()` is the higher of
+        them. Joined to `namespaces` so a name that was freed or renamed away never appears, and the
+        account's own namespaces are left to `namespaces_for_account`. A site admin's reach (owner on
+        every namespace) is the `site_admin` flag, never enumerated here.
+        """
+        return self.conn.execute(
+            """
+            SELECT nm.namespace AS namespace, nm.role AS role, 'member' AS via
+              FROM namespace_members nm JOIN namespaces n ON n.name = nm.namespace
+             WHERE nm.account_id = ? AND n.account_id != ?
+            UNION ALL
+            SELECT n.name AS namespace, om.role AS role, 'org:' || a.name AS via
+              FROM org_members om
+              JOIN accounts a ON a.id = om.org_id AND a.type = 'org'
+              JOIN namespaces n ON n.account_id = om.org_id
+             WHERE om.account_id = ?
+             ORDER BY namespace, via
+            """,
+            (account_id, account_id, account_id),
+        ).fetchall()
+
+    def orgs_of(self, account_id: int) -> list[sqlite3.Row]:
+        """The orgs this account belongs to (0.32, S31): `org` (its current handle) and `role`."""
+        return self.conn.execute(
+            """
+            SELECT a.name AS org, om.role AS role
+              FROM org_members om JOIN accounts a ON a.id = om.org_id AND a.type = 'org'
+             WHERE om.account_id = ? ORDER BY a.name
+            """,
+            (account_id,),
+        ).fetchall()
 
     def versions_published_by(self, account_id: int) -> list[sqlite3.Row]:
         """Every published version this account authored, wherever it lives.

@@ -486,6 +486,21 @@ class Page[T](BaseModel):
     per_page: int
 
 
+class NamespaceMembership(BaseModel):
+    """One route by which the caller reaches a namespace it does not own (0.32, S31)."""
+
+    namespace: str
+    role: str = Field(description="`owner` | `admin` | `member` on this route")
+    via: str = Field(description="`member` (an explicit grant) or `org:<org>` (an org the caller is in owns it)")
+
+
+class OrgMembership(BaseModel):
+    """An org the caller belongs to (0.32, S31), by its current handle."""
+
+    org: str
+    role: str
+
+
 class WhoAmI(BaseModel):
     """Identity response for `GET /auth/whoami`. `email` is private — returned only here, to the
     account itself, never in public listings."""
@@ -498,6 +513,15 @@ class WhoAmI(BaseModel):
     funding_url: str | None = None  # donation/sponsor link (public http(s) URL)
     email: str | None = None
     site_admin: bool = False  # registry-wide admin (0.28): owner on every existing namespace/org
+    member_of: list[NamespaceMembership] = Field(
+        default_factory=list,
+        description=(
+            "Every namespace the caller may act in without owning it (0.32): one row per route, so a "
+            "namespace reached both ways is two rows and the higher role applies. `namespaces` keeps "
+            "its meaning, the ones the caller owns. A site admin's reach is `site_admin`, not listed."
+        ),
+    )
+    orgs: list[OrgMembership] = Field(default_factory=list, description="The orgs the caller belongs to (0.32)")
 
 
 # Account identity vocab + light checks (regex-based, to avoid an email-validator / URL dep).

@@ -165,3 +165,62 @@ def test_contributor_migrates_to_member(tmp_path) -> None:
     conn.commit()
     init_db(conn)  # idempotent _migrate runs the contributor→member update
     assert repo.namespace_role("legacy-ns", aid) == "member"
+
+
+# ── What whoami says the caller reaches (0.32, S31) ──────────────────────────
+
+
+def test_whoami_lists_every_namespace_the_caller_reaches_and_its_orgs(
+    client: TestClient, repo: Repository
+) -> None:
+    """`member_of` and `orgs` against `effective_role()` itself, over every namespace in the catalog.
+
+    Three routes: an explicit membership of somebody else's namespace, an org's namespace by cascade,
+    and one namespace reached both ways (two rows, the higher being the effective role). The caller's own
+    namespace stays in `namespaces` only, and a namespace the caller cannot reach appears nowhere.
+    """
+    from just_dna_registry.api.deps import effective_role
+    from just_dna_registry.permissions import higher_role
+
+    dev = _key(repo, "dev31")
+    boss = _key(repo, "boss31")
+    _key(repo, "stranger31")
+    dev_id = int(repo.account_by_name("dev31")["id"])
+    for owner, ns in ((dev, "dev31-own"), (boss, "boss31-lab"), (boss, "boss31-private")):
+        assert client.post("/api/v1/namespaces", json={"namespace": ns}, headers=_auth(owner)).status_code == 201
+    repo.add_member("boss31-lab", dev_id, "member")
+    assert client.post("/api/v1/orgs", json={"name": "acme31"}, headers=_auth(boss)).status_code == 201
+    assert client.post("/api/v1/orgs/acme31/members", json={"account": "dev31", "role": "admin"},
+                       headers=_auth(boss)).status_code == 201
+    for ns in ("acme31-tools", "acme31-shared"):
+        assert client.post("/api/v1/orgs/acme31/namespaces", json={"namespace": ns},
+                           headers=_auth(boss)).status_code == 201
+    repo.add_member("acme31-shared", dev_id, "member")
+
+    me = client.get("/api/v1/auth/whoami", headers=_auth(dev)).json()
+    assert me["namespaces"] == ["dev31-own"]
+    assert me["orgs"] == [{"org": "acme31", "role": "admin"}]
+    assert {(m["namespace"], m["via"]) for m in me["member_of"]} == {
+        ("boss31-lab", "member"), ("acme31-tools", "org:acme31"),
+        ("acme31-shared", "member"), ("acme31-shared", "org:acme31"),
+    }
+
+    account = repo.account_by_name("dev31")
+    everything = [row["name"] for row in repo.conn.execute("SELECT name FROM namespaces").fetchall()]
+    assert len(everything) >= 5
+    from just_dna_registry.api.deps import _account
+
+    caller = _account(repo, int(account["id"]))
+    reached: dict[str, str | None] = {}
+    for m in me["member_of"]:
+        reached[m["namespace"]] = higher_role(reached.get(m["namespace"]), m["role"])
+    for ns in everything:
+        role = effective_role(repo, caller, ns)
+        if ns in me["namespaces"]:
+            continue
+        assert reached.get(ns) == role, ns  # boss31-private: None on both sides
+
+    # register reissuing a key for an existing install answers the same reach (same helper).
+    from just_dna_registry.api.routers.auth import _reach
+
+    assert _reach(repo, dev_id) == {"member_of": me["member_of"], "orgs": me["orgs"]}

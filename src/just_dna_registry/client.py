@@ -489,7 +489,8 @@ class RegistryClient:
     # ── Onboarding (community self-service) ──────────────────────────────────
 
     def register(self, install_id: str, account: str) -> dict:
-        """Register an install-id → `{token, account, namespaces}`. No auth (mints the token)."""
+        """Register an install-id → `{token, account, namespaces, member_of, orgs}` (the last two since
+        0.32, as on `whoami`). No auth (mints the token)."""
         return self._json(
             self._http.post("/auth/register", json={"install_id": install_id, "account": account})
         )
@@ -1216,7 +1217,13 @@ class RegistryClient:
 
     def whoami(self) -> dict:
         """The caller's identity + profile (`account`, `namespaces`, `type`, `display_name`,
-        `avatar_url`, `email`, `site_admin`). `email` is only ever returned to the account itself."""
+        `avatar_url`, `email`, `site_admin`). `email` is only ever returned to the account itself.
+
+        `namespaces` is the ones the caller owns. Since 0.32 `member_of` lists every other namespace
+        it may act in, `{namespace, role, via}` with `via` `member` (an explicit grant) or `org:<name>`
+        (an org it belongs to owns it; one row per route, the higher role being the one that applies),
+        and `orgs` its orgs, `{org, role}`. A site admin's reach is the `site_admin` flag, not listed.
+        Both keys are absent from an older server."""
         return self._json(self._http.get("/auth/whoami"))
 
     def update_profile(

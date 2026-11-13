@@ -28,6 +28,15 @@ closed before it spends a run, not from the skip afterwards. The report and ever
 (`passes.OPERATOR_GATED_LEGS`), and the field is read per request, outside the report's 30-second memo.
 `registry-client caches` and the console print it.
 
+### `whoami` says which namespaces the caller may act in, and its orgs (S31)
+
+`GET /auth/whoami` and the `register` response gain `member_of`, one row per route by which the caller
+reaches a namespace it does not own (`{namespace, role, via}`, `via` being `member` or `org:<org>`), and
+`orgs` (`{org, role}`). `namespaces` keeps its meaning, the namespaces the caller owns; the API reference
+had described it as every namespace the caller is a member of. Authorization is unchanged: it always read
+`effective_role()`, and a test holds the new list equal to it over every namespace. The console's account
+page shows both.
+
 ### Fixed
 
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`

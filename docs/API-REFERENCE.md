@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.31.x**, API `v1` (**0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds no route**: `terms` and `unpublished` on both lane routes, `proxy_live_legs` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -158,7 +158,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 10 | POST | `/api/v1/modules/{ns}/{name}/versions` | bearer | Publish (multipart spec, loose or archive) |
 | 11 | POST | `/api/v1/modules/{ns}/{name}/versions/import` | bearer | Publish from zip/tar.gz archive |
 | 12 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/yank` | bearer | Yank / un-yank a version |
-| 13 | GET/PATCH | `/api/v1/auth/whoami` | bearer | Identity + owned namespaces; edit own profile |
+| 13 | GET/PATCH | `/api/v1/auth/whoami` | bearer | Identity, owned namespaces, memberships and orgs; edit own profile |
 | 14 | POST | `/api/v1/auth/register` | install-id | Self-register → account + API key |
 | 15 | GET | `/api/v1/namespaces/{ns}` | — | Namespace availability |
 | 16 | POST | `/api/v1/namespaces` | bearer | Claim an available namespace |
@@ -1238,9 +1238,18 @@ All org gate failures return `403 insufficient_capability`; unknown org → `404
 
 ### 13. `GET` / `PATCH /api/v1/auth/whoami`  *(bearer)*
 `GET 200 → {"account": "antonkulaga", "namespaces": [...], "type": "user", "display_name": null,
-"avatar_url": null, "funding_url": null, "email": null, "site_admin": false}` — `namespaces` is every namespace the caller
-is a member of; `type` is the `user`|`org` discriminator; `avatar_url`/`funding_url` are public
-(userpic + donation link); `email` is **private** (only ever returned here). `401` on invalid token.
+"avatar_url": null, "funding_url": null, "email": null, "site_admin": false, "member_of": [...],
+"orgs": [...]}` — `namespaces` is the namespaces the caller **owns**; `type` is the `user`|`org`
+discriminator; `avatar_url`/`funding_url` are public (userpic + donation link); `email` is **private**
+(only ever returned here). `401` on invalid token.
+
+**`member_of` and `orgs` (0.32, S31)** say what else the caller may act in, which `namespaces` never
+did (it was documented here as every namespace the caller is a member of, and it was the ownership
+grant only). `member_of` is `[{"namespace", "role", "via"}]`, one row per route: `via: "member"` for
+an explicit membership of somebody else's namespace, `via: "org:<org>"` for a namespace an org the
+caller belongs to owns. A namespace reached both ways is two rows, and the higher role is the one
+that applies. `orgs` is `[{"org", "role"}]` by each org's current handle. A site admin's reach (owner
+on every namespace) is `site_admin: true`, not listed. Authorization reads none of these.
 
 `PATCH` edits the caller's own profile — body `{"email"?, "display_name"?, "avatar_url"?,
 "funding_url"?}` (omitted fields unchanged, `""` clears a field). Returns the updated identity.
@@ -1258,7 +1267,9 @@ The `install_id` is a proof-of-work token minted by the just-dna-lite app at fir
 ≥ `install_id_difficulty` leading zero bits). One account per install-id — re-registering an
 install-id just issues a fresh key for its existing account.
 
-`201 → {"token": "mk_live_…", "account": "alice", "namespaces": []}`. Errors:
+`201 → {"token": "mk_live_…", "account": "alice", "namespaces": [], "member_of": [], "orgs": []}`
+(`member_of` and `orgs` since 0.32, as on `whoami`; a re-issued key for an existing account carries
+its memberships). Errors:
 `403 self_register_disabled` (when `allow_self_register=false`), `422 invalid_install_id` (bad PoW),
 `422 invalid_account` (handle isn't a valid slug), `409 account_taken`.
 
