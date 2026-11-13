@@ -46,7 +46,9 @@ reports; this file holds the seat's own decisions and the items it owns.
   `docs/CONSUMER_SUGGESTIONS_HISTORY.md` (accepted, shipped 0.29.0, the call to make), update its contents line,
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
 - **S29, S30 and S31 follow-up replies**: wait until the release carrying them is cut. The pm placed S31 (whoami's
-  `member_of` and `orgs`) in 0.32 beside the other two (2026-11-13, e8db10d). The pm sized both proposals
+  `member_of` and `orgs`) in 0.32 beside the other two (2026-11-13, e8db10d). All three are built on branch `0.32` (5e55a19 S29 lane
+  `terms`+`unpublished`, c353fc9 S30 `proxy_live_legs` on /caches, 724c103 S31 `member_of`/`orgs`); the cut waits
+  on desk #298. Reply only once 0.32.0 is on PyPI; take the wording from the branch's changelog. The pm sized both proposals
   (2026-11-12, message 639906886) into 0.31, or 0.32 if 0.31 is cut first; 0.31.0 was cut 2026-11-13 (merge 0f2d3ab)
   without either, so they now wait on 0.32: a lane lookup's answer carries its
   lane's terms (S29), and `GET /caches` names the operator's closed live legs (S30). When that release ships,
