@@ -25,6 +25,7 @@ the column/key trim like `variants.csv` and `module_spec.yaml`.
 
 import csv
 import io
+import json
 from pathlib import Path
 
 import yaml
@@ -56,11 +57,12 @@ from just_dna_registry.specfiles import (
     RECOGNIZED_SPEC_FILES,
     RESOLUTION_CSV,
     SPEC_YAML,
+    VERIFICATION_FILE,
     has_spec_data,
 )
 from just_dna_registry.storage.base import StorageBackend, version_key
 from just_dna_registry.sweep_report import HELD_NEEDS_ONLINE
-from just_dna_registry.version import contract_compatible, installed_compiler
+from just_dna_registry.version import contract_compatible, installed_compiler, installed_enricher
 
 # The columns `VariantRow.upgraded()` may set, mirrored back into the CSV. `state` stays present
 # (trimmed to a derived mirror of `direction`); the booleans are only ever set True or left blank.
@@ -486,9 +488,14 @@ class VersionUpgradePlan(BaseModel):
     #: Recorded subjects the re-derivation re-asks: the run's size, and online its request budget.
     rederive_subjects: int = 0
     #: Why it re-derives, by `rederive_reasons` code, with the rows behind each (0.30.1). A reason that is
-    #: not `cannot_say` is a reason to act on its own: the person asked that the sweep re-derive exactly
-    #: the modules that need it, whatever their compiler gap.
+    #: not `cannot_say` is a reason to act on its own (the person asked that the sweep re-derive exactly the
+    #: modules that need it, whatever their compiler gap) when `rederive_written_by` predates the installed
+    #: enricher; a table the installed enricher wrote has converged and never acts on its reasons alone.
     rederive_reasons: dict[str, int] = Field(default_factory=dict)
+    #: The enricher that wrote the stored tables (`verification.json`'s producer), or `None` unknown.
+    rederive_written_by: str | None = None
+    #: Whether those reasons act on their own: some reason other than `cannot_say`, from an older enricher.
+    rederive_acts: bool = False
 
     @property
     def contract_acts(self) -> bool:
@@ -521,7 +528,7 @@ class VersionUpgradePlan(BaseModel):
             or bool(self.dropped)
             or self.contract_acts
             or self.verdict.acts_by_default
-            or any(code != REDERIVE_CANNOT_SAY for code in self.rederive_reasons)
+            or self.rederive_acts
             or recompile
         )
 
@@ -638,6 +645,35 @@ def rederive_reasons(
                 if authored and not authored <= hosted:
                     add(REDERIVE_DECLARED_CORRECTION)
     return reasons
+
+
+def table_written_by(verification_json: bytes | None) -> str | None:
+    """The enricher version that wrote a version's derived tables, from its `verification.json` `producer`
+    (`just-dna-enricher 0.8.4` → `0.8.4`); `None` when there is no such document or it names none."""
+    if not verification_json:
+        return None
+    try:
+        producer = json.loads(verification_json).get("producer") or ""
+    except ValueError:
+        return None
+    name, _, version = str(producer).rpartition(" ")
+    return version if name.endswith("enricher") and version else None
+
+
+def rederive_converged(written_by: str | None, installed: str | None) -> bool | None:
+    """Whether the stored table was written by the installed enricher (or a newer one): then re-deriving it
+    would write the same table again, so its reasons are what this enricher writes, not staleness, and they
+    must not act (the convergence rule `RebuildVerdict` keeps for compiled output; a fresh 0.8.5 publish
+    leaves `source_release` blank on rows it carries, measured 2026-11-13). `None` when either version is
+    unknown: the reasons are reported and act only beside another reason to re-publish."""
+    from just_dna_format.release_records import parse_version
+
+    if not written_by or not installed:
+        return None
+    try:
+        return parse_version(written_by) >= parse_version(installed)
+    except ValueError:
+        return None
 
 
 def _not_substitutions(ref: str | None, alts: list[str]) -> bool:
@@ -786,6 +822,10 @@ def prepare_version_upgrade(
             installed_releases if installed_releases is not None else {},
         ) if resolution else {}
     )
+    written_by = table_written_by(files.get(VERIFICATION_FILE))
+    converged = rederive_converged(written_by, installed_enricher())
+    # The reasons always say *how* an acting re-publish enriches (M12); they act *alone* only for a table an
+    # older enricher wrote, so a module the installed enricher wrote converges.
     rederive = any(code != REDERIVE_CANNOT_SAY for code in reasons)
     return VersionUpgradePlan(
         variants_plan=plan,
@@ -798,6 +838,8 @@ def prepare_version_upgrade(
         needs_online=rederive and needs_online_rederive(files),
         rederive_subjects=rederive_subjects(resolution) if rederive else 0,
         rederive_reasons=reasons,
+        rederive_written_by=written_by,
+        rederive_acts=rederive and converged is False,
     )
 
 
