@@ -175,6 +175,13 @@ passed, 1 failed (`.env.template` lacked REGISTRY_HELD_DIR; fixed in 6e91333, st
 DM'd with per-module outcomes. Tag `v0.31.1` on 6e91333 after PyPI. Worktree `.wt/0.31.1` unlocked. Branches `0.31`
 and `0.31.1` go with `git branch -d` once the person removes their worktrees. Then the person's prod run (quiet
 window): deploy, `upgrade --dry-run`, `upgrade --apply --online` (the five re-derive and publish; cardio ~7 h).
+0.31.1 publish is on desk #294 (default: stays unpublished). **0.32 built on branch `0.32`** (worktree `.wt/0.32`,
+locked; 2026-11-13, unattended): 71fe04f (`<held>` scrub label), 5e55a19 S29 lane terms (`terms` + `unpublished` from
+CACHE_LANES), c353fc9 S30 `proxy_live_legs` on /caches (one table `passes.OPERATOR_GATED_LEGS`), 724c103 S31
+`member_of`/`orgs` on whoami+register. Not stamped. Full suite running (scratchpad suite-032.log). Cut as minor
+waits on desk #298 (default: unmerged, unstamped). Console bundle rebuilt with Node from PyPI:
+`uv run --isolated --no-project --with nodejs-wheel-binaries python -c "import nodejs_wheel,os;print(os.path.dirname(nodejs_wheel.__file__))"`
+gives the dir; PATH=<dir>/bin, and npm is `node <dir>/lib/node_modules/npm/bin/npm-cli.js` (bin/npm fails).
 **Variant-level catalog (0.31 candidate)**: survey + draft design in the roadmap (5a6e340); five shaping questions on
 desk #263 (defaults recommended, build proceeds under them); the critic's review is folded into the roadmap
 (89b44ee: 10 corrections; defaults 2 and 3 changed to latest-only and same-DB, desk #263 updated). Next: build on a
