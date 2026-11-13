@@ -21,6 +21,12 @@ as agreement; it is a fact about two statements, never a verdict, and nothing ra
 `registry project-claims` fills the catalog for versions published before this. `registry-client variant` and
 `gene` print it.
 
+### Upstream 0.8.6
+
+All three `just-dna-*` tiers floor at 0.8.6, a patch that moves nothing a caller reads. Taken before the five
+pre-0.8 modules re-derive: the enricher now logs which back-filled rsIDs a re-derivation drops (RM440), and
+`registry upgrade` counts that line in its summary and keeps it in the run's log.
+
 **Client surface:** unchanged (`variant_claims`, `gene_claims` and `list_modules(pgs_id=)` are new).
 
 ## [0.30.1] — 2026-11-13
