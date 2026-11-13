@@ -637,6 +637,28 @@ def lanes(
     typer.echo(f"{found['lane']} ({found['served_from']})")
     for table in found["tables"]:
         typer.echo(f"  {table['table']:<28} keys: {', '.join(table['keys']) or '-'}  ({table['files']} file(s))")
+    for line in _lane_terms_lines(found):
+        typer.echo(line)
+
+
+def _lane_terms_lines(found: dict) -> list[str]:
+    """The lane's terms (0.32) as the lines both lane commands print; nothing from an older server."""
+    if "terms" not in found:
+        return []
+    terms = found["terms"]
+    if terms is None:
+        lines = ["terms: none stated by the lane registry (not a statement that the lane is unrestricted)"]
+    else:
+        axes = ", ".join(
+            f"{axis.replace('_', ' ')}: {'yes' if terms.get(axis) else 'no'}"
+            for axis in ("commercial_use", "share_alike", "redistribution") if axis in terms
+        )
+        lines = [f"terms: {terms.get('license') or 'unnamed licence'} ({axes})"]
+        if terms.get("notice"):
+            lines.append(f"  {terms['notice']}")
+    if found.get("unpublished"):
+        lines.append(f"snapshot not published: {found['unpublished']}")
+    return lines
 
 
 @app.command("lane-rows")
@@ -662,6 +684,8 @@ def lane_rows(
         typer.echo(json.dumps(row, sort_keys=True))
     note = " (truncated: more matched than one request returns)" if found["truncated"] else ""
     typer.secho(f"{len(found['rows'])} row(s) from {found['served_from']}{note}", fg=typer.colors.GREEN, err=True)
+    for line in _lane_terms_lines(found):
+        typer.secho(line, fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("find-by-hash")

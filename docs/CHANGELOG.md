@@ -8,6 +8,17 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### A lane lookup says the lane's terms (S29)
+
+`GET /lanes/{lane}` and `POST /lanes/{lane}/{table}` carry `terms` and `unpublished` beside the rows,
+verbatim from the enricher's lane registry: the source's licence record (licence, URL, attribution,
+notice, and the commercial-use, share-alike and redistribution axes) and the reason no snapshot of the lane
+is published (`refused: ...`, `unestablished: ...`). A keyed read is still served whatever the terms (the
+0.30 ruling); the answer now says them, so an agent leaning a module on PubMind rows knows they are NC-ND.
+`terms: null` means none are stated, never "unrestricted": `mane` and `acmg` state none, and their
+`unpublished` says redistribution was never established. `registry-client lanes` and `lane-rows` print both.
+The API reference called `/caches`' field `remote_reason`; it is `route_reason`.
+
 ### Fixed
 
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`

@@ -13,6 +13,7 @@ from test_preflight_api import no_network, pinned_environment  # noqa: F401 — 
 
 from just_dna_registry.api.app import create_app
 from just_dna_registry.client import RegistryClient, RegistryError
+from just_dna_registry.client_cli import _lane_terms_lines
 from just_dna_registry.config import Settings
 from just_dna_registry.services import lanes
 
@@ -57,18 +58,18 @@ def test_an_unknown_lane_is_a_404(tmp_path) -> None:
     assert refused.value.status_code == 404
 
 
-def _fake_remote(tmp_path: Path, monkeypatch, *, size: int) -> None:
+def _fake_remote(tmp_path: Path, monkeypatch, *, size: int, lane: str = "alphagenome_avi") -> None:
     """The remote branch with the hub swapped for local files: the lane is not held, its repo lists them."""
     import polars as pl
 
     data = tmp_path / "hub"
-    data.mkdir()
+    data.mkdir(exist_ok=True)
     for chrom in ("21", "22"):
         pl.DataFrame({"chrom": [f"chr{chrom}"] * 3, "pos": [1, 2, 3], "ref": ["A", "C", "G"]}).write_parquet(
             data / f"avi-chr{chrom}.parquet"
         )
-    monkeypatch.setattr(lanes, "lane_presence", lambda settings: {"alphagenome_avi": None})
-    monkeypatch.setattr(lanes, "_repo", lambda lane: "just-dna-seq/alphagenome_avi")
+    monkeypatch.setattr(lanes, "lane_presence", lambda settings: {lane: None})
+    monkeypatch.setattr(lanes, "_repo", lambda name: f"just-dna-seq/{name}")
     monkeypatch.setattr(
         lanes, "_remote_files", lambda repo: [(str(p), size) for p in sorted(data.glob("*.parquet"))]
     )
@@ -96,3 +97,42 @@ def test_a_lane_neither_held_nor_published_says_so(tmp_path, monkeypatch) -> Non
     with pytest.raises(lanes.LaneLookupError) as refused:
         lanes.lookup("pharmvar", "alleles", {"gene": ["CYP2D6"]}, Settings())
     assert (refused.value.code, refused.value.status) == ("lane_not_available", 404)
+
+
+def test_every_answer_carries_the_lanes_terms_as_upstream_states_them(tmp_path, monkeypatch) -> None:
+    """S29 (0.32): a keyed read is served whatever the lane's terms, and the answer says them. Two lanes,
+    chosen at runtime from upstream's registry: one stating terms, and one stating none whose snapshot is
+    unpublished (`mane`, `acmg` today), whose `null` terms must arrive beside the reason, never alone."""
+    import dataclasses
+
+    from just_dna_enricher.caches import CACHE_LANES
+
+    stated = [lane for lane in CACHE_LANES if lane.terms is not None]
+    unstated = [lane for lane in CACHE_LANES if lane.terms is None and lane.unpublished]
+    assert stated and unstated, "upstream's registry no longer has both kinds; the test reads nothing"
+    for lane in (stated[0], unstated[0]):
+        _fake_remote(tmp_path, monkeypatch, size=10, lane=lane.name)
+        sdk = RegistryClient(
+            "http://testserver", transport=sdk_transport(_client(tmp_path)), check_version=False
+        )
+        rows = sdk.lane_rows(lane.name, "avi", {"chrom": ["22"], "start": [2]})
+        tables = sdk.lane_tables(lane.name)
+        assert len(rows["rows"]) == 1
+        expected = dataclasses.asdict(lane.terms) if lane.terms is not None else None
+        for answer in (rows, tables):
+            assert answer["terms"] == expected
+            assert answer["unpublished"] == lane.unpublished
+    assert rows["terms"] is None and rows["unpublished"]
+
+
+def test_the_cli_prints_the_terms_and_never_reads_none_as_unrestricted() -> None:
+    """The renderer is half the fix: a field only in the JSON is a field `registry-client` users never see."""
+    stated = {"terms": {"license": "CC-BY-NC-ND-4.0", "notice": "NonCommercial.", "commercial_use": False,
+                        "share_alike": False, "redistribution": True}, "unpublished": "refused: NoDerivatives"}
+    lines = _lane_terms_lines(stated)
+    assert lines[0] == "terms: CC-BY-NC-ND-4.0 (commercial use: no, share alike: no, redistribution: yes)"
+    assert "  NonCommercial." in lines and "snapshot not published: refused: NoDerivatives" in lines
+    unstated = _lane_terms_lines({"terms": None, "unpublished": "unestablished: never answered"})
+    assert "not a statement that the lane is unrestricted" in unstated[0]
+    assert unstated[1] == "snapshot not published: unestablished: never answered"
+    assert _lane_terms_lines({"lane": "x", "tables": []}) == []  # an older server: nothing claimed

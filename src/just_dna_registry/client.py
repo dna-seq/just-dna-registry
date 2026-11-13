@@ -1295,14 +1295,17 @@ class RegistryClient:
 
     def lane_tables(self, lane: str) -> dict:
         """What one snapshot lane holds (0.30): its tables and the key columns each answers by, and
-        `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo)."""
+        `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo).
+        Since 0.32 also the lane's `terms` and `unpublished`, as on `lane_rows`."""
         return self._json(self._http.get(f"/lanes/{lane}"))
 
     def lane_rows(self, lane: str, table: str, keys: dict[str, list]) -> dict:
         """The rows of one lane table matching identifier keys (0.30), e.g. `{"gene": ["LPA"]}` or
         `{"chrom": ["22"], "start": [17000001]}`. Keyed and bounded per request; `truncated` says more
         matched than the server returns. Read from the server's snapshot, or remotely from the lane's
-        published repo when the server does not hold it."""
+        published repo when the server does not hold it. Since 0.32 the answer carries the lane source's
+        `terms` (upstream's licence fields; `null` = none stated, not "unrestricted") and `unpublished`
+        (upstream's reason no snapshot is published, e.g. `refused: ...`); absent from an older server."""
         return self._json(self._http.post(f"/lanes/{lane}/{table}", json={"keys": keys}))
 
     def rename_namespace(
