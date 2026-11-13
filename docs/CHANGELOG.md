@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-11-13
+
 ### A variant-level catalog: what published modules say about one variant, or one gene
 
 Every publish now records what its version says about each variant (genotype, direction, trait, gene, every
