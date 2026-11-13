@@ -45,6 +45,7 @@ def test_jwt_exchange_and_accept(tmp_path: Path) -> None:
         "account": "alice", "namespaces": ["alice"],
         "type": "user", "display_name": None, "avatar_url": None,
         "funding_url": None, "email": None, "site_admin": False,
+        "member_of": [], "orgs": [],  # 0.32: a JWT bearer gets the same reach as its key
     }
 
     # Bad key can't mint; garbage bearer is rejected.
