@@ -754,6 +754,12 @@ arrive by and the reason it has not.
      "licence_skip": "pharmvar forbids sale and no use was declared",
      "read_here": true, "readers": ["check: pgx"], "group": "pgx", "configured": false,
      "parents": []}
+  ],
+  "proxy_live_legs": [
+    {"upstream": "gnomad", "open": false, "setting": "REGISTRY_HINT_ALLOW_GNOMAD",
+     "passes": ["frequencies", "gene-metrics"], "hint_flags": ["frequencies"]},
+    {"upstream": "alphagenome", "open": false, "setting": "REGISTRY_PROXY_ALPHAGENOME",
+     "passes": ["alphagenome expression"], "hint_flags": []}
   ]
 }
 ```
@@ -795,6 +801,13 @@ question a publisher has after a `/check` reported a source skipped.
   enumerate lane state through `/check`, which needs the `PUBLISH` capability.
 - **Reports only.** Nothing here downloads or builds anything — that is `registry warm-caches`, an
   operator command on the box that holds the caches, deliberately not a request-path concern.
+- **`proxy_live_legs`** (0.32, S30) names the caching proxy's live legs that run only where this
+  deployment's operator opened them, and whether each is open: gnomAD (its allowance is the
+  deployment's and cannot be bought) and AlphaGenome's Atlas (the operator's key and terms). Closed,
+  the `passes=` commands listed skip their live leg (`POST .../derived`), and the `hint_flags` are a
+  `403` on `/hint/variants`. So a client can tell before it spends a run, rather than from the skip
+  afterwards. It covers the proxy only, never `/check`, and it is read per request, outside the
+  report's 30-second memo. `null` is a server before 0.32, never "every leg open".
 - `enricher_available: false` is one deployment fact rather than fifteen separate failures: the
   `server` extra is what carries `just-dna-enricher`, and a client that cannot tell the two apart
   tells an operator to provision snapshots on a box with nothing to read them with.

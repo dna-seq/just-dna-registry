@@ -19,6 +19,15 @@ is published (`refused: ...`, `unestablished: ...`). A keyed read is still serve
 `unpublished` says redistribution was never established. `registry-client lanes` and `lane-rows` print both.
 The API reference called `/caches`' field `remote_reason`; it is `route_reason`.
 
+### `GET /caches` says which live legs the proxy runs here (S30)
+
+`proxy_live_legs` names the operator-gated live legs of the caching proxy, gnomAD
+(`REGISTRY_HINT_ALLOW_GNOMAD`) and AlphaGenome's Atlas (`REGISTRY_PROXY_ALPHAGENOME`), whether each is
+open, and the `passes=` commands and `/hint/variants` flags each reaches. A client learns a source is
+closed before it spends a run, not from the skip afterwards. The report and every gate read one table
+(`passes.OPERATOR_GATED_LEGS`), and the field is read per request, outside the report's 30-second memo.
+`registry-client caches` and the console print it.
+
 ### Fixed
 
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`

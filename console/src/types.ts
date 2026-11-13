@@ -470,10 +470,19 @@ export interface CacheLaneStatus {
   parents: string[];
 }
 
+export interface ProxyLiveLeg {
+  upstream: string;
+  open: boolean;
+  setting: string;
+  passes: string[];
+  hint_flags: string[];
+}
+
 export interface CacheStatusReport {
   enricher_available: boolean;
   declared_use: string;
   lanes: CacheLaneStatus[];
+  proxy_live_legs: ProxyLiveLeg[] | null;
 }
 
 // ── Shapes with no pydantic model (plain dict responses and the two ops endpoints) ─────────────

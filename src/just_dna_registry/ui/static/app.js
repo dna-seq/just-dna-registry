@@ -658,7 +658,12 @@
           missingHere.length ? "warn" : "good",
           missingHere.length ? `${missingHere.length} of ${readHere.length} read here are missing` : `all ${readHere.length} lanes read here are provisioned`
         ),
-        badge("outline", `declared use: ${report.declared_use}`)
+        badge("outline", `declared use: ${report.declared_use}`),
+        // The proxy's operator-gated live legs (0.32): closed, a pass that needs one skips it.
+        (report.proxy_live_legs ?? []).map((leg) => badge(
+          leg.open ? "good" : "warn",
+          leg.open ? `live ${leg.upstream}: open` : `live ${leg.upstream}: closed (${leg.setting})`
+        ))
       ),
       h(
         "p",

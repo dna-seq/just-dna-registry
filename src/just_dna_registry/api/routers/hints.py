@@ -43,6 +43,7 @@ from just_dna_registry.proxy_coverage import proxies
 from just_dna_registry.services import hints as hint_service
 from just_dna_registry.services.enrich import enricher_available
 from just_dna_registry.services.hints import HINT_LANES
+from just_dna_registry.services.passes import leg_open
 
 router = APIRouter(prefix="/hint", tags=["hints"])
 
@@ -156,7 +157,7 @@ async def hint_variant(
     """
     _require_enabled(settings)
     resolved_offline = _resolve_offline(settings, account, offline)
-    if frequencies and not settings.hint_allow_gnomad:
+    if frequencies and not leg_open(settings, "gnomad"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail={

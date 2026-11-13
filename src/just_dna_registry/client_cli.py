@@ -168,6 +168,17 @@ def cache_status(
         raise typer.Exit(code=1)
 
     typer.echo(f"declared use: {report.declared_use}")
+    # The proxy's operator-gated live legs (0.32): a closed one is a skip a caller would otherwise learn
+    # of only after spending a run. Absent from an older server, which says nothing either way.
+    for leg in report.proxy_live_legs or []:
+        reaches = ", ".join([f"passes={p}" for p in leg.passes] + [f"hint {f}" for f in leg.hint_flags])
+        if leg.open:
+            typer.secho(f"live leg {leg.upstream}: open ({reaches})", fg=typer.colors.GREEN)
+        else:
+            typer.secho(
+                f"live leg {leg.upstream}: closed by the operator ({leg.setting}); {reaches} skip it",
+                fg=typer.colors.YELLOW,
+            )
     shown = 0
     for lane in report.lanes:
         if absent_only and lane.state == "present":

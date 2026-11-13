@@ -1643,6 +1643,26 @@ class CacheLaneStatus(BaseModel):
     )
 
 
+class ProxyLiveLeg(BaseModel):
+    """One live leg the caching proxy runs only where this deployment's operator opened it (0.32, S30).
+
+    Reported up front so a client learns a source is closed before spending a run on a pass that will
+    skip it. Covers the proxy only (`POST .../derived?passes=` and `/hint/*`), never `/check`, whose
+    sources follow this deployment's publish enrichment settings.
+    """
+
+    upstream: str = Field(description="The rate budget the leg spends (`gnomad`, `alphagenome`), as `/hint` charges name it")
+    open: bool = Field(description="Whether this deployment runs the leg for a caller who asks online")
+    setting: str = Field(description="The operator's switch, as an environment variable")
+    passes: list[str] = Field(
+        default_factory=list, description="The `passes=` commands whose live leg this is; closed, they skip it"
+    )
+    hint_flags: list[str] = Field(
+        default_factory=list,
+        description="`/hint/variants` flags that need it; closed, they are `403` (`frequencies` → `gnomad_not_enabled`)",
+    )
+
+
 class CacheStatusReport(BaseModel):
     """`GET /caches` — which snapshots this deployment holds, and for the rest, why not.
 
@@ -1663,6 +1683,13 @@ class CacheStatusReport(BaseModel):
         description="The deployment's declared use, which is what `licence_skip` is computed against"
     )
     lanes: list[CacheLaneStatus] = Field(default_factory=list)
+    proxy_live_legs: list[ProxyLiveLeg] | None = Field(
+        default=None,
+        description=(
+            "The caching proxy's operator-gated live legs and whether each is open here (0.32). `null` "
+            "means the server predates the field, never that every leg is open."
+        ),
+    )
 
 
 class HintCost(BaseModel):
