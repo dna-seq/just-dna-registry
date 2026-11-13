@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-11-13
+
 ### On upstream 0.8.5, and `registry upgrade` says which modules need re-deriving
 
 All three tiers floor at 0.8.5 (RM438: the rsID back-fill at a position two rsIDs share follows the row's
