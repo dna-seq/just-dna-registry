@@ -178,7 +178,7 @@ window): deploy, `upgrade --dry-run`, `upgrade --apply --online` (the five re-de
 0.31.1 publish is on desk #294 (default: stays unpublished). **0.32 built on branch `0.32`** (worktree `.wt/0.32`,
 locked; 2026-11-13, unattended): 71fe04f (`<held>` scrub label), 5e55a19 S29 lane terms (`terms` + `unpublished` from
 CACHE_LANES), c353fc9 S30 `proxy_live_legs` on /caches (one table `passes.OPERATOR_GATED_LEGS`), 724c103 S31
-`member_of`/`orgs` on whoami+register. Not stamped. Full suite running (scratchpad suite-032.log). Cut as minor
+`member_of`/`orgs` on whoami+register. Not stamped. Full suite 2026-11-13: 917 passed, 1 failed (test_jwt's exact whoami shape), fixed in b558474; green. Cut as minor
 waits on desk #298 (default: unmerged, unstamped). Console bundle rebuilt with Node from PyPI:
 `uv run --isolated --no-project --with nodejs-wheel-binaries python -c "import nodejs_wheel,os;print(os.path.dirname(nodejs_wheel.__file__))"`
 gives the dir; PATH=<dir>/bin, and npm is `node <dir>/lib/node_modules/npm/bin/npm-cli.js` (bin/npm fails).
