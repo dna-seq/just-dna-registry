@@ -7,12 +7,12 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.162.5`** read (2026-11-11; 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.5`
+**`0.162.6`** read (2026-11-13; 0.162.5 on 2026-11-11, 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.5`
 (`uv.lock`, the bump of 2026-11-12, `94ce3e0`; 0.162.0 from the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
 
 ## Backlog
 
-None: read through `0.162.5`.
+None: read through `0.162.6`.
 
 ## What the registry uses
 
@@ -46,7 +46,7 @@ From the imports under `src/` (an AST walk, 2026-11-04).
   the weekly bump's job.
   **Measured 2026-11-05** (`bb42dbd`): the full suite passes on 0.162.0 (612 passed), upload and publish tests
   included, and no warning from fastapi or starlette. Closed.
-- Read, nothing for us: 0.162.5 (`contextmanager_in_threadpool` enters a sync yield dependency before its `try` and
+- Read, nothing for us: 0.162.6 (drops Python 3.10, its one change; we require `>=3.13` and run 3.14); 0.162.5 (`contextmanager_in_threadpool` enters a sync yield dependency before its `try` and
   shields `__exit__` from cancellation, so a cancelled request still runs the cleanup; we have no sync yield
   dependency, only the async `lifespan`; their `translations` dependency group moves to `pydantic-ai-slim`, not a runtime dependency);
   0.162.4 (a runtime floor `anyio>=4.1.0`; we lock anyio 4.16.0); 0.162.3 (Python 3.15 in the classifiers, type annotations in `_compat` widened to

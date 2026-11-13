@@ -33,7 +33,9 @@ construction), `older_snapshot_release` (rows from a snapshot older than the one
 did not see), `declared_correction` (RM438, undeclared in 0.8.5's release record, probed from the table: a
 back-filled rsID that cannot hold the authored genotype), and `cannot_say` (the installed snapshot's release
 unreadable). A reason now acts on its own, so `--apply` re-derives exactly the flagged modules, whatever
-their compiler gap; it converges, since a re-derived table names the installed release on every answered row.
+their compiler gap, when the table was written by an older enricher than the installed one (its
+`verification.json` producer); a table the installed enricher wrote never acts on its reasons alone, so the
+sweep converges (a fresh 0.8.5 publish still leaves `source_release` blank on rows it carries).
 
 ### The proxy's live passes follow the caller, not the box's `enrich_offline`
 

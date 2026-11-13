@@ -718,3 +718,15 @@ def test_rm438_a_backfilled_rsid_that_cannot_hold_the_authored_genotype() -> Non
     assert rederive_reasons(table, variants, _INSTALLED) == {REDERIVE_DECLARED_CORRECTION: 1}
     hosting = _HEAD + f"{key},rs1065852,22,42130692,G,A,cache,ensembl,{_ENS}\n"
     assert rederive_reasons(hosting, variants, _INSTALLED) == {}
+
+
+def test_a_table_the_installed_enricher_wrote_has_converged() -> None:
+    """A fresh 0.8.5 publish leaves `source_release` blank on rows it carries (measured 2026-11-13); acting on
+    that would re-derive the module every sweep. The reasons act only for a table an older enricher wrote."""
+    from just_dna_registry.services.upgrade import rederive_converged, table_written_by
+
+    assert table_written_by(b'{"producer": "just-dna-enricher 0.7.0"}') == "0.7.0"
+    assert table_written_by(None) is None and table_written_by(b"not json") is None
+    assert rederive_converged("0.7.0", "0.8.5") is False
+    assert rederive_converged("0.8.5", "0.8.5") is True
+    assert rederive_converged(None, "0.8.5") is None
