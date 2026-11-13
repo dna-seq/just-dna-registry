@@ -46,7 +46,8 @@ reports; this file holds the seat's own decisions and the items it owns.
   `docs/CONSUMER_SUGGESTIONS_HISTORY.md` (accepted, shipped 0.29.0, the call to make), update its contents line,
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
 - **S29 and S30 follow-up replies**: wait until the release carrying them is cut. The pm sized both proposals
-  (2026-11-12, message 639906886) into 0.31, or 0.32 if 0.31 is cut first: a lane lookup's answer carries its
+  (2026-11-12, message 639906886) into 0.31, or 0.32 if 0.31 is cut first; 0.31.0 was cut 2026-11-13 (merge 0f2d3ab)
+  without either, so they now wait on 0.32: a lane lookup's answer carries its
   lane's terms (S29), and `GET /caches` names the operator's closed live legs (S30). When that release ships,
   append a second `**Status —**` paragraph to each item in the history file, update the contents lines, and tell
   just-module-creator's liaison. Also, S30's base fix (`dac4ccf`) reaches the polygon only when 0.30.1 is
