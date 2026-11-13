@@ -86,8 +86,9 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh fastapi --tags"
 cmd = "sh kit:classes/liaison/watch-upstream.sh huggingface-hub --tags"
 
 # The in-house upstream's releases from the package index (the kit's liaison duty upstream-index, L136): a tag is
-# not a publish, and 0.8.4 reached PyPI hours before its tag. No --upstream flag: this repository declares no
-# [on_publish], so an upstream's release runs nothing here.
+# not a publish, and 0.8.4 reached PyPI hours before its tag. No --upstream flag: from kit v0.1.200 (L143) the
+# repository's own [on_publish] (the branch sweep, below) runs only on a release of its own packages. Through v0.1.199
+# it ran on each of these three too (the sweep ran three times on 0.8.6, exit 0).
 [seat.liaison.watch.upstream-index]
 cmd = "python3 kit:drivers/pypi/watch-pypi.py just-dna-format just-dna-compiler just-dna-enricher"
 

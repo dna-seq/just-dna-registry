@@ -96,6 +96,9 @@ reset").
 - reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195 (duty upstream-index: key upstreams heard from
   the package index; declared as `watch.upstream-index` over the format trio, fastapi and huggingface-hub left to their
   tag watchers).
+- reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.200 (a repository's `[on_publish]` runs only on its
+  own packages' release, whatever the watcher is given, L143; the lead's branch sweep, added 44843de after my
+  upstream-index line said there was none, had run on each of compiler 0.8.6's three publishes under v0.1.196).
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
