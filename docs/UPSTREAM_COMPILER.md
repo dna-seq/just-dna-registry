@@ -153,6 +153,12 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Their `main` past the 0.8.5 cut**: **RM439** (`2fe759a`): a variant row's `stat_significance` description says it
+  is the module author's verdict across the evidence; a description only, as RM434. **RM440** (`5da19a3`): a
+  re-derivation that drops a back-filled rsID on RM438's no-host arm now logs one warning (the count and the first
+  five keys); no warning code, table unchanged. Reaches us in `registry upgrade`'s re-derive of the five pre-0.8
+  modules: the line lands in the run's log and the sweep counts it as `network`/package by logger, never by its
+  sentence. Nothing moves.
 - **Their `main` past the 0.8.4 cut**: **RM434** (`5e124df`, from longevity-loci's S147, for 0.8.5): `StudyRow.stat_significance`'s
   description says the level is the authors' verdict at their own test's threshold, and `p_value_num` is the column
   to threshold on a common scale. A description only, no digest moves. We name the column only as one of the 0.3
