@@ -1084,7 +1084,8 @@ converges).
   after spending a run. Exposing the two switches on `GET /caches` would let a client tell beforehand.
   Sizing: **minor** (a response field). Severity: low.
 
-- **A variant-level catalog, with a gene-level facet** (**decided by the person 2026-11-04 in the dream's
+- ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
+  **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
   after 0.28**; owner: lead; filed by the pm). Sizing: **minor**, a few weeks. Its design is the lead's
   first step: surveyed, put to a critic, and only the questions that shape it taken to the person.
