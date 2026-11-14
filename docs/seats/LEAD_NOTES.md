@@ -11,7 +11,7 @@ read each fact it states where it lives (the polygon or production catalog over 
 repo), then post an `**Update:**` or withdraw. #218 sat a week saying "12 held" while 8 had been published on
 11-07, three hours before my own update telling the person to publish nothing: that update was written from the
 replay's result, never from the catalog. **Read the live state before posting any desk update.**
-Open after the 2026-11-14 check: #218 (now 4 group-A polygon modules), #201, #298; #216, #263 withdrawn; #294 withdrawn (0.31.1 on PyPI 16:53Z, tagged v0.31.1).
+Open after the 2026-11-14 check: #218 (now 4 group-A polygon modules), #298; #201 withdrawn; #216, #263 withdrawn; #294 withdrawn (0.31.1 on PyPI 16:53Z, tagged v0.31.1).
 
 Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
 
@@ -187,7 +187,7 @@ window): deploy, `upgrade --dry-run`, `upgrade --apply --online` (the five re-de
 0.31.1 publish is on desk #294 (default: stays unpublished). **0.32 built on branch `0.32`** (worktree `.wt/0.32`,
 locked; 2026-11-13, unattended): 71fe04f (`<held>` scrub label), 5e55a19 S29 lane terms (`terms` + `unpublished` from
 CACHE_LANES), c353fc9 S30 `proxy_live_legs` on /caches (one table `passes.OPERATOR_GATED_LEGS`), 724c103 S31
-`member_of`/`orgs` on whoami+register. Not stamped. Full suite 2026-11-13: 917 passed, 1 failed (test_jwt's exact whoami shape), fixed in b558474; green. Then added (2026-11-14): a9d4134 `GET /upgrade/status` (the person: "build a proper endpoint to see the held numbers"; sweep verdicts from sweep.json + the compiler-stamp gap, all counts and coverage served), ce1f2fe S32 (key folding, `matched`, haplotype names, projector 2: after deploy run `registry project-claims`), e4ece6e lint. Full suite re-running (scratchpad suite-032b.log); #298 updated. Cut as minor
+`member_of`/`orgs` on whoami+register. Not stamped. Full suite 2026-11-13: 917 passed, 1 failed (test_jwt's exact whoami shape), fixed in b558474; green. Then added (2026-11-14): a9d4134 `GET /upgrade/status` (the person: "build a proper endpoint to see the held numbers"; sweep verdicts from sweep.json + the compiler-stamp gap, all counts and coverage served), ce1f2fe S32 (key folding, `matched`, haplotype names, projector 2: after deploy run `registry project-claims`), e4ece6e lint. Full suite re-running (scratchpad suite-032b.log); #298 updated. **Next branch `0.32-upstream-public`** (worktree `.wt/upstream-public`, locked, from 0.32 e4ece6e): 612b059 C13 (subject ceiling = upstream collect_subjects, study proxies counted: a fix, patch-sized), b2ed6db C15 (`approx_mb`/`provision_lanes`/`provision_mb` on /caches: minor-sized). Rides after 0.32 (0.32.1 for C13 alone, or 0.33 with C15); targeted tests green, no full suite yet. C5 waits on upstream (asked the liaison for a `lane_status(locations=)` filing). Desk #201 withdrawn (wake edit went through, 5dcf81d). Cut as minor
 waits on desk #298 (default: unmerged, unstamped). Console bundle rebuilt with Node from PyPI:
 `uv run --isolated --no-project --with nodejs-wheel-binaries python -c "import nodejs_wheel,os;print(os.path.dirname(nodejs_wheel.__file__))"`
 gives the dir; PATH=<dir>/bin, and npm is `node <dir>/lib/node_modules/npm/bin/npm-cli.js` (bin/npm fails).
