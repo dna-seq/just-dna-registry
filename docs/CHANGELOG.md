@@ -62,6 +62,14 @@ two haplotypes defined by one allele projected as identical claims. The projecto
 `registry project-claims` re-projects what 0.31 wrote. `RegistryClient.gene_claims` quotes the symbol into
 the path.
 
+### `curated` counts only reviews from outside the namespace (S33)
+
+The card's `curated`, `?group=curated` and `GET /stats`' `curated` count a highlighted review only when its
+reviewer holds no role on the namespace (no grant, not the owner, not in an owning org, not a site admin),
+read at query time. The 0.8.0 rule was "curation must come from outside", and an owner could highlight their
+own review and mark their module curated. Inside reviews are still accepted, listed and highlightable; a
+self-highlight already stored stops counting with no migration. Stars are unchanged.
+
 ### Fixed
 
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`

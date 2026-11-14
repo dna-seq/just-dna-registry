@@ -389,7 +389,7 @@ class ModuleCard(BaseModel):
     featured: bool = False
     review_count: int = 0
     avg_rating: float | None = None  # mean 1-5 rating across reviews, None when unreviewed
-    curated: bool = False  # has ≥1 owner-highlighted review/audit (the `curated` group)
+    curated: bool = False  # ≥1 owner-highlighted review/audit from outside the namespace (0.32, S33)
     author_funding_url: str | None = None  # latest version's author's donation link
     org_funding_url: str | None = None  # owning org's donation link (when the namespace is org-owned)
     # Projected from the latest version's manifest, the same way `stats` is (0.11).
@@ -639,7 +639,7 @@ class CatalogStats(BaseModel):
     stars: int
     views: int
     reviews: int
-    curated: int = Field(description="Modules with at least one highlighted review")
+    curated: int = Field(description="Modules with at least one highlighted review from outside the namespace")
     variants: int
     studies: int
     genes: int
