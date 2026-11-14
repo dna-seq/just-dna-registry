@@ -11,5 +11,5 @@
 **Next**
 1. Deploy 0.31.0 to both servers, with `project-claims --all` as the one operator step (the maintainer).
 2. Re-derive the five modules still on pre-0.8 tables (cancer, cardio, pathogenic, blood groups, pharmgkb) once a release with the sweep is deployed (the maintainer's production run, the lead beside it).
-3. 0.32: a lane lookup states its licence terms, the server says which live sources it has switched off, and a key says every namespace it may publish to and every org it is in (three small additions from consumers; built by the lead, not yet released).
+3. 0.32: a lane lookup states its licence terms, the server says which live sources it has switched off, and a key says every namespace it may publish to and every org it is in (three small additions from consumers; built by the lead, not yet released), and `/variants` accepting any spelling of a variant and saying when a key matched nothing (S32; to build).
 4. Remote lane reads, once upstream releases RM430 (liaison watches, lead adopts).

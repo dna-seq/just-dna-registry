@@ -1098,7 +1098,10 @@ converges).
   console's types, the client docstring). Severity: low; authorization is right, only the report is short.
 
 - **`/variants?key=` folds the spellings a reader pastes, and says when a key matched nothing** (proposed by S32,
-  just-module-creator, 2026-11-14; **undecided**, the lead's call). The lookup is an exact
+  just-module-creator, 2026-11-14; **decided by the pm 2026-11-14: all four pieces in 0.32**, which is built,
+  unstamped, and waiting on its cut (desk #298) anyway. The patch pieces ride the minor rather than a 0.31.x of
+  their own, since 0.32 carries the same route's first minor after it; if 0.32 is cut before they land, the
+  folding and the quoting go out as 0.32.1 and the two fields in 0.33). The lookup is an exact
   `claim_aliases.alias = ?`, so `RS429358`, `chr19:44908684:T:C` and `19-44908684-T-C` answer `claims: []` beside
   the 14 claims `rs429358` finds, though the route says "by any spelling of it". Two sizes. **Patch**: fold the
   query onto the stored alias forms before the lookup (rsID case, a leading `chr`, `-` as the separator), never
