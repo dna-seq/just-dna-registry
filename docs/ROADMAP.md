@@ -1097,7 +1097,7 @@ converges).
   `orgs: [{org, role}]`. Sizing: **minor** (new response fields on `WhoAmI` and the key response, the
   console's types, the client docstring). Severity: low; authorization is right, only the report is short.
 
-- **`/variants?key=` folds the spellings a reader pastes, and says when a key matched nothing** (proposed by S32,
+- **`/variants?key=` folds the spellings a reader pastes, and says when a key matched nothing** (**built on branch `0.32`, ce1f2fe**, all four pieces; proposed by S32,
   just-module-creator, 2026-11-14; **decided by the pm 2026-11-14: all four pieces in 0.32**, which is built,
   unstamped, and waiting on its cut (desk #298) anyway. The patch pieces ride the minor rather than a 0.31.x of
   their own, since 0.32 carries the same route's first minor after it; if 0.32 is cut before they land, the
