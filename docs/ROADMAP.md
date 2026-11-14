@@ -1339,7 +1339,7 @@ converges).
     `revalidate --check-pmids` misses PMIDs in `pharm_variants.csv` and the binning kinds; use upstream's
     `compiler.load_citing_rows` / `table_citations`. About an hour.
 
-- **Read what upstream made public instead of mirroring it** (**C13 and C15 built on branch `0.32-upstream-public`, 612b059 and b2ed6db, 2026-11-14; C5 waits on upstream**: `caches.lane_status()` takes no per-lane location, so composing it would read the env/default directory, not the configured one; asked of the liaison for a filing) (**severity low, unattended, after the 0.27.x
+- **Read what upstream made public instead of mirroring it** (**C13 and C15 built on branch `0.32-upstream-public`, 612b059 and b2ed6db, 2026-11-14; C5 waits on upstream S154**: `caches.lane_status()` takes no per-lane location, so composing it would read the env/default directory, not the configured one; filed by the liaison 2026-11-14) (**severity low, unattended, after the 0.27.x
   patches**, owner: lead; the liaison's **C5**, **C13** and **C15**). `caches.lane_status()` (RM204) does what
   our `lane_status(settings)` loop does, with `occupied` for our `partial`: compose it and keep the
   `declared_use` licence skip and the path scrub, one word for the third state. `GET /caches` can then say what a
