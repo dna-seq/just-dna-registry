@@ -1097,6 +1097,18 @@ converges).
   `orgs: [{org, role}]`. Sizing: **minor** (new response fields on `WhoAmI` and the key response, the
   console's types, the client docstring). Severity: low; authorization is right, only the report is short.
 
+- **`/variants?key=` folds the spellings a reader pastes, and says when a key matched nothing** (proposed by S32,
+  just-module-creator, 2026-11-14; **undecided**, the lead's call). The lookup is an exact
+  `claim_aliases.alias = ?`, so `RS429358`, `chr19:44908684:T:C` and `19-44908684-T-C` answer `claims: []` beside
+  the 14 claims `rs429358` finds, though the route says "by any spelling of it". Two sizes. **Patch**: fold the
+  query onto the stored alias forms before the lookup (rsID case, a leading `chr`, `-` as the separator), never
+  a strand or build guess. **Minor**: a sibling field saying whether the key matched any stored spelling, since
+  "unknown key" and "no module speaks about it" both render as an empty list (CLAUDE.md: a value two opposite
+  histories produce needs a sibling). Riding with it: **minor**, a haplotype claim carries the haplotype's
+  name (the projector's `haplotypes.parquet` branch drops it, so two rows sharing an allele project as
+  byte-identical claims); **patch**, `RegistryClient.gene_claims` quotes `symbol` into the path. Severity: low
+  to medium; an empty answer is read as "no module says anything", which is false.
+
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";

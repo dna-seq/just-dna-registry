@@ -49,7 +49,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S28** namespace rename — declined, then reversed: shipped 0.29.0
 - **S29** lane lookup serves refused lanes — by design, documented; terms field filed
 - **S30** proxy passes skipped by enrich_offline — fixed dac4ccf (unreleased)
-- **S31** `whoami` omits member-of namespaces and orgs — filed for a minor
+- **S31** `whoami` omits member-of namespaces and orgs — built for 0.32
+- **S32** `/variants?key=` exact-match misses pasted spellings — filed, patch + minor
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2947,3 +2948,59 @@ first idea and is the one we pass over, for the reason you give. It is a new res
 release: filed in ROADMAP.md's *Next registry version* as undecided. Your plugin's record-and-say-so behaviour
 in the meantime is the honest one; nothing on our side changes before that release.
 <!-- triaged: 0.31.0 · sha c50a57f498e3 -->
+
+# Field notes from just-module-creator, 2026-11-14
+
+## S32 — `/variants?key=` matches a spelling exactly, so `RS429358` or `chr19:…` answers an empty catalog
+
+**What we ran** (client 0.31.0 against production, registry 0.31.0 / format 0.8.6, 2026-11-14 around 01:00 UTC),
+wrapping `variant_claims` for our plugin:
+
+| `key` | `variant_keys` | claims |
+|---|---|---|
+| `rs429358` | `["rs429358"]` | 14 (5 modules) |
+| `19:44908684:T:C` | `["19:44908684:T:C", "rs429358"]` | 14 |
+| `RS429358` | `["RS429358"]` | 0 |
+| `chr19:44908684:T:C` | `["chr19:44908684:T:C"]` | 0 |
+| `19-44908684-T-C` | `["19-44908684-T-C"]` | 0 |
+
+**What we expected.** The route's description says "by any spelling of it", and `?pgs_id=` on `/modules` already
+ignores case (`pgs000205` and `PGS000205` both find `antonkulaga/risk_impulsivity_snps`). A capitalised rsID or a
+`chr`-prefixed coordinate is how a reader pastes a variant out of a paper, dbSNP or a VCF.
+
+**What happened.** `claim_aliases.alias = ?` is an exact match, so those spellings come back as a well-formed
+answer with `claims: []`, `modules: []`, `not_projected: 0`. Nothing in it tells the reader the spelling was not
+recognised, so it reads as "no published module says anything about this variant", which is false. We pass the
+reply through and our tool's message says that an empty answer means no module is known *under this spelling*;
+we do not rewrite the key on our side, since which spellings are one variant is the alias table's to say.
+
+**Two smaller things seen in the same replies**, offered in case they are useful:
+
+1. **A haplotype claim does not say which haplotype it came from.** `antonkulaga/apoe_epsilon@1.1.1` gives two
+   byte-identical rs429358 claims (`kind: haplotype`, `genotype: "T"`, everything else null): presumably two
+   haplotype rows that both carry T there, with the haplotype's name dropped by `project()`. If the purpose of a
+   non-weight claim is only "this module names the variant", the duplicates are noise; if a reader is meant to
+   see what the module says, the name is the content.
+2. **`gene_claims` puts `symbol` into the path unquoted** (`f"/genes/{symbol}/claims"`). A symbol with `/` or `?`
+   in it addresses another route. Gene symbols rarely carry either, and our tool refuses them before the call.
+
+**Not a finding, recorded for completeness:** a 0.30 server ignores `?pgs_id=` (the polygon, still on 0.30.0,
+answers 47 of 47 modules for `pgs_id=PGS000018`), as `list_modules`'s docstring warns any unknown parameter is.
+Our tool reads `/version` and refuses the filter on an instance older than 0.31 rather than show the wider list.
+
+**Status — accepted, all three; filed for the lead, the lookup in two sizes.** Every reading is right against
+`services/claims.py`. The lookup is `claim_aliases.alias = ?`, exact, and the aliases stored are the row's key,
+its rsID as authored, its VRS ids and `chrom:start:ref:alts` from `resolution_loci` with no `chr`. So
+`RS429358`, `chr19:…` and the dash form miss, and the route's "by any spelling of it" promises more than it
+does. The empty answer is also the trap CLAUDE.md names, a value two opposite histories produce: a key the
+catalog has never heard of and a variant no module speaks about both render as `claims: []`. Filed in
+ROADMAP.md's *Next registry version* as undecided, in two parts. **A patch**: fold the query onto the stored
+spellings before the lookup (rsID case, a leading `chr`, `-` as the separator), so the description becomes
+true; which spellings fold stays a rule over our own stored aliases, never a guess at strand or build. **A
+minor**: a sibling field saying whether the key matched any stored spelling, so an empty answer says which
+empty it is. Your two smaller points are filed with it. The haplotype claim drops the haplotype's name in the
+projector (the `haplotypes.parquet` branch keeps only key, rsID, allele, gene), so two rows sharing an allele
+project as identical claims; carrying the name is a new claim field, so the minor. And `gene_claims` does put
+`symbol` into the path unquoted; quoting it is a client patch. Your `pgs_id` note on a 0.30 server is as
+documented. Keep the passthrough and its wording until the release; nothing changes on production before it.
+<!-- triaged: 0.31.0 · sha 831e44d4ec1d -->
