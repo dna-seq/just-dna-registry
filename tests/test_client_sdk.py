@@ -560,6 +560,7 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/v1/version"): ("server_version",),
     ("GET", "/api/v1/pubkey"): ("pubkey",),
     ("GET", "/api/v1/caches"): ("cache_status",),
+    ("GET", "/api/v1/upgrade/status"): ("upgrade_status",),
     ("POST", "/api/v1/drafts"): ("draft",),
     ("GET", "/api/v1/hint/variant"): ("hint_variant",),
     ("POST", "/api/v1/hint/variants"): ("hint_variants",),

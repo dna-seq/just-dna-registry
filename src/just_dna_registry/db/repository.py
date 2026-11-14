@@ -1190,6 +1190,20 @@ class Repository:
         self.conn.commit()
         return cur.rowcount > 0
 
+    def current_versions_for_status(self) -> list[sqlite3.Row]:
+        """Every listed module's current version with the two manifest fields the contract gap reads
+        (0.32, `GET /upgrade/status`). The listing's own scope: a current latest, no blacklisted namespace,
+        so the status names no module `GET /modules` hides. `json_extract`, so no manifest is parsed."""
+        return self.conn.execute(
+            "SELECT m.namespace, m.name, m.latest_version AS version, "
+            "json_extract(v.manifest_json, '$.compilation.compiler_version') AS compiler_stamp, "
+            "json_extract(v.manifest_json, '$.content_signature') IS NOT NULL AS has_signature "
+            "FROM modules m JOIN versions v ON v.module_id = m.id AND v.version = m.latest_version "
+            "LEFT JOIN namespaces n ON n.name = m.namespace "
+            "WHERE m.latest_version IS NOT NULL AND COALESCE(n.blacklisted, 0) = 0 "
+            "ORDER BY m.namespace, m.name"
+        ).fetchall()
+
     def list_all_versions(self, namespace: str | None = None) -> list[sqlite3.Row]:
         """Every published version with its `(namespace, name, version)` — for ops-wide audits."""
         sql = (

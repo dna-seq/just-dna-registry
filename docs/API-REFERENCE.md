@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds no route**: `terms` and `unpublished` on both lane routes, `proxy_live_legs` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`, and `terms` and `unpublished` on both lane routes, `proxy_live_legs` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -195,6 +195,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 47 | POST | `/api/v1/lanes/{lane}/{table}` | — | Keyed lookup of a lane's rows, local or from its published repo (0.30) |
 | 48 | GET | `/api/v1/variants?key=` | — | What every visible module says about one variant, with the disagreement marker (0.31) |
 | 49 | GET | `/api/v1/genes/{symbol}/claims` | — | What every visible module says about the variants it names under a gene (0.31) |
+| 50 | GET | `/api/v1/upgrade/status?state=&page=&per_page=` | — | Which current versions the upgrade sweep has not brought up to date, and why (0.32) |
 
 ---
 
@@ -1522,6 +1523,46 @@ snapshots: `upgrade`, `replay-upgrade`, `revalidate`, `warm-caches`. A run of an
 `<data>`, `<storage>`, `<cache:ensembl>`, `<cache>`, `<venv>`, `<python>`, `<cwd>`, `~`), and any
 absolute path left after that by `<path>`. API keys never reach the log. The copy on the box keeps its
 paths. Not rate-limited, like the other site-admin routes.
+
+### 50. `GET /api/v1/upgrade/status`  *(0.32)*
+
+Which modules' current versions `registry upgrade` has not brought up to date: held back, planned by a
+dry run, or built under an older compiler contract with no sweep verdict at all. Anonymous, the `search`
+bucket. The module set is the listing's (a current version, no blacklisted namespace).
+
+`?state=` keeps only `held`, `would_upgrade`, `behind`, `unknown` or `current`; `page`/`per_page` as
+everywhere (max 100). → `UpgradeStatusReport`: `items`, `total`, `page`, `per_page` over the filtered set,
+and over the whole catalog `counts` (per state, every state present, zeros included), `compiler` (this
+server's), `swept` (current versions some recorded sweep has a verdict on), `sweeps_on_record` and
+`sweeps_since` (the `upgrade` runs read, and when the oldest started).
+
+Each `UpgradeStatusItem`: `namespace`, `name`, `version` (the current one), `state`, `compiled_under`,
+`gap` (`none`/`patch`/`contract`/`unknown`, this server's compiler against the manifest's stamp),
+`last_sweep` (`null`, or `{started, applied, status, code, problem_type, drift_to_read}`), `kept` and
+`kept_stale` (a re-derivation kept for `--accept-drift`, 0.31.1).
+
+How a state is decided, in this order:
+
+1. **`held`**: the newest recorded sweep's verdict on this exact version is `refused`, `held`, `failed`,
+   `blocked` or `anomaly`, or a re-derivation of it is kept. The drift hold is a refusal
+   (`rederive_drift_needs_reading`), not status `held`. A successor published since is a different
+   version and supersedes the verdict.
+2. **`would_upgrade`**: the newest verdict is a dry run's `would upgrade` (`applied: false`).
+3. Any other verdict (`unchanged`) is **`current`**.
+4. With no verdict on record: **`behind`** if the stamp is an older contract than this server's compiler,
+   **`unknown`** if the compiler cannot be identified, else **`current`**.
+
+"Recorded" means the `sweep.json` of an `upgrade` run on this box: kept since 0.28.3 and never pruned.
+A `replay-upgrade` run (a scratch copy) and a reverted run are not read. A sweep before 0.28.3 kept no
+record, so what it held shows as `behind`, never as `current`. Nothing here reads storage: the planner's
+other reasons to act (a resolution table to re-derive, a measured drift) show only through a sweep's
+verdict, and `registry upgrade --dry-run` is the complete answer. No run id, no sentence and no path is
+served; the detail is `GET /admin/runs/{id}` (site admins).
+
+`VersionInfo.needs_upgrade` is a different flag: `registry revalidate --set-flag` sets it when a stored
+spec fails the current contract. `false` there never means current.
+
+`registry-client upgrade-status [--all]` prints the counts, the coverage, and every version not current.
 
 ## Schemas
 

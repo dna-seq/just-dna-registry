@@ -24,6 +24,7 @@ from just_dna_registry.models.api import (
     GeneHintReport,
     OldAssemblyHintReport,
     TraitHintReport,
+    UpgradeStatusReport,
     ValidationReport,
     VariantHintBatchResponse,
     VariantHintReport,
@@ -1566,6 +1567,24 @@ class RegistryClient:
         `CacheLaneStatus`.
         """
         return CacheStatusReport.model_validate(self._json(self._http.get("/caches")))
+
+    def upgrade_status(
+        self, *, state: str | None = None, page: int = 1, per_page: int = 100
+    ) -> UpgradeStatusReport:
+        """Which current versions `registry upgrade` has not brought up to date (0.32). Anonymous.
+
+        Per module: `state` (`held`, `would_upgrade`, `behind`, `unknown`, `current`), the newest recorded
+        sweep's verdict on that exact version (`last_sweep`: status and code), and the compiler comparison
+        (`gap`). `counts` covers the whole catalog whatever `state` filters; read `swept` and
+        `sweeps_on_record` beside it, since a sweep before 0.28.3 left no record and its holds show as
+        `behind`, not `held`. `VersionInfo.needs_upgrade` is a different flag (`revalidate`'s).
+        """
+        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        if state is not None:
+            params["state"] = state
+        return UpgradeStatusReport.model_validate(
+            self._json(self._http.get("/upgrade/status", params=params))
+        )
 
     def health(self) -> dict:
         """Server liveness: `{status, version, storage}`.

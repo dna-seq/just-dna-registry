@@ -30,6 +30,7 @@ from just_dna_registry.api.routers import (
     publish,
     reviews,
     stats,
+    upgrade,
 )
 from just_dna_registry.config import API_PREFIX, Settings, get_settings
 from just_dna_registry.db.repository import Repository
@@ -155,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(hints.router, prefix=API_PREFIX)
     app.include_router(lanes.router, prefix=API_PREFIX)
     app.include_router(claims.router, prefix=API_PREFIX)
+    app.include_router(upgrade.router, prefix=API_PREFIX)
     app.include_router(modules.router, prefix=API_PREFIX)
     app.include_router(stats.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)

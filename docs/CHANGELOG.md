@@ -37,6 +37,20 @@ had described it as every namespace the caller is a member of. Authorization is 
 `effective_role()`, and a test holds the new list equal to it over every namespace. The console's account
 page shows both.
 
+### `GET /upgrade/status`: which modules the upgrade sweep has not brought up to date
+
+Per listed module, its current version's state: `held` (the newest recorded sweep refused, held or
+failed that exact version, or a re-derivation of it is kept for `--accept-drift`), `would_upgrade` (a dry
+run would re-publish it), `behind` (no sweep verdict, and built under an older compiler contract than this
+server's), `unknown` (the compiler cannot be identified), or `current`, with the sweep's status and code
+and the compiler comparison. `counts` covers every state, zeros included, beside how many versions a
+recorded sweep has seen, so "0 held" says what was checked. Sweeps are read from each `upgrade` run's
+`sweep.json` (0.28.3 on, never pruned; replays and reverted runs skipped); a sweep before that left no
+record, which is why the compiler comparison is there. Anonymous, codes only: run ids, sentences and paths
+stay behind `GET /admin/runs`. `RegistryClient.upgrade_status()`, `registry-client upgrade-status`.
+Asked for after `needs_upgrade` read `false` on every polygon module, four of them held by the 0.8 sweep:
+that flag is `revalidate`'s and now says so in its description.
+
 ### Fixed
 
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`

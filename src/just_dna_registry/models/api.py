@@ -421,7 +421,14 @@ class VersionSummary(BaseModel):
     compile_success: bool
     yanked: bool
     signed: bool = False  # carries an Ed25519 signature over artifact.digest (SPEC §5)
-    needs_upgrade: bool = False  # set by the `revalidate` audit: fails the current contract
+    needs_upgrade: bool = Field(
+        default=False,
+        description=(
+            "Set only by `registry revalidate --set-flag`: the stored spec fails the current contract. "
+            "It is not whether `registry upgrade` would re-publish this version, and `false` does not "
+            "mean current; `GET /upgrade/status` answers that."
+        ),
+    )
     # Per-compile, so it belongs on the version rather than the module (0.11). Read from the
     # projected columns, not by parsing `manifest_json`, so a version list gains no per-row parse.
     resolution: ResolutionInfo = Field(default_factory=ResolutionInfo)
@@ -1972,3 +1979,70 @@ class RunDetail(BaseModel):
 
     run: RunSummary
     sweep: RunSweep | None = None
+
+
+# ── Upgrade status (0.32) ───────────────────────────────────────────────────────────────────────────
+
+
+class UpgradeSweepVerdict(BaseModel):
+    """What the newest recorded `registry upgrade` sweep said about one exact version.
+
+    Read from that run's `sweep.json` (kept since 0.28.3, never pruned). Codes only: the run's own
+    sentences and detail stay behind `GET /admin/runs/{id}`, for site admins."""
+
+    started: str | None = Field(None, description="When that sweep started (UTC)")
+    applied: bool = Field(
+        description="`true` for `upgrade --apply`, `false` for a dry run (which publishes nothing)"
+    )
+    status: str = Field(description="The sweep's status for this version: `refused`, `held`, `failed`, "
+                        "`blocked`, `anomaly`, `would upgrade`, `unchanged`, `published`")
+    code: str = Field(description="The status's code, e.g. `rederive_drift_needs_reading`, `needs_online`")
+    problem_type: str = Field(description="The class the sweep's summary counted it under")
+    drift_to_read: int = Field(0, description="Subjects in a drift arm worth reading, where counted")
+
+
+class UpgradeStatusItem(BaseModel):
+    """One module's current version, and whether `registry upgrade` has left it behind."""
+
+    namespace: str
+    name: str
+    version: str = Field(description="The module's current (non-yanked) latest version")
+    state: str = Field(description=(
+        "`held`: the newest recorded sweep refused, held, failed or blocked this exact version, or a "
+        "re-derivation of it is kept for `--accept-drift`. `would_upgrade`: the newest recorded sweep "
+        "was a dry run that would re-publish it. `behind`: no recorded sweep has a verdict on it and it "
+        "was compiled under an older contract than this server's compiler. `unknown`: no verdict, and "
+        "the compiler that built it cannot be identified. `current`: none of these."
+    ))
+    compiled_under: str | None = Field(None, description="The compiler version stamped on its manifest")
+    gap: str = Field(description="The version comparison against this server's compiler: "
+                     "`none`, `patch`, `contract` or `unknown`")
+    last_sweep: UpgradeSweepVerdict | None = Field(
+        None, description="The newest recorded sweep's verdict on this exact version; `null`: none on record"
+    )
+    kept: bool = Field(False, description="A re-derivation of it is kept on this box for `--accept-drift`")
+    kept_stale: str | None = Field(
+        None, description="Why that kept result may not be published now (another toolchain derived it)"
+    )
+
+
+class UpgradeStatusReport(BaseModel):
+    """`GET /upgrade/status`: which current versions `registry upgrade` has not brought up to date.
+
+    Two witnesses, kept apart. The **recorded sweeps** (`sweep.json` of every `upgrade` run on this box,
+    newest verdict per version, reverted runs skipped) say what the sweep did and why. The **version
+    comparison** (the manifest's compiler stamp against this server's compiler) covers what no recorded
+    sweep has seen: a sweep run before 0.28.3 kept no record. Neither reads storage, so the planner's
+    other reasons to act (a resolution table to re-derive, a measured drift) are visible only through a
+    sweep; `registry upgrade --dry-run` is the full answer."""
+
+    items: list[UpgradeStatusItem]
+    total: int
+    page: int
+    per_page: int
+    counts: dict[str, int] = Field(description="Current versions per `state`, over the whole catalog")
+    compiler: str | None = Field(None, description="This server's compiler, the comparison's other side")
+    swept: int = Field(description="Current versions some recorded sweep has a verdict on")
+    sweeps_on_record: int = Field(description="`upgrade` runs whose `sweep.json` was read")
+    sweeps_since: str | None = Field(None, description="When the oldest of those started; `null`: none")
+

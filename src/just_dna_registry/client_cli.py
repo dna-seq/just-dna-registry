@@ -220,6 +220,52 @@ def cache_status(
         typer.secho("every lane is provisioned there", fg=typer.colors.GREEN)
 
 
+@app.command("upgrade-status")
+def upgrade_status(
+    url: str | None = UrlOpt,
+    show_all: bool = typer.Option(False, "--all", help="List current modules too, not only the rest"),
+) -> None:
+    """Which current versions `registry upgrade` has not brought up to date, and why (0.32). Anonymous.
+
+    The counts come first and always print in full, `current` included, beside how much the recorded sweeps
+    covered: "0 held" means nothing unless the sweeps saw the module. A sweep before 0.28.3 kept no record,
+    so what it held shows as `behind` (built under an older compiler), never as current.
+    """
+    with _client(url, None) as c:
+        first = c.upgrade_status()
+        items = list(first.items)
+        page = 1
+        while len(items) < first.total:
+            page += 1
+            items += c.upgrade_status(page=page).items
+
+    counts = "  ".join(f"{state} {n}" for state, n in first.counts.items())
+    typer.echo(f"{counts}   (server compiler {first.compiler or 'unknown'})")
+    since = f", oldest {first.sweeps_since}" if first.sweeps_since else ""
+    typer.echo(
+        f"recorded sweeps: {first.sweeps_on_record}{since}; {first.swept} of {first.total} current versions "
+        f"have a sweep verdict"
+    )
+    colour = {"held": typer.colors.RED, "would_upgrade": typer.colors.YELLOW,
+              "behind": typer.colors.YELLOW, "unknown": typer.colors.YELLOW}
+    for item in items:
+        if item.state == "current" and not show_all:
+            continue
+        line = f"  {item.state:13} {item.namespace}/{item.name}@{item.version}"
+        if item.last_sweep is not None:
+            sweep = item.last_sweep
+            run = "apply" if sweep.applied else "dry run"
+            drift = f", {sweep.drift_to_read} drift to read" if sweep.drift_to_read else ""
+            line += f"  — {sweep.status}: {sweep.code} ({run} {sweep.started or ''}{drift})"
+        elif item.gap in ("contract", "unknown"):
+            line += f"  — no sweep on record; built under {item.compiled_under or 'an unidentified compiler'}"
+        if item.kept:
+            line += "; re-derivation kept for --accept-drift"
+            if item.kept_stale:
+                line += f" (stale: {item.kept_stale})"
+        typer.secho(line, fg=colour.get(item.state))
+
+
 @app.command("list")
 def list_modules(
     q: str | None = typer.Option(None, help="Full-text query"),
