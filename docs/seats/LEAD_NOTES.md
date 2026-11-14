@@ -4,6 +4,15 @@ The lead seat's working state, rewritten to the present before a reset (`docs/se
 
 ## Now
 
+**Standing, daily, first turn of the day: every open desk question of this seat is re-checked against the live state**
+(the person, 2026-11-14, on #218: "blocked items are to be checked for staleness daily"). List them with
+`gh issue list -R winternewt/desk --state open --limit 200 --json number,title,body --jq '.[] | select(.body | contains("from:just-dna-registry/lead")) | "#\(.number) \(.title)"'`,
+read each fact it states where it lives (the polygon or production catalog over REST, PyPI via `versions.py`, the
+repo), then post an `**Update:**` or withdraw. #218 sat a week saying "12 held" while 8 had been published on
+11-07, three hours before my own update telling the person to publish nothing: that update was written from the
+replay's result, never from the catalog. **Read the live state before posting any desk update.**
+Open after the 2026-11-14 check: #218 (now 4 group-A polygon modules), #201, #294, #298; #216 and #263 withdrawn.
+
 Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
 
 1. **Retire the old triage waker**: done, 7ff1398, after triage reported its watcher fired.
