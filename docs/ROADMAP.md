@@ -1112,6 +1112,17 @@ converges).
   byte-identical claims); **patch**, `RegistryClient.gene_claims` quotes `symbol` into the path. Severity: low
   to medium; an empty answer is read as "no module says anything", which is false.
 
+- **`curated` counts only reviews from outside the namespace** (proposed by S33, just-module-creator,
+  2026-11-14; **undecided**, the lead's call). The 0.8.0 design chose owner highlighting over a namespace role
+  because "self-curation isn't a trust signal; curation must come from outside" (the owner's call then), but
+  nothing enforces the outside: an owner reviews their own version, highlights that review, and the card,
+  `?group=curated` and `catalog_stats` read `curated: true`. Two candidates: refuse
+  `PUT .../reviews/{reviewer}/highlight` (and perhaps the review) when the reviewer holds `curate` on the
+  namespace; or keep accepting it and count only outside reviewers toward `curated` and the group, which also
+  corrects any self-highlight already stored. API-REFERENCE §29 states the rule either way. An owner's star on
+  their own module is the same question at lower stakes. Sizing: **minor** either way (a new refusal, or a
+  field's meaning narrowed to what its docs already say). Severity: medium; it is the catalog's trust signal.
+
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";

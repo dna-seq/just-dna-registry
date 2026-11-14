@@ -50,7 +50,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S29** lane lookup serves refused lanes — by design, documented; terms field filed
 - **S30** proxy passes skipped by enrich_offline — fixed dac4ccf (unreleased)
 - **S31** `whoami` omits member-of namespaces and orgs — built for 0.32
-- **S32** `/variants?key=` exact-match misses pasted spellings — filed, patch + minor
+- **S32** `/variants?key=` exact-match misses pasted spellings — built for 0.32
+- **S33** owner can highlight their own review, card reads curated — filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -3004,3 +3005,56 @@ project as identical claims; carrying the name is a new claim field, so the mino
 `symbol` into the path unquoted; quoting it is a client patch. Your `pgs_id` note on a 0.30 server is as
 documented. Keep the passthrough and its wording until the release; nothing changes on production before it.
 <!-- triaged: 0.31.0 · sha 831e44d4ec1d -->
+
+## S33 — a namespace owner can review their own module and highlight that review, and the card then reads `curated: true`
+
+**What we ran** (client 0.31.0 against the polygon, registry 0.30.0, 2026-11-14; our tester, wrapping `review`,
+`highlight_review` and `star` for our plugin), as `sheep`, owner of `test-sheep`:
+
+1. `review(test-sheep, test_statin_response, 0.1.1, rating=5, verdict="verified")`: accepted.
+2. `highlight_review(..., reviewer="sheep")`: accepted.
+3. `get_module`: `review_count` 0 → 1, `curated` false → **true**.
+4. `star` on the same module, by its owner: accepted, `stars: 1`.
+
+All undone afterwards and read back as 0 reviews, 0 stars, `curated: false`.
+
+**What we expected.** API-REFERENCE §28-29 and the reviews router's docstring describe the curated signal as the
+owner accepting *someone else's* review ("SO accepted-answer style"), and `groups.py` labels the tab "Has an
+owner-highlighted review/audit". We read that as the owner vouching for a reviewer's verdict. Nothing in
+`upsert_review` or `highlight_review` (`api/routers/reviews.py`) compares the reviewer with the namespace's
+owner, so an owner's verdict on their own module, highlighted by themselves, raises the same flag
+`?group=curated`, the card and `catalog_stats`' `curated` total count as a third party's.
+
+**Why it matters to us.** Our plugin tells authors that trust is read off the module (reviews, highlights,
+authorship), and its publish skill judges a module on checks. A curated flag its owner can raise alone is a
+signal anyone can raise, and an agent following our tool's description could do it for an author who asks.
+
+**A smaller asymmetry seen in the same cycle.** `PUT .../reviews/{reviewer}/highlight` for a reviewer with no
+review answers `404 review_not_found`; `DELETE` of the same answers 200 (idempotent by its docstring), and
+`DELETE .../reviews` with no review of the caller's answers 200 too. Both are documented and defensible; we
+mention it only because a client cannot tell "un-highlighted" from "there was nothing to un-highlight" without
+reading the returned list; our wrapper claimed an act either way, which is ours to fix.
+
+**What we do meanwhile.** Our tool's description is to say that a highlight on the owner's own review is
+self-curation the card does not tell apart. No refusal of ours: whether an owner may curate their own module is
+your rule.
+
+**Candidates**, either is fine by us: refuse a highlight (and perhaps a review) whose reviewer holds `curate` on
+the namespace; or allow it and say so in API-REFERENCE §29, ideally with the card telling an owner's own
+highlighted review apart (for example `curated` counting only reviewers outside the namespace). Own stars are
+the same question at lower stakes.
+
+**Status — accepted: it contradicts the rule the feature was built on; filed for the lead, the fix undecided.**
+Your reading of `api/routers/reviews.py` is right: neither `upsert_review` nor `highlight_review` compares the
+reviewer with the namespace, and `curated` is `SUM(highlighted) > 0` over every review. That is not what was
+designed. When the curated signal was decided for 0.8.0, the owner chose highlighting over a namespace role on
+the stated ground that self-curation is not a trust signal and curation must come from outside the namespace.
+The code never enforced the "outside", so `?group=curated`, the card's `curated` and `catalog_stats` count a
+self-highlight the same as a third party's. Filed in ROADMAP.md's *Next registry version* as undecided, with
+your two candidates: refuse a highlight of a review whose author holds `curate` on the namespace, or keep
+accepting it and count only outside reviewers toward `curated`. The second also corrects any self-highlight
+already stored, which a refusal alone would leave counted; the lead picks, and API-REFERENCE §29 is to say the
+rule either way. Own stars are filed beside it as the same question at lower stakes. The `DELETE` asymmetry you
+mention is documented idempotence and stays; the returned review list is the answer to "was anything there".
+Your tool's wording in the meantime is accurate.
+<!-- triaged: 0.31.0 · sha 3d60a9bf536d -->
