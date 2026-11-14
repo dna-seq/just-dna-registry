@@ -865,39 +865,42 @@ def vrs_coverage(mint: Any) -> VrsCoverage:
     )
 
 
-#: The CSVs `just_dna_enricher.enrich._collect_subjects` asks about, besides `variants.csv`. Mirrored
-#: rather than imported because it is private there; the count below is a *bound*, so this erring on
-#: the generous side is the safe direction and a table we miss only under-counts.
-#:
-#: `heteroplasmy.csv` joined the list in enricher 0.5.3 — it had been left out with the same silence
-#: that made the whole family invisible here.
-ENRICHMENT_SUBJECT_TABLES: tuple[str, ...] = (
+#: The tables the stats fallback below counts beside `variants.csv`, when upstream's own collection refuses
+#: a table and an exact count cannot be had. `studies.csv` is here because a study's `proxy_rsid` is a
+#: subject since enricher 0.8 (RM331); counting every study row over-counts, the safe direction.
+FALLBACK_SUBJECT_TABLES: tuple[str, ...] = (
     "pharm_variants.csv",
     "haplotypes.csv",
     "heteroplasmy.csv",
+    "studies.csv",
 )
 
 
-def enrichment_subject_count(stats: SpecStats) -> int:
-    """How many rows an `enrich()` on this spec would actually ask about.
+def enrichment_subject_count(spec_dir: Path, stats: SpecStats) -> int:
+    """How many subjects an `enrich()` on this spec would ask about: upstream's own `collect_subjects`.
 
-    Not `variant_count`, which counts `variants.csv` and nothing else. The enricher has collected
-    subjects from the PGx tables since 0.5 and from `heteroplasmy.csv` since 0.5.3, so a module with
-    no `variants.csv` reports `variant_count == 0` while handing the network tier every row it has —
-    measured on the format's own `pgx_slco1b1_simvastatin`: `variant_count` absent, nine subjects.
+    Not `variant_count`, which counts `variants.csv` and nothing else: a PGx module has none and hands the
+    network tier its PGx rows (the format's `pgx_slco1b1_simvastatin`: nine rows naming one variant, so one
+    subject; `variant_count` absent). The cap exists because these upstreams throttle by IP and gnomAD sells no key, so an overspend
+    throttles the whole deployment.
 
-    That made `enrich_max_variants` a guard the one module family most likely to need it slipped
-    straight past. The cap exists because these upstreams throttle by IP and gnomAD sells no key to
-    raise the limit, so an overspend throttles the whole deployment rather than the caller who caused
-    it — a bound that reads zero for a 7,000-row PGx panel is not a bound.
+    **Upstream's collection, not a mirror of it** (the liaison's C13; public since RM158). Through 0.32 this
+    summed a hand-kept list of tables, which missed what upstream added: a study's LD proxy (RM331, 0.8)
+    is a subject and was counted nowhere, so a module leaning on proxies under-counted, the direction
+    that costs the deployment its rate limit. Now the count is upstream's list, deduplicated by
+    `variant_key` as the run will. The declared build does not move a count (a key is build-free).
 
-    An upper bound, deliberately: the enricher de-duplicates subjects by `variant_key`, so a module
-    naming one locus across three tables is counted three times here and asked once. Over-counting
-    costs a publisher a `422` they can argue with; under-counting costs the deployment its rate limit.
+    Called after the modeless gate passed, so upstream's refusal of a table (`EnrichmentError`) is
+    unexpected; it falls back to the stats bound over `FALLBACK_SUBJECT_TABLES`, which over-counts.
     """
-    return stats.variant_count + sum(
-        stats.table_rows.get(csv_name, 0) for csv_name in ENRICHMENT_SUBJECT_TABLES
-    )
+    from just_dna_compiler.compiler import load_spec_variants
+    from just_dna_enricher.enrich import EnrichmentError, collect_subjects
+
+    variants, _, _ = load_spec_variants(spec_dir)
+    try:
+        return len(collect_subjects(spec_dir, variants))
+    except EnrichmentError:
+        return stats.variant_count + sum(stats.table_rows.get(n, 0) for n in FALLBACK_SUBJECT_TABLES)
 
 
 def clin_sig_skip_note(reason: str | None) -> str | None:
@@ -1550,7 +1553,7 @@ def _dry_run_inner(
             ["just-dna-enricher is not installed on this server (it ships in the `server` extra)"]
         )
 
-    subject_count = enrichment_subject_count(validation.stats)
+    subject_count = enrichment_subject_count(spec_dir, validation.stats)
     # `not offline` is the whole of the condition, and it is the bound's own rationale applied
     # honestly: this cap exists because the paced passes cost ~6s per twenty subjects against an
     # IP-scoped budget, and an offline run makes no request at all. Measured on this suite's own

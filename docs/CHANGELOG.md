@@ -64,6 +64,12 @@ the path.
 
 ### Fixed
 
+- The online-check ceiling (`REGISTRY_ENRICH_MAX_VARIANTS`) counts what the enricher will ask: upstream's
+  own `collect_subjects`, deduplicated by `variant_key`, instead of a hand-kept table list that missed a
+  study's LD proxy (`studies.csv` `proxy_rsid`, a subject since enricher 0.8). A module leaning on
+  proxies was under-counted, the direction that spends the deployment's rate limit; one naming a variant
+  across several PGx rows is now counted once, as it is asked. If upstream refuses a table, the count falls
+  back to the row sum, `studies.csv` included (the liaison's C13).
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`
   serves, as every other root this service writes to is, rather than falling to the generic `<path>`.
 
