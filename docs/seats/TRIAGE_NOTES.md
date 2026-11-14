@@ -45,11 +45,12 @@ reports; this file holds the seat's own decisions and the items it owns.
   185a8c7's docs on that branch. Once 0.29.0 is cut: append a second `**Status —**` paragraph to S28 in
   `docs/CONSUMER_SUGGESTIONS_HISTORY.md` (accepted, shipped 0.29.0, the call to make), update its contents line,
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
+- **Desk #313, the exposed registry keys** (supersedes #225, refiled 2026-11-14 for the secretary's nightly
+  sweep): `blocked: desk #313`, default no change. Withdraw it `moot:` once the person has rotated them.
 - **S29–S32 follow-up replies: reply once 0.32.0 is on PyPI** (its cut waits on desk #298), taking the wording
   from the branch's changelog. The pm placed all four in 0.32: S29 lane `terms`+`unpublished` (5e55a19), S30
   `proxy_live_legs` on /caches (c353fc9), S31 whoami's `member_of`/`orgs` (724c103) are built on branch `0.32`;
   S32 (b9bc198: the `/variants?key=` folding, `gene_claims` quoting, the matched-nothing sibling, the haplotype
-  name) is the lead's to build. If 0.32 is cut without S32, its folding and quoting go as 0.32.1 and its two
-  fields in 0.33: reply per release then. For each: append a second `**Status —**` paragraph in the history file,
+  name) is built there too (ce1f2fe). For each: append a second `**Status —**` paragraph in the history file,
   update the contents line, and tell just-module-creator's liaison. S30's base fix (`dac4ccf`, in 0.30.1)
   reaches the polygon only when 0.30.1+ is deployed there; the consumer re-runs it then.
