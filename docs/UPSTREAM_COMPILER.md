@@ -160,6 +160,9 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   registry's fields through, so `/lanes/alphagenome_*` serve the new sentences once an enricher carrying it is
   installed; a module re-enriched after it gets the new `licensing.csv` text, so its `artifact.digest` moves and its
   `content_signature` does not (the sidecar is outside `SIGNATURE_INPUTS`). Nothing here restates either string.
+  **RM444** (`35cfabad`, enricher only, from just-module-creator's S155): `grch37.recover_rsid`'s result *text* stops
+  over-claiming (a `none` beside overlapping records no longer says dbSNP records nothing; a position-only `recovered`
+  says so). No outcome or field changes. Nothing for us: `src/` calls `recover_rsid` nowhere (grep, 2026-11-14).
 - **Cut as `v0.8.6`** (`2f03ab4` on their `main`, 2026-11-13; untagged and not on PyPI when read, tagged and on PyPI later that day): all three to
   0.8.6, floors `>=0.8.6`, no third-party floor. Carries RM439 and RM440 (read below) and RM437's doc half; no
   public name, field, table, flag or warning code, no behaviour change for a direct caller. Release record `0.8.6`:
