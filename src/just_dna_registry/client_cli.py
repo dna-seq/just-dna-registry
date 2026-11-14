@@ -646,6 +646,7 @@ def variant(
         typer.echo(
             f"  {claim['module']:<40} {claim['kind']:<12} {claim.get('genotype') or '-':<8} "
             f"{claim.get('direction') or '-':<11} {claim.get('trait_efo_id') or '-':<14} {claim.get('gene') or ''}"
+            + (f" {claim['haplotype']}" if claim.get("haplotype") else "")
         )
     conflicts = found["conflicts"]
     for pair in conflicts["pairs"]:
@@ -653,6 +654,14 @@ def variant(
             f"  ≠ {' vs '.join(pair['modules'])}: {pair['effect_allele']} {pair['genotype']} "
             f"{pair['trait_efo_id']} ({' / '.join(pair['directions'])})", fg=typer.colors.YELLOW,
         )
+    # 0.32 (S32): an empty answer says which of its two histories it has. Absent from an older server.
+    if found.get("matched") is False:
+        typer.secho(
+            f"no visible module spells this variant as any of: {', '.join(found.get('spellings') or [key])}",
+            fg=typer.colors.YELLOW,
+        )
+    elif found.get("matched") and not found["claims"]:
+        typer.echo("visible modules name this variant but make no claim about it")
     skipped = ", ".join(f"{k} {v}" for k, v in sorted(conflicts["incomparable"].items())) or "none"
     typer.echo(
         f"{len(found['modules'])} module(s); {conflicts['compared']} pair(s) compared, not compared: {skipped}; "

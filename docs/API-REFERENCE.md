@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`, and `terms` and `unpublished` on both lane routes, `proxy_live_legs` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -1481,14 +1481,22 @@ The variant-level catalog (0.31). Every publish records what its version says ab
 from its own parquets (`weights`, `pharm_variants`, `heteroplasmy`, `haplotypes`, and `pgs` ids); only each
 module's latest non-yanked version is kept. `registry project-claims` fills it for versions published
 before 0.31. `GET /variants?key=` takes one spelling of a variant (rsID, VRS id, or `chrom:start:ref:alt`)
-and resolves the others through the recorded aliases; `GET /genes/{symbol}/claims` takes an authored gene
+and resolves the others through the recorded aliases. Since 0.32 the key is first folded onto the stored
+forms (`spellings`, the key as given first): an rsID in lower case, and coordinates as `chrom:start:ref:alt`
+with no `chr`, `:` between the fields and upper-case alleles, so `RS429358`, `chr19:44908684:T:C` and
+`19-44908684-T-C` find what `rs429358` finds. Never a strand, a build or a chromosome renaming (`M` is not
+`MT`); a VRS id passes as given. **`matched`** (0.32) says whether any spelling is stored for a visible
+module: `claims: []` with `matched: false` is a key no visible module spells, with `matched: true` a
+variant they name without a claim. `GET /genes/{symbol}/claims` takes an authored gene
 symbol (a row's gene is never assigned from its position). Visibility follows the listing: no blacklisted
 namespace, and on production no test/sandbox one.
 
 Each claim carries `module`, `version`, `kind` (`weight`, `pharm`, `heteroplasmy`, `haplotype`),
 `variant_key`, `genotype` (alleles sorted, `A/G`), `effect_allele`, `direction` (`risk`, `protective`,
 `neutral`, or null: not comparable; from `direction`, else an older module's `state`, never a weight's sign),
-`weight` (per-module scale, never comparable across modules), `trait_efo_id`, `clin_sig`, `gene`.
+`weight` (per-module scale, never comparable across modules), `trait_efo_id`, `clin_sig`, `gene`, and
+`haplotype` (0.32: a haplotype row's name, `*4`, `e4`; null for other kinds, and for a version projected
+before 0.32 until `registry project-claims` re-projects it).
 
 **`conflicts`** is a fact about two modules' statements, never a verdict: a pair is listed only when two
 different modules give the **same effect allele**, genotype and non-null trait opposite directions. Every

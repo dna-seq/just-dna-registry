@@ -18,6 +18,7 @@ and the projection can be rebuilt from storage. The design and its review are in
 
 import io
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -25,7 +26,7 @@ from typing import Any
 import polars as pl
 
 #: Bumped whenever what a projection holds changes, so a backfill re-projects what an older one wrote.
-PROJECTOR_VERSION = "1"
+PROJECTOR_VERSION = "2"  # 2 (0.32): a haplotype claim carries its haplotype's name
 
 COMPARABLE_DIRECTIONS: frozenset[str] = frozenset({"risk", "protective", "neutral"})
 
@@ -45,6 +46,8 @@ class Claim:
     clin_sig: str | None = None
     stat_significance: str | None = None
     gene: str | None = None
+    #: A haplotype row's `haplotype_name` (`*4`, `e4`): two haplotypes sharing an allele are two claims.
+    haplotype: str | None = None
 
 
 @dataclass
@@ -128,6 +131,7 @@ def project(read: Callable[[str], bytes | None], genome_build: str | None) -> Pr
                 kind=kind, variant_key=key, rsid=_value(row, "rsid"), genome_build=genome_build,
                 genotype=normalise_genotype(row.get(genotype_column)) if genotype_column else None,
                 clin_sig=_value(row, "clin_sig"), gene=_value(row, "gene") or genes.get(key),
+                haplotype=_value(row, "haplotype_name") if kind == "haplotype" else None,
             ))
             out.aliases.extend(_aliases(row, key, genome_build))
 
@@ -295,13 +299,42 @@ def conflicts(claims: list[dict[str, Any]]) -> dict[str, Any]:
     return {"pairs": pairs, "compared": compared, "incomparable": incomparable}
 
 
+_RSID = re.compile(r"rs(\d+)", re.IGNORECASE)
+_LOCUS = re.compile(
+    r"(?:chr)?([0-9]{1,2}|X|Y|M|MT)[:\-_](\d+)[:\-_]([ACGTN]+)(?:[:\-_]([ACGTN,]*))?", re.IGNORECASE
+)
+
+
+def key_spellings(key: str) -> list[str]:
+    """The key as given, then the stored form it folds onto (S32): an rsID in lower case (`RS429358`), and
+    coordinates as `chrom:start:ref:alt` with no `chr`, `:` between fields and upper-case alleles
+    (`chr19-44908684-t-c`). Never a strand, a build or a chromosome renaming (`M` stays `M`): only spellings
+    of the same statement. A VRS id is case-sensitive and passes as given."""
+    spellings = [key]
+    if match := _RSID.fullmatch(key):
+        spellings.append(f"rs{match.group(1)}")
+    elif match := _LOCUS.fullmatch(key):
+        chrom, start, ref, alts = match.groups()
+        folded = f"{chrom.upper()}:{start}:{ref.upper()}"
+        spellings.append(f"{folded}:{alts.upper()}" if alts else folded)
+    return list(dict.fromkeys(spellings))
+
+
 def variant_claims(repo: Any, key: str, *, exclude_namespaces: list[str]) -> dict[str, Any]:
     """Every visible module's claims about one variant, by any spelling of it (rsID, VRS id, coordinates),
-    with the conflict marker and how many visible versions are not yet projected."""
+    with the conflict marker and how many visible versions are not yet projected.
+
+    `matched` says whether any spelling is stored for a visible version at all (S32): an empty `claims` is
+    otherwise the same for a key nobody wrote and for one whose modules make no claim here."""
     visible, params = _visible_versions_sql(exclude_namespaces)
-    keys = {r[0] for r in repo.conn.execute(
-        "SELECT DISTINCT variant_key FROM claim_aliases WHERE alias = ?", (key,)
-    ).fetchall()} | {key}
+    spellings = key_spellings(key)
+    marks = ",".join("?" * len(spellings))
+    found = {r[0] for r in repo.conn.execute(
+        f"SELECT DISTINCT a.variant_key FROM claim_aliases a JOIN versions v ON v.id = a.version_id "
+        f"JOIN modules m ON m.id = v.module_id WHERE a.alias IN ({marks}) AND {visible}",
+        [*spellings, *params],
+    ).fetchall()}
+    keys = found | set(spellings)
     marks = ",".join("?" * len(keys))
     rows = [dict(r) for r in repo.conn.execute(
         f"SELECT m.namespace || '/' || m.name AS module, v.version AS version, c.* "
@@ -313,6 +346,8 @@ def variant_claims(repo: Any, key: str, *, exclude_namespaces: list[str]) -> dic
         row.pop("version_id", None)
     return {
         "key": key,
+        "spellings": spellings,
+        "matched": bool(found or rows),
         "variant_keys": sorted(keys),
         "claims": rows,
         "modules": sorted({r["module"] for r in rows}),

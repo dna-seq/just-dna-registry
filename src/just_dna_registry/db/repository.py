@@ -1101,11 +1101,11 @@ class Repository:
             c.executemany(
                 "INSERT INTO version_claims(version_id, kind, variant_key, rsid, genome_build, genotype, "
                 "effect_allele, direction, direction_source, weight, trait_efo_id, clin_sig, "
-                "stat_significance, gene) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stat_significance, gene, haplotype) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [
                     (version_id, x.kind, x.variant_key, x.rsid, x.genome_build, x.genotype, x.effect_allele,
                      x.direction, x.direction_source, x.weight, x.trait_efo_id, x.clin_sig,
-                     x.stat_significance, x.gene)
+                     x.stat_significance, x.gene, x.haplotype)
                     for x in projection.claims
                 ],
             )

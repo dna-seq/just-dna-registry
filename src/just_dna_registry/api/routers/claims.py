@@ -35,6 +35,15 @@ class Conflicts(BaseModel):
 
 class VariantClaims(BaseModel):
     key: str
+    spellings: list[str] = Field(
+        description="The key as given, then the stored form it folds onto (rsID case, a leading `chr`, `-` "
+        "between coordinate fields, allele case); never a strand or build guess (0.32)"
+    )
+    matched: bool = Field(
+        description="Whether any of those spellings is stored for a visible module (0.32): `false` with "
+        "`claims: []` is a key no visible module spells; `true` with `claims: []` is a variant they name "
+        "without a claim here"
+    )
     variant_keys: list[str] = Field(description="Every key the spelling asked for resolves to")
     claims: list[dict[str, Any]]
     modules: list[str]

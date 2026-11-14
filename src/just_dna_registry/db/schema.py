@@ -176,7 +176,8 @@ CREATE TABLE IF NOT EXISTS version_claims (
     trait_efo_id      TEXT,
     clin_sig          TEXT,
     stat_significance TEXT,
-    gene              TEXT               -- authored, never assigned by position
+    gene              TEXT,              -- authored, never assigned by position
+    haplotype         TEXT               -- a haplotype row's name (`*4`, `e4`), 0.32
 );
 CREATE TABLE IF NOT EXISTS claim_aliases (
     version_id   INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
@@ -265,6 +266,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # The variant-level catalog (0.31): which projector wrote this version's claims, NULL when none
         # has (not projected is not "no claims"); compared by version on a backfill, as `upgrade` does.
         conn.execute("ALTER TABLE versions ADD COLUMN claims_projector TEXT")
+    claim_cols = {row["name"] for row in conn.execute("PRAGMA table_info(version_claims)").fetchall()}
+    if "haplotype" not in claim_cols:
+        # 0.32 (S32): a haplotype claim names its haplotype. Rows a projector 1 wrote keep NULL until
+        # `registry project-claims` re-projects them (PROJECTOR_VERSION 2).
+        conn.execute("ALTER TABLE version_claims ADD COLUMN haplotype TEXT")
 
     ns_cols = {row["name"] for row in conn.execute("PRAGMA table_info(namespaces)").fetchall()}
     if "featured" not in ns_cols:

@@ -51,6 +51,17 @@ stay behind `GET /admin/runs`. `RegistryClient.upgrade_status()`, `registry-clie
 Asked for after `needs_upgrade` read `false` on every polygon module, four of them held by the 0.8 sweep:
 that flag is `revalidate`'s and now says so in its description.
 
+### `/variants?key=` folds the spellings a reader pastes, and says when nothing matched (S32)
+
+The key is folded onto the stored forms before the lookup (`spellings`): `RS429358`, `chr19:44908684:T:C` and
+`19-44908684-T-C` now find the claims `rs429358` finds, where 0.31 answered `claims: []`. Only spellings of
+the same statement: never a strand, a build or a chromosome renaming. `matched` says whether any spelling is
+stored for a visible module, so an unknown key and a variant its modules name without a claim no longer
+read alike; `registry-client variant` prints which. A haplotype claim carries its `haplotype` name (`*4`):
+two haplotypes defined by one allele projected as identical claims. The projector is version 2, so
+`registry project-claims` re-projects what 0.31 wrote. `RegistryClient.gene_claims` quotes the symbol into
+the path.
+
 ### Fixed
 
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`

@@ -11,6 +11,7 @@ import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from just_dna_format.integrity import sha256_bytes, verify_manifest
@@ -1293,13 +1294,14 @@ class RegistryClient:
         """What every visible module's latest version says about one variant (0.31), by rsID, VRS id or
         `chrom:start:ref:alt`: the claims, the modules, the conflict marker (two modules giving one allele
         opposite directions for the same genotype and trait) with the pairs not compared by reason, and
-        `not_projected` (modules whose silence is not agreement)."""
+        `not_projected` (modules whose silence is not agreement). Since 0.32 the key is folded onto the
+        stored spellings (`spellings`), and `matched` says whether any is stored at all."""
         return self._json(self._http.get("/variants", params={"key": key}))
 
     def gene_claims(self, symbol: str) -> dict:
         """What every visible module's latest version says about the variants it names under `symbol` (0.31;
         authored genes only, never assigned by position)."""
-        return self._json(self._http.get(f"/genes/{symbol}/claims"))
+        return self._json(self._http.get(f"/genes/{quote(symbol, safe='')}/claims"))
 
     def lane_tables(self, lane: str) -> dict:
         """What one snapshot lane holds (0.30): its tables and the key columns each answers by, and

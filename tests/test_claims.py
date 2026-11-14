@@ -194,3 +194,93 @@ def test_the_listing_filters_by_pgs_id_and_the_clients_print_claims(client: Test
         assert "1 variant(s) in 1 module(s)" in CliRunner().invoke(client_cli.app, ["gene", "CYP2C19"]).output
     finally:
         client_cli._client = original
+
+
+# ── S32 (0.32): spellings fold, an empty answer says which, haplotypes keep their names ────────────────
+
+
+def test_a_key_folds_onto_the_stored_spellings_and_never_guesses_a_strand_or_build() -> None:
+    assert claims.key_spellings("RS429358") == ["RS429358", "rs429358"]
+    assert claims.key_spellings("rs429358") == ["rs429358"]
+    for pasted in ("chr19:44908684:T:C", "19-44908684-T-C", "Chr19_44908684_t_c", "19:44908684:t:c"):
+        assert claims.key_spellings(pasted)[-1] == "19:44908684:T:C", pasted
+    assert claims.key_spellings("chrX-100-A") == ["chrX-100-A", "X:100:A"]
+    # Same statement only: no complement, no M→MT, a VRS id untouched (its digest is case-sensitive).
+    assert claims.key_spellings("chr19:1:A:T")[-1] == "19:1:A:T"
+    assert claims.key_spellings("chrM:73:A:G")[-1] == "M:73:A:G"
+    vrs = "ga4gh:VA.CxiA7kzKmTtfP-xZ6sRuvWlJ2pj7pvIy"
+    assert claims.key_spellings(vrs) == [vrs]
+
+
+def test_the_route_folds_the_key_and_says_whether_any_spelling_is_stored(client: TestClient, repo: Repository) -> None:
+    key = _user(repo, "antonkulaga", namespace="just-dna-seq")
+    _publish(client, key, "just-dna-seq", "coronary", "1.0.0")
+    version_id = repo.conn.execute("SELECT id FROM versions").fetchone()[0]
+    # The stored coordinate form, as `_aliases` writes it from `resolution_loci`, and a spelling a module
+    # names with no claim behind it.
+    repo.conn.executemany(
+        "INSERT INTO claim_aliases(version_id, alias, variant_key, genome_build) VALUES (?, ?, ?, 'GRCh38')",
+        [(version_id, "10:94781859:G:A", "rs4244285"), (version_id, "rs7777777", "rs7777777")],
+    )
+    repo.conn.commit()
+    for pasted in ("rs4244285", "RS4244285", "chr10-94781859-g-a", "10:94781859:G:A"):
+        found = client.get("/api/v1/variants", params={"key": pasted}).json()
+        assert found["modules"] == ["just-dna-seq/coronary"] and found["matched"] is True, pasted
+    unknown = client.get("/api/v1/variants", params={"key": "RS999999999"}).json()
+    assert (unknown["claims"], unknown["matched"], unknown["spellings"]) == ([], False, ["RS999999999", "rs999999999"])
+    silent = client.get("/api/v1/variants", params={"key": "rs7777777"}).json()
+    assert (silent["claims"], silent["matched"]) == ([], True)
+
+
+def test_a_haplotype_claim_carries_its_haplotypes_name() -> None:
+    """Two haplotypes defined by one allele were byte-identical claims; the name tells them apart."""
+    haplotypes = pl.DataFrame({
+        "variant_key": ["rs3892097", "rs3892097"], "allele": ["T", "T"], "gene": ["CYP2D6", "CYP2D6"],
+        "haplotype_name": ["*4", "*4.013"],
+    })
+    got = claims.project(_reader(haplotypes=haplotypes), "GRCh38").claims
+    assert {(c.kind, c.haplotype) for c in got} == {("haplotype", "*4"), ("haplotype", "*4.013")}
+    assert claims.PROJECTOR_VERSION != "1", "projector 1 rows carry no name; the bump is what re-projects them"
+
+
+def test_a_stored_haplotype_name_is_served_and_printed(client: TestClient, repo: Repository) -> None:
+    from sdk_transport import sdk_transport
+    from typer.testing import CliRunner
+
+    from just_dna_registry import client_cli
+    from just_dna_registry.client import RegistryClient
+
+    key = _user(repo, "antonkulaga", namespace="just-dna-seq")
+    _publish(client, key, "just-dna-seq", "coronary", "1.0.0")
+    version_id = repo.conn.execute("SELECT id FROM versions").fetchone()[0]
+    projection = claims.Projection(
+        claims=[claims.Claim(kind="haplotype", variant_key="rs3892097", genotype="T", gene="CYP2D6", haplotype="*4")],
+        aliases=[("rs3892097", "rs3892097", "GRCh38")],
+    )
+    repo.store_claims(version_id, projection, claims.PROJECTOR_VERSION)
+    sdk = RegistryClient("http://testserver", transport=sdk_transport(client), check_version=False)
+    (claim,) = sdk.variant_claims("rs3892097")["claims"]
+    assert (claim["kind"], claim["haplotype"]) == ("haplotype", "*4")
+    original = client_cli._client
+    # A fresh client per command: each one closes its client on the way out.
+    client_cli._client = lambda url, token, **_k: RegistryClient(
+        "http://testserver", transport=sdk_transport(client), check_version=False
+    )
+    try:
+        out = CliRunner().invoke(client_cli.app, ["variant", "RS3892097"]).output
+        assert "haplotype" in out and "*4" in out, out
+        none = CliRunner().invoke(client_cli.app, ["variant", "rs999999999"]).output
+        assert "no visible module spells this variant as any of: rs999999999" in none, none
+    finally:
+        client_cli._client = original
+
+
+def test_the_sdk_quotes_a_gene_symbol_into_the_path(client: TestClient, repo: Repository) -> None:
+    """Unquoted, a `?` or `#` in a symbol ends the path and the route never sees the symbol."""
+    from sdk_transport import sdk_transport
+
+    from just_dna_registry.client import RegistryClient
+
+    sdk = RegistryClient("http://testserver", transport=sdk_transport(client), check_version=False)
+    for symbol in ("CYP2C19", "HLA?A", "C4#B", "TWO WORDS"):
+        assert sdk.gene_claims(symbol)["gene"] == symbol, symbol
