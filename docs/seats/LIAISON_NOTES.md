@@ -102,6 +102,9 @@ reset").
 - reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.201 (`--final` drops pre-releases and dev builds
   from an upstream-index watcher, #470). Not taken: the format trio has published none (60 releases, checked
   2026-11-13), and a minor is a lockstep cut here, so a `0.9.0rc` is one to read ahead of it.
+- reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn:
+  pending unblocked work goes on in the same turn, kit #481). Here most wakes end with nothing pending: upstream items
+  wait on landings, the bump on Thursday.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
