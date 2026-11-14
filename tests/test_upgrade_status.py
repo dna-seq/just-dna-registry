@@ -19,7 +19,14 @@ from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
 from just_dna_registry.maintenance import RUN_FILE, maintenance_run, run_root, write_sweep
 from just_dna_registry.services import held as held_store
-from just_dna_registry.sweep_report import PUBLISHED, REFUSED, UNCHANGED, WOULD_UPGRADE, SweepItem, SweepResult
+from just_dna_registry.sweep_report import (
+    PUBLISHED,
+    REFUSED,
+    UNCHANGED,
+    WOULD_UPGRADE,
+    SweepItem,
+    SweepResult,
+)
 from just_dna_registry.version import installed_compiler
 
 NS, NAME = "just-dna-seq", "coronary"
