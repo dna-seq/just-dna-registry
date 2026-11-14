@@ -504,6 +504,13 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S154** (filed 2026-11-14 at the lead's request, roadmap C5): `caches.lane_status()` resolves every lane from its
+  env var or default directory, and we pass configured paths to each resolver and never export them (two apps per
+  process in the suite), so composing it would report on the wrong directory for any configured lane. Asks
+  `lane_status(lanes, locations: Mapping[str, Path | None] | None = None)`; every resolver already takes the override
+  as its first argument (all seventeen, checked on 0.8.6); also asks whether `load_dotenv_file` passes through. Our
+  side, once it ships: `services/enrich.lane_status` composes it and drops its own loop.
+
 - **S153** (filed 2026-11-12 at the pm's request for 0.30.1; their triage told): no release-record axis covers a
   derived table, so 0.8.5's record reads as "nothing moved" though RM438 corrects `resolution.csv`. Asks: an axis
   for derived tables, a `requires` that names the reach, RM438 declared on it in the next record. Our side, once it
