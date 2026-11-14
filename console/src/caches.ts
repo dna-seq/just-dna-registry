@@ -43,6 +43,13 @@ function laneRow(lane: CacheLaneStatus): HTMLElement {
   if (lane.parents.length) {
     notes.push(h("div", { class: "note" }, `derived from ${lane.parents.join(", ")}`));
   }
+  // What provisioning it costs here (C15): the closure less what is present. Absent from an older server.
+  if (lane.provision_lanes && lane.provision_lanes.length) {
+    const size = lane.provision_mb !== null ? `~${lane.provision_mb} MB` : "size not stated";
+    const others = lane.provision_lanes.filter((n) => n !== lane.name);
+    notes.push(h("div", { class: "note" },
+      `provisioning it fetches ${size}` + (others.length ? `, with ${others.join(", ")}` : "")));
+  }
   if (lane.release_unreadable) {
     notes.push(h("div", { class: "note" },
       "A release.json is present and could not be parsed — the snapshot is still usable, only its provenance is missing."));

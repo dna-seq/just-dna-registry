@@ -206,6 +206,11 @@ def cache_status(
             "pullable": "pull it",
             "buildable": f"build it: {lane.build_command or '(no command recorded)'}",
         }.get(lane.route, "no route in that tier")
+        # What it costs (0.32.x, C15); absent from an older server, which says nothing either way.
+        if lane.provision_lanes:
+            size = f"~{lane.provision_mb} MB" if lane.provision_mb is not None else "size not stated"
+            others = [n for n in lane.provision_lanes if n != lane.name]
+            how += f" ({size}" + (f", with {', '.join(others)}" if others else "") + ")"
         typer.secho(f"  ✗ {lane.name:14} absent   {tag} — {how}", fg=typer.colors.YELLOW)
         if lane.route_reason:
             typer.echo(f"      {lane.route_reason}")

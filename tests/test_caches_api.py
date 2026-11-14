@@ -275,3 +275,33 @@ def test_the_live_legs_are_said_on_a_deployment_without_the_network_tier(tmp_pat
     settings = Settings(db_path=tmp_path / "a.db", storage_backend="local", storage_root=tmp_path / "sa")
     report = caches_router._fresh(settings)
     assert report.enricher_available is False and report.proxy_live_legs
+
+
+def test_an_absent_lane_says_what_provisioning_it_costs_here(settings: Settings, monkeypatch, tmp_path) -> None:
+    """The closure less what is present (the liaison's C15). `mitomap_miss` stores under a megabyte and its
+    closure is a ClinVar download; with ClinVar on the box, that part costs nothing. Expected figures are
+    upstream's own (`provisioning_closure`, `approx_mb`), never constants."""
+    import dataclasses
+
+    from just_dna_enricher.caches import provisioning_closure
+
+    lanes = enrich.cache_lanes()
+    derived = next(lane for lane in lanes.values() if lane.parents)
+    closure = [member.name for member in provisioning_closure(derived)]
+    held = closure[0]
+    assert len(closure) >= 2 and held != derived.name, "no derived lane with a parent; the test reads nothing"
+    presence = dict.fromkeys(lanes) | {held: tmp_path}
+    monkeypatch.setattr(enrich, "lane_presence", lambda s: presence)
+    report = {lane.name: lane for lane in enrich.lane_status(settings, lane_readers()).lanes}
+
+    fetch = [n for n in closure if n != held]
+    assert report[derived.name].provision_lanes == fetch
+    assert report[derived.name].provision_mb == sum(lanes[n].approx_mb for n in fetch)
+    assert report[derived.name].approx_mb == derived.approx_mb
+    assert (report[held].provision_lanes, report[held].provision_mb) == ([], 0)
+
+    # A lane in the closure that states no size makes the figure unknown, never a smaller number.
+    unsized = {**lanes, fetch[0]: dataclasses.replace(lanes[fetch[0]], approx_mb=None)}
+    monkeypatch.setattr(enrich, "cache_lanes", lambda: unsized)
+    again = {lane.name: lane for lane in enrich.lane_status(settings, lane_readers()).lanes}
+    assert again[derived.name].provision_mb is None and again[derived.name].provision_lanes == fetch

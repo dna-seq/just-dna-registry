@@ -1672,6 +1672,28 @@ class CacheLaneStatus(BaseModel):
             "which is all but one — and the field an operator asking why an increment is empty needs."
         ),
     )
+    approx_mb: int | None = Field(
+        default=None,
+        description=(
+            "Roughly what the lane stores, in MB, as the enricher's registry states it (`CacheLane.approx_mb`); "
+            "`null` where it states none. A derived lane's figure is its own increment, not its parents'."
+        ),
+    )
+    provision_lanes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The lanes provisioning this one would fetch or build on this box now: its closure "
+            "(`provisioning_closure`: parents first, then itself) less what is already present. Empty for a "
+            "present lane."
+        ),
+    )
+    provision_mb: int | None = Field(
+        default=None,
+        description=(
+            "What provisioning it would cost here, in MB: `approx_mb` summed over `provision_lanes`. `0` for a "
+            "present lane; `null` when any of those lanes states no size (cannot say, never zero)."
+        ),
+    )
 
 
 class ProxyLiveLeg(BaseModel):

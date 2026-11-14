@@ -738,6 +738,7 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
     if not lanes:
         return CacheStatusReport(enricher_available=False, declared_use=declared_use, lanes=[])
 
+    from just_dna_enricher.caches import provisioning_closure
     from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
     from just_dna_enricher.locations import RELEASE_FILENAME, read_release
 
@@ -776,6 +777,10 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
                 # asked.
                 skip = f"refused: {exc}"
 
+        # What a pull costs on this box (the liaison's C15, upstream RM229/S97): the lane's closure, parents
+        # first, less what is already present. `mitomap_miss` stores under a megabyte; its closure is ClinVar.
+        fetch = [member.name for member in provisioning_closure(lane) if present.get(member.name) is None]
+
         if lane.ensure is not None:
             route, reason = "pullable", None
         elif lane.rebuild is not None:
@@ -800,6 +805,10 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
             group=LANE_GROUPS.get(name),
             configured=configured.get(name) is not None,
             parents=list(lane.parents),
+            approx_mb=lane.approx_mb,
+            provision_lanes=fetch,
+            provision_mb=None if any(lanes[n].approx_mb is None for n in fetch)
+            else sum(lanes[n].approx_mb or 0 for n in fetch),
         ))
     return CacheStatusReport(
         enricher_available=True, declared_use=declared_use, lanes=statuses

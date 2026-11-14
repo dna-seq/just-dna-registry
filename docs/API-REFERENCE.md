@@ -795,6 +795,12 @@ question a publisher has after a `/check` reported a source skipped.
   `strchive`, `mitomap_miss`). `group` is still the `/check` grouping only, so a lane can be read here
   with no group. All three are narrower than the set an operator can provision: the same box often
   runs authoring commands, and a lane nothing here reads is still worth reporting rather than hiding.
+- **`approx_mb`, `provision_lanes`, `provision_mb`** price a pull. `approx_mb` is what the lane stores, as
+  the enricher's registry states it (a derived lane's own increment). `provision_lanes` is what provisioning
+  it would fetch or build on this box now: its closure (parents first, then itself) less what is present, so
+  `[]` for a present lane. `provision_mb` sums `approx_mb` over those lanes: `0` for a present lane, `null`
+  when any of them states no size. `mitomap_miss` stores under a megabyte, and on a box without ClinVar its
+  `provision_lanes` is `["clinvar", "mitomap", "mitomap_miss"]`. `registry-client caches` prints the figure.
 - **`configured`** is whether this deployment pins the location or lets the lane's own ladder find
   it. **No filesystem path appears in this response and none may be added.** Lane presence is an
   operational fact of the same class `/health` already publishes unauthenticated; the server's

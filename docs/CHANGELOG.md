@@ -62,6 +62,13 @@ two haplotypes defined by one allele projected as identical claims. The projecto
 `registry project-claims` re-projects what 0.31 wrote. `RegistryClient.gene_claims` quotes the symbol into
 the path.
 
+### `GET /caches` says what provisioning a lane costs
+
+Each lane carries `approx_mb` (what it stores, from the enricher's registry), `provision_lanes` (its
+provisioning closure, parents first, less what this box already holds) and `provision_mb` (their summed
+size; `null` when any states none). A derived lane that stores under a megabyte can cost a ClinVar
+download, and now says so. `registry-client caches` and the console print it (the liaison's C15).
+
 ### Fixed
 
 - The online-check ceiling (`REGISTRY_ENRICH_MAX_VARIANTS`) counts what the enricher will ask: upstream's

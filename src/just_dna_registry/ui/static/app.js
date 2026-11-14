@@ -597,6 +597,15 @@
     if (lane.parents.length) {
       notes.push(h("div", { class: "note" }, `derived from ${lane.parents.join(", ")}`));
     }
+    if (lane.provision_lanes && lane.provision_lanes.length) {
+      const size = lane.provision_mb !== null ? `~${lane.provision_mb} MB` : "size not stated";
+      const others = lane.provision_lanes.filter((n2) => n2 !== lane.name);
+      notes.push(h(
+        "div",
+        { class: "note" },
+        `provisioning it fetches ${size}` + (others.length ? `, with ${others.join(", ")}` : "")
+      ));
+    }
     if (lane.release_unreadable) {
       notes.push(h(
         "div",

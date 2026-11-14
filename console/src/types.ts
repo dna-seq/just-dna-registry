@@ -481,6 +481,9 @@ export interface CacheLaneStatus {
   group: string | null;
   configured: boolean;
   parents: string[];
+  approx_mb: number | null;
+  provision_lanes: string[];
+  provision_mb: number | null;
 }
 
 export interface ProxyLiveLeg {
