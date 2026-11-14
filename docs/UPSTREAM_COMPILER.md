@@ -510,6 +510,9 @@ lock (1.44.2, 1.5.5, 2.3.3).
   `lane_status(lanes, locations: Mapping[str, Path | None] | None = None)`; every resolver already takes the override
   as its first argument (all seventeen, checked on 0.8.6); also asks whether `load_dotenv_file` passes through. Our
   side, once it ships: `services/enrich.lane_status` composes it and drops its own loop.
+  **Answered 2026-11-14** as **RM443, a minor** (0.9 at the earliest; their `f65c2a04`, unpushed). They add: every
+  `resolve()` exports the whole `.env` into `os.environ` by design, so a status call through it writes the process
+  environment today; the `load_dotenv_file` passthrough is decided in the same change. Keep our loop until it ships. Lead told.
 
 - **S153** (filed 2026-11-12 at the pm's request for 0.30.1; their triage told): no release-record axis covers a
   derived table, so 0.8.5's record reads as "nothing moved" though RM438 corrects `resolution.csv`. Asks: an axis
