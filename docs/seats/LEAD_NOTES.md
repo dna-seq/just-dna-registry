@@ -8,10 +8,10 @@ The lead seat's working state, rewritten to the present before a reset (`docs/se
 (the person, 2026-11-14, on #218: "blocked items are to be checked for staleness daily"). List them with
 `gh issue list -R winternewt/desk --state open --limit 200 --json number,title,body --jq '.[] | select(.body | contains("from:just-dna-registry/lead")) | "#\(.number) \(.title)"'`,
 read each fact it states where it lives (the polygon or production catalog over REST, PyPI via `versions.py`, the
-repo), then post an `**Update:**` or withdraw. #218 sat a week saying "12 held" while 8 had been published on
+repo). Still true as written: an `**Update:**` line. A fact or an option moved: file it again on today's facts (ask-desk) and withdraw the old one as `moot: superseded by #N` (desk rule B22, kit v0.1.209); an Update that brings new options leaves the card showing the old ones, which is what #218 did. #218 sat a week saying "12 held" while 8 had been published on
 11-07, three hours before my own update telling the person to publish nothing: that update was written from the
 replay's result, never from the catalog. **Read the live state before posting any desk update.**
-Open after the 2026-11-14 check: #218 (now 4 group-A polygon modules), #298; #201 withdrawn; #216, #263 withdrawn; #294 withdrawn (0.31.1 on PyPI 16:53Z, tagged v0.31.1).
+Open after the 2026-11-14 check: #318 (the 4 polygon modules still held; refiled from #218, withdrawn as superseded), #298; #201 withdrawn; #216, #263 withdrawn; #294 withdrawn (0.31.1 on PyPI 16:53Z, tagged v0.31.1).
 
 Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
 
