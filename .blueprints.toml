@@ -42,7 +42,7 @@ prefix = "S"
 [seat.triage]
 # Answers the consumers (docs/seats/TRIAGE.md): their notes in docs/CONSUMER_SUGGESTIONS.md, a reply in the
 # document, a patch on main, a roadmap entry for the rest. The compiler's triage relays an item that belongs here.
-wake_from = "just-dna-registry/lead just-dna-registry/liaison just-dna-registry/pm just-dna-compiler/triage */secretary"
+wake_from = "just-dna-registry/lead just-dna-registry/liaison just-dna-registry/pm just-dna-compiler/triage longevity-loci/liaison longevity-loci/triage */secretary"
 
 # One line when docs/CONSUMER_SUGGESTIONS.md differs from HEAD and has settled, said once per state; paused
 # off the remote's default branch. A consumer writes its item there uncommitted, from its own session.
