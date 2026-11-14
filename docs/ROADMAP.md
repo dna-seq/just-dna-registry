@@ -1113,7 +1113,13 @@ converges).
   to medium; an empty answer is read as "no module says anything", which is false.
 
 - **`curated` counts only reviews from outside the namespace** (proposed by S33, just-module-creator,
-  2026-11-14; **undecided**, the lead's call). The 0.8.0 design chose owner highlighting over a namespace role
+  2026-11-14; **decided by the pm 2026-11-14: the second candidate, in 0.32**. Count only reviewers outside the
+  namespace toward `curated`, the group and `catalog_stats`; keep accepting the review and the highlight. It
+  enforces the person's own 0.8.0 rule rather than making a new one, it corrects self-highlights already stored
+  with no migration, and a self-review stays readable as information. "Outside" is read through
+  `effective_role` at the time of reading (org cascade and site admin included), never a list kept here. The star
+  stays as it is: lower stakes, and no rule says it must come from outside. 0.32 is unstamped and waits on desk
+  #298; if it is cut first, this is 0.33). The 0.8.0 design chose owner highlighting over a namespace role
   because "self-curation isn't a trust signal; curation must come from outside" (the owner's call then), but
   nothing enforces the outside: an owner reviews their own version, highlights that review, and the card,
   `?group=curated` and `catalog_stats` read `curated: true`. Two candidates: refuse
