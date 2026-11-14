@@ -1347,7 +1347,7 @@ converges).
   since RM158, so the mirrored table list at `services/enrich.py:720` goes. Sizing: **patch** unless the
   `GET /caches` cost is a new field, which goes with 0.28. About three hours together.
 
-- **Say when the source answered and the allele did not match** (**severity low, unattended, with 0.28**, owner:
+- ✅ **done** (9f4e114, in 0.28.0; marked 2026-11-14). **Say when the source answered and the allele did not match** (**severity low, unattended, with 0.28**, owner:
   lead; the liaison's **C10**, upstream RM154). `EnrichmentResult.allele_mismatches` (typically a strand flip) is
   read nowhere, and `unresolved_hint` offers three remedies that are all wrong for it. Carry it beside
   `unresolved` and give the hint its fourth case. Sizing: **minor** (a response field). One to two hours.
@@ -1500,7 +1500,7 @@ converges).
     fixed by the author re-drafting from a fresh spec directory (a re-draft appends beside the
     superseded rows, so an in-place one makes things worse), never by `registry upgrade`.
 
-- **Name the format release a rejected column arrived in** (**severity medium, unattended**: its gate, the format 0.7
+- ✅ **done** (2d1b6fd, in 0.28.0, `columns.py`; marked 2026-11-14). **Name the format release a rejected column arrived in** (**severity medium, unattended**: its gate, the format 0.7
   deployment in the next bullet, was met on 2026-11-04; owner: lead; motivated by **S18**, reopened and
   corrected by **S21**; the liaison's **C3** of 2026-11-04 restated it and was folded in here). 0.22.0 ships the half this service can compute on its
   own: `format_version` on every dry-run report and `format_advisory` when the caller's format is
