@@ -47,10 +47,12 @@ reports; this file holds the seat's own decisions and the items it owns.
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
 - **Desk #313, the exposed registry keys** (supersedes #225, refiled 2026-11-14 for the secretary's nightly
   sweep): `blocked: desk #313`, default no change. Withdraw it `moot:` once the person has rotated them.
-- **S29–S32 follow-up replies: reply once 0.32.0 is on PyPI** (its cut waits on desk #298), taking the wording
+- **S29–S33 follow-up replies: reply once 0.32.0 is on PyPI** (its cut waits on desk #298), taking the wording
   from the branch's changelog. The pm placed all four in 0.32: S29 lane `terms`+`unpublished` (5e55a19), S30
   `proxy_live_legs` on /caches (c353fc9), S31 whoami's `member_of`/`orgs` (724c103) are built on branch `0.32`;
   S32 (b9bc198: the `/variants?key=` folding, `gene_claims` quoting, the matched-nothing sibling, the haplotype
-  name) is built there too (ce1f2fe). For each: append a second `**Status —**` paragraph in the history file,
+  name) is built there too (ce1f2fe). S33 placed in 0.32 by the pm (bff1069): `curated`, the group and
+  `catalog_stats` count only reviewers outside the namespace; reviews and highlights stay accepted; stars
+  unchanged. The lead's to build; if 0.32 is cut first, 0.33. For each: append a second `**Status —**` paragraph in the history file,
   update the contents line, and tell just-module-creator's liaison. S30's base fix (`dac4ccf`, in 0.30.1)
   reaches the polygon only when 0.30.1+ is deployed there; the consumer re-runs it then.
