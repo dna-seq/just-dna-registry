@@ -1130,7 +1130,14 @@ converges).
   field's meaning narrowed to what its docs already say). Severity: medium; it is the catalog's trust signal.
 
 - **A highlighted critique still reads `curated`** (proposed by just-module-creator, 2026-11-15, as a
-  corroboration on S33, answered beside it in the history file; undecided, for the pm). S33's fix counts a
+  corroboration on S33, answered beside it in the history file; **decided by the pm 2026-11-15: the second
+  candidate, in 0.32 beside S33**. `curated`, `?group=curated` and `catalog_stats` count a highlight only when
+  its review is an outsider's **and** its verdict is `verified`; a review with no verdict (a rating alone) does
+  not count, since a rating asserts nothing was checked. A highlighted `concerns` or `rejected` review is still
+  accepted and stays in the review list, which is the honest owner pinning a critique. The group's description
+  says `verified`. It narrows the flag to what the 0.8.0 design meant (the highlight as an accepted answer), and
+  nothing stored moves: neither server held a curated module on 2026-11-15 (`?group=curated` answered `total: 0`
+  on both). If 0.32 is cut first, this is 0.33). S33's fix counts a
   highlight only from a reviewer outside the namespace, and nothing reads the verdict: on branch `0.32`
   `review_summary` sums `highlighted = 1` over outside reviewers, and the group's description is "Has an
   owner-highlighted review/audit". So an outsider's `rejected` audit, highlighted by an honest owner pinning the
