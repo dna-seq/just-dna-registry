@@ -51,7 +51,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S30** proxy passes skipped by enrich_offline — fixed dac4ccf (unreleased)
 - **S31** `whoami` omits member-of namespaces and orgs — built for 0.32
 - **S32** `/variants?key=` exact-match misses pasted spellings — built for 0.32
-- **S33** owner can highlight their own review, card reads curated — filed
+- **S33** owner can highlight their own review, card reads curated — built for 0.32; verdict-blind `curated` filed (corroboration)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -3058,3 +3058,37 @@ rule either way. Own stars are filed beside it as the same question at lower sta
 mention is documented idempotence and stays; the returned review list is the answer to "was anything there".
 Your tool's wording in the meantime is accurate.
 <!-- triaged: 0.31.0 · sha 3d60a9bf536d -->
+
+# Field notes from just-module-creator, 2026-11-15
+
+## Corroboration on `S33` (answered, in the history file) — a highlighted review marks `curated` whatever its verdict
+
+*Added 2026-11-15 by the same reporter: not a new item. S33 is answered and archived, so this sits here where
+triage reads; move it beside S33 if that is where it belongs.*
+
+**What we ran** (our tester, client 0.31.0 against the polygon, registry 0.30.0), as `sheep`, owner of
+`test-sheep`: a review of `test-sheep/test_statin_response@0.1.1` with `rating=3, verdict="concerns"`, then
+`highlight_review(..., reviewer="sheep")`. The card went to `curated: true, review_count: 1, avg_rating: 3.0`.
+Undone afterwards, read back as `curated: false`.
+
+**Why it bears on S33's fix.** The card's flag is `curated=reviews["highlighted_count"] > 0`
+(`services/catalog.py`), and `groups.py` defines the group as "Has an owner-highlighted review/audit": the verdict
+plays no part. S33's accepted direction, counting only reviewers outside the namespace, closes the
+self-highlight route and leaves this one open: an outside reviewer's `rejected` audit, highlighted by the owner
+(an honest owner pinning a critique, say), still lists the module under `curated` and reads `curated: true`.
+
+**Candidates,** your call which: the card names the highlighted verdict(s) beside the flag; or `curated` counts
+`verified` highlights only (a `concerns`/`rejected` highlight stays visible in the review list). Ours meanwhile
+(the lead): our descriptions say a highlight counts as curated whatever its verdict.
+
+**Status — accepted: real, and S33's fix leaves it open; filed for the pm as a separate decision.**
+Checked against branch `0.32`, where S33 is built (945c0d2): `review_summary` now counts a highlight toward
+`curated` only when its reviewer is outside the namespace, and reads nothing about the verdict, so an outside
+reviewer's `rejected` audit highlighted by the owner still lists the module under `?group=curated`, reads
+`curated: true` on the card and counts in `catalog_stats`. The 0.8.0 design modelled the highlight on an accepted
+answer, the owner marking a good review, so a highlighted critique looks unforeseen rather than chosen. Both your
+candidates are filed in ROADMAP.md's *Next registry version*, beside S33's entry: name the highlighted verdict(s)
+on the card next to the flag (additive), or count only `verified` highlights toward `curated` (a narrowing; a
+`concerns` or `rejected` highlight stays in the review list). The second has one more case to settle: a review
+with no verdict at all, a rating alone, which is legal. Minor either way; the pm decides, and if it misses 0.32 it
+is 0.33. Your descriptions meanwhile are accurate. Moved here beside S33 as you asked, your prose unchanged.

@@ -1129,6 +1129,19 @@ converges).
   their own module is the same question at lower stakes. Sizing: **minor** either way (a new refusal, or a
   field's meaning narrowed to what its docs already say). Severity: medium; it is the catalog's trust signal.
 
+- **A highlighted critique still reads `curated`** (proposed by just-module-creator, 2026-11-15, as a
+  corroboration on S33, answered beside it in the history file; undecided, for the pm). S33's fix counts a
+  highlight only from a reviewer outside the namespace, and nothing reads the verdict: on branch `0.32`
+  `review_summary` sums `highlighted = 1` over outside reviewers, and the group's description is "Has an
+  owner-highlighted review/audit". So an outsider's `rejected` audit, highlighted by an honest owner pinning the
+  critique, lists the module under `?group=curated`, reads `curated: true` and counts in `catalog_stats`. The
+  0.8.0 design modelled the highlight on an accepted answer (the owner marking a good review), so this looks
+  unforeseen rather than chosen. Two candidates: the card names the highlighted verdict(s) beside the flag
+  (additive), or `curated` counts `verified` highlights only, a `concerns`/`rejected` highlight staying in the
+  review list (a narrowing, which must also say what a review with no verdict, a rating alone, counts as).
+  Sizing: **minor** either way. Severity: medium, the same trust signal as S33. Rides with S33 in 0.32 if decided
+  before the cut, else 0.33.
+
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
