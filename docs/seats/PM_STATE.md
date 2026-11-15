@@ -1,4 +1,4 @@
-**just-dna-registry, where it stands** (kept by the pm; updated 2026-11-13)
+**just-dna-registry, where it stands** (kept by the pm; updated 2026-11-15)
 
 0.31.1 is released. Production is back and serves 0.31.0, the variant-level catalog; the polygon still serves 0.30.0.
 
@@ -12,5 +12,5 @@
 **Next**
 1. Deploy 0.31.1 to both servers (the polygon is two releases behind), with `project-claims --all` where it is not yet run (the maintainer).
 2. Re-derive the five modules still on pre-0.8 tables (cancer, cardio, pathogenic, blood groups, pharmgkb) once a release with the sweep is deployed (the maintainer's production run, the lead beside it).
-3. 0.32: a lane lookup states its licence terms, the server says which live sources it has switched off, and a key says every namespace it may publish to and every org it is in (three small additions from consumers; built by the lead, not yet released), and `/variants` accepting any spelling of a variant and saying when a key matched nothing (S32), a status route for a running upgrade, and `curated` counting only reviews from outside the namespace (S33; to build).
+3. 0.32, built and stamped, waiting on its cut: a lane lookup states its licence terms, the server says which live sources it has switched off, a key says every namespace it may publish to and every org it is in, `/variants` accepts any spelling of a variant and says when a key matched nothing (S32), a status route for a running upgrade, and `curated` counts only reviews from outside the namespace (S33). Decided for it, still to build: `curated` counts only a `verified` verdict, so a pinned critique no longer reads as curation.
 4. Remote lane reads, once upstream releases RM430 (liaison watches, lead adopts).
