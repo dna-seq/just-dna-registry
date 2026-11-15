@@ -203,4 +203,5 @@ def test_the_sdk_and_the_cli_print_every_count_and_the_coverage(
     assert out.exit_code == 0, out.output
     assert "held 0  would_upgrade 0  behind 1  unknown 0  current 0" in out.output
     assert "recorded sweeps: 0; 0 of 1 current versions have a sweep verdict" in out.output
+    assert "current without a sweep verdict is read off the compiler stamp only: nothing found yet" in out.output
     assert f"behind        {NS}/{NAME}@1.0.0  — no sweep on record; built under" in out.output

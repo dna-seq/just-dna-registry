@@ -1181,7 +1181,9 @@ any number may be highlighted. A highlighted review **from outside the namespace
 come from outside" was the 0.8.0 rule, and through 0.31 nothing enforced it. Outside means the reviewer
 holds no role on the namespace as `effective_role` reads it at that moment (a per-namespace grant, the
 owning account, an owning org's membership, or site admin). An inside review is still accepted, listed and
-highlightable, and reads as information; it never makes a module curated. Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
+highlightable, and reads as information; it never makes a module curated. So is an outside review whose
+verdict is `concerns` or `rejected` (the owner pinning a critique) or that has none (a rating asserts nothing
+was checked): listed and highlightable, never curating. Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
 `404 review_not_found` (highlight) / `version_not_found`.
 
 #### A review: a `reviews` row, or an `authorship` entry? (S12)
@@ -1569,6 +1571,14 @@ How a state is decided, in this order:
 3. Any other verdict (`unchanged`) is **`current`**.
 4. With no verdict on record: **`behind`** if the stamp is an older contract than this server's compiler,
    **`unknown`** if the compiler cannot be identified, else **`current`**.
+
+**`current` with `last_sweep: null` means nothing found yet, not nothing to do.** It is read off the manifest's
+compiler stamp alone. A sweep also re-publishes for reasons only the stored files show: a `resolution.csv` an
+older enricher wrote whose rows name no snapshot release or an older one, or output drift measured under a
+compiler patch. Opening every module's files is the sweep's work, never an anonymous route's. `registry upgrade
+--dry-run` is the full answer, and once it ran, its verdicts are what this route serves. (Measured on
+2026-11-15 from the public catalog: every version either server's sweep would re-derive already read
+`behind`.)
 
 "Recorded" means the `sweep.json` of an `upgrade` run on this box: kept since 0.28.3 and never pruned.
 A `replay-upgrade` run (a scratch copy) and a reverted run are not read. A sweep before 0.28.3 kept no

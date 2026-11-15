@@ -251,6 +251,9 @@ def upgrade_status(
         f"recorded sweeps: {first.sweeps_on_record}{since}; {first.swept} of {first.total} current versions "
         f"have a sweep verdict"
     )
+    if first.swept < first.total:
+        typer.echo("  current without a sweep verdict is read off the compiler stamp only: nothing found yet; "
+                   "`registry upgrade --dry-run` checks the stored files")
     colour = {"held": typer.colors.RED, "would_upgrade": typer.colors.YELLOW,
               "behind": typer.colors.YELLOW, "unknown": typer.colors.YELLOW}
     for item in items:

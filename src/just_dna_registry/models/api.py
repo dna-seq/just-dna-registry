@@ -2034,7 +2034,10 @@ class UpgradeStatusItem(BaseModel):
         "re-derivation of it is kept for `--accept-drift`. `would_upgrade`: the newest recorded sweep "
         "was a dry run that would re-publish it. `behind`: no recorded sweep has a verdict on it and it "
         "was compiled under an older contract than this server's compiler. `unknown`: no verdict, and "
-        "the compiler that built it cannot be identified. `current`: none of these."
+        "the compiler that built it cannot be identified. `current`: none of these. With `last_sweep` null that "
+        "is read off the compiler stamp alone, so it means nothing found yet: a sweep can still re-publish it "
+        "for what only its stored files show (a stale `resolution.csv`, measured drift); `registry upgrade "
+        "--dry-run` is the full answer."
     ))
     compiled_under: str | None = Field(None, description="The compiler version stamped on its manifest")
     gap: str = Field(description="The version comparison against this server's compiler: "

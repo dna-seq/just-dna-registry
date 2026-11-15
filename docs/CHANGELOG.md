@@ -52,6 +52,9 @@ record, which is why the compiler comparison is there. Anonymous, codes only: ru
 stay behind `GET /admin/runs`. `RegistryClient.upgrade_status()`, `registry-client upgrade-status`.
 Asked for after `needs_upgrade` read `false` on every polygon module, four of them held by the 0.8 sweep:
 that flag is `revalidate`'s and now says so in its description.
+`current` with no sweep verdict is read off the compiler stamp alone, so it means nothing found yet: a
+sweep can still re-publish for what only the stored files show (an old `resolution.csv`, measured drift).
+The description and `registry-client upgrade-status` say so; `registry upgrade --dry-run` is the full answer.
 
 ### `/variants?key=` folds the spellings a reader pastes, and says when nothing matched (S32)
 
