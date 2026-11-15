@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from just_dna_registry.config import Settings
+from just_dna_registry.models.api import ProxyLiveLeg
 
 logger = logging.getLogger("registry.passes")
 
@@ -52,6 +53,34 @@ PASS_UPSTREAMS: dict[str, tuple[str, ...]] = {
     "literature": ("ncbi", "literature"),
     "alphagenome expression": ("alphagenome",),
 }
+
+
+#: The live legs the caching proxy runs only where the operator opened them (0.30), keyed by the budget
+#: they spend: `(the Settings field that opens it, the /hint/variants flags that need it)`. Every gate on
+#: these legs reads `leg_open`, and `GET /caches` reports `live_legs` (0.32, S30), so the report and the
+#: skip a pass gives cannot disagree.
+OPERATOR_GATED_LEGS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "gnomad": ("hint_allow_gnomad", ("frequencies",)),
+    "alphagenome": ("proxy_alphagenome", ()),
+}
+
+
+def leg_open(settings: Settings, upstream: str) -> bool:
+    """Whether the operator opened `upstream`'s live leg to the proxy."""
+    return bool(getattr(settings, OPERATOR_GATED_LEGS[upstream][0]))
+
+
+def live_legs(settings: Settings) -> list[ProxyLiveLeg]:
+    """`GET /caches`' `proxy_live_legs`: each gated leg, open or not, and what it reaches."""
+    prefix = str(Settings.model_config.get("env_prefix") or "")
+    return [
+        ProxyLiveLeg(
+            upstream=upstream, open=leg_open(settings, upstream), setting=f"{prefix}{field_name}".upper(),
+            passes=[command for command in PASS_ORDER if upstream in PASS_UPSTREAMS.get(command, ())],
+            hint_flags=list(flags),
+        )
+        for upstream, (field_name, flags) in OPERATOR_GATED_LEGS.items()
+    ]
 
 
 #: The snapshot lane each snapshot-backed pass opens on this box, for `lane_readers` (`proxy: passes`).
@@ -152,7 +181,7 @@ def _gene_metrics(spec_dir: Path, settings: Settings, offline: bool, clients: An
     # The live leg is gnomAD's API, whose allowance is the deployment's and cannot be bought, so it is
     # used only where the operator opened it for the proxy (`hint_allow_gnomad`) and the caller asked
     # online; otherwise the constraint snapshot answers alone.
-    live = not offline and settings.hint_allow_gnomad
+    live = not offline and leg_open(settings, "gnomad")
     try:
         result = enrich_gene_metrics(
             spec_dir, mode=settings.enrich_mode, offline=not live,
@@ -199,9 +228,9 @@ def estimate_charges(uploads: dict[str, bytes], commands: list[str], settings: S
 
     if "gwas" in commands:
         add("gwas_catalog", len(rsids))
-    if "frequencies" in commands and settings.hint_allow_gnomad:
+    if "frequencies" in commands and leg_open(settings, "gnomad"):
         add("gnomad", len(rsids))
-    if "gene-metrics" in commands and settings.hint_allow_gnomad:
+    if "gene-metrics" in commands and leg_open(settings, "gnomad"):
         add("gnomad", len(genes))
     if "dosage" in commands:
         add("clingen", 1)
@@ -213,7 +242,7 @@ def estimate_charges(uploads: dict[str, bytes], commands: list[str], settings: S
     if "literature" in commands:
         add("ncbi", len(pmids))
         add("literature", len(pmids))
-    if "alphagenome expression" in commands and settings.proxy_alphagenome:
+    if "alphagenome expression" in commands and leg_open(settings, "alphagenome"):
         add("alphagenome", 1)
     return charges
 
@@ -250,7 +279,7 @@ def _frequencies(spec_dir: Path, settings: Settings, offline: bool, clients: Any
         enrich_frequencies,
     )
 
-    if not offline and not settings.hint_allow_gnomad:
+    if not offline and not leg_open(settings, "gnomad"):
         return PassOutcome(
             "frequencies", "skipped",
             "gnomAD's allowance is this deployment's and cannot be bought; the operator has not opened it "
@@ -359,7 +388,7 @@ def _expression(
 ) -> PassOutcome:
     from just_dna_enricher.expression import ExpressionError, ExpressionUnavailable, enrich_expression
 
-    if not settings.proxy_alphagenome:
+    if not leg_open(settings, "alphagenome"):
         return PassOutcome(
             "alphagenome expression", "skipped",
             "the operator has not opened AlphaGenome's Atlas to the proxy (REGISTRY_PROXY_ALPHAGENOME)",

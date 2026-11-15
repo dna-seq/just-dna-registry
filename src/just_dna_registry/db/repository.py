@@ -65,6 +65,28 @@ _NOT_A_NAMESPACE_ALIAS = "NOT EXISTS (SELECT 1 FROM namespace_aliases WHERE name
 _NOT_AN_ALIAS = "NOT EXISTS (SELECT 1 FROM account_aliases WHERE name = ?)"
 
 
+#: SQL over a `reviews r` row and its `modules m`: the reviewer holds no role on the module's namespace
+#: (0.32, S33). The same reach `api.deps.effective_role` grants, read at query time: a per-namespace grant,
+#: the owning account itself, membership of an owning **org** (the cascade), or site admin (owner on every
+#: claimed namespace). The 0.8.0 rule, "curation must come from outside", enforced where `curated` is
+#: counted; a test holds it equal to `effective_role` over every reviewer and namespace.
+OUTSIDE_REVIEWER = (
+    "NOT EXISTS (SELECT 1 FROM namespace_members nm WHERE nm.namespace = m.namespace AND nm.account_id = r.account_id) "
+    "AND NOT EXISTS (SELECT 1 FROM namespaces ns WHERE ns.name = m.namespace AND ("
+    "ns.account_id = r.account_id "
+    "OR EXISTS (SELECT 1 FROM accounts o JOIN org_members om ON om.org_id = o.id "
+    "WHERE o.id = ns.account_id AND o.type = 'org' AND om.account_id = r.account_id) "
+    "OR EXISTS (SELECT 1 FROM accounts a WHERE a.id = r.account_id AND a.site_admin = 1)))"
+)
+
+#: SQL over a `reviews r` row and its `modules m`: a review that makes its module curated (0.32). The owner
+#: highlighted it, its verdict is `verified`, and its reviewer is outside the namespace (`OUTSIDE_REVIEWER`).
+#: A highlighted `concerns` or `rejected` review is the owner pinning a critique, and a rating with no verdict
+#: asserts nothing was checked, so neither curates; both stay in the review list. The one definition the card,
+#: `?group=curated` and `catalog_stats` all read.
+CURATING_REVIEW = f"r.highlighted = 1 AND r.verdict = 'verified' AND {OUTSIDE_REVIEWER}"
+
+
 class Repository:
     """Thin repository around a SQLite connection."""
 
@@ -769,9 +791,9 @@ class Repository:
         been this one. The duplicate is gone rather than renamed because the query
         it ran was the wrong half regardless: claiming a namespace writes a `namespaces` row and
         **no** `namespace_members` row, so a plain owner is absent from that table and the 0.9.0
-        version would have answered `[]` for them. Neither query is the union, which is what
-        `whoami` arguably wants — see the note on `Account.namespaces` in `api/deps.py`.
-        Authorization does not read this: `effective_role()` reconciles the grant and the
+        version would have answered `[]` for them. The rest of what the account reaches is
+        `memberships` (0.32), which `whoami` and `register` report beside this as `member_of`.
+        Authorization does not read either: `effective_role()` reconciles the grant and the
         membership itself.
         """
         return [
@@ -779,6 +801,43 @@ class Repository:
                 "SELECT name FROM namespaces WHERE account_id = ? ORDER BY name", (account_id,)
             ).fetchall()
         ]
+
+    def memberships(self, account_id: int) -> list[sqlite3.Row]:
+        """Every namespace this account reaches without owning it (0.32, S31): `namespace`, `role`, `via`.
+
+        Two routes, each a row: an explicit `namespace_members` grant (`via = 'member'`) and the org
+        cascade, one row per namespace an org the account belongs to owns (`via = 'org:<org>'`, the org's
+        current handle). A namespace reached both ways is two rows; `effective_role()` is the higher of
+        them. Joined to `namespaces` so a name that was freed or renamed away never appears, and the
+        account's own namespaces are left to `namespaces_for_account`. A site admin's reach (owner on
+        every namespace) is the `site_admin` flag, never enumerated here.
+        """
+        return self.conn.execute(
+            """
+            SELECT nm.namespace AS namespace, nm.role AS role, 'member' AS via
+              FROM namespace_members nm JOIN namespaces n ON n.name = nm.namespace
+             WHERE nm.account_id = ? AND n.account_id != ?
+            UNION ALL
+            SELECT n.name AS namespace, om.role AS role, 'org:' || a.name AS via
+              FROM org_members om
+              JOIN accounts a ON a.id = om.org_id AND a.type = 'org'
+              JOIN namespaces n ON n.account_id = om.org_id
+             WHERE om.account_id = ?
+             ORDER BY namespace, via
+            """,
+            (account_id, account_id, account_id),
+        ).fetchall()
+
+    def orgs_of(self, account_id: int) -> list[sqlite3.Row]:
+        """The orgs this account belongs to (0.32, S31): `org` (its current handle) and `role`."""
+        return self.conn.execute(
+            """
+            SELECT a.name AS org, om.role AS role
+              FROM org_members om JOIN accounts a ON a.id = om.org_id AND a.type = 'org'
+             WHERE om.account_id = ? ORDER BY a.name
+            """,
+            (account_id,),
+        ).fetchall()
 
     def versions_published_by(self, account_id: int) -> list[sqlite3.Row]:
         """Every published version this account authored, wherever it lives.
@@ -1064,11 +1123,11 @@ class Repository:
             c.executemany(
                 "INSERT INTO version_claims(version_id, kind, variant_key, rsid, genome_build, genotype, "
                 "effect_allele, direction, direction_source, weight, trait_efo_id, clin_sig, "
-                "stat_significance, gene) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stat_significance, gene, haplotype) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [
                     (version_id, x.kind, x.variant_key, x.rsid, x.genome_build, x.genotype, x.effect_allele,
                      x.direction, x.direction_source, x.weight, x.trait_efo_id, x.clin_sig,
-                     x.stat_significance, x.gene)
+                     x.stat_significance, x.gene, x.haplotype)
                     for x in projection.claims
                 ],
             )
@@ -1152,6 +1211,20 @@ class Repository:
         )
         self.conn.commit()
         return cur.rowcount > 0
+
+    def current_versions_for_status(self) -> list[sqlite3.Row]:
+        """Every listed module's current version with the two manifest fields the contract gap reads
+        (0.32, `GET /upgrade/status`). The listing's own scope: a current latest, no blacklisted namespace,
+        so the status names no module `GET /modules` hides. `json_extract`, so no manifest is parsed."""
+        return self.conn.execute(
+            "SELECT m.namespace, m.name, m.latest_version AS version, "
+            "json_extract(v.manifest_json, '$.compilation.compiler_version') AS compiler_stamp, "
+            "json_extract(v.manifest_json, '$.content_signature') IS NOT NULL AS has_signature "
+            "FROM modules m JOIN versions v ON v.module_id = m.id AND v.version = m.latest_version "
+            "LEFT JOIN namespaces n ON n.name = m.namespace "
+            "WHERE m.latest_version IS NOT NULL AND COALESCE(n.blacklisted, 0) = 0 "
+            "ORDER BY m.namespace, m.name"
+        ).fetchall()
 
     def list_all_versions(self, namespace: str | None = None) -> list[sqlite3.Row]:
         """Every published version with its `(namespace, name, version)` — for ops-wide audits."""
@@ -1350,11 +1423,12 @@ class Repository:
         ).fetchall()
 
     def review_summary(self, module_id: int) -> dict[str, Any]:
-        """Module-level aggregate for the card: review count, average rating, and how many reviews
-        the owner has highlighted (`curated` when > 0)."""
+        """Module-level aggregate for the card: review count, average rating, how many reviews the owner
+        has highlighted, and how many of those curate (`CURATING_REVIEW`; `curated` when > 0, 0.32)."""
         row = self.conn.execute(
-            "SELECT COUNT(*) AS n, AVG(rating) AS avg_rating, "
-            "SUM(highlighted) AS highlighted FROM reviews WHERE module_id = ?",
+            "SELECT COUNT(*) AS n, AVG(r.rating) AS avg_rating, SUM(r.highlighted) AS highlighted, "
+            f"SUM(CASE WHEN {CURATING_REVIEW} THEN 1 ELSE 0 END) AS outside "
+            "FROM reviews r JOIN modules m ON m.id = r.module_id WHERE r.module_id = ?",
             (module_id,),
         ).fetchone()
         count = int(row["n"])
@@ -1362,6 +1436,7 @@ class Repository:
             "review_count": count,
             "avg_rating": round(float(row["avg_rating"]), 2) if count else None,
             "highlighted_count": int(row["highlighted"] or 0),
+            "curated_count": int(row["outside"] or 0),
         }
 
     # ── Search / list ─────────────────────────────────────────────────────────
@@ -1422,8 +1497,8 @@ class Repository:
             where.append(f"m.namespace NOT IN ({','.join('?' * len(exclude_namespaces))})")
             params.extend(exclude_namespaces)
         if curated_only:
-            # Curated = at least one owner-highlighted review (the `curated` listing group).
-            where.append("m.id IN (SELECT module_id FROM reviews WHERE highlighted = 1)")
+            # Curated = at least one curating review (`CURATING_REVIEW`, 0.32).
+            where.append(f"EXISTS (SELECT 1 FROM reviews r WHERE r.module_id = m.id AND {CURATING_REVIEW})")
         if featured:
             where.append("COALESCE(n.featured, 0) = 1")
         if q:

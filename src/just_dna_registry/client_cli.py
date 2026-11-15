@@ -168,6 +168,17 @@ def cache_status(
         raise typer.Exit(code=1)
 
     typer.echo(f"declared use: {report.declared_use}")
+    # The proxy's operator-gated live legs (0.32): a closed one is a skip a caller would otherwise learn
+    # of only after spending a run. Absent from an older server, which says nothing either way.
+    for leg in report.proxy_live_legs or []:
+        reaches = ", ".join([f"passes={p}" for p in leg.passes] + [f"hint {f}" for f in leg.hint_flags])
+        if leg.open:
+            typer.secho(f"live leg {leg.upstream}: open ({reaches})", fg=typer.colors.GREEN)
+        else:
+            typer.secho(
+                f"live leg {leg.upstream}: closed by the operator ({leg.setting}); {reaches} skip it",
+                fg=typer.colors.YELLOW,
+            )
     shown = 0
     for lane in report.lanes:
         if absent_only and lane.state == "present":
@@ -195,6 +206,11 @@ def cache_status(
             "pullable": "pull it",
             "buildable": f"build it: {lane.build_command or '(no command recorded)'}",
         }.get(lane.route, "no route in that tier")
+        # What it costs (0.32.x, C15); absent from an older server, which says nothing either way.
+        if lane.provision_lanes:
+            size = f"~{lane.provision_mb} MB" if lane.provision_mb is not None else "size not stated"
+            others = [n for n in lane.provision_lanes if n != lane.name]
+            how += f" ({size}" + (f", with {', '.join(others)}" if others else "") + ")"
         typer.secho(f"  ✗ {lane.name:14} absent   {tag} — {how}", fg=typer.colors.YELLOW)
         if lane.route_reason:
             typer.echo(f"      {lane.route_reason}")
@@ -207,6 +223,55 @@ def cache_status(
 
     if absent_only and not shown:
         typer.secho("every lane is provisioned there", fg=typer.colors.GREEN)
+
+
+@app.command("upgrade-status")
+def upgrade_status(
+    url: str | None = UrlOpt,
+    show_all: bool = typer.Option(False, "--all", help="List current modules too, not only the rest"),
+) -> None:
+    """Which current versions `registry upgrade` has not brought up to date, and why (0.32). Anonymous.
+
+    The counts come first and always print in full, `current` included, beside how much the recorded sweeps
+    covered: "0 held" means nothing unless the sweeps saw the module. A sweep before 0.28.3 kept no record,
+    so what it held shows as `behind` (built under an older compiler), never as current.
+    """
+    with _client(url, None) as c:
+        first = c.upgrade_status()
+        items = list(first.items)
+        page = 1
+        while len(items) < first.total:
+            page += 1
+            items += c.upgrade_status(page=page).items
+
+    counts = "  ".join(f"{state} {n}" for state, n in first.counts.items())
+    typer.echo(f"{counts}   (server compiler {first.compiler or 'unknown'})")
+    since = f", oldest {first.sweeps_since}" if first.sweeps_since else ""
+    typer.echo(
+        f"recorded sweeps: {first.sweeps_on_record}{since}; {first.swept} of {first.total} current versions "
+        f"have a sweep verdict"
+    )
+    if first.swept < first.total:
+        typer.echo("  current without a sweep verdict is read off the compiler stamp only: nothing found yet; "
+                   "`registry upgrade --dry-run` checks the stored files")
+    colour = {"held": typer.colors.RED, "would_upgrade": typer.colors.YELLOW,
+              "behind": typer.colors.YELLOW, "unknown": typer.colors.YELLOW}
+    for item in items:
+        if item.state == "current" and not show_all:
+            continue
+        line = f"  {item.state:13} {item.namespace}/{item.name}@{item.version}"
+        if item.last_sweep is not None:
+            sweep = item.last_sweep
+            run = "apply" if sweep.applied else "dry run"
+            drift = f", {sweep.drift_to_read} drift to read" if sweep.drift_to_read else ""
+            line += f"  — {sweep.status}: {sweep.code} ({run} {sweep.started or ''}{drift})"
+        elif item.gap in ("contract", "unknown"):
+            line += f"  — no sweep on record; built under {item.compiled_under or 'an unidentified compiler'}"
+        if item.kept:
+            line += "; re-derivation kept for --accept-drift"
+            if item.kept_stale:
+                line += f" (stale: {item.kept_stale})"
+        typer.secho(line, fg=colour.get(item.state))
 
 
 @app.command("list")
@@ -589,6 +654,7 @@ def variant(
         typer.echo(
             f"  {claim['module']:<40} {claim['kind']:<12} {claim.get('genotype') or '-':<8} "
             f"{claim.get('direction') or '-':<11} {claim.get('trait_efo_id') or '-':<14} {claim.get('gene') or ''}"
+            + (f" {claim['haplotype']}" if claim.get("haplotype") else "")
         )
     conflicts = found["conflicts"]
     for pair in conflicts["pairs"]:
@@ -596,6 +662,14 @@ def variant(
             f"  ≠ {' vs '.join(pair['modules'])}: {pair['effect_allele']} {pair['genotype']} "
             f"{pair['trait_efo_id']} ({' / '.join(pair['directions'])})", fg=typer.colors.YELLOW,
         )
+    # 0.32 (S32): an empty answer says which of its two histories it has. Absent from an older server.
+    if found.get("matched") is False:
+        typer.secho(
+            f"no visible module spells this variant as any of: {', '.join(found.get('spellings') or [key])}",
+            fg=typer.colors.YELLOW,
+        )
+    elif found.get("matched") and not found["claims"]:
+        typer.echo("visible modules name this variant but make no claim about it")
     skipped = ", ".join(f"{k} {v}" for k, v in sorted(conflicts["incomparable"].items())) or "none"
     typer.echo(
         f"{len(found['modules'])} module(s); {conflicts['compared']} pair(s) compared, not compared: {skipped}; "
@@ -637,6 +711,28 @@ def lanes(
     typer.echo(f"{found['lane']} ({found['served_from']})")
     for table in found["tables"]:
         typer.echo(f"  {table['table']:<28} keys: {', '.join(table['keys']) or '-'}  ({table['files']} file(s))")
+    for line in _lane_terms_lines(found):
+        typer.echo(line)
+
+
+def _lane_terms_lines(found: dict) -> list[str]:
+    """The lane's terms (0.32) as the lines both lane commands print; nothing from an older server."""
+    if "terms" not in found:
+        return []
+    terms = found["terms"]
+    if terms is None:
+        lines = ["terms: none stated by the lane registry (not a statement that the lane is unrestricted)"]
+    else:
+        axes = ", ".join(
+            f"{axis.replace('_', ' ')}: {'yes' if terms.get(axis) else 'no'}"
+            for axis in ("commercial_use", "share_alike", "redistribution") if axis in terms
+        )
+        lines = [f"terms: {terms.get('license') or 'unnamed licence'} ({axes})"]
+        if terms.get("notice"):
+            lines.append(f"  {terms['notice']}")
+    if found.get("unpublished"):
+        lines.append(f"snapshot not published: {found['unpublished']}")
+    return lines
 
 
 @app.command("lane-rows")
@@ -662,6 +758,8 @@ def lane_rows(
         typer.echo(json.dumps(row, sort_keys=True))
     note = " (truncated: more matched than one request returns)" if found["truncated"] else ""
     typer.secho(f"{len(found['rows'])} row(s) from {found['served_from']}{note}", fg=typer.colors.GREEN, err=True)
+    for line in _lane_terms_lines(found):
+        typer.secho(line, fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("find-by-hash")

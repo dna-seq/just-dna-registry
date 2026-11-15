@@ -901,6 +901,10 @@ running server, and one direction arms a delete endpoint on production data.
   upstream's `warnings_summary` keys split only by `CARRIED_WARNING_CODES`, a logger's package), never a
   sentence; a code the table does not name is `other`, still shown with its code. `replay-upgrade` reads
   the `SweepResult` the sweep returns: parsing the terminal would see heads only.
+  **What a sweep left behind is served by `GET /upgrade/status` (0.32)**: the newest recorded verdict per
+  current version, plus the manifest's compiler stamp as a second witness, because a sweep before 0.28.3
+  kept no record. `needs_upgrade` is `revalidate`'s flag and never that answer: it read `false` on all four
+  polygon modules the 0.8 sweep had held.
 - **A site admin is an elevated *role*, never an extra *route*.** `accounts.site_admin` makes
   `deps.effective_role` answer `owner` on every namespace that exists, and it does that in one place
   so no router learns about it. Keep both limits. An unclaimed namespace stays `403`, or the flag

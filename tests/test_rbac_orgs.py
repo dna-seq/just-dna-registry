@@ -165,3 +165,99 @@ def test_contributor_migrates_to_member(tmp_path) -> None:
     conn.commit()
     init_db(conn)  # idempotent _migrate runs the contributor→member update
     assert repo.namespace_role("legacy-ns", aid) == "member"
+
+
+# ── What whoami says the caller reaches (0.32, S31) ──────────────────────────
+
+
+def test_whoami_lists_every_namespace_the_caller_reaches_and_its_orgs(
+    client: TestClient, repo: Repository
+) -> None:
+    """`member_of` and `orgs` against `effective_role()` itself, over every namespace in the catalog.
+
+    Three routes: an explicit membership of somebody else's namespace, an org's namespace by cascade,
+    and one namespace reached both ways (two rows, the higher being the effective role). The caller's own
+    namespace stays in `namespaces` only, and a namespace the caller cannot reach appears nowhere.
+    """
+    from just_dna_registry.api.deps import effective_role
+    from just_dna_registry.permissions import higher_role
+
+    dev = _key(repo, "dev31")
+    boss = _key(repo, "boss31")
+    _key(repo, "stranger31")
+    dev_id = int(repo.account_by_name("dev31")["id"])
+    for owner, ns in ((dev, "dev31-own"), (boss, "boss31-lab"), (boss, "boss31-private")):
+        assert client.post("/api/v1/namespaces", json={"namespace": ns}, headers=_auth(owner)).status_code == 201
+    repo.add_member("boss31-lab", dev_id, "member")
+    assert client.post("/api/v1/orgs", json={"name": "acme31"}, headers=_auth(boss)).status_code == 201
+    assert client.post("/api/v1/orgs/acme31/members", json={"account": "dev31", "role": "admin"},
+                       headers=_auth(boss)).status_code == 201
+    for ns in ("acme31-tools", "acme31-shared"):
+        assert client.post("/api/v1/orgs/acme31/namespaces", json={"namespace": ns},
+                           headers=_auth(boss)).status_code == 201
+    repo.add_member("acme31-shared", dev_id, "member")
+
+    me = client.get("/api/v1/auth/whoami", headers=_auth(dev)).json()
+    assert me["namespaces"] == ["dev31-own"]
+    assert me["orgs"] == [{"org": "acme31", "role": "admin"}]
+    assert {(m["namespace"], m["via"]) for m in me["member_of"]} == {
+        ("boss31-lab", "member"), ("acme31-tools", "org:acme31"),
+        ("acme31-shared", "member"), ("acme31-shared", "org:acme31"),
+    }
+
+    account = repo.account_by_name("dev31")
+    everything = [row["name"] for row in repo.conn.execute("SELECT name FROM namespaces").fetchall()]
+    assert len(everything) >= 5
+    from just_dna_registry.api.deps import _account
+
+    caller = _account(repo, int(account["id"]))
+    reached: dict[str, str | None] = {}
+    for m in me["member_of"]:
+        reached[m["namespace"]] = higher_role(reached.get(m["namespace"]), m["role"])
+    for ns in everything:
+        role = effective_role(repo, caller, ns)
+        if ns in me["namespaces"]:
+            continue
+        assert reached.get(ns) == role, ns  # boss31-private: None on both sides
+
+    # register reissuing a key for an existing install answers the same reach (same helper).
+    from just_dna_registry.api.routers.auth import _reach
+
+    assert _reach(repo, dev_id) == {"member_of": me["member_of"], "orgs": me["orgs"]}
+
+
+def test_the_outside_reviewer_rule_is_effective_role_none(client: TestClient, repo: Repository) -> None:
+    """`curated` counts a highlighted review only from outside the namespace (0.32, S33). The SQL predicate
+    is held equal to `effective_role() is None` for every account over every namespace: an explicit grant,
+    the owning account, an org's cascade and site admin all make a reviewer inside."""
+    from just_dna_registry.api.deps import _account, effective_role
+    from just_dna_registry.db.repository import OUTSIDE_REVIEWER
+
+    dev, boss = _key(repo, "dev33"), _key(repo, "boss33")
+    _key(repo, "stranger33")
+    _key(repo, "admin33")
+    repo.set_site_admin(int(repo.account_by_name("admin33")["id"]), True)
+    for owner, ns in ((dev, "dev33-own"), (boss, "boss33-lab")):
+        assert client.post("/api/v1/namespaces", json={"namespace": ns}, headers=_auth(owner)).status_code == 201
+    repo.add_member("boss33-lab", int(repo.account_by_name("dev33")["id"]), "member")
+    assert client.post("/api/v1/orgs", json={"name": "acme33"}, headers=_auth(boss)).status_code == 201
+    assert client.post("/api/v1/orgs/acme33/members", json={"account": "dev33", "role": "member"},
+                       headers=_auth(boss)).status_code == 201
+    assert client.post("/api/v1/orgs/acme33/namespaces", json={"namespace": "acme33-tools"},
+                       headers=_auth(boss)).status_code == 201
+
+    namespaces = [r["name"] for r in repo.conn.execute("SELECT name FROM namespaces").fetchall()]
+    accounts = [r["id"] for r in repo.conn.execute("SELECT id FROM accounts WHERE type = 'user'").fetchall()]
+    assert len(namespaces) >= 3 and len(accounts) >= 4
+    outside_seen = inside_seen = 0
+    for account_id in accounts:
+        caller = _account(repo, int(account_id))
+        for ns in namespaces:
+            outside = bool(repo.conn.execute(
+                f"SELECT {OUTSIDE_REVIEWER} FROM (SELECT ? AS account_id) r, (SELECT ? AS namespace) m",
+                (account_id, ns),
+            ).fetchone()[0])
+            assert outside == (effective_role(repo, caller, ns) is None), (caller.name, ns)
+            outside_seen += outside
+            inside_seen += not outside
+    assert outside_seen and inside_seen, "both sides of the rule must occur, or the equality says nothing"

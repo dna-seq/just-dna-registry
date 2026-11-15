@@ -17,9 +17,17 @@ Four rules, from the person and the pm's requirements:
   RM431 asks for an index).
 * **No filesystem path leaves the process**: `served_from` is `local` or `remote:<repo>`.
 * **A lane neither held nor published answers `lane_not_available`**, with why.
+
+And every answer carries what upstream says of the lane's source (0.32, S29): its `terms` and why nothing
+publishes its snapshot (`unpublished`), both verbatim from `CACHE_LANES`. A keyed read is a derivative and is
+served whatever the terms (the person's ruling, 0.30 requirement 2); saying the terms beside the rows is
+what lets a caller honour them. `null` terms is upstream stating none, never a statement that the lane is
+unrestricted: `mane` and `acmg` carry no terms and an `unpublished` sentence saying redistribution was
+never established.
 """
 
 import csv
+import dataclasses
 import io
 import json
 import logging
@@ -71,6 +79,26 @@ class LaneRows:
     served_from: str
     rows: list[dict[str, Any]]
     truncated: bool
+
+
+@dataclass(frozen=True)
+class LaneTerms:
+    """What upstream's lane registry says of a lane's source, passed through as it says it."""
+
+    #: `SourceTerms` as a mapping, field for field (licence, URL, attribution, notice, the three axes), or
+    #: `None` where the lane records no terms. Not re-typed here: a field upstream adds arrives with it.
+    terms: dict[str, Any] | None
+    #: The lane's `unpublished` reason (why no snapshot of it is published: `refused: ...`,
+    #: `unestablished: ...`), or `None` where its snapshot is published.
+    unpublished: str | None
+
+
+def lane_terms(lane: str) -> LaneTerms:
+    found = cache_lanes().get(lane)
+    if found is None:
+        return LaneTerms(None, None)
+    terms = dataclasses.asdict(found.terms) if found.terms is not None else None
+    return LaneTerms(terms, found.unpublished)
 
 
 def _table_name(stem: str) -> str:

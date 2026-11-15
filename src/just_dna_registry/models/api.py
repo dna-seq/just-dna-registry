@@ -389,7 +389,7 @@ class ModuleCard(BaseModel):
     featured: bool = False
     review_count: int = 0
     avg_rating: float | None = None  # mean 1-5 rating across reviews, None when unreviewed
-    curated: bool = False  # has ≥1 owner-highlighted review/audit (the `curated` group)
+    curated: bool = False  # ≥1 owner-highlighted `verified` review from outside the namespace (0.32, S33)
     author_funding_url: str | None = None  # latest version's author's donation link
     org_funding_url: str | None = None  # owning org's donation link (when the namespace is org-owned)
     # Projected from the latest version's manifest, the same way `stats` is (0.11).
@@ -421,7 +421,14 @@ class VersionSummary(BaseModel):
     compile_success: bool
     yanked: bool
     signed: bool = False  # carries an Ed25519 signature over artifact.digest (SPEC §5)
-    needs_upgrade: bool = False  # set by the `revalidate` audit: fails the current contract
+    needs_upgrade: bool = Field(
+        default=False,
+        description=(
+            "Set only by `registry revalidate --set-flag`: the stored spec fails the current contract. "
+            "It is not whether `registry upgrade` would re-publish this version, and `false` does not "
+            "mean current; `GET /upgrade/status` answers that."
+        ),
+    )
     # Per-compile, so it belongs on the version rather than the module (0.11). Read from the
     # projected columns, not by parsing `manifest_json`, so a version list gains no per-row parse.
     resolution: ResolutionInfo = Field(default_factory=ResolutionInfo)
@@ -486,6 +493,21 @@ class Page[T](BaseModel):
     per_page: int
 
 
+class NamespaceMembership(BaseModel):
+    """One route by which the caller reaches a namespace it does not own (0.32, S31)."""
+
+    namespace: str
+    role: str = Field(description="`owner` | `admin` | `member` on this route")
+    via: str = Field(description="`member` (an explicit grant) or `org:<org>` (an org the caller is in owns it)")
+
+
+class OrgMembership(BaseModel):
+    """An org the caller belongs to (0.32, S31), by its current handle."""
+
+    org: str
+    role: str
+
+
 class WhoAmI(BaseModel):
     """Identity response for `GET /auth/whoami`. `email` is private — returned only here, to the
     account itself, never in public listings."""
@@ -498,6 +520,15 @@ class WhoAmI(BaseModel):
     funding_url: str | None = None  # donation/sponsor link (public http(s) URL)
     email: str | None = None
     site_admin: bool = False  # registry-wide admin (0.28): owner on every existing namespace/org
+    member_of: list[NamespaceMembership] = Field(
+        default_factory=list,
+        description=(
+            "Every namespace the caller may act in without owning it (0.32): one row per route, so a "
+            "namespace reached both ways is two rows and the higher role applies. `namespaces` keeps "
+            "its meaning, the ones the caller owns. A site admin's reach is `site_admin`, not listed."
+        ),
+    )
+    orgs: list[OrgMembership] = Field(default_factory=list, description="The orgs the caller belongs to (0.32)")
 
 
 # Account identity vocab + light checks (regex-based, to avoid an email-validator / URL dep).
@@ -608,7 +639,7 @@ class CatalogStats(BaseModel):
     stars: int
     views: int
     reviews: int
-    curated: int = Field(description="Modules with at least one highlighted review")
+    curated: int = Field(description="Modules with at least one highlighted `verified` review from outside the namespace")
     variants: int
     studies: int
     genes: int
@@ -1641,6 +1672,48 @@ class CacheLaneStatus(BaseModel):
             "which is all but one — and the field an operator asking why an increment is empty needs."
         ),
     )
+    approx_mb: int | None = Field(
+        default=None,
+        description=(
+            "Roughly what the lane stores, in MB, as the enricher's registry states it (`CacheLane.approx_mb`); "
+            "`null` where it states none. A derived lane's figure is its own increment, not its parents'."
+        ),
+    )
+    provision_lanes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The lanes provisioning this one would fetch or build on this box now: its closure "
+            "(`provisioning_closure`: parents first, then itself) less what is already present. Empty for a "
+            "present lane."
+        ),
+    )
+    provision_mb: int | None = Field(
+        default=None,
+        description=(
+            "What provisioning it would cost here, in MB: `approx_mb` summed over `provision_lanes`. `0` for a "
+            "present lane; `null` when any of those lanes states no size (cannot say, never zero)."
+        ),
+    )
+
+
+class ProxyLiveLeg(BaseModel):
+    """One live leg the caching proxy runs only where this deployment's operator opened it (0.32, S30).
+
+    Reported up front so a client learns a source is closed before spending a run on a pass that will
+    skip it. Covers the proxy only (`POST .../derived?passes=` and `/hint/*`), never `/check`, whose
+    sources follow this deployment's publish enrichment settings.
+    """
+
+    upstream: str = Field(description="The rate budget the leg spends (`gnomad`, `alphagenome`), as `/hint` charges name it")
+    open: bool = Field(description="Whether this deployment runs the leg for a caller who asks online")
+    setting: str = Field(description="The operator's switch, as an environment variable")
+    passes: list[str] = Field(
+        default_factory=list, description="The `passes=` commands whose live leg this is; closed, they skip it"
+    )
+    hint_flags: list[str] = Field(
+        default_factory=list,
+        description="`/hint/variants` flags that need it; closed, they are `403` (`frequencies` → `gnomad_not_enabled`)",
+    )
 
 
 class CacheStatusReport(BaseModel):
@@ -1663,6 +1736,13 @@ class CacheStatusReport(BaseModel):
         description="The deployment's declared use, which is what `licence_skip` is computed against"
     )
     lanes: list[CacheLaneStatus] = Field(default_factory=list)
+    proxy_live_legs: list[ProxyLiveLeg] | None = Field(
+        default=None,
+        description=(
+            "The caching proxy's operator-gated live legs and whether each is open here (0.32). `null` "
+            "means the server predates the field, never that every leg is open."
+        ),
+    )
 
 
 class HintCost(BaseModel):
@@ -1921,3 +2001,73 @@ class RunDetail(BaseModel):
 
     run: RunSummary
     sweep: RunSweep | None = None
+
+
+# ── Upgrade status (0.32) ───────────────────────────────────────────────────────────────────────────
+
+
+class UpgradeSweepVerdict(BaseModel):
+    """What the newest recorded `registry upgrade` sweep said about one exact version.
+
+    Read from that run's `sweep.json` (kept since 0.28.3, never pruned). Codes only: the run's own
+    sentences and detail stay behind `GET /admin/runs/{id}`, for site admins."""
+
+    started: str | None = Field(None, description="When that sweep started (UTC)")
+    applied: bool = Field(
+        description="`true` for `upgrade --apply`, `false` for a dry run (which publishes nothing)"
+    )
+    status: str = Field(description="The sweep's status for this version: `refused`, `held`, `failed`, "
+                        "`blocked`, `anomaly`, `would upgrade`, `unchanged`, `published`")
+    code: str = Field(description="The status's code, e.g. `rederive_drift_needs_reading`, `needs_online`")
+    problem_type: str = Field(description="The class the sweep's summary counted it under")
+    drift_to_read: int = Field(0, description="Subjects in a drift arm worth reading, where counted")
+
+
+class UpgradeStatusItem(BaseModel):
+    """One module's current version, and whether `registry upgrade` has left it behind."""
+
+    namespace: str
+    name: str
+    version: str = Field(description="The module's current (non-yanked) latest version")
+    state: str = Field(description=(
+        "`held`: the newest recorded sweep refused, held, failed or blocked this exact version, or a "
+        "re-derivation of it is kept for `--accept-drift`. `would_upgrade`: the newest recorded sweep "
+        "was a dry run that would re-publish it. `behind`: no recorded sweep has a verdict on it and it "
+        "was compiled under an older contract than this server's compiler. `unknown`: no verdict, and "
+        "the compiler that built it cannot be identified. `current`: none of these. With `last_sweep` null that "
+        "is read off the compiler stamp alone, so it means nothing found yet: a sweep can still re-publish it "
+        "for what only its stored files show (a stale `resolution.csv`, measured drift); `registry upgrade "
+        "--dry-run` is the full answer."
+    ))
+    compiled_under: str | None = Field(None, description="The compiler version stamped on its manifest")
+    gap: str = Field(description="The version comparison against this server's compiler: "
+                     "`none`, `patch`, `contract` or `unknown`")
+    last_sweep: UpgradeSweepVerdict | None = Field(
+        None, description="The newest recorded sweep's verdict on this exact version; `null`: none on record"
+    )
+    kept: bool = Field(False, description="A re-derivation of it is kept on this box for `--accept-drift`")
+    kept_stale: str | None = Field(
+        None, description="Why that kept result may not be published now (another toolchain derived it)"
+    )
+
+
+class UpgradeStatusReport(BaseModel):
+    """`GET /upgrade/status`: which current versions `registry upgrade` has not brought up to date.
+
+    Two witnesses, kept apart. The **recorded sweeps** (`sweep.json` of every `upgrade` run on this box,
+    newest verdict per version, reverted runs skipped) say what the sweep did and why. The **version
+    comparison** (the manifest's compiler stamp against this server's compiler) covers what no recorded
+    sweep has seen: a sweep run before 0.28.3 kept no record. Neither reads storage, so the planner's
+    other reasons to act (a resolution table to re-derive, a measured drift) are visible only through a
+    sweep; `registry upgrade --dry-run` is the full answer."""
+
+    items: list[UpgradeStatusItem]
+    total: int
+    page: int
+    per_page: int
+    counts: dict[str, int] = Field(description="Current versions per `state`, over the whole catalog")
+    compiler: str | None = Field(None, description="This server's compiler, the comparison's other side")
+    swept: int = Field(description="Current versions some recorded sweep has a verdict on")
+    sweeps_on_record: int = Field(description="`upgrade` runs whose `sweep.json` was read")
+    sweeps_since: str | None = Field(None, description="When the oldest of those started; `null`: none")
+

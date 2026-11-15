@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.31.1"
+version = "0.32.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -356,8 +356,14 @@ server = [
     # moves. Taken before the five pre-0.8 modules re-derive because RM440 logs one warning naming the back-filled
     # rsIDs a re-derivation drops on RM438's no-host arm; it lands in the run's log and the sweep counts it by
     # its logger's package.
+    # **0.8.7** (0.32.0, enricher only; format and compiler stay 0.8.6) is the soft kind, taken on the person's
+    # word ("before merge-release adopt patch that just dropped upstream", 2026-11-15). No release record, as for
+    # 0.8.1: the compiler did not change, so a recompile moves nothing. Text only: RM442 corrects the two
+    # AlphaGenome licence rows' `notice`/`license` (a module enriched before keeps the old text in `sources.csv`
+    # until re-enriched; no licence axis or gate reads it), RM444 rewords `grch37.recover_rsid`, which nothing
+    # here calls or matches. Not load-bearing: a box left on 0.8.6 is not broken.
     "just-dna-compiler>=0.8.6",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.6",  # RM438 (re-derivation back-fill), see the 0.8.5 note above
+    "just-dna-enricher>=0.8.7",  # RM442 (AlphaGenome licence text), see the 0.8.7 note above
 ]
 
 [build-system]

@@ -350,6 +350,19 @@
             location.hash = `#/${qs({ namespace })}`;
           }) : h("span", { class: "faint" }, "none yet — claim one below")
         ),
+        // What else the caller may act in (0.32): one row per route; an older server sends neither key.
+        (me.member_of ?? []).length ? h(
+          "div",
+          {},
+          h("span", { class: "muted small" }, "member of: "),
+          (me.member_of ?? []).map((m) => badge("outline", `${m.namespace} · ${m.role} · ${m.via}`))
+        ) : null,
+        (me.orgs ?? []).length ? h(
+          "div",
+          {},
+          h("span", { class: "muted small" }, "orgs: "),
+          (me.orgs ?? []).map((o) => badge("outline", `${o.org} · ${o.role}`))
+        ) : null,
         profileForm(me)
       ));
       root.append(namespacePanel());
@@ -584,6 +597,15 @@
     if (lane.parents.length) {
       notes.push(h("div", { class: "note" }, `derived from ${lane.parents.join(", ")}`));
     }
+    if (lane.provision_lanes && lane.provision_lanes.length) {
+      const size = lane.provision_mb !== null ? `~${lane.provision_mb} MB` : "size not stated";
+      const others = lane.provision_lanes.filter((n2) => n2 !== lane.name);
+      notes.push(h(
+        "div",
+        { class: "note" },
+        `provisioning it fetches ${size}` + (others.length ? `, with ${others.join(", ")}` : "")
+      ));
+    }
     if (lane.release_unreadable) {
       notes.push(h(
         "div",
@@ -658,7 +680,12 @@
           missingHere.length ? "warn" : "good",
           missingHere.length ? `${missingHere.length} of ${readHere.length} read here are missing` : `all ${readHere.length} lanes read here are provisioned`
         ),
-        badge("outline", `declared use: ${report.declared_use}`)
+        badge("outline", `declared use: ${report.declared_use}`),
+        // The proxy's operator-gated live legs (0.32): closed, a pass that needs one skips it.
+        (report.proxy_live_legs ?? []).map((leg) => badge(
+          leg.open ? "good" : "warn",
+          leg.open ? `live ${leg.upstream}: open` : `live ${leg.upstream}: closed (${leg.setting})`
+        ))
       ),
       h(
         "p",

@@ -234,3 +234,74 @@ def test_a_present_lane_reports_its_release_or_says_it_could_not_be_read(
         assert lane["release"] is None or lane["release"].strip()
         if lane["release"] is not None:
             assert lane["release_unreadable"] is False
+
+
+def test_a_closed_live_leg_is_said_up_front_and_a_flipped_switch_is_never_served_stale(
+    tmp_path, monkeypatch
+) -> None:
+    """S30 (0.32): `/caches` names each operator-gated live leg of the proxy and whether it is open.
+
+    Two deployments identical but for the switch, in one process and inside the TTL: the lane walk is
+    memoized on what it depends on, which the switches are not, so the legs are read per request. And the
+    report and the pass read one predicate: the setting `/caches` names for a closed leg is the one the
+    skip names, and setting that variable is what opens it.
+    """
+    from just_dna_registry.services import passes
+
+    common = {"storage_backend": "local"}
+    closed = Settings(db_path=tmp_path / "a.db", storage_root=tmp_path / "sa", **common)
+    opened = closed.model_copy(update={"hint_allow_gnomad": True, "db_path": tmp_path / "b.db"})
+    with TestClient(create_app(closed)) as first, TestClient(create_app(opened)) as second:
+        a = {leg["upstream"]: leg for leg in body(first)["proxy_live_legs"]}
+        b = {leg["upstream"]: leg for leg in body(second)["proxy_live_legs"]}
+
+    assert set(a) == set(passes.OPERATOR_GATED_LEGS) and len(a) >= 2
+    assert a["gnomad"]["open"] is False and b["gnomad"]["open"] is True
+    assert {"frequencies", "gene-metrics"} <= set(a["gnomad"]["passes"])
+    assert a["gnomad"]["hint_flags"] == ["frequencies"]
+    assert "alphagenome expression" in a["alphagenome"]["passes"]
+
+    skip = passes._frequencies(tmp_path, closed, offline=False, clients=None)
+    assert skip.status == "skipped" and a["gnomad"]["setting"] in skip.detail
+
+    for upstream, leg in a.items():
+        assert leg["passes"] or leg["hint_flags"], f"{upstream} reaches nothing"
+        monkeypatch.setenv(leg["setting"], "true")
+        assert passes.leg_open(Settings(), upstream) is True, leg["setting"]
+
+
+def test_the_live_legs_are_said_on_a_deployment_without_the_network_tier(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(enrich, "cache_lanes", dict)
+    settings = Settings(db_path=tmp_path / "a.db", storage_backend="local", storage_root=tmp_path / "sa")
+    report = caches_router._fresh(settings)
+    assert report.enricher_available is False and report.proxy_live_legs
+
+
+def test_an_absent_lane_says_what_provisioning_it_costs_here(settings: Settings, monkeypatch, tmp_path) -> None:
+    """The closure less what is present (the liaison's C15). `mitomap_miss` stores under a megabyte and its
+    closure is a ClinVar download; with ClinVar on the box, that part costs nothing. Expected figures are
+    upstream's own (`provisioning_closure`, `approx_mb`), never constants."""
+    import dataclasses
+
+    from just_dna_enricher.caches import provisioning_closure
+
+    lanes = enrich.cache_lanes()
+    derived = next(lane for lane in lanes.values() if lane.parents)
+    closure = [member.name for member in provisioning_closure(derived)]
+    held = closure[0]
+    assert len(closure) >= 2 and held != derived.name, "no derived lane with a parent; the test reads nothing"
+    presence = dict.fromkeys(lanes) | {held: tmp_path}
+    monkeypatch.setattr(enrich, "lane_presence", lambda s: presence)
+    report = {lane.name: lane for lane in enrich.lane_status(settings, lane_readers()).lanes}
+
+    fetch = [n for n in closure if n != held]
+    assert report[derived.name].provision_lanes == fetch
+    assert report[derived.name].provision_mb == sum(lanes[n].approx_mb for n in fetch)
+    assert report[derived.name].approx_mb == derived.approx_mb
+    assert (report[held].provision_lanes, report[held].provision_mb) == ([], 0)
+
+    # A lane in the closure that states no size makes the figure unknown, never a smaller number.
+    unsized = {**lanes, fetch[0]: dataclasses.replace(lanes[fetch[0]], approx_mb=None)}
+    monkeypatch.setattr(enrich, "cache_lanes", lambda: unsized)
+    again = {lane.name: lane for lane in enrich.lane_status(settings, lane_readers()).lanes}
+    assert again[derived.name].provision_mb is None and again[derived.name].provision_lanes == fetch

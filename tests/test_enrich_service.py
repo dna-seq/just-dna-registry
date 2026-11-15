@@ -29,7 +29,7 @@ from just_dna_registry import cli
 from just_dna_registry.config import Settings
 from just_dna_registry.models.api import SpecStats
 from just_dna_registry.services.enrich import (
-    ENRICHMENT_SUBJECT_TABLES,
+    FALLBACK_SUBJECT_TABLES,
     REFERENCE_NAMES,
     RESOLUTION_REFERENCES,
     EnrichmentGate,
@@ -410,22 +410,50 @@ def test_a_pgx_module_is_not_zero_subjects(tmp_path: Path) -> None:
     )
     assert stats.variant_count == 0             # the old guard's entire input
     assert stats.table_rows["pharm_variants.csv"] == 9
-    assert enrichment_subject_count(stats) == 9  # what the enricher would actually ask about
+    # Nine rows, one variant at nine genotypes: the run asks once (upstream dedupes by `variant_key`).
+    # The old row-sum said nine; neither is zero, which is what this test was written against.
+    from just_dna_enricher.enrich import collect_subjects
+
+    asked = len(collect_subjects(example, []))
+    assert 1 <= asked <= 9
+    assert enrichment_subject_count(example, stats) == asked
 
 
-def test_every_subject_table_is_counted() -> None:
-    """`variants.csv` plus each table the enricher collects from, and no double-count of the core."""
-    stats = SpecStats.model_validate(
-        {"variant_count": 5, "table_rows": dict.fromkeys(ENRICHMENT_SUBJECT_TABLES, 2)}
+_SPEC_YAML = "module:\n  name: proxies\n  version: 1.0.0\n  title: P\n  description: d\n  report_title: R\ngenome_build: GRCh38\n"
+
+
+def test_the_count_is_upstreams_own_collection_study_proxies_included(tmp_path: Path) -> None:
+    """A study's LD proxy is a subject since enricher 0.8 (RM331); the old hand-kept list counted none.
+
+    The expected number is upstream's `collect_subjects` over the same directory, never a constant: the
+    count is whatever the run will ask, deduplicated by `variant_key`."""
+    from just_dna_compiler.compiler import load_spec_variants
+    from just_dna_enricher.enrich import collect_subjects
+
+    (tmp_path / "module_spec.yaml").write_text(_SPEC_YAML)
+    (tmp_path / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,het\nrs1801133,A/G,protective,het\n"
     )
-    assert enrichment_subject_count(stats) == 5 + 2 * len(ENRICHMENT_SUBJECT_TABLES)
-    # `heteroplasmy.csv` earns its place in the tuple: enricher 0.5.3 added it to `_collect_subjects`,
-    # and before that a heteroplasmy module both enriched to nothing and counted as nothing.
-    assert "heteroplasmy.csv" in ENRICHMENT_SUBJECT_TABLES
-    # A table the enricher never asks about must not inflate the bound into a spurious 422.
-    assert enrichment_subject_count(
-        SpecStats.model_validate({"variant_count": 1, "table_rows": {"diplotypes.csv": 9_000}})
-    ) == 1
+    (tmp_path / "studies.csv").write_text(
+        "rsid,pmid,proxy_rsid\nrs4244285,29165669,rs12248560\nrs1801133,29165669,rs4244285\n"
+    )
+    (tmp_path / "diplotypes.csv").write_text("gene,diplotype\n" + "CYP2C19,*1/*2\n" * 50)
+    stats = SpecStats.model_validate({"variant_count": 2, "table_rows": {"studies.csv": 2, "diplotypes.csv": 50}})
+    variants, _, _ = load_spec_variants(tmp_path)
+    expected = len(collect_subjects(tmp_path, variants))
+    assert expected == 3  # two variants and one proxy that is not one of them; the other proxy is a variant
+    assert enrichment_subject_count(tmp_path, stats) == expected
+
+
+def test_a_refused_table_falls_back_to_the_generous_bound(tmp_path: Path) -> None:
+    """Upstream refuses an invalid PGx table; the guard then over-counts from the stats, never under."""
+    (tmp_path / "module_spec.yaml").write_text(_SPEC_YAML)
+    (tmp_path / "pharm_variants.csv").write_text("not,a,pharm,table\n1,2,3,4\n")
+    stats = SpecStats.model_validate(
+        {"variant_count": 5, "table_rows": dict.fromkeys(FALLBACK_SUBJECT_TABLES, 2) | {"diplotypes.csv": 9_000}}
+    )
+    assert enrichment_subject_count(tmp_path, stats) == 5 + 2 * len(FALLBACK_SUBJECT_TABLES)
+    assert "studies.csv" in FALLBACK_SUBJECT_TABLES
 
 
 # ── A check that did not run ──────────────────────────────────────────────────

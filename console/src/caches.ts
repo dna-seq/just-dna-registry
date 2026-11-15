@@ -43,6 +43,13 @@ function laneRow(lane: CacheLaneStatus): HTMLElement {
   if (lane.parents.length) {
     notes.push(h("div", { class: "note" }, `derived from ${lane.parents.join(", ")}`));
   }
+  // What provisioning it costs here (C15): the closure less what is present. Absent from an older server.
+  if (lane.provision_lanes && lane.provision_lanes.length) {
+    const size = lane.provision_mb !== null ? `~${lane.provision_mb} MB` : "size not stated";
+    const others = lane.provision_lanes.filter((n) => n !== lane.name);
+    notes.push(h("div", { class: "note" },
+      `provisioning it fetches ${size}` + (others.length ? `, with ${others.join(", ")}` : "")));
+  }
   if (lane.release_unreadable) {
     notes.push(h("div", { class: "note" },
       "A release.json is present and could not be parsed — the snapshot is still usable, only its provenance is missing."));
@@ -93,7 +100,11 @@ export async function viewCaches(root: HTMLElement): Promise<void> {
         missingHere.length
           ? `${missingHere.length} of ${readHere.length} read here are missing`
           : `all ${readHere.length} lanes read here are provisioned`),
-      badge("outline", `declared use: ${report.declared_use}`)),
+      badge("outline", `declared use: ${report.declared_use}`),
+      // The proxy's operator-gated live legs (0.32): closed, a pass that needs one skips it.
+      (report.proxy_live_legs ?? []).map((leg) =>
+        badge(leg.open ? "good" : "warn",
+          leg.open ? `live ${leg.upstream}: open` : `live ${leg.upstream}: closed (${leg.setting})`))),
     h("p", { class: "small muted" },
       "Reports only — nothing here downloads or builds. Provisioning is ",
       h("code", {}, "registry warm-caches"), ", an operator command on the box that holds the caches."),

@@ -382,7 +382,11 @@ def stamped_compiler_version(manifest: ModuleManifest) -> str | None:
     (a foreign compiler, an `unknown`, a spelling upstream changes) has to reach `GAP_UNKNOWN` rather
     than crash a catalog-wide sweep or, worse, be read as up to date.
     """
-    stamp = manifest.compilation.compiler_version
+    return bare_compiler_version(manifest.compilation.compiler_version)
+
+
+def bare_compiler_version(stamp: str | None) -> str | None:
+    """`stamped_compiler_version` over the stamp's text, for a reader holding no parsed manifest."""
     if not stamp:
         return None
     candidate = stamp.split()[-1]
@@ -412,10 +416,18 @@ def contract_gap(manifest: ModuleManifest) -> ContractGap:
     still works where the stamp does not: the compiler began writing signatures in 0.5, so its absence
     dates a manifest without needing to parse anything.
     """
+    return gap_from_stamp(
+        manifest.compilation.compiler_version, has_signature=manifest.content_signature is not None
+    )
+
+
+def gap_from_stamp(stamp: str | None, *, has_signature: bool) -> ContractGap:
+    """`contract_gap` from the two manifest fields it reads (0.32: `GET /upgrade/status` reads them off the
+    catalog row, so a status over every module parses no manifest)."""
     current = installed_compiler()
-    stamped = stamped_compiler_version(manifest)
+    stamped = bare_compiler_version(stamp)
     if stamped is None:
-        if manifest.content_signature is None:
+        if not has_signature:
             return ContractGap(
                 compiled_under=None, current=current,
                 scale=GAP_CONTRACT, witness="content_signature",

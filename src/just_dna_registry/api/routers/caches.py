@@ -24,6 +24,7 @@ from just_dna_registry.config import Settings
 from just_dna_registry.models.api import CacheStatusReport
 from just_dna_registry.services import enrich
 from just_dna_registry.services.lane_readers import lane_readers
+from just_dna_registry.services.passes import live_legs
 
 router = APIRouter(tags=["ops"])
 
@@ -62,10 +63,13 @@ def _fresh(settings: Settings) -> CacheStatusReport:
     now = time.monotonic()
     hit = _cached.get(key)
     if hit is not None and now - hit[0] < CACHE_TTL_SECONDS:
-        return hit[1]
-    report = enrich.lane_status(settings, lane_readers())
-    _cached[key] = (now, report)
-    return report
+        report = hit[1]
+    else:
+        report = enrich.lane_status(settings, lane_readers())
+        _cached[key] = (now, report)
+    # Read per request, outside the cache: two settings, no walk, and a switch an operator flips must
+    # never be reported the old way for thirty seconds (0.32). Filled with no enricher installed too.
+    return report.model_copy(update={"proxy_live_legs": live_legs(settings)})
 
 
 @router.get(

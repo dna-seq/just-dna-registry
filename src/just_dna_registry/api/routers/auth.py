@@ -49,11 +49,20 @@ class TokenRequest(BaseModel):
 AccountDep = Annotated[Account, Depends(require_account)]
 
 
+def _reach(repo: Repository, account_id: int) -> dict[str, list[dict[str, str]]]:
+    """`member_of` and `orgs` (0.32, S31): what an account reaches beyond the namespaces it owns."""
+    return {
+        "member_of": [dict(row) for row in repo.memberships(account_id)],
+        "orgs": [dict(row) for row in repo.orgs_of(account_id)],
+    }
+
+
 def _whoami(repo: Repository, account: Account) -> WhoAmI:
     row = repo.get_account(account.id)
     return WhoAmI(
         account=account.name,
         namespaces=account.namespaces,
+        **_reach(repo, account.id),
         type=row["type"] if row else "user",
         display_name=row["display_name"] if row else None,
         avatar_url=row["avatar_url"] if row else None,
@@ -124,7 +133,10 @@ def register(repo: RepoDep, settings: SettingsDep, body: RegisterRequest) -> dic
 
     key = "mk_live_" + secrets.token_urlsafe(24)
     repo.add_api_key(key, account_id)
-    return {"token": key, "account": name, "namespaces": repo.namespaces_for_account(account_id)}
+    return {
+        "token": key, "account": name, "namespaces": repo.namespaces_for_account(account_id),
+        **_reach(repo, account_id),
+    }
 
 
 def rename_refusal(exc: RenameRefused) -> HTTPException:

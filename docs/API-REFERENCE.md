@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.31.x**, API `v1` (**0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -158,7 +158,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 10 | POST | `/api/v1/modules/{ns}/{name}/versions` | bearer | Publish (multipart spec, loose or archive) |
 | 11 | POST | `/api/v1/modules/{ns}/{name}/versions/import` | bearer | Publish from zip/tar.gz archive |
 | 12 | POST | `/api/v1/modules/{ns}/{name}/versions/{v}/yank` | bearer | Yank / un-yank a version |
-| 13 | GET/PATCH | `/api/v1/auth/whoami` | bearer | Identity + owned namespaces; edit own profile |
+| 13 | GET/PATCH | `/api/v1/auth/whoami` | bearer | Identity, owned namespaces, memberships and orgs; edit own profile |
 | 14 | POST | `/api/v1/auth/register` | install-id | Self-register → account + API key |
 | 15 | GET | `/api/v1/namespaces/{ns}` | — | Namespace availability |
 | 16 | POST | `/api/v1/namespaces` | bearer | Claim an available namespace |
@@ -195,6 +195,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 47 | POST | `/api/v1/lanes/{lane}/{table}` | — | Keyed lookup of a lane's rows, local or from its published repo (0.30) |
 | 48 | GET | `/api/v1/variants?key=` | — | What every visible module says about one variant, with the disagreement marker (0.31) |
 | 49 | GET | `/api/v1/genes/{symbol}/claims` | — | What every visible module says about the variants it names under a gene (0.31) |
+| 50 | GET | `/api/v1/upgrade/status?state=&page=&per_page=` | — | Which current versions the upgrade sweep has not brought up to date, and why (0.32) |
 
 ---
 
@@ -754,6 +755,12 @@ arrive by and the reason it has not.
      "licence_skip": "pharmvar forbids sale and no use was declared",
      "read_here": true, "readers": ["check: pgx"], "group": "pgx", "configured": false,
      "parents": []}
+  ],
+  "proxy_live_legs": [
+    {"upstream": "gnomad", "open": false, "setting": "REGISTRY_HINT_ALLOW_GNOMAD",
+     "passes": ["frequencies", "gene-metrics"], "hint_flags": ["frequencies"]},
+    {"upstream": "alphagenome", "open": false, "setting": "REGISTRY_PROXY_ALPHAGENOME",
+     "passes": ["alphagenome expression"], "hint_flags": []}
   ]
 }
 ```
@@ -788,6 +795,12 @@ question a publisher has after a `/check` reported a source skipped.
   `strchive`, `mitomap_miss`). `group` is still the `/check` grouping only, so a lane can be read here
   with no group. All three are narrower than the set an operator can provision: the same box often
   runs authoring commands, and a lane nothing here reads is still worth reporting rather than hiding.
+- **`approx_mb`, `provision_lanes`, `provision_mb`** price a pull. `approx_mb` is what the lane stores, as
+  the enricher's registry states it (a derived lane's own increment). `provision_lanes` is what provisioning
+  it would fetch or build on this box now: its closure (parents first, then itself) less what is present, so
+  `[]` for a present lane. `provision_mb` sums `approx_mb` over those lanes: `0` for a present lane, `null`
+  when any of them states no size. `mitomap_miss` stores under a megabyte, and on a box without ClinVar its
+  `provision_lanes` is `["clinvar", "mitomap", "mitomap_miss"]`. `registry-client caches` prints the figure.
 - **`configured`** is whether this deployment pins the location or lets the lane's own ladder find
   it. **No filesystem path appears in this response and none may be added.** Lane presence is an
   operational fact of the same class `/health` already publishes unauthenticated; the server's
@@ -795,6 +808,13 @@ question a publisher has after a `/check` reported a source skipped.
   enumerate lane state through `/check`, which needs the `PUBLISH` capability.
 - **Reports only.** Nothing here downloads or builds anything — that is `registry warm-caches`, an
   operator command on the box that holds the caches, deliberately not a request-path concern.
+- **`proxy_live_legs`** (0.32, S30) names the caching proxy's live legs that run only where this
+  deployment's operator opened them, and whether each is open: gnomAD (its allowance is the
+  deployment's and cannot be bought) and AlphaGenome's Atlas (the operator's key and terms). Closed,
+  the `passes=` commands listed skip their live leg (`POST .../derived`), and the `hint_flags` are a
+  `403` on `/hint/variants`. So a client can tell before it spends a run, rather than from the skip
+  afterwards. It covers the proxy only, never `/check`, and it is read per request, outside the
+  report's 30-second memo. `null` is a server before 0.32, never "every leg open".
 - `enricher_available: false` is one deployment fact rather than fifteen separate failures: the
   `server` extra is what carries `just-dna-enricher`, and a client that cannot tell the two apart
   tells an operator to provision snapshots on a box with nothing to read them with.
@@ -831,7 +851,7 @@ There is no `verification` filter and there will not be one — see *ModuleDetai
 
 **`group`** is a server-defined tab preset over the raw filters (a group wins over the equivalent
 `sort`/`featured`): `all` (everything), `featured` (`featured=true`), `curated` (has an
-owner-highlighted review — see reviews), `popular` (`sort=popular`), `new` (`sort=recent`), `test`. **Test/sandbox namespaces** — those matching the server-config
+owner-highlighted `verified` review from outside the namespace — see reviews), `popular` (`sort=popular`), `new` (`sort=recent`), `test`. **Test/sandbox namespaces** — those matching the server-config
 `REGISTRY_TEST_NAMESPACE_PATTERN` (default `^(sandbox|test)([-_]|$)`) — are surfaced **only** under
 `group=test` and hidden from every other tab and the default listing; they stay reachable by an
 explicit `namespace=`. Membership is server-owned so all clients agree. Discover the tabs at
@@ -878,7 +898,7 @@ The listing tabs (groups) the catalog defines, for a UI to render. Anonymous. `2
 [
   {"key": "all", "label": "All", "description": "Everything published (test/sandbox spaces excluded)."},
   {"key": "featured", "label": "Featured", "description": "Namespaces curated by the operators."},
-  {"key": "curated", "label": "Curated", "description": "Has an owner-highlighted review/audit."},
+  {"key": "curated", "label": "Curated", "description": "Has an owner-highlighted review with verdict verified from outside its namespace."},
   {"key": "popular", "label": "Popular", "description": "Most viewed, downloaded, and starred."},
   {"key": "new", "label": "New", "description": "Most recently updated."},
   {"key": "test", "label": "Test", "description": "Sandbox / test namespaces (hidden from other tabs)."}
@@ -1156,8 +1176,14 @@ leaves the owner's highlight intact). Returns the version's current review list.
 
 ### 29. `PUT` / `DELETE .../versions/{v}/reviews/{reviewer}/highlight`  *(bearer — owner)*
 The namespace **owner** highlights (or un-highlights) a reviewer's review — SO accepted-answer style;
-any number may be highlighted. A highlighted review is what `?group=curated` and the card's
-`curated` flag key on. Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
+any number may be highlighted. A highlighted review **from outside the namespace with verdict `verified`** is what
+`?group=curated`, the card's `curated` flag and `GET /stats`' `curated` key on (0.32, S33): "curation must
+come from outside" was the 0.8.0 rule, and through 0.31 nothing enforced it. Outside means the reviewer
+holds no role on the namespace as `effective_role` reads it at that moment (a per-namespace grant, the
+owning account, an owning org's membership, or site admin). An inside review is still accepted, listed and
+highlightable, and reads as information; it never makes a module curated. So is an outside review whose
+verdict is `concerns` or `rejected` (the owner pinning a critique) or that has none (a rating asserts nothing
+was checked): listed and highlightable, never curating. Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
 `404 review_not_found` (highlight) / `version_not_found`.
 
 #### A review: a `reviews` row, or an `authorship` entry? (S12)
@@ -1225,9 +1251,18 @@ All org gate failures return `403 insufficient_capability`; unknown org → `404
 
 ### 13. `GET` / `PATCH /api/v1/auth/whoami`  *(bearer)*
 `GET 200 → {"account": "antonkulaga", "namespaces": [...], "type": "user", "display_name": null,
-"avatar_url": null, "funding_url": null, "email": null, "site_admin": false}` — `namespaces` is every namespace the caller
-is a member of; `type` is the `user`|`org` discriminator; `avatar_url`/`funding_url` are public
-(userpic + donation link); `email` is **private** (only ever returned here). `401` on invalid token.
+"avatar_url": null, "funding_url": null, "email": null, "site_admin": false, "member_of": [...],
+"orgs": [...]}` — `namespaces` is the namespaces the caller **owns**; `type` is the `user`|`org`
+discriminator; `avatar_url`/`funding_url` are public (userpic + donation link); `email` is **private**
+(only ever returned here). `401` on invalid token.
+
+**`member_of` and `orgs` (0.32, S31)** say what else the caller may act in, which `namespaces` never
+did (it was documented here as every namespace the caller is a member of, and it was the ownership
+grant only). `member_of` is `[{"namespace", "role", "via"}]`, one row per route: `via: "member"` for
+an explicit membership of somebody else's namespace, `via: "org:<org>"` for a namespace an org the
+caller belongs to owns. A namespace reached both ways is two rows, and the higher role is the one
+that applies. `orgs` is `[{"org", "role"}]` by each org's current handle. A site admin's reach (owner
+on every namespace) is `site_admin: true`, not listed. Authorization reads none of these.
 
 `PATCH` edits the caller's own profile — body `{"email"?, "display_name"?, "avatar_url"?,
 "funding_url"?}` (omitted fields unchanged, `""` clears a field). Returns the updated identity.
@@ -1245,7 +1280,9 @@ The `install_id` is a proof-of-work token minted by the just-dna-lite app at fir
 ≥ `install_id_difficulty` leading zero bits). One account per install-id — re-registering an
 install-id just issues a fresh key for its existing account.
 
-`201 → {"token": "mk_live_…", "account": "alice", "namespaces": []}`. Errors:
+`201 → {"token": "mk_live_…", "account": "alice", "namespaces": [], "member_of": [], "orgs": []}`
+(`member_of` and `orgs` since 0.32, as on `whoami`; a re-issued key for an existing account carries
+its memberships). Errors:
 `403 self_register_disabled` (when `allow_self_register=false`), `422 invalid_install_id` (bad PoW),
 `422 invalid_account` (handle isn't a valid slug), `409 account_taken`.
 
@@ -1416,16 +1453,21 @@ most `lane_max_rows` rows (1,000) with `truncated: true` past that. A remote tab
 files (Ensembl by rsID alone cannot be bounded remotely; upstream RM431 asks for an index). A lane
 neither held nor published is `404 lane_not_available`.
 
-**Terms: a keyed lookup is not a snapshot, and every held lane answers one.** This is deliberate, and it
-includes the lanes whose `remote_reason` in `GET /caches` (endpoint 1a) is a refusal or unestablished
-(`pharmvar`, `pubmind`, `mane`, `acmg`). The maintainer ruled on 2026-11-11 that serving a lane means
-handing out its whole snapshot, and that any keyed subslice is a derivative. So the refusal in
-`remote_reason` covers the snapshot: no route hands one of those lanes out whole, and the bounds above
-are what keep paging through keys from rebuilding it. The answer does not carry the lane's terms. They
-still bind what a caller does with the rows, and `GET /caches` gives each lane's reason (S29; the ruling
-is requirement 2 of the 0.30 section of ROADMAP.md).
+**Terms: a keyed lookup is not a snapshot, and every held lane answers one, saying the lane's terms.**
+This is deliberate, and it includes the lanes whose `route_reason` in `GET /caches` (endpoint 1a) is a
+refusal or unestablished (`pharmvar`, `pubmind`, `mane`, `acmg`). The maintainer ruled on 2026-11-11 that
+serving a lane means handing out its whole snapshot, and that any keyed subslice is a derivative. So the
+refusal covers the snapshot: no route hands one of those lanes out whole, and the bounds above are what
+keep paging through keys from rebuilding it. Since 0.32 (S29) both routes say the terms beside the rows,
+verbatim from the enricher's lane registry: `terms` is the source's licence record (`source`, `license`,
+`license_url`, `attribution`, `notice`, `share_alike`, `commercial_use`, `redistribution`, and whatever
+upstream adds), and `unpublished` is the lane's reason no snapshot of it is published (the same sentence
+as `route_reason`; `null` when one is). **`terms: null` means none are stated, never "unrestricted"**:
+`mane` and `acmg` state none, and their `unpublished` says redistribution was never established. The
+terms bind what a caller does with the rows; honouring them is the caller's. An older server omits both
+keys. (The ruling is requirement 2 of the 0.30 section of ROADMAP.md.)
 
-`200 → {"lane", "table", "served_from", "rows": [...], "truncated"}`. Errors: `404 unknown_lane`,
+`200 → {"lane", "table", "served_from", "rows": [...], "truncated", "terms", "unpublished"}`. Errors: `404 unknown_lane`,
 `404 unknown_table`, `404 lane_not_available`, `422 lane_needs_keys`, `422 unknown_key`,
 `422 position_needs_both`, `422 too_many_keys`, `422 remote_needs_position`, `429`. Client:
 `RegistryClient.lane_tables(lane)`, `lane_rows(lane, table, keys)`; `registry-client lanes LANE`,
@@ -1451,14 +1493,22 @@ The variant-level catalog (0.31). Every publish records what its version says ab
 from its own parquets (`weights`, `pharm_variants`, `heteroplasmy`, `haplotypes`, and `pgs` ids); only each
 module's latest non-yanked version is kept. `registry project-claims` fills it for versions published
 before 0.31. `GET /variants?key=` takes one spelling of a variant (rsID, VRS id, or `chrom:start:ref:alt`)
-and resolves the others through the recorded aliases; `GET /genes/{symbol}/claims` takes an authored gene
+and resolves the others through the recorded aliases. Since 0.32 the key is first folded onto the stored
+forms (`spellings`, the key as given first): an rsID in lower case, and coordinates as `chrom:start:ref:alt`
+with no `chr`, `:` between the fields and upper-case alleles, so `RS429358`, `chr19:44908684:T:C` and
+`19-44908684-T-C` find what `rs429358` finds. Never a strand, a build or a chromosome renaming (`M` is not
+`MT`); a VRS id passes as given. **`matched`** (0.32) says whether any spelling is stored for a visible
+module: `claims: []` with `matched: false` is a key no visible module spells, with `matched: true` a
+variant they name without a claim. `GET /genes/{symbol}/claims` takes an authored gene
 symbol (a row's gene is never assigned from its position). Visibility follows the listing: no blacklisted
 namespace, and on production no test/sandbox one.
 
 Each claim carries `module`, `version`, `kind` (`weight`, `pharm`, `heteroplasmy`, `haplotype`),
 `variant_key`, `genotype` (alleles sorted, `A/G`), `effect_allele`, `direction` (`risk`, `protective`,
 `neutral`, or null: not comparable; from `direction`, else an older module's `state`, never a weight's sign),
-`weight` (per-module scale, never comparable across modules), `trait_efo_id`, `clin_sig`, `gene`.
+`weight` (per-module scale, never comparable across modules), `trait_efo_id`, `clin_sig`, `gene`, and
+`haplotype` (0.32: a haplotype row's name, `*4`, `e4`; null for other kinds, and for a version projected
+before 0.32 until `registry project-claims` re-projects it).
 
 **`conflicts`** is a fact about two modules' statements, never a verdict: a pair is listed only when two
 different modules give the **same effect allele**, genotype and non-null trait opposite directions. Every
@@ -1493,6 +1543,54 @@ snapshots: `upgrade`, `replay-upgrade`, `revalidate`, `warm-caches`. A run of an
 `<data>`, `<storage>`, `<cache:ensembl>`, `<cache>`, `<venv>`, `<python>`, `<cwd>`, `~`), and any
 absolute path left after that by `<path>`. API keys never reach the log. The copy on the box keeps its
 paths. Not rate-limited, like the other site-admin routes.
+
+### 50. `GET /api/v1/upgrade/status`  *(0.32)*
+
+Which modules' current versions `registry upgrade` has not brought up to date: held back, planned by a
+dry run, or built under an older compiler contract with no sweep verdict at all. Anonymous, the `search`
+bucket. The module set is the listing's (a current version, no blacklisted namespace).
+
+`?state=` keeps only `held`, `would_upgrade`, `behind`, `unknown` or `current`; `page`/`per_page` as
+everywhere (max 100). → `UpgradeStatusReport`: `items`, `total`, `page`, `per_page` over the filtered set,
+and over the whole catalog `counts` (per state, every state present, zeros included), `compiler` (this
+server's), `swept` (current versions some recorded sweep has a verdict on), `sweeps_on_record` and
+`sweeps_since` (the `upgrade` runs read, and when the oldest started).
+
+Each `UpgradeStatusItem`: `namespace`, `name`, `version` (the current one), `state`, `compiled_under`,
+`gap` (`none`/`patch`/`contract`/`unknown`, this server's compiler against the manifest's stamp),
+`last_sweep` (`null`, or `{started, applied, status, code, problem_type, drift_to_read}`), `kept` and
+`kept_stale` (a re-derivation kept for `--accept-drift`, 0.31.1).
+
+How a state is decided, in this order:
+
+1. **`held`**: the newest recorded sweep's verdict on this exact version is `refused`, `held`, `failed`,
+   `blocked` or `anomaly`, or a re-derivation of it is kept. The drift hold is a refusal
+   (`rederive_drift_needs_reading`), not status `held`. A successor published since is a different
+   version and supersedes the verdict.
+2. **`would_upgrade`**: the newest verdict is a dry run's `would upgrade` (`applied: false`).
+3. Any other verdict (`unchanged`) is **`current`**.
+4. With no verdict on record: **`behind`** if the stamp is an older contract than this server's compiler,
+   **`unknown`** if the compiler cannot be identified, else **`current`**.
+
+**`current` with `last_sweep: null` means nothing found yet, not nothing to do.** It is read off the manifest's
+compiler stamp alone. A sweep also re-publishes for reasons only the stored files show: a `resolution.csv` an
+older enricher wrote whose rows name no snapshot release or an older one, or output drift measured under a
+compiler patch. Opening every module's files is the sweep's work, never an anonymous route's. `registry upgrade
+--dry-run` is the full answer, and once it ran, its verdicts are what this route serves. (Measured on
+2026-11-15 from the public catalog: every version either server's sweep would re-derive already read
+`behind`.)
+
+"Recorded" means the `sweep.json` of an `upgrade` run on this box: kept since 0.28.3 and never pruned.
+A `replay-upgrade` run (a scratch copy) and a reverted run are not read. A sweep before 0.28.3 kept no
+record, so what it held shows as `behind`, never as `current`. Nothing here reads storage: the planner's
+other reasons to act (a resolution table to re-derive, a measured drift) show only through a sweep's
+verdict, and `registry upgrade --dry-run` is the complete answer. No run id, no sentence and no path is
+served; the detail is `GET /admin/runs/{id}` (site admins).
+
+`VersionInfo.needs_upgrade` is a different flag: `registry revalidate --set-flag` sets it when a stored
+spec fails the current contract. `false` there never means current.
+
+`registry-client upgrade-status [--all]` prints the counts, the coverage, and every version not current.
 
 ## Schemas
 

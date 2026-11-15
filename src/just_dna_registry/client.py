@@ -11,6 +11,7 @@ import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from just_dna_format.integrity import sha256_bytes, verify_manifest
@@ -24,6 +25,7 @@ from just_dna_registry.models.api import (
     GeneHintReport,
     OldAssemblyHintReport,
     TraitHintReport,
+    UpgradeStatusReport,
     ValidationReport,
     VariantHintBatchResponse,
     VariantHintReport,
@@ -489,7 +491,8 @@ class RegistryClient:
     # ── Onboarding (community self-service) ──────────────────────────────────
 
     def register(self, install_id: str, account: str) -> dict:
-        """Register an install-id → `{token, account, namespaces}`. No auth (mints the token)."""
+        """Register an install-id → `{token, account, namespaces, member_of, orgs}` (the last two since
+        0.32, as on `whoami`). No auth (mints the token)."""
         return self._json(
             self._http.post("/auth/register", json={"install_id": install_id, "account": account})
         )
@@ -1216,7 +1219,13 @@ class RegistryClient:
 
     def whoami(self) -> dict:
         """The caller's identity + profile (`account`, `namespaces`, `type`, `display_name`,
-        `avatar_url`, `email`, `site_admin`). `email` is only ever returned to the account itself."""
+        `avatar_url`, `email`, `site_admin`). `email` is only ever returned to the account itself.
+
+        `namespaces` is the ones the caller owns. Since 0.32 `member_of` lists every other namespace
+        it may act in, `{namespace, role, via}` with `via` `member` (an explicit grant) or `org:<name>`
+        (an org it belongs to owns it; one row per route, the higher role being the one that applies),
+        and `orgs` its orgs, `{org, role}`. A site admin's reach is the `site_admin` flag, not listed.
+        Both keys are absent from an older server."""
         return self._json(self._http.get("/auth/whoami"))
 
     def update_profile(
@@ -1285,24 +1294,28 @@ class RegistryClient:
         """What every visible module's latest version says about one variant (0.31), by rsID, VRS id or
         `chrom:start:ref:alt`: the claims, the modules, the conflict marker (two modules giving one allele
         opposite directions for the same genotype and trait) with the pairs not compared by reason, and
-        `not_projected` (modules whose silence is not agreement)."""
+        `not_projected` (modules whose silence is not agreement). Since 0.32 the key is folded onto the
+        stored spellings (`spellings`), and `matched` says whether any is stored at all."""
         return self._json(self._http.get("/variants", params={"key": key}))
 
     def gene_claims(self, symbol: str) -> dict:
         """What every visible module's latest version says about the variants it names under `symbol` (0.31;
         authored genes only, never assigned by position)."""
-        return self._json(self._http.get(f"/genes/{symbol}/claims"))
+        return self._json(self._http.get(f"/genes/{quote(symbol, safe='')}/claims"))
 
     def lane_tables(self, lane: str) -> dict:
         """What one snapshot lane holds (0.30): its tables and the key columns each answers by, and
-        `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo)."""
+        `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo).
+        Since 0.32 also the lane's `terms` and `unpublished`, as on `lane_rows`."""
         return self._json(self._http.get(f"/lanes/{lane}"))
 
     def lane_rows(self, lane: str, table: str, keys: dict[str, list]) -> dict:
         """The rows of one lane table matching identifier keys (0.30), e.g. `{"gene": ["LPA"]}` or
         `{"chrom": ["22"], "start": [17000001]}`. Keyed and bounded per request; `truncated` says more
         matched than the server returns. Read from the server's snapshot, or remotely from the lane's
-        published repo when the server does not hold it."""
+        published repo when the server does not hold it. Since 0.32 the answer carries the lane source's
+        `terms` (upstream's licence fields; `null` = none stated, not "unrestricted") and `unpublished`
+        (upstream's reason no snapshot is published, e.g. `refused: ...`); absent from an older server."""
         return self._json(self._http.post(f"/lanes/{lane}/{table}", json={"keys": keys}))
 
     def rename_namespace(
@@ -1556,6 +1569,24 @@ class RegistryClient:
         `CacheLaneStatus`.
         """
         return CacheStatusReport.model_validate(self._json(self._http.get("/caches")))
+
+    def upgrade_status(
+        self, *, state: str | None = None, page: int = 1, per_page: int = 100
+    ) -> UpgradeStatusReport:
+        """Which current versions `registry upgrade` has not brought up to date (0.32). Anonymous.
+
+        Per module: `state` (`held`, `would_upgrade`, `behind`, `unknown`, `current`), the newest recorded
+        sweep's verdict on that exact version (`last_sweep`: status and code), and the compiler comparison
+        (`gap`). `counts` covers the whole catalog whatever `state` filters; read `swept` and
+        `sweeps_on_record` beside it, since a sweep before 0.28.3 left no record and its holds show as
+        `behind`, not `held`. `VersionInfo.needs_upgrade` is a different flag (`revalidate`'s).
+        """
+        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        if state is not None:
+            params["state"] = state
+        return UpgradeStatusReport.model_validate(
+            self._json(self._http.get("/upgrade/status", params=params))
+        )
 
     def health(self) -> dict:
         """Server liveness: `{status, version, storage}`.

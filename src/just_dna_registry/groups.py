@@ -38,7 +38,7 @@ class GroupInfo(BaseModel):
 GROUPS: list[GroupInfo] = [
     GroupInfo(key="all", label="All", description="Everything published (test/sandbox spaces excluded)."),
     GroupInfo(key="featured", label="Featured", description="Namespaces curated by the operators."),
-    GroupInfo(key="curated", label="Curated", description="Has an owner-highlighted review/audit."),
+    GroupInfo(key="curated", label="Curated", description="Has an owner-highlighted review with verdict verified from outside its namespace."),
     GroupInfo(key="popular", label="Popular", description="Most viewed, downloaded, and starred."),
     GroupInfo(key="new", label="New", description="Most recently updated."),
     GroupInfo(key="test", label="Test", description="Sandbox / test namespaces (hidden from other tabs)."),

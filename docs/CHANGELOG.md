@@ -8,6 +8,104 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-11-15
+
+### A lane lookup says the lane's terms (S29)
+
+`GET /lanes/{lane}` and `POST /lanes/{lane}/{table}` carry `terms` and `unpublished` beside the rows,
+verbatim from the enricher's lane registry: the source's licence record (licence, URL, attribution,
+notice, and the commercial-use, share-alike and redistribution axes) and the reason no snapshot of the lane
+is published (`refused: ...`, `unestablished: ...`). A keyed read is still served whatever the terms (the
+0.30 ruling); the answer now says them, so an agent leaning a module on PubMind rows knows they are NC-ND.
+`terms: null` means none are stated, never "unrestricted": `mane` and `acmg` state none, and their
+`unpublished` says redistribution was never established. `registry-client lanes` and `lane-rows` print both.
+The API reference called `/caches`' field `remote_reason`; it is `route_reason`.
+
+### `GET /caches` says which live legs the proxy runs here (S30)
+
+`proxy_live_legs` names the operator-gated live legs of the caching proxy, gnomAD
+(`REGISTRY_HINT_ALLOW_GNOMAD`) and AlphaGenome's Atlas (`REGISTRY_PROXY_ALPHAGENOME`), whether each is
+open, and the `passes=` commands and `/hint/variants` flags each reaches. A client learns a source is
+closed before it spends a run, not from the skip afterwards. The report and every gate read one table
+(`passes.OPERATOR_GATED_LEGS`), and the field is read per request, outside the report's 30-second memo.
+`registry-client caches` and the console print it.
+
+### `whoami` says which namespaces the caller may act in, and its orgs (S31)
+
+`GET /auth/whoami` and the `register` response gain `member_of`, one row per route by which the caller
+reaches a namespace it does not own (`{namespace, role, via}`, `via` being `member` or `org:<org>`), and
+`orgs` (`{org, role}`). `namespaces` keeps its meaning, the namespaces the caller owns; the API reference
+had described it as every namespace the caller is a member of. Authorization is unchanged: it always read
+`effective_role()`, and a test holds the new list equal to it over every namespace. The console's account
+page shows both.
+
+### `GET /upgrade/status`: which modules the upgrade sweep has not brought up to date
+
+Per listed module, its current version's state: `held` (the newest recorded sweep refused, held or
+failed that exact version, or a re-derivation of it is kept for `--accept-drift`), `would_upgrade` (a dry
+run would re-publish it), `behind` (no sweep verdict, and built under an older compiler contract than this
+server's), `unknown` (the compiler cannot be identified), or `current`, with the sweep's status and code
+and the compiler comparison. `counts` covers every state, zeros included, beside how many versions a
+recorded sweep has seen, so "0 held" says what was checked. Sweeps are read from each `upgrade` run's
+`sweep.json` (0.28.3 on, never pruned; replays and reverted runs skipped); a sweep before that left no
+record, which is why the compiler comparison is there. Anonymous, codes only: run ids, sentences and paths
+stay behind `GET /admin/runs`. `RegistryClient.upgrade_status()`, `registry-client upgrade-status`.
+Asked for after `needs_upgrade` read `false` on every polygon module, four of them held by the 0.8 sweep:
+that flag is `revalidate`'s and now says so in its description.
+`current` with no sweep verdict is read off the compiler stamp alone, so it means nothing found yet: a
+sweep can still re-publish for what only the stored files show (an old `resolution.csv`, measured drift).
+The description and `registry-client upgrade-status` say so; `registry upgrade --dry-run` is the full answer.
+
+### `/variants?key=` folds the spellings a reader pastes, and says when nothing matched (S32)
+
+The key is folded onto the stored forms before the lookup (`spellings`): `RS429358`, `chr19:44908684:T:C` and
+`19-44908684-T-C` now find the claims `rs429358` finds, where 0.31 answered `claims: []`. Only spellings of
+the same statement: never a strand, a build or a chromosome renaming. `matched` says whether any spelling is
+stored for a visible module, so an unknown key and a variant its modules name without a claim no longer
+read alike; `registry-client variant` prints which. A haplotype claim carries its `haplotype` name (`*4`):
+two haplotypes defined by one allele projected as identical claims. The projector is version 2, so
+`registry project-claims` re-projects what 0.31 wrote. `RegistryClient.gene_claims` quotes the symbol into
+the path.
+
+### `curated` counts only verified reviews from outside the namespace (S33)
+
+The card's `curated`, `?group=curated` and `GET /stats`' `curated` count a highlighted review only when its
+reviewer holds no role on the namespace (no grant, not the owner, not in an owning org, not a site admin),
+read at query time, and its verdict is `verified`. A highlighted `concerns` or `rejected` review is the owner
+pinning a critique, and a rating with no verdict asserts nothing was checked: both stay listed and never
+curate. The group's description says so. The 0.8.0 rule was "curation must come from outside", and an owner could highlight their
+own review and mark their module curated. Inside reviews are still accepted, listed and highlightable; a
+self-highlight already stored stops counting with no migration. Stars are unchanged.
+
+### `GET /caches` says what provisioning a lane costs
+
+Each lane carries `approx_mb` (what it stores, from the enricher's registry), `provision_lanes` (its
+provisioning closure, parents first, less what this box already holds) and `provision_mb` (their summed
+size; `null` when any states none). A derived lane that stores under a megabyte can cost a ClinVar
+download, and now says so. `registry-client caches` and the console print it (the liaison's C15).
+
+### Upstream 0.8.7 (enricher only)
+
+The enricher floors at 0.8.7; format and compiler stay at 0.8.6. Text only, no release record: the two
+AlphaGenome licence rows say what the saved terms say (RM442), which the lane routes' `terms` now serve, and
+`recover_rsid` words its answer no wider than it matched (RM444), which nothing here calls. A module whose
+AlphaGenome rows were enriched before keeps the old wording in its `sources.csv` until it is re-enriched; no
+licence axis or gate reads it, and nothing needs re-running on upgrade.
+
+### Fixed
+
+- The online-check ceiling (`REGISTRY_ENRICH_MAX_VARIANTS`) counts what the enricher will ask: upstream's
+  own `collect_subjects`, deduplicated by `variant_key`, instead of a hand-kept table list that missed a
+  study's LD proxy (`studies.csv` `proxy_rsid`, a subject since enricher 0.8). A module leaning on
+  proxies was under-counted, the direction that spends the deployment's rate limit; one naming a variant
+  across several PGx rows is now counted once, as it is asked. If upstream refuses a table, the count falls
+  back to the row sum, `studies.csv` included (the liaison's C13).
+- A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`
+  serves, as every other root this service writes to is, rather than falling to the generic `<path>`.
+
+**Client surface:** new methods only: `upgrade_status`. `gene_claims` now quotes the symbol into the path; its
+signature is unchanged. Responses gain fields; none a client already reads moves.
+
 ## [0.31.1] — 2026-11-13
 
 ### A re-derivation publishes in one pass

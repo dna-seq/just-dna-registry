@@ -171,6 +171,17 @@ export interface ModuleDetail extends ModuleCard {
   authority_precedence: string[];
 }
 
+export interface NamespaceMembership {
+  namespace: string;
+  role: string;
+  via: string;
+}
+
+export interface OrgMembership {
+  org: string;
+  role: string;
+}
+
 export interface WhoAmI {
   account: string;
   namespaces: string[];
@@ -180,6 +191,8 @@ export interface WhoAmI {
   funding_url: string | null;
   email: string | null;
   site_admin: boolean;
+  member_of: NamespaceMembership[];
+  orgs: OrgMembership[];
 }
 
 export interface ProfileUpdate {
@@ -468,12 +481,24 @@ export interface CacheLaneStatus {
   group: string | null;
   configured: boolean;
   parents: string[];
+  approx_mb: number | null;
+  provision_lanes: string[];
+  provision_mb: number | null;
+}
+
+export interface ProxyLiveLeg {
+  upstream: string;
+  open: boolean;
+  setting: string;
+  passes: string[];
+  hint_flags: string[];
 }
 
 export interface CacheStatusReport {
   enricher_available: boolean;
   declared_use: string;
   lanes: CacheLaneStatus[];
+  proxy_live_legs: ProxyLiveLeg[] | null;
 }
 
 // ── Shapes with no pydantic model (plain dict responses and the two ops endpoints) ─────────────
@@ -507,7 +532,7 @@ export interface NamespaceAvailability {
   aliases: string[];
 }
 export interface ClaimResult { namespace: string; owner: string; already_owned: boolean; warnings: string[]; }
-export interface RegisterResult { token: string; account: string; namespaces: string[]; }
+export interface RegisterResult { token: string; account: string; namespaces: string[]; member_of?: NamespaceMembership[]; orgs?: OrgMembership[]; }
 export interface ChangelogResult { namespace: string; name: string; version: string; changelog: string; }
 export interface YankResult { namespace: string; name: string; version: string; yanked: boolean; }
 export interface ReadmeResult { namespace: string; name: string; version: string; readme: string; }

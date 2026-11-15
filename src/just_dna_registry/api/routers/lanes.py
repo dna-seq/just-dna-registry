@@ -30,18 +30,35 @@ class LaneLookup(BaseModel):
     )
 
 
+_TERMS = (
+    "The lane source's terms as the enricher's lane registry states them (0.32): licence, licence URL, "
+    "attribution, notice, and the `share_alike` / `commercial_use` / `redistribution` axes. `null` means the "
+    "registry states no terms for this lane, which is not a statement that it is unrestricted: read "
+    "`unpublished` beside it. A keyed read is served whatever the terms; honouring them is the caller's."
+)
+_UNPUBLISHED = (
+    "Why no snapshot of this lane is published, in the enricher's own sentence (0.32): `refused: ...` "
+    "where the source's terms forbid passing the snapshot on, `unestablished: ...` where nobody has "
+    "established that they allow it. `null` when the lane's snapshot is published."
+)
+
+
 class LaneRowsResponse(BaseModel):
     lane: str
     table: str
     served_from: str = Field(description="`local`, or `remote:<repo>` when read from the published repo")
     rows: list[dict[str, Any]]
     truncated: bool = Field(description="More rows matched than this server returns per request")
+    terms: dict[str, Any] | None = Field(default=None, description=_TERMS)
+    unpublished: str | None = Field(default=None, description=_UNPUBLISHED)
 
 
 class LaneTablesResponse(BaseModel):
     lane: str
     served_from: str
     tables: list[dict[str, Any]]
+    terms: dict[str, Any] | None = Field(default=None, description=_TERMS)
+    unpublished: str | None = Field(default=None, description=_UNPUBLISHED)
 
 
 def _refusal(request: Request, exc: lane_service.LaneLookupError) -> HTTPException:
@@ -56,7 +73,10 @@ async def lane_tables(request: Request, settings: SettingsDep, lane: str) -> Lan
         served_from, tables = await run_in_threadpool(lane_service.lane_tables, lane, settings)
     except lane_service.LaneLookupError as exc:
         raise _refusal(request, exc) from exc
-    return LaneTablesResponse(lane=lane, served_from=served_from, tables=tables)
+    said = lane_service.lane_terms(lane)
+    return LaneTablesResponse(
+        lane=lane, served_from=served_from, tables=tables, terms=said.terms, unpublished=said.unpublished
+    )
 
 
 @router.post(
@@ -72,7 +92,8 @@ async def lane_rows(
         found = await run_in_threadpool(lane_service.lookup, lane, table, body.keys, settings)
     except lane_service.LaneLookupError as exc:
         raise _refusal(request, exc) from exc
+    said = lane_service.lane_terms(found.lane)
     return LaneRowsResponse(
         lane=found.lane, table=found.table, served_from=found.served_from, rows=found.rows,
-        truncated=found.truncated,
+        truncated=found.truncated, terms=said.terms, unpublished=said.unpublished,
     )

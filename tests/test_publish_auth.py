@@ -72,6 +72,7 @@ def test_whoami_ok(client: TestClient, api_key: str) -> None:
         "account": "antonkulaga", "namespaces": ["just-dna-seq"],
         "type": "user", "display_name": None, "avatar_url": None,
         "funding_url": None, "email": None, "site_admin": False,
+        "member_of": [], "orgs": [],  # 0.32: an owner with no memberships reaches nothing else
     }
 
 
