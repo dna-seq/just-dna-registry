@@ -220,7 +220,9 @@ def test_every_field_of_the_other_three_hint_shapes_survives_the_proxy() -> None
         (TraitStatus, TraitHintReport, set()),
     ]
     for upstream_type, ours, expected_exceptions in cases:
-        upstream = {f.name for f in dataclasses.fields(upstream_type)}
+        # A leading underscore is upstream's own word that a field is private (enricher 0.8.7's
+        # `RsidRecovery._overlapping`, RM444: "private on a patch line"); what it decides reaches us as text.
+        upstream = {f.name for f in dataclasses.fields(upstream_type) if not f.name.startswith("_")}
         mine = set(ours.model_fields)
         assert upstream - mine == expected_exceptions, (
             f"{upstream_type.__name__} has a field {ours.__name__} does not report: "
@@ -235,7 +237,7 @@ def test_every_field_of_the_other_three_hint_shapes_survives_the_proxy() -> None
     # `set() <= anything` passes here too — the inlining would read as complete because there was
     # nothing to inline. The loop protects the four it walks by *direction*: a foreign set on the left
     # of a `<=` fails when it empties, which is why only this one needed a count.
-    recovery = {f.name for f in dataclasses.fields(RsidRecovery)}
+    recovery = {f.name for f in dataclasses.fields(RsidRecovery) if not f.name.startswith("_")}
     assert len(recovery) >= 6, (
         f"RsidRecovery reports only {len(recovery)} fields — read that as the dataclass moving, not "
         f"as the inlining being complete"
