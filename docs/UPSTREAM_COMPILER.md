@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
+**`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
 registry 0.29.1). **`v0.8.3`** read (2026-11-10: tagged `725eb2b`, the commit read at the cut on 2026-11-09, all three packages at 0.8.3 on PyPI; RM425 to RM427 are past it). **`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
 backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
