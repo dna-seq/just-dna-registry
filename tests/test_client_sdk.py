@@ -88,20 +88,29 @@ async def test_stars(sdk, seed) -> None:
     assert unstarred["stars"] == 0
 
 
-async def test_reviews_highlight_and_curated_stat(sdk, seed) -> None:
+async def test_reviews_highlight_and_curated_stat(sdk, seed, app, repo) -> None:
     _seed_module(seed)
-    posted = await asyncio.to_thread(
-        lambda: sdk.review(_NS, _NAME, _VER, rating=5, verdict="verified")
+    # Curation comes from outside the namespace (0.32, S33): the review is an outsider's, the highlight the owner's.
+    account_id = repo.create_account("outsider")
+    repo.add_api_key("mk_live_outsider", account_id)
+    outsider = RegistryClient(
+        "http://testserver", token="mk_live_outsider", transport=sdk_transport(TestClient(app)), check_version=False
     )
-    assert posted[0]["rating"] == 5 and posted[0]["highlighted"] is False
-    highlighted = await asyncio.to_thread(
-        lambda: sdk.highlight_review(_NS, _NAME, _VER, "antonkulaga")
-    )
-    assert highlighted[0]["highlighted"] is True
-    # The highlight is what the `curated` group/stat keys on.
-    curated = await asyncio.to_thread(lambda: sdk.catalog_stats(group="curated"))
-    assert curated["curated"] == 1
-    assert await asyncio.to_thread(lambda: sdk.delete_review(_NS, _NAME, _VER)) == []
+    try:
+        posted = await asyncio.to_thread(
+            lambda: outsider.review(_NS, _NAME, _VER, rating=5, verdict="verified")
+        )
+        assert posted[0]["rating"] == 5 and posted[0]["highlighted"] is False
+        highlighted = await asyncio.to_thread(
+            lambda: sdk.highlight_review(_NS, _NAME, _VER, "outsider")
+        )
+        assert highlighted[0]["highlighted"] is True
+        # The highlight is what the `curated` group/stat keys on.
+        curated = await asyncio.to_thread(lambda: sdk.catalog_stats(group="curated"))
+        assert curated["curated"] == 1
+        assert await asyncio.to_thread(lambda: outsider.delete_review(_NS, _NAME, _VER)) == []
+    finally:
+        outsider.close()
 
 
 async def test_yank_unyank(sdk, seed) -> None:
