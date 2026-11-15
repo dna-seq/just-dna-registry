@@ -1129,7 +1129,7 @@ converges).
   their own module is the same question at lower stakes. Sizing: **minor** either way (a new refusal, or a
   field's meaning narrowed to what its docs already say). Severity: medium; it is the catalog's trust signal.
 
-- **A highlighted critique still reads `curated`** (proposed by just-module-creator, 2026-11-15, as a
+- **A highlighted critique still reads `curated`** (**built on branch `0.32`, 52ebf93**; proposed by just-module-creator, 2026-11-15, as a
   corroboration on S33, answered beside it in the history file; **decided by the pm 2026-11-15: the second
   candidate, in 0.32 beside S33**. `curated`, `?group=curated` and `catalog_stats` count a highlight only when
   its review is an outsider's **and** its verdict is `verified`; a review with no verdict (a rating alone) does
