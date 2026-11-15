@@ -341,7 +341,7 @@ def _card(repo: Repository, row: sqlite3.Row, starred_by: int | None = None) -> 
         featured=_featured(repo, row),
         review_count=reviews["review_count"],
         avg_rating=reviews["avg_rating"],
-        curated=reviews["highlighted_count"] > 0,
+        curated=reviews["curated_count"] > 0,
         author_funding_url=funding["author_funding_url"],
         org_funding_url=funding["org_funding_url"],
         resolution=_resolution_from_manifest(manifest),
@@ -518,7 +518,7 @@ def catalog_stats(
         agg["stars"] += row["stars"]
         agg["views"] += row["views"]
         agg["reviews"] += reviews["review_count"]
-        agg["curated"] += 1 if reviews["highlighted_count"] > 0 else 0
+        agg["curated"] += 1 if reviews["curated_count"] > 0 else 0
         if manifest is not None and manifest.stats is not None:
             agg["variants"] += manifest.stats.variant_count
             agg["studies"] += manifest.stats.study_count

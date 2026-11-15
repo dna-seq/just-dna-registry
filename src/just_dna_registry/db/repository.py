@@ -65,6 +65,21 @@ _NOT_A_NAMESPACE_ALIAS = "NOT EXISTS (SELECT 1 FROM namespace_aliases WHERE name
 _NOT_AN_ALIAS = "NOT EXISTS (SELECT 1 FROM account_aliases WHERE name = ?)"
 
 
+#: SQL over a `reviews r` row and its `modules m`: the reviewer holds no role on the module's namespace
+#: (0.32, S33). The same reach `api.deps.effective_role` grants, read at query time: a per-namespace grant,
+#: the owning account itself, membership of an owning **org** (the cascade), or site admin (owner on every
+#: claimed namespace). The 0.8.0 rule, "curation must come from outside", enforced where `curated` is
+#: counted; a test holds it equal to `effective_role` over every reviewer and namespace.
+OUTSIDE_REVIEWER = (
+    "NOT EXISTS (SELECT 1 FROM namespace_members nm WHERE nm.namespace = m.namespace AND nm.account_id = r.account_id) "
+    "AND NOT EXISTS (SELECT 1 FROM namespaces ns WHERE ns.name = m.namespace AND ("
+    "ns.account_id = r.account_id "
+    "OR EXISTS (SELECT 1 FROM accounts o JOIN org_members om ON om.org_id = o.id "
+    "WHERE o.id = ns.account_id AND o.type = 'org' AND om.account_id = r.account_id) "
+    "OR EXISTS (SELECT 1 FROM accounts a WHERE a.id = r.account_id AND a.site_admin = 1)))"
+)
+
+
 class Repository:
     """Thin repository around a SQLite connection."""
 
@@ -1401,11 +1416,12 @@ class Repository:
         ).fetchall()
 
     def review_summary(self, module_id: int) -> dict[str, Any]:
-        """Module-level aggregate for the card: review count, average rating, and how many reviews
-        the owner has highlighted (`curated` when > 0)."""
+        """Module-level aggregate for the card: review count, average rating, how many reviews the owner
+        has highlighted, and how many of those come from outside the namespace (`curated` when > 0, 0.32)."""
         row = self.conn.execute(
-            "SELECT COUNT(*) AS n, AVG(rating) AS avg_rating, "
-            "SUM(highlighted) AS highlighted FROM reviews WHERE module_id = ?",
+            "SELECT COUNT(*) AS n, AVG(r.rating) AS avg_rating, SUM(r.highlighted) AS highlighted, "
+            f"SUM(CASE WHEN r.highlighted = 1 AND {OUTSIDE_REVIEWER} THEN 1 ELSE 0 END) AS outside "
+            "FROM reviews r JOIN modules m ON m.id = r.module_id WHERE r.module_id = ?",
             (module_id,),
         ).fetchone()
         count = int(row["n"])
@@ -1413,6 +1429,7 @@ class Repository:
             "review_count": count,
             "avg_rating": round(float(row["avg_rating"]), 2) if count else None,
             "highlighted_count": int(row["highlighted"] or 0),
+            "curated_count": int(row["outside"] or 0),
         }
 
     # ── Search / list ─────────────────────────────────────────────────────────
@@ -1473,8 +1490,9 @@ class Repository:
             where.append(f"m.namespace NOT IN ({','.join('?' * len(exclude_namespaces))})")
             params.extend(exclude_namespaces)
         if curated_only:
-            # Curated = at least one owner-highlighted review (the `curated` listing group).
-            where.append("m.id IN (SELECT module_id FROM reviews WHERE highlighted = 1)")
+            # Curated = at least one owner-highlighted review from outside the namespace (0.32, S33).
+            where.append(f"EXISTS (SELECT 1 FROM reviews r WHERE r.module_id = m.id AND r.highlighted = 1 "
+                         f"AND {OUTSIDE_REVIEWER})")
         if featured:
             where.append("COALESCE(n.featured, 0) = 1")
         if q:

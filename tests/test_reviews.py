@@ -134,3 +134,31 @@ def test_review_requires_existing_version(client: TestClient, api_key: str, app)
         json={"rating": 3}, headers=_auth(bob),
     )
     assert resp.status_code == 404
+
+
+def test_a_highlighted_review_from_inside_the_namespace_never_curates(client: TestClient, api_key: str, app) -> None:
+    """The 0.8.0 rule, "curation must come from outside" (0.32, S33): the owner's own review and a member's,
+    highlighted, are kept and readable, and `curated`, the group and `/stats` ignore them. An outside one counts."""
+    repo = app.state.repo
+    _publish(client, api_key)
+    member = _reviewer_key(repo, "member33")
+    repo.add_member("just-dna-seq", int(repo.account_by_name("member33")["id"]), "member")
+    outsider = _reviewer_key(repo, "outsider33")
+    owner_name = client.get("/api/v1/auth/whoami", headers=_auth(api_key)).json()["account"]
+    for key in (api_key, member):
+        assert client.put(f"{_V}/reviews", json={"rating": 5, "verdict": "verified"}, headers=_auth(key)).status_code < 300
+    for name in (owner_name, "member33"):
+        assert client.put(f"{_V}/reviews/{name}/highlight", headers=_auth(api_key)).status_code == 200
+
+    reviews = client.get(f"{_V}/reviews").json()
+    assert {r["highlighted"] for r in reviews} == {True} and len(reviews) == 2
+    card = client.get("/api/v1/modules").json()["items"][0]
+    assert (card["review_count"], card["curated"]) == (2, False)
+    assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 0
+    assert client.get("/api/v1/stats").json()["curated"] == 0
+
+    client.put(f"{_V}/reviews", json={"rating": 4}, headers=_auth(outsider))
+    client.put(f"{_V}/reviews/outsider33/highlight", headers=_auth(api_key))
+    assert client.get("/api/v1/modules").json()["items"][0]["curated"] is True
+    assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 1
+    assert client.get("/api/v1/stats").json()["curated"] == 1

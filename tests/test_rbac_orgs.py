@@ -224,3 +224,40 @@ def test_whoami_lists_every_namespace_the_caller_reaches_and_its_orgs(
     from just_dna_registry.api.routers.auth import _reach
 
     assert _reach(repo, dev_id) == {"member_of": me["member_of"], "orgs": me["orgs"]}
+
+
+def test_the_outside_reviewer_rule_is_effective_role_none(client: TestClient, repo: Repository) -> None:
+    """`curated` counts a highlighted review only from outside the namespace (0.32, S33). The SQL predicate
+    is held equal to `effective_role() is None` for every account over every namespace: an explicit grant,
+    the owning account, an org's cascade and site admin all make a reviewer inside."""
+    from just_dna_registry.api.deps import _account, effective_role
+    from just_dna_registry.db.repository import OUTSIDE_REVIEWER
+
+    dev, boss = _key(repo, "dev33"), _key(repo, "boss33")
+    _key(repo, "stranger33")
+    _key(repo, "admin33")
+    repo.set_site_admin(int(repo.account_by_name("admin33")["id"]), True)
+    for owner, ns in ((dev, "dev33-own"), (boss, "boss33-lab")):
+        assert client.post("/api/v1/namespaces", json={"namespace": ns}, headers=_auth(owner)).status_code == 201
+    repo.add_member("boss33-lab", int(repo.account_by_name("dev33")["id"]), "member")
+    assert client.post("/api/v1/orgs", json={"name": "acme33"}, headers=_auth(boss)).status_code == 201
+    assert client.post("/api/v1/orgs/acme33/members", json={"account": "dev33", "role": "member"},
+                       headers=_auth(boss)).status_code == 201
+    assert client.post("/api/v1/orgs/acme33/namespaces", json={"namespace": "acme33-tools"},
+                       headers=_auth(boss)).status_code == 201
+
+    namespaces = [r["name"] for r in repo.conn.execute("SELECT name FROM namespaces").fetchall()]
+    accounts = [r["id"] for r in repo.conn.execute("SELECT id FROM accounts WHERE type = 'user'").fetchall()]
+    assert len(namespaces) >= 3 and len(accounts) >= 4
+    outside_seen = inside_seen = 0
+    for account_id in accounts:
+        caller = _account(repo, int(account_id))
+        for ns in namespaces:
+            outside = bool(repo.conn.execute(
+                f"SELECT {OUTSIDE_REVIEWER} FROM (SELECT ? AS account_id) r, (SELECT ? AS namespace) m",
+                (account_id, ns),
+            ).fetchone()[0])
+            assert outside == (effective_role(repo, caller, ns) is None), (caller.name, ns)
+            outside_seen += outside
+            inside_seen += not outside
+    assert outside_seen and inside_seen, "both sides of the rule must occur, or the equality says nothing"
