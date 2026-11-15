@@ -8,6 +8,8 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-11-15
+
 ### A lane lookup says the lane's terms (S29)
 
 `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}` carry `terms` and `unpublished` beside the rows,
@@ -77,6 +79,14 @@ provisioning closure, parents first, less what this box already holds) and `prov
 size; `null` when any states none). A derived lane that stores under a megabyte can cost a ClinVar
 download, and now says so. `registry-client caches` and the console print it (the liaison's C15).
 
+### Upstream 0.8.7 (enricher only)
+
+The enricher floors at 0.8.7; format and compiler stay at 0.8.6. Text only, no release record: the two
+AlphaGenome licence rows say what the saved terms say (RM442), which the lane routes' `terms` now serve, and
+`recover_rsid` words its answer no wider than it matched (RM444), which nothing here calls. A module whose
+AlphaGenome rows were enriched before keeps the old wording in its `sources.csv` until it is re-enriched; no
+licence axis or gate reads it, and nothing needs re-running on upgrade.
+
 ### Fixed
 
 - The online-check ceiling (`REGISTRY_ENRICH_MAX_VARIANTS`) counts what the enricher will ask: upstream's
@@ -87,6 +97,9 @@ download, and now says so. `registry-client caches` and the console print it (th
   back to the row sum, `studies.csv` included (the liaison's C13).
 - A `REGISTRY_HELD_DIR` set outside the data directory is named `<held>` in what `GET /admin/runs…`
   serves, as every other root this service writes to is, rather than falling to the generic `<path>`.
+
+**Client surface:** new methods only: `upgrade_status`. `gene_claims` now quotes the symbol into the path; its
+signature is unchanged. Responses gain fields; none a client already reads moves.
 
 ## [0.31.1] — 2026-11-13
 
