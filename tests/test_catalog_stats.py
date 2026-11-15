@@ -20,7 +20,7 @@ def catalog(repo: Repository, seed: Callable) -> Repository:
         seed(ns, name, "1.0.0", genes=genes, categories=["x"], created_at="2026-01-01T00:00:00Z")
     reviewer = repo.create_account("reviewer")
     alpha = int(repo.get_module_row("ns-one", "alpha")["id"])
-    repo.upsert_review(alpha, "1.0.0", reviewer, rating=5, verdict=None, notes=None, now="2026-01-02")
+    repo.upsert_review(alpha, "1.0.0", reviewer, rating=5, verdict="verified", notes=None, now="2026-01-02")
     repo.set_review_highlight(alpha, "1.0.0", reviewer, True)
     repo.conn.execute("UPDATE modules SET downloads = 7, stars = 2, views = 11 WHERE name = 'gamma'")
     repo.conn.commit()

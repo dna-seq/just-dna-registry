@@ -157,8 +157,37 @@ def test_a_highlighted_review_from_inside_the_namespace_never_curates(client: Te
     assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 0
     assert client.get("/api/v1/stats").json()["curated"] == 0
 
-    client.put(f"{_V}/reviews", json={"rating": 4}, headers=_auth(outsider))
+    client.put(f"{_V}/reviews", json={"rating": 4, "verdict": "verified"}, headers=_auth(outsider))
     client.put(f"{_V}/reviews/outsider33/highlight", headers=_auth(api_key))
     assert client.get("/api/v1/modules").json()["items"][0]["curated"] is True
     assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 1
     assert client.get("/api/v1/stats").json()["curated"] == 1
+
+
+def test_only_a_verified_outside_review_curates(client: TestClient, api_key: str, app) -> None:
+    """0.32: an owner-highlighted outside review curates only with verdict `verified`. A `concerns` or `rejected`
+    one is a pinned critique and a rating alone asserts nothing was checked; both stay listed and highlighted."""
+    repo = app.state.repo
+    _publish(client, api_key)
+
+    def counts() -> tuple[bool, int, int]:
+        return (
+            client.get("/api/v1/modules").json()["items"][0]["curated"],
+            client.get("/api/v1/modules", params={"group": "curated"}).json()["total"],
+            client.get("/api/v1/stats").json()["curated"],
+        )
+
+    for name, body in (("critic", {"rating": 1, "verdict": "rejected"}), ("worried", {"rating": 3, "verdict": "concerns"}),
+                       ("rater", {"rating": 5})):
+        key = _reviewer_key(repo, name)
+        assert client.put(f"{_V}/reviews", json=body, headers=_auth(key)).status_code < 300
+        assert client.put(f"{_V}/reviews/{name}/highlight", headers=_auth(api_key)).status_code == 200
+    reviews = client.get(f"{_V}/reviews").json()
+    assert {r["reviewer"] for r in reviews if r["highlighted"]} == {"critic", "worried", "rater"}
+    assert counts() == (False, 0, 0)
+
+    checker = _reviewer_key(repo, "checker")
+    client.put(f"{_V}/reviews", json={"rating": 4, "verdict": "verified"}, headers=_auth(checker))
+    assert counts() == (False, 0, 0), "a verified review the owner has not highlighted curates nothing"
+    client.put(f"{_V}/reviews/checker/highlight", headers=_auth(api_key))
+    assert counts() == (True, 1, 1)

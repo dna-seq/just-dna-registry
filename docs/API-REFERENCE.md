@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside reviewers; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -851,7 +851,7 @@ There is no `verification` filter and there will not be one — see *ModuleDetai
 
 **`group`** is a server-defined tab preset over the raw filters (a group wins over the equivalent
 `sort`/`featured`): `all` (everything), `featured` (`featured=true`), `curated` (has an
-owner-highlighted review from outside the namespace — see reviews), `popular` (`sort=popular`), `new` (`sort=recent`), `test`. **Test/sandbox namespaces** — those matching the server-config
+owner-highlighted `verified` review from outside the namespace — see reviews), `popular` (`sort=popular`), `new` (`sort=recent`), `test`. **Test/sandbox namespaces** — those matching the server-config
 `REGISTRY_TEST_NAMESPACE_PATTERN` (default `^(sandbox|test)([-_]|$)`) — are surfaced **only** under
 `group=test` and hidden from every other tab and the default listing; they stay reachable by an
 explicit `namespace=`. Membership is server-owned so all clients agree. Discover the tabs at
@@ -898,7 +898,7 @@ The listing tabs (groups) the catalog defines, for a UI to render. Anonymous. `2
 [
   {"key": "all", "label": "All", "description": "Everything published (test/sandbox spaces excluded)."},
   {"key": "featured", "label": "Featured", "description": "Namespaces curated by the operators."},
-  {"key": "curated", "label": "Curated", "description": "Has an owner-highlighted review/audit from outside its namespace."},
+  {"key": "curated", "label": "Curated", "description": "Has an owner-highlighted review with verdict verified from outside its namespace."},
   {"key": "popular", "label": "Popular", "description": "Most viewed, downloaded, and starred."},
   {"key": "new", "label": "New", "description": "Most recently updated."},
   {"key": "test", "label": "Test", "description": "Sandbox / test namespaces (hidden from other tabs)."}
@@ -1176,7 +1176,7 @@ leaves the owner's highlight intact). Returns the version's current review list.
 
 ### 29. `PUT` / `DELETE .../versions/{v}/reviews/{reviewer}/highlight`  *(bearer — owner)*
 The namespace **owner** highlights (or un-highlights) a reviewer's review — SO accepted-answer style;
-any number may be highlighted. A highlighted review **from outside the namespace** is what
+any number may be highlighted. A highlighted review **from outside the namespace with verdict `verified`** is what
 `?group=curated`, the card's `curated` flag and `GET /stats`' `curated` key on (0.32, S33): "curation must
 come from outside" was the 0.8.0 rule, and through 0.31 nothing enforced it. Outside means the reviewer
 holds no role on the namespace as `effective_role` reads it at that moment (a per-namespace grant, the

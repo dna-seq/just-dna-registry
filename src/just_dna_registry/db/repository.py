@@ -79,6 +79,13 @@ OUTSIDE_REVIEWER = (
     "OR EXISTS (SELECT 1 FROM accounts a WHERE a.id = r.account_id AND a.site_admin = 1)))"
 )
 
+#: SQL over a `reviews r` row and its `modules m`: a review that makes its module curated (0.32). The owner
+#: highlighted it, its verdict is `verified`, and its reviewer is outside the namespace (`OUTSIDE_REVIEWER`).
+#: A highlighted `concerns` or `rejected` review is the owner pinning a critique, and a rating with no verdict
+#: asserts nothing was checked, so neither curates; both stay in the review list. The one definition the card,
+#: `?group=curated` and `catalog_stats` all read.
+CURATING_REVIEW = f"r.highlighted = 1 AND r.verdict = 'verified' AND {OUTSIDE_REVIEWER}"
+
 
 class Repository:
     """Thin repository around a SQLite connection."""
@@ -1417,10 +1424,10 @@ class Repository:
 
     def review_summary(self, module_id: int) -> dict[str, Any]:
         """Module-level aggregate for the card: review count, average rating, how many reviews the owner
-        has highlighted, and how many of those come from outside the namespace (`curated` when > 0, 0.32)."""
+        has highlighted, and how many of those curate (`CURATING_REVIEW`; `curated` when > 0, 0.32)."""
         row = self.conn.execute(
             "SELECT COUNT(*) AS n, AVG(r.rating) AS avg_rating, SUM(r.highlighted) AS highlighted, "
-            f"SUM(CASE WHEN r.highlighted = 1 AND {OUTSIDE_REVIEWER} THEN 1 ELSE 0 END) AS outside "
+            f"SUM(CASE WHEN {CURATING_REVIEW} THEN 1 ELSE 0 END) AS outside "
             "FROM reviews r JOIN modules m ON m.id = r.module_id WHERE r.module_id = ?",
             (module_id,),
         ).fetchone()
@@ -1490,9 +1497,8 @@ class Repository:
             where.append(f"m.namespace NOT IN ({','.join('?' * len(exclude_namespaces))})")
             params.extend(exclude_namespaces)
         if curated_only:
-            # Curated = at least one owner-highlighted review from outside the namespace (0.32, S33).
-            where.append(f"EXISTS (SELECT 1 FROM reviews r WHERE r.module_id = m.id AND r.highlighted = 1 "
-                         f"AND {OUTSIDE_REVIEWER})")
+            # Curated = at least one curating review (`CURATING_REVIEW`, 0.32).
+            where.append(f"EXISTS (SELECT 1 FROM reviews r WHERE r.module_id = m.id AND {CURATING_REVIEW})")
         if featured:
             where.append("COALESCE(n.featured, 0) = 1")
         if q:
