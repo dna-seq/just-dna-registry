@@ -11,7 +11,7 @@ read each fact it states where it lives (the polygon or production catalog over 
 repo). Still true as written: an `**Update:**` line. A fact or an option moved: file it again on today's facts (ask-desk) and withdraw the old one as `moot: superseded by #N` (desk rule B22, kit v0.1.209); an Update that brings new options leaves the card showing the old ones, which is what #218 did. #218 sat a week saying "12 held" while 8 had been published on
 11-07, three hours before my own update telling the person to publish nothing: that update was written from the
 replay's result, never from the catalog. **Read the live state before posting any desk update.**
-Open after the 2026-11-14 check: #318 (the 4 polygon modules still held; refiled from #218, withdrawn as superseded), #321 (the 0.32 cut; refiled 2026-11-15 from #298, scope grown); #201 withdrawn; #216, #263 withdrawn; #294 withdrawn (0.31.1 on PyPI 16:53Z, tagged v0.31.1).
+Open after the 2026-11-14 check: #318 (the 4 polygon modules still held; refiled from #218, withdrawn as superseded), #331 (publish 0.32.0; #321 answered 1, "minor of registry is a lead decision, only major needs my yes"); #330 (faster online upgrade for prod's 3 ClinVar panels; default: measure and report after 0.32.0); #318 withdrawn (instructions in chat); #201 withdrawn; #216, #263 withdrawn; #294 withdrawn (0.31.1 on PyPI 16:53Z, tagged v0.31.1).
 
 Seated 2026-11-04 (first seating). The seat-builder's first work, as it stands:
 
@@ -221,3 +221,16 @@ with a `**State:**` line; our ROADMAP is bullets under version headings, so `pla
 notes' plan list. Adding the watcher also edits `.blueprints.toml`, which auto mode refused once (desk #201).
 
 Standing from memory: the registry tokens leaked 2026-10-08 still need rotating (the person's act).
+
+**0.32.0 built** (2026-11-15, merged to main at e2e172b, pushed; dists in `dist/`). Contents: 0.32 (S29-S33, upgrade
+status) plus C13/C15 folded in (one deploy), enricher 0.8.7 adopted on the person's word (5576bf0; text only), the pm's
+verified-only `curated` (52ebf93), and `current` with no sweep verdict documented as nothing-found-yet (5f4211a). Final
+full suite 936 passed. Pre-release run before those: one guard failed on 0.8.7's private `RsidRecovery._overlapping`,
+fixed in 7198f1f. DM'd the publish command and deploy steps; desk #331. Tag `v0.32.0` on e2e172b after PyPI. Worktrees
+`.wt/0.32` and `.wt/upstream-public` unlocked; branches `0.32` and `0.32-upstream-public` go with `git branch -d` once
+their worktrees are removed. **Minor releases are the lead's call from 2026-11-15** (desk #321); only a major asks.
+**Upgrade backlog, measured 2026-11-15 from the public catalog** (scratchpad census-*.jsonl): prod 5 (blood_groups,
+pharmgkb, cardio, cancer, pathogenic; all compiler 0.7.0, tables written by 0.7.0, `no_source_release`), the other 19
+written by 0.8.4 with no reason; polygon 4 (the held ones), 44 others none. Enricher 0.8.7 adds nothing (same counts
+at 0.8.6). Latent: `rederive_converged` compares at full-version grain, so an enricher patch reopens any module with a
+residual reason; zero today, a 0.32.1 candidate.
