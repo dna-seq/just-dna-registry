@@ -8,6 +8,15 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased]
 
+### A lane lookup matches positions as pairs
+
+`POST /lanes/{lane}/{table}` with `chrom` and `start` lists of equal length matches `chrom[i]` with `start[i]`.
+It answered `chrom IN (...) AND start IN (...)`, so 13 positions returned 22 rows (the compiler pm's probe of the
+polygon, 2026-11-16). A pair is one cell of that product, so a request can only lose rows it never asked for;
+lists of unequal length keep the any-of-each meaning. The reference now also says that on a box holding the lane
+a key with no position scans the whole table (an Ensembl lookup by `id`, its rsID column, took 21.5 s), and that
+only a remote read refuses it.
+
 ## [0.32.0] — 2026-11-15
 
 ### A lane lookup says the lane's terms (S29)

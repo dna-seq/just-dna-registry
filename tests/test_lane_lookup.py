@@ -82,6 +82,18 @@ def test_a_lane_the_box_does_not_hold_is_read_from_its_repo_by_position(tmp_path
     assert found.rows == [{"chrom": "chr22", "pos": 2, "ref": "C"}]
 
 
+def test_positions_match_as_pairs_never_as_a_cross_product(tmp_path, monkeypatch) -> None:
+    """0.32.1: `chrom[i]` goes with `start[i]`. Asked for chr21:1 and chr22:3, the cross product also returned
+    chr21:3 and chr22:1, rows nobody asked for. Unequal lengths keep the any-of-each meaning (v1 unchanged)."""
+    _fake_remote(tmp_path, monkeypatch, size=10)
+    paired = lanes.lookup("alphagenome_avi", "avi", {"chrom": ["21", "chr22"], "start": [1, 3]}, Settings())
+    assert {(r["chrom"], r["pos"]) for r in paired.rows} == {("chr21", 1), ("chr22", 3)}
+    one_chrom = lanes.lookup("alphagenome_avi", "avi", {"chrom": ["22"], "start": [1, 3]}, Settings())
+    assert {(r["chrom"], r["pos"]) for r in one_chrom.rows} == {("chr22", 1), ("chr22", 3)}
+    crossed = lanes.lookup("alphagenome_avi", "avi", {"chrom": ["21", "22"], "start": [1, 2, 3]}, Settings())
+    assert len(crossed.rows) == 6
+
+
 def test_a_big_remote_table_needs_a_position_key(tmp_path, monkeypatch) -> None:
     _fake_remote(tmp_path, monkeypatch, size=3_000_000_000)
     with pytest.raises(lanes.LaneLookupError) as refused:
