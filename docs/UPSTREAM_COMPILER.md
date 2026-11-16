@@ -530,6 +530,12 @@ lock (1.44.2, 1.5.5, 2.3.3).
   local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
   3.4 h without, same table. Asks a seqrepo URI or proxy through `enrich()`, ideally a GRCh38 lane. Filed as
   the online half of their **RM385** (a local reference for offline runs, in 0.10's scope). Not urgent.
+  **Answered 2026-11-16** (their `c0671870`, 640872037): online is **RM404 in 0.9**, decided:
+  `enrich(..., sequences: SequenceProxy | None = None)` replaces the per-run proxy, and the minter, `verify_ref`
+  and left-alignment read through it, so a proxy built with `uri="seqrepo+file:///…"` serves a re-derivation.
+  Our environment must then carry `biocommons.seqrepo`, which the enricher does not install. `offline` still
+  outranks an injected proxy, so offline and the GRCh38 lane stay RM385 (0.10). A minor; nothing in 0.8.x.
+  Lead told.
 
 - **S156** (filed 2026-11-16 at the lead's request): `services/upgrade.rederive_converged` compares a table's
   `producer` with the *installed* enricher because nothing installed says which release last changed a derivation
