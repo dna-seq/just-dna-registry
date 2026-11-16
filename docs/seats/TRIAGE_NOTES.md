@@ -47,6 +47,10 @@ reports; this file holds the seat's own decisions and the items it owns.
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
 - **Desk #313, the exposed registry keys** (supersedes #225, refiled 2026-11-14 for the secretary's nightly
   sweep): `blocked: desk #313`, default no change. Withdraw it `moot:` once the person has rotated them.
+- **S34 follow-up reply: once 0.33.0 is on PyPI.** The pm placed S34 in 0.33 (044df54), the candidate whole:
+  `release`/`release_unreadable` on both lane replies as /caches reads them, and a remote read pinned to the head
+  commit once per request (`revision`). The lead's to build. Then: a second `**Status —**` on S34 in the history
+  file from the 0.33.0 changelog, its contents line, and the just-dna-compiler liaison told.
 - **S29–S33 follow-up replies** — done 2026-11-16: 0.32.0 reached PyPI; a second `**Status —**` on each and on
   the S33 corroboration, contents lines updated, the consumer told. Neither box served 0.32.0 then (polygon 0.30.0,
   production 0.31.0); S30's re-run on the polygon waits for its upgrade, the consumer's to do.
