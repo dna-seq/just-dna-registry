@@ -523,6 +523,9 @@ lock (1.44.2, 1.5.5, 2.3.3).
   record per enricher patch needs a format release each time or records moved into the enricher; a per-table constant
   in the enricher is readable from the package that moved. Which side holds it is decided in the design. Our
   over-derive default stays until it ships. Lead told.
+  **Corrected the same day** (640579065): their pm sized it inside RM441 with the answer held **in the enricher**, a
+  per-table value beside `CACHE_LANES`; RM441 and RM399 are now *proposed for 0.10*, not 0.9, placement theirs (their
+  desk #326). Lead told.
 
 - **S154** (filed 2026-11-14 at the lead's request, roadmap C5): `caches.lane_status()` resolves every lane from its
   env var or default directory, and we pass configured paths to each resolver and never export them (two apps per
