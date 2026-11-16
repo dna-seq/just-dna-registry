@@ -525,6 +525,12 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
+  its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
+  local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
+  3.4 h without, same table. Asks a seqrepo URI or proxy through `enrich()`, ideally a GRCh38 lane. Filed as
+  the online half of their **RM385** (a local reference for offline runs, in 0.10's scope). Not urgent.
+
 - **S156** (filed 2026-11-16 at the lead's request): `services/upgrade.rederive_converged` compares a table's
   `producer` with the *installed* enricher because nothing installed says which release last changed a derivation
   (no derived-table axis, RM441; no record at all for an enricher-only patch, 0.8.1 and 0.8.7). So every enricher
