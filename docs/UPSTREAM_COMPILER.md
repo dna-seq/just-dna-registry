@@ -511,6 +511,14 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S156** (filed 2026-11-16 at the lead's request): `services/upgrade.rederive_converged` compares a table's
+  `producer` with the *installed* enricher because nothing installed says which release last changed a derivation
+  (no derived-table axis, RM441; no record at all for an enricher-only patch, 0.8.1 and 0.8.7). So every enricher
+  patch re-derives every module whose table carries a reason (hours online per ClinVar panel; zero such modules on
+  2026-11-15). Asks RM441's design to answer it too: a record for every release (an enricher-only "no derived table
+  moved"), or a per-table "newest version whose derivation could differ" readable offline. Our side, once it ships:
+  compare `producer` to that.
+
 - **S154** (filed 2026-11-14 at the lead's request, roadmap C5): `caches.lane_status()` resolves every lane from its
   env var or default directory, and we pass configured paths to each resolver and never export them (two apps per
   process in the suite), so composing it would report on the wrong directory for any configured lane. Asks
