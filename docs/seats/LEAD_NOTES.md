@@ -242,3 +242,9 @@ told the pm local scans would be bounded and corrected it (id is Ensembl's rsID 
 asked the liaison to file upstream for a derivation stamp (no workaround here): filed as S156, taken into upstream RM441, now proposed for 0.10 (a per-table value beside CACHE_LANES in the enricher); compare-to-installed stays until then. Polygon ClinPGx copy is stale (pre-RM420
 pull, RM445): after the 0.32.0 deploy, `registry --mode test drop-caches clinpgx` then `warm-caches`, not warm-caches
 alone. Cut 0.32.1 after 0.32.0 is on PyPI (full suite first).
+
+**RM445 (2026-11-16, upstream main, uncut enricher patch)**: a pull before RM420 (pull-record.json with no
+`release_sha256`) can serve old parquets under the hub's new release label. This machine: ensembl, clinvar, civic,
+mitomap are pre-RM420. DM'd the person a one-line check (lane_presence + pull-record.json) to run on both boxes
+before any drop/warm/upgrade, and to hold the upgrades where ensembl/clinvar read pre-RM420 (fix: drop-caches + warm,
+or wait for RM445 in 0.32.1, after which warm-caches repairs). Adopt RM445's enricher patch in 0.32.1 when cut.
