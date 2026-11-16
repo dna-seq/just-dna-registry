@@ -540,6 +540,8 @@ lock (1.44.2, 1.5.5, 2.3.3).
   **Corrected the same day** (640579065): their pm sized it inside RM441 with the answer held **in the enricher**, a
   per-table value beside `CACHE_LANES`; RM441 and RM399 are now *proposed for 0.10*, not 0.9, placement theirs (their
   desk #326). Lead told.
+  **Placed** 2026-11-16 (640865880, their pm `8076cf54`): RM441 with RM399 in **0.10**, after the enricher-only 0.9;
+  desk #326 applied on its default, the maintainer may still veto.
 
 - **S154** (filed 2026-11-14 at the lead's request, roadmap C5): `caches.lane_status()` resolves every lane from its
   env var or default directory, and we pass configured paths to each resolver and never export them (two apps per
