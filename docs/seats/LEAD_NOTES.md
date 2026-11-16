@@ -239,6 +239,6 @@ residual reason; zero today, a 0.32.1 candidate.
 lookups match chrom/start as pairs (the compiler pm's probe: 13 positions, 22 rows), unequal lengths unchanged; the
 reference says a held lane scans whole on a position-less key (Ensembl by id, 21.5 s), only remote refuses. I first
 told the pm local scans would be bounded and corrected it (id is Ensembl's rsID column). `rederive_converged` grain:
-asked the liaison to file upstream for a derivation stamp (no workaround here): filed as S156, taken into upstream RM441 for 0.9 (likely a per-table constant in the enricher); compare-to-installed stays until then. Polygon ClinPGx copy is stale (pre-RM420
+asked the liaison to file upstream for a derivation stamp (no workaround here): filed as S156, taken into upstream RM441, now proposed for 0.10 (a per-table value beside CACHE_LANES in the enricher); compare-to-installed stays until then. Polygon ClinPGx copy is stale (pre-RM420
 pull, RM445): after the 0.32.0 deploy, `registry --mode test drop-caches clinpgx` then `warm-caches`, not warm-caches
 alone. Cut 0.32.1 after 0.32.0 is on PyPI (full suite first).
