@@ -7,7 +7,7 @@
 - ✅ 0.31.0: which modules say what about one variant or gene, with a marker where two modules disagree. It moves to upstream 0.8.6, which logs the rsIDs a re-derivation drops.
 - ✅ 0.30.1: on upstream 0.8.5, and the upgrade sweep says which modules need their data re-derived and why (written before format 0.8, against an older Ensembl release, an upstream correction since, or cannot tell).
 - ✅ 0.30.0: the caching proxy, lane by lane and pass by pass; lookups by key from every held lane, whole restricted snapshots never handed out.
-- ⚠ Upstream won't declare corrections like RM438 in its release records before 0.9 (their RM441), so 0.30.1 measures that one directly.
+- ⚠ Upstream won't declare corrections like RM438 in its release records before 0.10 (their RM441, moved from 0.9 on 2026-11-16), so 0.30.1 measures that one directly.
 
 **Next**
 1. Deploy 0.31.1 to both servers (the polygon is two releases behind), with `project-claims --all` where it is not yet run (the maintainer).

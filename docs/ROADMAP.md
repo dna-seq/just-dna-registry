@@ -1045,7 +1045,8 @@ holds: compare versions, never test for a landmark. Four arms:
    axis would join `RECOMPILE_DRIVING_AXES` by default and needs its own re-derive route (ours too), and
    RM438's reach is not stated in today's `requires` grammar, so acting on a declaration would visit every
    module, bounded at one PATCH each. **So the probe is RM438's path until 0.9**, not a stopgap for a
-   patch. Meanwhile a **probe** measures it: re-run the back-fill offline on the
+   patch. (2026-11-16: upstream now proposes RM441, with RM399 and our S156's derivation stamp, for **0.10**, so
+   the probe stays the path until then.) Meanwhile a **probe** measures it: re-run the back-fill offline on the
    installed enricher for the rows RM438 can reach, compare, and report drift. It is bounded the way
    `RebuildVerdict` is: it refuses on the identical enricher, so it converges, and a disagreeing input
    makes it `cannot_say`, never drift. The liaison measured those rows on production: 7, none refuted.
