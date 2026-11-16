@@ -153,6 +153,16 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Their `main` past the 0.8.7 cut**: **RM445** (`1051670b`..`b78c44aa`, 2026-11-16, enricher only, a patch, uncut): a
+  pull no longer places the hub's `release.json` over kept files nothing attests (a pre-RM420 pull did, so old bytes
+  stated the new release); `cache pull`/`cache prepare` re-pull a pre-RM420 record (no `release_sha256`) even at an
+  equal label and compare kept files with the listing (size, LFS sha256 up to 256 MiB), outcome `refreshed`; a pull
+  never fetches beside a local build. New refusal: `ensure_*_snapshot` raises when `release.json` cannot be fetched
+  and the cache is absent or unfinished (Ensembl now asks for one on every pull). Reaches us through `warm-caches` →
+  `prepare_caches` (we read outcomes back, never the route), so it repairs our stale lanes on its own once installed.
+  **Operator step before any `warm-caches`/`drop-caches` on either box**: read each pulled lane's `pull-record.json`;
+  no `release_sha256` key means modules enriched against that lane since its date may carry old answers under the new
+  label (upstream cannot say which). Lead told.
 - **Cut as `v0.8.7`** (`3b65ab7a`, 2026-11-14, enricher only; untagged and not on PyPI when read): carries RM442 and
   RM444 (both read below), text only; no public name, field, warning code, outcome or raise moves; enricher floors stay
   `>=0.8.6`, no third-party floor. Nothing for us to change: it is an optional float, taken by the next weekly bump
