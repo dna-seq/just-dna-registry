@@ -1151,7 +1151,12 @@ converges).
   before the cut, else 0.33.
 
 - **A lane lookup says which release it read** (proposed by S34, the just-dna-compiler liaison for its pm's 0.9
-  client, 2026-11-16; undecided, for the pm). `POST /lanes/{lane}/{table}` and `GET /lanes/{lane}` say
+  client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**. Both lane replies carry
+  `release` and `release_unreadable` read exactly as `/caches` reads them, and a remote read resolves the head
+  commit once per request, reads every file at `@<sha>` and reports it as `revision`, so one answer never straddles
+  a commit. A local reply carries the label and `revision: null` until upstream's pull record keeps the commit (the
+  liaison's to ask for). The docs say the label names a release, never the bytes: RM445's stale copy is why. Nothing
+  is lost by any of it, so it is no fork). `POST /lanes/{lane}/{table}` and `GET /lanes/{lane}` say
   `served_from` (`local` or `remote:<repo>`) and never which release; only `GET /caches` names a local lane's
   `release`. Candidate: `release` and `release_unreadable` on both replies, read exactly as `/caches` reads them
   (upstream's `lane.release_label`), and `revision` (the Hub commit) when `served_from` is `remote:<repo>`; both
