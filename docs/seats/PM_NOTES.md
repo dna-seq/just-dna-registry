@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-13)
+## Now (2026-11-16)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -21,6 +21,13 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **0.31.0 published** (2026-11-13, `v0.31.0` on 0f2d3ab, floors upstream 0.8.6), the variant-level catalog; its
   item under *Next registry version* marked ✅ (it has no heading of its own). S29/S30 (lane terms, closed live
   legs) were not in it: moved to 0.32.
+- **0.31.1 published** (2026-11-14, `v0.31.1`): the lead's patch (re-derivation publishes and reports drift,
+  `--withhold-rederive`/`--accept-drift`), no roadmap heading.
+- **0.32.0 published** (2026-11-16, `v0.32.0` on e2e172b): S29, S30, S31, S32 (all four pieces), S33 and its
+  corroboration (`curated` counts only an outside reviewer's `verified` highlight, decided 2bb903e), the person's
+  `GET /upgrade/status`, C13/C15, enricher 0.8.7. Six items under *Next registry version* marked ✅.
+- **Upstream RM441** (declared corrections, with RM399 and our S156) now proposed for its 0.10; the RM438 probe
+  stays the path until then. Remote lane reads still wait on RM430 (upstream 0.9 zone).
 - **Duty: milestones** (kit v0.1.187, `PM.md` of the kit): the `state` post in `#just-dna-registry>state` is kept
   from `docs/seats/PM_STATE.md` with `watchdog.py keep pm state '#just-dna-registry>state' docs/seats/PM_STATE.md`;
   rewrite it when the standing, a headline result or the next actions change. One post per landed result in

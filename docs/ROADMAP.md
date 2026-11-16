@@ -1065,7 +1065,7 @@ converges).
 
 ## Next registry version (post-0.11)
 
-- **A lane lookup's answer carries its lane's terms** (proposed by S29, just-module-creator, 2026-11-12;
+- ✅ **A lane lookup's answer carries its lane's terms** (**shipped in 0.32.0, published 2026-11-16**; proposed by S29, just-module-creator, 2026-11-12;
   **decided by the pm 2026-11-12: in 0.31**, riding the catalog's minor, or 0.32 if 0.31 is cut first;
   **0.31.0 was cut 2026-11-13 without it, so 0.32**; **built 2026-11-13 on branch `0.32` (5e55a19)**. It
   completes 0.30's requirement 2: a keyed read is allowed, and saying the lane's terms beside it is what
@@ -1076,7 +1076,7 @@ converges).
   upstream's licence fields from `CACHE_LANES`, never a sentence of ours. Sizing: **minor** (a new response
   field, `LaneRows` and the console's types, a client docstring). Severity: low; the consumer can read
   `GET /caches` meanwhile.
-- **An instance says up front which live legs it runs** (proposed by S30, just-module-creator, 2026-11-12;
+- ✅ **An instance says up front which live legs it runs** (**shipped in 0.32.0, published 2026-11-16**; proposed by S30, just-module-creator, 2026-11-12;
   **decided by the pm 2026-11-12: in 0.31**, with the item above, **so 0.32 as well**; **built on branch `0.32` (c353fc9)**. It completes 0.30's requirement 5:
   `GET /caches` already says per lane how it is proxied, and a source the operator closed is part of that
   answer). Since the fix in `dac4ccf`, a caller's `offline=false` reaches every
@@ -1085,7 +1085,7 @@ converges).
   after spending a run. Exposing the two switches on `GET /caches` would let a client tell beforehand.
   Sizing: **minor** (a response field). Severity: low.
 
-- **`whoami` says which namespaces the caller may publish to, and which orgs it is in** (proposed by S31,
+- ✅ **`whoami` says which namespaces the caller may publish to, and which orgs it is in** (**shipped in 0.32.0, published 2026-11-16**; proposed by S31,
   just-module-creator, 2026-11-13; **decided by the pm 2026-11-13: in 0.32**; **built on branch `0.32` (724c103)**, with the two items above: a third
   additive answer to the same consumer, at the same grain, and none of the three moves a field a caller
   already reads. The consumer's shape as proposed, on the caller's own account only, and no new route: the
@@ -1098,7 +1098,7 @@ converges).
   `orgs: [{org, role}]`. Sizing: **minor** (new response fields on `WhoAmI` and the key response, the
   console's types, the client docstring). Severity: low; authorization is right, only the report is short.
 
-- **`/variants?key=` folds the spellings a reader pastes, and says when a key matched nothing** (**built on branch `0.32`, ce1f2fe**, all four pieces; proposed by S32,
+- ✅ **`/variants?key=` folds the spellings a reader pastes, and says when a key matched nothing** (**shipped in 0.32.0, published 2026-11-16**; **built on branch `0.32`, ce1f2fe**, all four pieces; proposed by S32,
   just-module-creator, 2026-11-14; **decided by the pm 2026-11-14: all four pieces in 0.32**, which is built,
   unstamped, and waiting on its cut (desk #298) anyway. The patch pieces ride the minor rather than a 0.31.x of
   their own, since 0.32 carries the same route's first minor after it; if 0.32 is cut before they land, the
@@ -1113,7 +1113,7 @@ converges).
   byte-identical claims); **patch**, `RegistryClient.gene_claims` quotes `symbol` into the path. Severity: low
   to medium; an empty answer is read as "no module says anything", which is false.
 
-- **`curated` counts only reviews from outside the namespace** (proposed by S33, just-module-creator,
+- ✅ **`curated` counts only reviews from outside the namespace** (**shipped in 0.32.0, published 2026-11-16**; proposed by S33, just-module-creator,
   2026-11-14; **decided by the pm 2026-11-14: the second candidate, in 0.32**. Count only reviewers outside the
   namespace toward `curated`, the group and `catalog_stats`; keep accepting the review and the highlight. It
   enforces the person's own 0.8.0 rule rather than making a new one, it corrects self-highlights already stored
@@ -1130,7 +1130,7 @@ converges).
   their own module is the same question at lower stakes. Sizing: **minor** either way (a new refusal, or a
   field's meaning narrowed to what its docs already say). Severity: medium; it is the catalog's trust signal.
 
-- **A highlighted critique still reads `curated`** (**built on branch `0.32`, 52ebf93**; proposed by just-module-creator, 2026-11-15, as a
+- ✅ **A highlighted critique still reads `curated`** (**shipped in 0.32.0, published 2026-11-16**; **built on branch `0.32`, 52ebf93**; proposed by just-module-creator, 2026-11-15, as a
   corroboration on S33, answered beside it in the history file; **decided by the pm 2026-11-15: the second
   candidate, in 0.32 beside S33**. `curated`, `?group=curated` and `catalog_stats` count a highlight only when
   its review is an outsider's **and** its verdict is `verified`; a review with no verdict (a rating alone) does
