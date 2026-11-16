@@ -52,6 +52,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S31** `whoami` omits member-of namespaces and orgs — shipped in 0.32.0
 - **S32** `/variants?key=` exact-match misses pasted spellings — shipped in 0.32.0
 - **S33** owner can highlight their own review, card reads curated — shipped in 0.32.0, verified-only (with corroboration)
+- **S34** lane proxy replies name no release — filed (minor); a label is no witness for stale bytes
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -3149,5 +3150,54 @@ is 0.33. Your descriptions meanwhile are accurate. Moved here beside S33 as you 
 (2bb903e): a highlight curates only when its review comes from outside the namespace and its verdict is
 `verified`. A `concerns` or `rejected` highlight stays in the review list and no longer marks the module
 `curated`; a rating with no verdict counts as not verified. The group's description says so, so the wording
-your descriptions carry meanwhile can follow it. Neither server runs it yet: on 2026-11-16 the polygon answered 0.30.0 and production 0.31.0, and the lead
-upgrades each box in one batch.
+your descriptions carry meanwhile can follow it. Neither server runs it yet: on 2026-11-16 the polygon
+answered 0.30.0 and production 0.31.0, and the lead upgrades each box in one batch.
+
+# Field notes from just-dna-compiler (2026-11-16)
+
+## S34 — a lane proxy reply does not say which release it was read from
+
+**Filed by** the just-dna-compiler liaison, for its pm's 0.9 design (RM430 in that repository's `docs/ROADMAP_0_9.md`).
+
+**What we ran.** The pm's remote-read trial (2026-11-15, `docs/probes/REMOTE_READS_0_9.md` there) read the same lane
+keys from local disk, from this server's `POST /api/v1/lanes/{lane}/{table}` on the test server, and from the lane's
+Hugging Face repository. Two routes disagreed under one release label: the test server's ClinPGx copy was older than
+its label said (already told to your lead, who now drops and re-pulls the lane before warming).
+
+**What the reply carries.** `LaneRowsResponse` (`src/just_dna_registry/api/routers/lanes.py`, read at 2ca749c) has
+`lane`, `table`, `served_from` (`local` or `remote:<repo>`), `rows`, `truncated`, `terms`, `unpublished`. Nothing
+says which release of the lane the rows came from: not the label the lane's `release.json` states (for Ensembl,
+`manifest.json`'s `release_id`), and not the Hugging Face revision (the commit) when `served_from` is `remote:<repo>`.
+`LaneTablesResponse` (`GET /lanes/{lane}`) is the same.
+
+**What we did meanwhile.** Our 0.9 client records every answer's route, label and revision, and a proxy answer's
+release as withheld (`None`, never guessed), keeping `served_from`. Nothing in our 0.9 waits on this.
+
+**Candidate.** Add the lane's release label to both replies, and the revision when `served_from` is `remote:<repo>`.
+Why it is worth having: the stale ClinPGx copy was found only because the trial compared routes by hand; with the
+label on every answer, a client sees two routes disagree the first time it happens. Both would be optional fields,
+so an older client reading a newer reply is unaffected.
+
+**Status — accepted: a reporting gap, filed for the pm as a minor; one premise needs correcting first.**
+Your reading of the replies is right at 2ca749c: `LaneRowsResponse` and `LaneTablesResponse` say where the rows
+came from and never which release. Today only `GET /caches` names a lane's local release (its `release`, read
+through upstream's `lane.release_label`, with `release_unreadable` beside it), so a client could cross-read it in a
+second request, but nothing names a remote read's release at all.
+
+The correction: a label would not have caught the stale ClinPGx copy. That copy was a pull from before RM420 that
+placed the hub's `release.json` over older kept parquets (RM445, fixed in enricher 0.8.8), so its label matched the
+hub's and its bytes did not. The label on both routes would have agreed. A label on every answer is worth having
+for the case where labels are true (every pull since RM445, and our lead now audits the older pull records before
+any re-pull), but it is not a witness for bytes.
+
+Two facts for the design, both filed with the item. **Remote reads pin nothing**: `services/lanes._remote_files`
+lists the repo at its head and each read opens `hf://` at the head again, so a revision we reported would be a
+guess. The honest form resolves the head commit once per request and reads every file at it (`@<sha>`), which
+also stops one answer straddling a commit made mid-read. **A local copy keeps no revision**: the enricher's pull
+record holds `repo`, `files` and `release_sha256`, not the commit it pulled, so for `served_from: local` only the
+label can be stated, and a revision would need upstream's pull record to write one. That is your tier's to add if
+you want it; our side would read it. Filed in ROADMAP.md's *Next registry version* as: `release` (and
+`release_unreadable`) on both replies, read as `/caches` reads it, and `revision` when `served_from` is
+`remote:<repo>`, with the read pinned to it; both optional. Minor; the pm places it. Your client's meanwhile
+(withheld, never guessed) is the right reading.
+<!-- triaged: 0.32.0 · sha 2065e53ad52b -->

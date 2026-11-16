@@ -1150,6 +1150,20 @@ converges).
   Sizing: **minor** either way. Severity: medium, the same trust signal as S33. Rides with S33 in 0.32 if decided
   before the cut, else 0.33.
 
+- **A lane lookup says which release it read** (proposed by S34, the just-dna-compiler liaison for its pm's 0.9
+  client, 2026-11-16; undecided, for the pm). `POST /lanes/{lane}/{table}` and `GET /lanes/{lane}` say
+  `served_from` (`local` or `remote:<repo>`) and never which release; only `GET /caches` names a local lane's
+  `release`. Candidate: `release` and `release_unreadable` on both replies, read exactly as `/caches` reads them
+  (upstream's `lane.release_label`), and `revision` (the Hub commit) when `served_from` is `remote:<repo>`; both
+  optional. Two facts the design needs. Remote reads pin nothing today (`services/lanes._remote_files` lists at the
+  head, each `hf://` read opens the head again), so a reported revision is honest only if the request resolves the
+  head commit once and reads every file at `@<sha>`, which also stops one answer straddling a commit. A local copy
+  keeps no revision (the enricher's pull record holds `repo`, `files`, `release_sha256`), so local replies carry a
+  label only unless upstream's pull record starts writing the commit. And a label is not a witness for bytes: the
+  stale ClinPGx copy that prompted this carried the hub's newer `release.json` over older parquets (RM445), so a
+  label would have agreed on both routes. Sizing: **minor** (new optional fields; the client and `lane-rows`
+  print them). Severity: low; it is provenance, and nothing gates on it.
+
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
