@@ -518,6 +518,11 @@ lock (1.44.2, 1.5.5, 2.3.3).
   2026-11-15). Asks RM441's design to answer it too: a record for every release (an enricher-only "no derived table
   moved"), or a per-table "newest version whose derivation could differ" readable offline. Our side, once it ships:
   compare `producer` to that.
+  **Answered 2026-11-16** (their `0431e934`): taken into **RM441 as a fourth ask**, a minor in 0.9, one design with
+  RM399. Their fact: release records live in `just_dna_format`, which an enricher-only patch does not release, so a
+  record per enricher patch needs a format release each time or records moved into the enricher; a per-table constant
+  in the enricher is readable from the package that moved. Which side holds it is decided in the design. Our
+  over-derive default stays until it ships. Lead told.
 
 - **S154** (filed 2026-11-14 at the lead's request, roadmap C5): `caches.lane_status()` resolves every lane from its
   env var or default directory, and we pass configured paths to each resolver and never export them (two apps per
