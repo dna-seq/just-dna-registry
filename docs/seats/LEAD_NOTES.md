@@ -241,7 +241,7 @@ reference says a held lane scans whole on a position-less key (Ensembl by id, 21
 told the pm local scans would be bounded and corrected it (id is Ensembl's rsID column). `rederive_converged` grain:
 asked the liaison to file upstream for a derivation stamp (no workaround here): filed as S156, taken into upstream RM441, now proposed for 0.10 (a per-table value beside CACHE_LANES in the enricher); compare-to-installed stays until then. Polygon ClinPGx copy is stale (pre-RM420
 pull, RM445): after the 0.32.0 deploy, `registry --mode test drop-caches clinpgx` then `warm-caches`, not warm-caches
-alone. Cut 0.32.1 after 0.32.0 is on PyPI (full suite first).
+alone. 0.32.0 is on PyPI (2026-11-16 15:36Z), tagged v0.32.0 and pushed; desk #331 withdrawn. **0.32.1 waits for enricher 0.8.8 (RM445) on PyPI** so the lane fix and the stale-pull repair ship as one deploy (the person: "upgrade times are killing me"); then stamp, floor `>=0.8.8`, `uv lock`, full suite, merge, build, DM. Upgrade instructions re-sent 2026-11-16 as one batch per box (the person: "I would prefer batch"; RUN_KEEP=2 keeps only the newest two changing runs revertible): drop/warm, project-claims, a dry run, then one `upgrade --apply --online` last.
 
 **RM445 (2026-11-16, upstream main, uncut enricher patch)**: a pull before RM420 (pull-record.json with no
 `release_sha256`) can serve old parquets under the hub's new release label. This machine: ensembl, clinvar, civic,
