@@ -105,6 +105,10 @@ reset").
 - reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn:
   pending unblocked work goes on in the same turn, kit #481). Here most wakes end with nothing pending: upstream items
   wait on landings, the bump on Thursday.
+- reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person, kit #510: a
+  choice with nothing against one side is the seat's, built or given its state). Read as its adversary: no concern.
+  The liaison has no open desk question, and its two waits (duckdb 2.0 on the lead's merge, the 0.8.8 notice on
+  PyPI) wait on a seat and on a fact, never on the person.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
