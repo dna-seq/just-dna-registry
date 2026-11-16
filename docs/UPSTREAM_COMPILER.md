@@ -530,6 +530,13 @@ lock (1.44.2, 1.5.5, 2.3.3).
   `None` (not stated) in today's `requires` grammar, which our `declared_movement` keeps, so a sweep would over-reach,
   bounded at one PATCH per module. Pm told.
 
+- **S145 / RM430 made a 0.9 zone** (2026-11-15, their maintainer; asks 1-7, ROADMAP `5ddfd16f`): their readers go
+  local disk, then **our lane proxy** if a host configures it (explicit, unset by default), then Hugging Face. Our lead
+  answered the interface (640484735: `/lanes/{lane}/{table}`, fall through on 429/404/503/504/timeout, never on 422;
+  polygon for their trial). Their pm measured the polygon (640494791): 0.22-0.37 s, plus three findings relayed to our
+  lead (stale polygon ClinPGx; an Ensembl id-only lookup scans locally for 21.5 s since `remote_needs_position` guards
+  remote reads only; chrom x start batches are a cross product).
+
 - **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
   triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads
   remotely through the enricher, since a URL collapses in `Path`, every `resolve_*_reference` and
