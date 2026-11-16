@@ -234,3 +234,11 @@ pharmgkb, cardio, cancer, pathogenic; all compiler 0.7.0, tables written by 0.7.
 written by 0.8.4 with no reason; polygon 4 (the held ones), 44 others none. Enricher 0.8.7 adds nothing (same counts
 at 0.8.6). Latent: `rederive_converged` compares at full-version grain, so an enricher patch reopens any module with a
 residual reason; zero today, a 0.32.1 candidate.
+
+**0.32.1 on branch `0.32.1`** (worktree `.wt/0.32.1`, locked; from main ba291c2, 2026-11-16; unstamped): af64c37 lane
+lookups match chrom/start as pairs (the compiler pm's probe: 13 positions, 22 rows), unequal lengths unchanged; the
+reference says a held lane scans whole on a position-less key (Ensembl by id, 21.5 s), only remote refuses. I first
+told the pm local scans would be bounded and corrected it (id is Ensembl's rsID column). `rederive_converged` grain:
+asked the liaison to file upstream for a derivation stamp (no workaround here). Polygon ClinPGx copy is stale (pre-RM420
+pull, RM445): after the 0.32.0 deploy, `registry --mode test drop-caches clinpgx` then `warm-caches`, not warm-caches
+alone. Cut 0.32.1 after 0.32.0 is on PyPI (full suite first).
