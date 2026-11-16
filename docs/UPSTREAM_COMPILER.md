@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
+**`v0.8.8`** read (2026-11-16: enricher only, cut `655f1ebc`, untagged and not on PyPI when read; carries RM445 alone; format and compiler stay 0.8.6). **`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
 registry 0.29.1). **`v0.8.3`** read (2026-11-10: tagged `725eb2b`, the commit read at the cut on 2026-11-09, all three packages at 0.8.3 on PyPI; RM425 to RM427 are past it). **`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
 backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
@@ -153,7 +153,11 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
-- **Their `main` past the 0.8.7 cut**: **RM445** (`1051670b`..`b78c44aa`, 2026-11-16, enricher only, a patch, uncut): a
+- **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; untagged and not on PyPI when read): RM445 alone (read
+  below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
+  the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
+  repair a pre-RM420 lane, a silent wrong answer under a current label.
+- **Their `main` past the 0.8.7 cut** (now cut as 0.8.8, above): **RM445** (`1051670b`..`b78c44aa`, 2026-11-16, enricher only, a patch, uncut): a
   pull no longer places the hub's `release.json` over kept files nothing attests (a pre-RM420 pull did, so old bytes
   stated the new release); `cache pull`/`cache prepare` re-pull a pre-RM420 record (no `release_sha256`) even at an
   equal label and compare kept files with the listing (size, LFS sha256 up to 256 MiB), outcome `refreshed`; a pull
