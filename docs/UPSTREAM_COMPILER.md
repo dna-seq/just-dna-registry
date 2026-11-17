@@ -153,6 +153,17 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Their `main` past the 0.8.8 cut** (read 2026-11-17, uncut): **RM446** (`6318392d`, enricher only, additive): a run
+  reads `retired_mark(client)` before it asks and names a route retired only for a 410 met after that mark, so a reused
+  client's earlier 410 stops telling a later run's plain outage to upgrade (RM361's sticky message itself unchanged).
+  **For us a patch worth taking**: we are exactly that host, one shared `LookupClients` for the process's life, so on a
+  long-running server one Ensembl or Crossref 410 would label every later outage on `/check`, the hint routes and
+  publish enrichment as a retirement. It reaches us inside `enrich()` and the literature pass with no code of ours
+  moving (our bundle is upstream's, so it has the counter). **RM447** (`86de38e9`, `1bbcd65f`, compiler only): a
+  resolved-allele refusal on a row Ensembl REST answered now says REST serves an older dbSNP build (156 at release 116,
+  the snapshot's dump 157) and qualifies `--rederive` to a host with the snapshot; pinned phrases stay, no column, code
+  or vocabulary moves. Nothing here reads that sentence, so not load-bearing for us. Both sized as patches on their
+  `main`; take at the cut.
 - **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; tagged at that commit and on PyPI 2026-11-17 02:17Z): RM445 alone (read
   below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
   the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
@@ -525,6 +536,22 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S158** (filed 2026-11-17 at the lead's request, 641258676; uncommitted in their inbox): production's 0.8 catalog
+  upgrade (online, `verify_ref`) refused cardio, cancer and pathogenic as `compile_failed`. On cardio 21 of 22 strict
+  errors are `Duplicate (variant, genotype)`: the SNP-core fill expands an rsID-only row's indel genotype (`C/CT`) onto
+  both spellings Ensembl lists at one position (`C>CT` and `CT>C`), and the second lands on a coordinate row the ClinVar
+  drafter authored there for another VCV. All 21 are one-base ins/del pairs, the colliding locus the one ClinVar did not
+  witness. **Not filed as the lead first worded it** ("never place on an `unplaced` locus"): `unplaced` is the witness's
+  answer, not a refusal, and 5,750 cardio rsIDs carry only `unplaced` loci, so such a gate would unplace them all. Asked
+  for one of: an ins/del-ambiguous genotype is ambiguous unless a witness answered `same_event`; an authored row wins
+  over an expansion onto its key; the drafter writes the coordinate for an indel rsID. The 22nd (`rs1452575772`) has no
+  `resolution.csv` row at all, not even `not_found`; asked whether a run can end with a subject neither placed nor
+  marked. Not fixed on their `main` at `05abe19a`. The cost side is ours (a refusal after the re-derive drops it), with
+  the pm as a 0.33 candidate (641258690).
+  **Addendum 2026-11-18** (lead's 641398661, production's log): cancer (25+) and pathogenic (14+) refuse the same way,
+  every duplicate an indel; pathogenic also has 12 unresolved rsIDs, and the four checked each had a `clinvar`-authority
+  `resolved` row in the stored pre-0.8 table, none after re-derivation. Asked whether re-derivation drops a ClinVar
+  placement Ensembl lacks without a `not_found` row, and what the drafter should author if so.
 - **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
   its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
   local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and

@@ -1150,8 +1150,21 @@ converges).
   Sizing: **minor** either way. Severity: medium, the same trust signal as S33. Rides with S33 in 0.32 if decided
   before the cut, else 0.33.
 
-- **A lane lookup says which release it read** (proposed by S34, the just-dna-compiler liaison for its pm's 0.9
-  client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**. Both lane replies carry
+- **A compile refusal after a re-derivation keeps the re-derived spec** (filed by the lead 2026-11-17, a defect
+  against CLAUDE.md's "a gate placed after an expensive step keeps that step's result"; **placed by the pm
+  2026-11-17: 0.33.1, a patch**; **built on branch `0.33.1`, eac81ad**, not reopening 0.33.0, which is stamped and green. Production's online upgrade
+  re-derived cardio, cancer and pathogenic (about 37 h), then the strict compile refused all three
+  (`compile_failed`, an upstream placement defect the liaison files), and the re-derived specs went with their
+  temporary directory, so the retry after upstream's fix would spend the 37 h again. 0.31.1's `services/held.py`
+  keeps a spec only for `rederive_drift_needs_reading`. The fix: keep it on `compile_failed` as well, and let a
+  later run compile the kept spec with no re-derivation while the enricher version and the snapshot release it
+  was derived under are unchanged; when either moved, re-derive as now and say why. The sweep's line names a kept
+  spec and what retries it. No API change. Severity: medium, the cost is a day and a half of upstream requests per
+  retry; it must be deployed before the retry, which waits on upstream's fix anyway. Meanwhile the three stay at
+  2.0.0 and keep serving.
+
+- **A lane lookup says which release it read** (**built on branch `0.33`, e89c0aa**; proposed by S34, the just-dna-compiler liaison for its pm's 0.9
+  client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**; **built on branch `0.33`, e89c0aa**, all of it, the local `revision: null` included. Both lane replies carry
   `release` and `release_unreadable` read exactly as `/caches` reads them, and a remote read resolves the head
   commit once per request, reads every file at `@<sha>` and reports it as `revision`, so one answer never straddles
   a commit. A local reply carries the label and `revision: null` until upstream's pull record keeps the commit (the
@@ -1169,8 +1182,8 @@ converges).
   label would have agreed on both routes. Sizing: **minor** (new optional fields; the client and `lane-rows`
   print them). Severity: low; it is provenance, and nothing gates on it.
 
-- **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (proposed by
-  S35, just-module-creator, 2026-11-17; **decided by the pm 2026-11-17: the first candidate, in 0.33**. A re-posted
+- **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (**built on branch `0.33`, a69c05b**; proposed by
+  S35, just-module-creator, 2026-11-17; **decided by the pm 2026-11-17: the first candidate, in 0.33**; **built on branch `0.33`, a69c05b**. A re-posted
   review whose verdict differs from the stored one clears `highlighted`, in the upsert, so stored rows are covered
   with no migration and the owner re-pins what they have read. A notes-only or rating-only edit keeps the pin: it
   moves nothing `curated` counts, and clearing on every typo fix would make the pin worthless. The second candidate
