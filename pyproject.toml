@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.32.0"
+version = "0.32.1"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -362,8 +362,17 @@ server = [
     # AlphaGenome licence rows' `notice`/`license` (a module enriched before keeps the old text in `sources.csv`
     # until re-enriched; no licence axis or gate reads it), RM444 rewords `grch37.recover_rsid`, which nothing
     # here calls or matches. Not load-bearing: a box left on 0.8.6 is not broken.
+    # **0.8.8** (0.32.1, enricher only; format and compiler stay 0.8.6) is the hard kind for provisioning, and
+    # upstream's INTEGRATION_0_8 floors it too. RM445: a pull made before RM420 (a `pull-record.json` with no
+    # `release_sha256`) had laid the hub's `release.json` over the files it kept, so old bytes stated the new
+    # release and every check here read them as current. From 0.8.8 `prepare_caches` re-pulls such a record even
+    # at an equal label and compares kept files with the hub's listing (outcome `refreshed`), and `warm-caches`
+    # already hands it every present pulled lane, so a plain `warm-caches --apply` repairs them. Measured
+    # 2026-11-17 on production: ensembl, civic, clinvar_gkm and six proxy lanes were such pulls. Its one new
+    # refusal (a missing `release.json` on a pull) is raised per lane and `prepare_caches` reports it as that
+    # lane's failure. No release record: the compiler did not change, so a recompile moves nothing.
     "just-dna-compiler>=0.8.6",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.7",  # RM442 (AlphaGenome licence text), see the 0.8.7 note above
+    "just-dna-enricher>=0.8.8",  # RM445 (warm-caches repairs a pre-RM420 pull), see the 0.8.8 note above
 ]
 
 [build-system]

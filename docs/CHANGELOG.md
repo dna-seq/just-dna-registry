@@ -6,7 +6,19 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased]
+## [0.32.1] — 2026-11-17
+
+**Client surface:** unchanged.
+
+### `warm-caches` repairs a snapshot pulled before 2026-11-08 (enricher 0.8.8, RM445)
+
+A lane pulled before the enricher recorded each release's checksum (its `pull-record.json` has no
+`release_sha256`) could hold old files under the hub's new release label, so `/caches`, the upgrade sweep's
+snapshot check and every check reading it took them as current. Enricher 0.8.8 re-pulls such a lane even when
+the labels match and compares the files it keeps with the hub's listing; `warm-caches --apply` already hands
+every present pulled lane to it, so on 0.32.1 a plain `warm-caches --apply` repairs them, downloading what
+differs. The floor is `>=0.8.8`. Production held nine such lanes on 2026-11-17 (Ensembl among them), re-pulled
+by hand before its upgrade.
 
 ### A lane lookup matches positions as pairs
 

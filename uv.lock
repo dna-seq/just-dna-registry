@@ -594,7 +594,7 @@ wheels = [
 
 [[package]]
 name = "just-dna-enricher"
-version = "0.8.7"
+version = "0.8.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "duckdb" },
@@ -608,9 +608,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/03/ca70762b4417da2d3a7da8b02d57857fe7b1dccd3be72b01b56e7f2dca07/just_dna_enricher-0.8.7.tar.gz", hash = "sha256:d23046c18195ecbb87cdfb039b5a0cdcb1cf114ca2606bb62593e3af318a33cb", size = 1039087, upload-time = "2026-11-15T16:01:53.623Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/95/19ec9cca08a285e4f671a2dc3dc3f249af68d489dcc3b3788b32db69a516/just_dna_enricher-0.8.8.tar.gz", hash = "sha256:0a8ed7c3ab076ab3b7cae1680335c5627cfa0c580a011dbe8c9fe8bf392803a9", size = 1045411, upload-time = "2026-11-17T02:17:47.903Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/ce/7593c00cfa41cea01e95427639b05f5ef975c23d04453b3b78f62398bc76/just_dna_enricher-0.8.7-py3-none-any.whl", hash = "sha256:577940427cc5f32df566c70b45592e6038974e1879d492a6c66ec5fded4d6475", size = 1142409, upload-time = "2026-11-15T16:01:51.907Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/0c/555d018bab3afe3b30c7d7411a94f8e6036dbdbaecacbac0fe8aaa5c579f/just_dna_enricher-0.8.8-py3-none-any.whl", hash = "sha256:0cfa39c53b0f0c725426b98849828238c12638ac1b0097acfa6e3b3e26f36052", size = 1148709, upload-time = "2026-11-17T02:17:45.866Z" },
 ]
 
 [[package]]
@@ -628,7 +628,7 @@ wheels = [
 
 [[package]]
 name = "just-dna-registry"
-version = "0.32.0"
+version = "0.32.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -671,7 +671,7 @@ requires-dist = [
     { name = "huggingface-hub", marker = "extra == 'server'", specifier = ">=0.34.0" },
     { name = "just-dna-compiler", marker = "extra == 'compiler'", specifier = ">=0.8.6" },
     { name = "just-dna-compiler", marker = "extra == 'server'", specifier = ">=0.8.6" },
-    { name = "just-dna-enricher", marker = "extra == 'server'", specifier = ">=0.8.7" },
+    { name = "just-dna-enricher", marker = "extra == 'server'", specifier = ">=0.8.8" },
     { name = "just-dna-format", specifier = ">=0.8.6" },
     { name = "pydantic", marker = "extra == 'server'", specifier = ">=2.13.4" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.7.0" },
