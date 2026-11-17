@@ -1170,7 +1170,12 @@ converges).
   print them). Severity: low; it is provenance, and nothing gates on it.
 
 - **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (proposed by
-  S35, just-module-creator, 2026-11-17; undecided, for the pm). `Repository.upsert_review`'s `ON CONFLICT` updates
+  S35, just-module-creator, 2026-11-17; **decided by the pm 2026-11-17: the first candidate, in 0.33**. A re-posted
+  review whose verdict differs from the stored one clears `highlighted`, in the upsert, so stored rows are covered
+  with no migration and the owner re-pins what they have read. A notes-only or rating-only edit keeps the pin: it
+  moves nothing `curated` counts, and clearing on every typo fix would make the pin worthless. The second candidate
+  loses: it needs two timestamps `reviews` does not keep and reads every stored highlight as undated. API-REFERENCE
+  §29 says a verdict change unpins). `Repository.upsert_review`'s `ON CONFLICT` updates
   rating, verdict and notes and leaves `highlighted` alone, so an outside reviewer whose `concerns` review the owner
   pinned re-posts it as `verified` and the card, `?group=curated` and `GET /stats` count it with no act by the owner.
   0.32's verified-only rule (S33's corroboration) is what made the verdict decisive. Two candidates: a changed
