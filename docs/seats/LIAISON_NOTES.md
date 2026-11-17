@@ -105,6 +105,13 @@ reset").
 - reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn:
   pending unblocked work goes on in the same turn, kit #481). Here most wakes end with nothing pending: upstream items
   wait on landings, the bump on Thursday.
+- reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person, kit #510: a
+  choice with nothing against one side is the seat's, built or given its state). Read as its adversary: no concern.
+  The liaison has no open desk question, and its two waits (duckdb 2.0 on the lead's merge, the 0.8.8 notice on
+  PyPI) wait on a seat and on a fact, never on the person.
+- reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked where the person will
+  look; a claim of absence says as of when). No concern. It touches the liaison's "not on PyPI yet" lines: each
+  now carries its read time, and the 0.8.8 notice is sent only after a fresh PyPI read.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
@@ -133,3 +140,9 @@ reset").
 
 1. ~~An audit of the registry's past filings upstream~~: done 2026-11-07, in `UPSTREAM_COMPILER.md` Outbound (no new
    lever beyond C5 and C6).
+2. ~~**Tell the lead when RM445's enricher patch is cut**~~ done 2026-11-17 (asked 2026-11-16, 640587415): `waits until` the compiler tag
+   or PyPI watcher shows the enricher release carrying RM445 (main past `v0.8.7`, `1051670b`..`b78c44aa`). The lead
+   adopts it in 0.32.1 so `warm-caches` repairs pre-RM420 lanes. Read the cut, then mention the lead in
+   `#just-dna-registry>upstream` with the version and whether it is on PyPI.
+   **Cut** as enricher 0.8.8 (`655f1ebc`, 2026-11-16), lead told. **On PyPI** 2026-11-17 02:17Z, tagged `v0.8.8` at `655f1ebc`
+   soon after, lead told.

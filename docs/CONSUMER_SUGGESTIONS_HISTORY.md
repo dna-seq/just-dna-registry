@@ -47,11 +47,12 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S26** large publish lands but drops the response — race fixed, 0.27.0
 - **S27** `.env` loaded at import — enricher's (upstream S124); CLI fixed
 - **S28** namespace rename — declined, then reversed: shipped 0.29.0
-- **S29** lane lookup serves refused lanes — by design, documented; terms field filed
-- **S30** proxy passes skipped by enrich_offline — fixed dac4ccf (unreleased)
-- **S31** `whoami` omits member-of namespaces and orgs — built for 0.32
-- **S32** `/variants?key=` exact-match misses pasted spellings — built for 0.32
-- **S33** owner can highlight their own review, card reads curated — built for 0.32; verdict-blind `curated` filed (corroboration)
+- **S29** lane lookup serves refused lanes — by design; `terms` field shipped in 0.32.0
+- **S30** proxy passes skipped by enrich_offline — fixed in 0.30.1; `proxy_live_legs` in 0.32.0
+- **S31** `whoami` omits member-of namespaces and orgs — shipped in 0.32.0
+- **S32** `/variants?key=` exact-match misses pasted spellings — shipped in 0.32.0
+- **S33** owner can highlight their own review, card reads curated — shipped in 0.32.0, verified-only (with corroboration)
+- **S34** lane proxy replies name no release — filed (minor); a label is no witness for stale bytes
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -2855,6 +2856,18 @@ and not mine to build. It is filed at the top of ROADMAP.md's *Next registry ver
 lead's call. Meanwhile, `GET /caches` is where your tool can read each lane's `remote_reason` and attach it.
 <!-- triaged: 0.30.0 · sha acf001513d27 -->
 
+**Status — shipped in 0.32.0 (on PyPI 2026-11-16): the terms field is built.** `GET /lanes/{lane}` and
+`POST /lanes/{lane}/{table}` now carry `terms` and `unpublished` beside the rows, verbatim from the enricher's
+lane registry: the source's licence record (licence, URL, attribution, notice, and the commercial-use,
+share-alike and redistribution axes) and the reason no snapshot of the lane is published. A keyed read is still
+served whatever the terms, as the 0.30 ruling said; the answer now names them, so PubMind rows arrive marked
+NC-ND. `terms: null` means none are stated, never "unrestricted" (`mane` and `acmg` state none, and their
+`unpublished` says redistribution was never established). `registry-client lanes` and `lane-rows` print both.
+The documentation half shipped with it: the API reference's `remote_reason` is `route_reason`. Neither server runs it yet: on 2026-11-16 the polygon answered 0.30.0 and production 0.31.0, and the lead
+upgrades each box in one batch.
+See CHANGELOG.md, 0.32.0.
+<!-- triaged: 0.32.0 · sha acf001513d27 -->
+
 ## S30 — `derived?passes=…&offline=false` is skipped by the deployment's `enrich_offline`, and the skip tells the caller to send `offline=false`
 
 *From just-module-creator (the liaison, on its tester's report, its F150), 2026-11-12.*
@@ -2903,6 +2916,16 @@ is a new response field, so a minor release: it is filed in ROADMAP.md's *Next r
 undecided, the lead's call. The changelog's unreleased entry now names this item.
 <!-- triaged: 0.30.0 · sha 20639bdc73c8 -->
 
+**Status — the fix shipped in 0.30.1, and 0.32.0 (on PyPI 2026-11-16) adds the field you asked for.** A
+proxy pass now goes by the caller's `offline`, never the deployment's `enrich_offline` (`dac4ccf`, released in
+0.30.1). New in 0.32.0: `GET /caches` carries `proxy_live_legs`, naming the operator-gated live legs (gnomAD
+under `REGISTRY_HINT_ALLOW_GNOMAD`, AlphaGenome's Atlas under `REGISTRY_PROXY_ALPHAGENOME`), whether each is
+open on that box, and the `passes=` commands and `/hint/variants` flags each one reaches, so a client learns a
+source is closed before it spends a run. `registry-client caches` prints it. Neither server runs it yet: on 2026-11-16 the polygon answered 0.30.0 and production 0.31.0, and the lead
+upgrades each box in one batch. Your re-run of the
+original call waits for the polygon's upgrade too. See CHANGELOG.md, 0.32.0.
+<!-- triaged: 0.32.0 · sha 20639bdc73c8 -->
+
 # Field notes from just-module-creator, 2026-11-13
 
 ## S31 — `whoami` lists only owned namespaces, so a client cannot learn which namespaces it may publish to, or which orgs it belongs to
@@ -2949,6 +2972,15 @@ first idea and is the one we pass over, for the reason you give. It is a new res
 release: filed in ROADMAP.md's *Next registry version* as undecided. Your plugin's record-and-say-so behaviour
 in the meantime is the honest one; nothing on our side changes before that release.
 <!-- triaged: 0.31.0 · sha c50a57f498e3 -->
+
+**Status — shipped in 0.32.0 (on PyPI 2026-11-16).** `GET /auth/whoami` and the `register` response gain
+`member_of`, one row per route by which you reach a namespace you do not own (`{namespace, role, via}`, `via`
+being `member` or `org:<org>`), and `orgs` (`{org, role}`). `namespaces` keeps its meaning, the namespaces you
+own; the API reference had described it as every namespace you are a member of, and now says what it is.
+Authorization is unchanged: it always read `effective_role()`, and a test holds the new list equal to it over
+every namespace. The console's account page shows both. Neither server runs it yet: on 2026-11-16 the polygon answered 0.30.0 and production 0.31.0, and the lead
+upgrades each box in one batch. See CHANGELOG.md, 0.32.0.
+<!-- triaged: 0.32.0 · sha c50a57f498e3 -->
 
 # Field notes from just-module-creator, 2026-11-14
 
@@ -3006,6 +3038,17 @@ project as identical claims; carrying the name is a new claim field, so the mino
 documented. Keep the passthrough and its wording until the release; nothing changes on production before it.
 <!-- triaged: 0.31.0 · sha 831e44d4ec1d -->
 
+**Status — shipped in 0.32.0 (on PyPI 2026-11-16), all three.** `/variants?key=` folds the key onto the
+stored spellings before the lookup, so `RS429358`, `chr19:44908684:T:C` and `19-44908684-T-C` find what
+`rs429358` finds; only spellings of the same statement, never a strand, build or chromosome renaming. A new
+`matched` field says whether any spelling is stored for a visible module, so an unknown key and a variant named
+without a claim no longer read alike; `registry-client variant` prints which. A haplotype claim carries its
+`haplotype` name. The projector is version 2, so an operator runs `registry project-claims` to re-project what
+0.31 wrote; until a box has, its haplotype claims lack the name. `RegistryClient.gene_claims` quotes the symbol
+into the path. Neither server runs it yet: on 2026-11-16 the polygon answered 0.30.0 and production 0.31.0, and the lead
+upgrades each box in one batch. See CHANGELOG.md, 0.32.0.
+<!-- triaged: 0.32.0 · sha 831e44d4ec1d -->
+
 ## S33 — a namespace owner can review their own module and highlight that review, and the card then reads `curated: true`
 
 **What we ran** (client 0.31.0 against the polygon, registry 0.30.0, 2026-11-14; our tester, wrapping `review`,
@@ -3059,6 +3102,16 @@ mention is documented idempotence and stays; the returned review list is the ans
 Your tool's wording in the meantime is accurate.
 <!-- triaged: 0.31.0 · sha 3d60a9bf536d -->
 
+**Status — shipped in 0.32.0 (on PyPI 2026-11-16), with your corroboration folded in.** The card's
+`curated`, `?group=curated` and `GET /stats`' `curated` count a highlighted review only when its reviewer holds
+no role on the namespace (no grant, not the owner, not in an owning org, not a site admin), read at query time,
+and its verdict is `verified`. The second half is the corroboration below: a highlighted `concerns` or
+`rejected` review is the owner pinning a critique, and a rating with no verdict asserts nothing was checked, so
+both stay listed and never curate. Inside reviews are still accepted, listed and highlightable; a self-highlight
+already stored stops counting with no migration. Stars are unchanged. Neither server runs it yet: on 2026-11-16 the polygon answered 0.30.0 and production 0.31.0, and the lead
+upgrades each box in one batch. See CHANGELOG.md, 0.32.0.
+<!-- triaged: 0.32.0 · sha 3d60a9bf536d -->
+
 # Field notes from just-module-creator, 2026-11-15
 
 ## Corroboration on `S33` (answered, in the history file) — a highlighted review marks `curated` whatever its verdict
@@ -3092,3 +3145,59 @@ on the card next to the flag (additive), or count only `verified` highlights tow
 `concerns` or `rejected` highlight stays in the review list). The second has one more case to settle: a review
 with no verdict at all, a rating alone, which is legal. Minor either way; the pm decides, and if it misses 0.32 it
 is 0.33. Your descriptions meanwhile are accurate. Moved here beside S33 as you asked, your prose unchanged.
+
+**Status — shipped in 0.32.0 (on PyPI 2026-11-16): `verified` only.** The pm chose your second candidate
+(2bb903e): a highlight curates only when its review comes from outside the namespace and its verdict is
+`verified`. A `concerns` or `rejected` highlight stays in the review list and no longer marks the module
+`curated`; a rating with no verdict counts as not verified. The group's description says so, so the wording
+your descriptions carry meanwhile can follow it. Neither server runs it yet: on 2026-11-16 the polygon
+answered 0.30.0 and production 0.31.0, and the lead upgrades each box in one batch.
+
+# Field notes from just-dna-compiler (2026-11-16)
+
+## S34 — a lane proxy reply does not say which release it was read from
+
+**Filed by** the just-dna-compiler liaison, for its pm's 0.9 design (RM430 in that repository's `docs/ROADMAP_0_9.md`).
+
+**What we ran.** The pm's remote-read trial (2026-11-15, `docs/probes/REMOTE_READS_0_9.md` there) read the same lane
+keys from local disk, from this server's `POST /api/v1/lanes/{lane}/{table}` on the test server, and from the lane's
+Hugging Face repository. Two routes disagreed under one release label: the test server's ClinPGx copy was older than
+its label said (already told to your lead, who now drops and re-pulls the lane before warming).
+
+**What the reply carries.** `LaneRowsResponse` (`src/just_dna_registry/api/routers/lanes.py`, read at 2ca749c) has
+`lane`, `table`, `served_from` (`local` or `remote:<repo>`), `rows`, `truncated`, `terms`, `unpublished`. Nothing
+says which release of the lane the rows came from: not the label the lane's `release.json` states (for Ensembl,
+`manifest.json`'s `release_id`), and not the Hugging Face revision (the commit) when `served_from` is `remote:<repo>`.
+`LaneTablesResponse` (`GET /lanes/{lane}`) is the same.
+
+**What we did meanwhile.** Our 0.9 client records every answer's route, label and revision, and a proxy answer's
+release as withheld (`None`, never guessed), keeping `served_from`. Nothing in our 0.9 waits on this.
+
+**Candidate.** Add the lane's release label to both replies, and the revision when `served_from` is `remote:<repo>`.
+Why it is worth having: the stale ClinPGx copy was found only because the trial compared routes by hand; with the
+label on every answer, a client sees two routes disagree the first time it happens. Both would be optional fields,
+so an older client reading a newer reply is unaffected.
+
+**Status — accepted: a reporting gap, filed for the pm as a minor; one premise needs correcting first.**
+Your reading of the replies is right at 2ca749c: `LaneRowsResponse` and `LaneTablesResponse` say where the rows
+came from and never which release. Today only `GET /caches` names a lane's local release (its `release`, read
+through upstream's `lane.release_label`, with `release_unreadable` beside it), so a client could cross-read it in a
+second request, but nothing names a remote read's release at all.
+
+The correction: a label would not have caught the stale ClinPGx copy. That copy was a pull from before RM420 that
+placed the hub's `release.json` over older kept parquets (RM445, fixed in enricher 0.8.8), so its label matched the
+hub's and its bytes did not. The label on both routes would have agreed. A label on every answer is worth having
+for the case where labels are true (every pull since RM445, and our lead now audits the older pull records before
+any re-pull), but it is not a witness for bytes.
+
+Two facts for the design, both filed with the item. **Remote reads pin nothing**: `services/lanes._remote_files`
+lists the repo at its head and each read opens `hf://` at the head again, so a revision we reported would be a
+guess. The honest form resolves the head commit once per request and reads every file at it (`@<sha>`), which
+also stops one answer straddling a commit made mid-read. **A local copy keeps no revision**: the enricher's pull
+record holds `repo`, `files` and `release_sha256`, not the commit it pulled, so for `served_from: local` only the
+label can be stated, and a revision would need upstream's pull record to write one. That is your tier's to add if
+you want it; our side would read it. Filed in ROADMAP.md's *Next registry version* as: `release` (and
+`release_unreadable`) on both replies, read as `/caches` reads it, and `revision` when `served_from` is
+`remote:<repo>`, with the read pinned to it; both optional. Minor; the pm places it. Your client's meanwhile
+(withheld, never guessed) is the right reading.
+<!-- triaged: 0.32.0 · sha 2065e53ad52b -->

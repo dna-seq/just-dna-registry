@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
+**`v0.8.8`** read (2026-11-16: enricher only, cut `655f1ebc`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-17 02:17Z; carries RM445 alone; format and compiler stay 0.8.6). **`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
 registry 0.29.1). **`v0.8.3`** read (2026-11-10: tagged `725eb2b`, the commit read at the cut on 2026-11-09, all three packages at 0.8.3 on PyPI; RM425 to RM427 are past it). **`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
 backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
@@ -153,6 +153,20 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; tagged at that commit and on PyPI 2026-11-17 02:17Z): RM445 alone (read
+  below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
+  the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
+  repair a pre-RM420 lane, a silent wrong answer under a current label.
+- **Their `main` past the 0.8.7 cut** (now cut as 0.8.8, above): **RM445** (`1051670b`..`b78c44aa`, 2026-11-16, enricher only, a patch, uncut): a
+  pull no longer places the hub's `release.json` over kept files nothing attests (a pre-RM420 pull did, so old bytes
+  stated the new release); `cache pull`/`cache prepare` re-pull a pre-RM420 record (no `release_sha256`) even at an
+  equal label and compare kept files with the listing (size, LFS sha256 up to 256 MiB), outcome `refreshed`; a pull
+  never fetches beside a local build. New refusal: `ensure_*_snapshot` raises when `release.json` cannot be fetched
+  and the cache is absent or unfinished (Ensembl now asks for one on every pull). Reaches us through `warm-caches` →
+  `prepare_caches` (we read outcomes back, never the route), so it repairs our stale lanes on its own once installed.
+  **Operator step before any `warm-caches`/`drop-caches` on either box**: read each pulled lane's `pull-record.json`;
+  no `release_sha256` key means modules enriched against that lane since its date may carry old answers under the new
+  label (upstream cannot say which). Lead told.
 - **Cut as `v0.8.7`** (`3b65ab7a`, 2026-11-14, enricher only; untagged and not on PyPI when read): carries RM442 and
   RM444 (both read below), text only; no public name, field, warning code, outcome or raise moves; enricher floors stay
   `>=0.8.6`, no third-party floor. Nothing for us to change: it is an optional float, taken by the next weekly bump
@@ -510,6 +524,36 @@ lock (1.44.2, 1.5.5, 2.3.3).
 | `shared_lookup_clients()` eager construction | nothing (C2) | C2 built | 2026-11-04 |
 
 ## Outbound
+
+- **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
+  its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
+  local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
+  3.4 h without, same table. Asks a seqrepo URI or proxy through `enrich()`, ideally a GRCh38 lane. Filed as
+  the online half of their **RM385** (a local reference for offline runs, in 0.10's scope). Not urgent.
+  **Answered 2026-11-16** (their `c0671870`, 640872037): online is **RM404 in 0.9**, decided:
+  `enrich(..., sequences: SequenceProxy | None = None)` replaces the per-run proxy, and the minter, `verify_ref`
+  and left-alignment read through it, so a proxy built with `uri="seqrepo+file:///…"` serves a re-derivation.
+  Our environment must then carry `biocommons.seqrepo`, which the enricher does not install. `offline` still
+  outranks an injected proxy, so offline and the GRCh38 lane stay RM385 (0.10). A minor; nothing in 0.8.x.
+  Lead told.
+
+- **S156** (filed 2026-11-16 at the lead's request): `services/upgrade.rederive_converged` compares a table's
+  `producer` with the *installed* enricher because nothing installed says which release last changed a derivation
+  (no derived-table axis, RM441; no record at all for an enricher-only patch, 0.8.1 and 0.8.7). So every enricher
+  patch re-derives every module whose table carries a reason (hours online per ClinVar panel; zero such modules on
+  2026-11-15). Asks RM441's design to answer it too: a record for every release (an enricher-only "no derived table
+  moved"), or a per-table "newest version whose derivation could differ" readable offline. Our side, once it ships:
+  compare `producer` to that.
+  **Answered 2026-11-16** (their `0431e934`): taken into **RM441 as a fourth ask**, a minor in 0.9, one design with
+  RM399. Their fact: release records live in `just_dna_format`, which an enricher-only patch does not release, so a
+  record per enricher patch needs a format release each time or records moved into the enricher; a per-table constant
+  in the enricher is readable from the package that moved. Which side holds it is decided in the design. Our
+  over-derive default stays until it ships. Lead told.
+  **Corrected the same day** (640579065): their pm sized it inside RM441 with the answer held **in the enricher**, a
+  per-table value beside `CACHE_LANES`; RM441 and RM399 are now *proposed for 0.10*, not 0.9, placement theirs (their
+  desk #326). Lead told.
+  **Placed** 2026-11-16 (640865880, their pm `8076cf54`): RM441 with RM399 in **0.10**, after the enricher-only 0.9;
+  desk #326 applied on its default, the maintainer may still veto.
 
 - **S154** (filed 2026-11-14 at the lead's request, roadmap C5): `caches.lane_status()` resolves every lane from its
   env var or default directory, and we pass configured paths to each resolver and never export them (two apps per

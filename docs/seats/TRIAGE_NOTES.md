@@ -47,14 +47,10 @@ reports; this file holds the seat's own decisions and the items it owns.
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
 - **Desk #313, the exposed registry keys** (supersedes #225, refiled 2026-11-14 for the secretary's nightly
   sweep): `blocked: desk #313`, default no change. Withdraw it `moot:` once the person has rotated them.
-- **S29–S33 follow-up replies (and the S33 corroboration): reply once 0.32.0 is on PyPI** (built and merged to
-  main e2e172b 2026-11-15; the publish waits on the person, desk #331), taking the wording from its changelog. The pm placed all four in 0.32: S29 lane `terms`+`unpublished` (5e55a19), S30
-  `proxy_live_legs` on /caches (c353fc9), S31 whoami's `member_of`/`orgs` (724c103) are built on branch `0.32`;
-  S32 (b9bc198: the `/variants?key=` folding, `gene_claims` quoting, the matched-nothing sibling, the haplotype
-  name) is built there too (ce1f2fe). S33 placed in 0.32 by the pm (bff1069): `curated`, the group and
-  `catalog_stats` count only reviewers outside the namespace; reviews and highlights stay accepted; stars
-  unchanged. Built (945c0d2). The corroboration (a highlighted critique read `curated`, answered 1903722) was
-  decided by the pm as verified-only (2bb903e) and built into 0.32.0 (52ebf93): a highlight counts only from an
-  outsider with verdict `verified`. For each: append a second `**Status —**` paragraph in the history file,
-  update the contents line, and tell just-module-creator's liaison. S30's base fix (`dac4ccf`, in 0.30.1)
-  reaches the polygon only when 0.30.1+ is deployed there; the consumer re-runs it then.
+- **S34 follow-up reply: once 0.33.0 is on PyPI.** The pm placed S34 in 0.33 (044df54), the candidate whole:
+  `release`/`release_unreadable` on both lane replies as /caches reads them, and a remote read pinned to the head
+  commit once per request (`revision`). The lead's to build. Then: a second `**Status —**` on S34 in the history
+  file from the 0.33.0 changelog, its contents line, and the just-dna-compiler liaison told.
+- **S29–S33 follow-up replies** — done 2026-11-16: 0.32.0 reached PyPI; a second `**Status —**` on each and on
+  the S33 corroboration, contents lines updated, the consumer told. Neither box served 0.32.0 then (polygon 0.30.0,
+  production 0.31.0); S30's re-run on the polygon waits for its upgrade, the consumer's to do.

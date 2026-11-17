@@ -234,3 +234,21 @@ pharmgkb, cardio, cancer, pathogenic; all compiler 0.7.0, tables written by 0.7.
 written by 0.8.4 with no reason; polygon 4 (the held ones), 44 others none. Enricher 0.8.7 adds nothing (same counts
 at 0.8.6). Latent: `rederive_converged` compares at full-version grain, so an enricher patch reopens any module with a
 residual reason; zero today, a 0.32.1 candidate.
+
+**0.32.1 on branch `0.32.1`** (worktree `.wt/0.32.1`, locked; from main ba291c2, 2026-11-16; unstamped): af64c37 lane
+lookups match chrom/start as pairs (the compiler pm's probe: 13 positions, 22 rows), unequal lengths unchanged; the
+reference says a held lane scans whole on a position-less key (Ensembl by id, 21.5 s), only remote refuses. I first
+told the pm local scans would be bounded and corrected it (id is Ensembl's rsID column). `rederive_converged` grain:
+asked the liaison to file upstream for a derivation stamp (no workaround here): filed as S156, taken into upstream RM441, now proposed for 0.10 (a per-table value beside CACHE_LANES in the enricher); compare-to-installed stays until then. Polygon ClinPGx copy is stale (pre-RM420
+pull, RM445): after the 0.32.0 deploy, `registry --mode test drop-caches clinpgx` then `warm-caches`, not warm-caches
+alone. 0.32.0 is on PyPI (2026-11-16 15:36Z), tagged v0.32.0 and pushed; desk #331 withdrawn. **0.32.1 waits for enricher 0.8.8 (RM445) on PyPI** so the lane fix and the stale-pull repair ship as one deploy (the person: "upgrade times are killing me"); then stamp, floor `>=0.8.8`, `uv lock`, full suite, merge, build, DM. Upgrade instructions re-sent 2026-11-16 as one batch per box (the person: "I would prefer batch"; RUN_KEEP=2 keeps only the newest two changing runs revertible): drop/warm, project-claims, a dry run, then one `upgrade --apply --online` last.
+
+**Desk #330 done (2026-11-16, default applied, withdrawn with numbers)**: the online cost is verify_ref, one remote seqrepo read per row (0.34 s), not placement; indels are 45-58% of rows. Cardio online with verify_ref off: 3.4 h vs 6.9 h, identical drift (scratchpad indels/cardio-noref.log). Prod batch est. ~37 h with, ~18 h without. New desk question (switch verify_ref off for prod's run via REGISTRY_ENRICH_VERIFY_REF=false; default keep) filed 21:07Z but its post run queued 20 min (kit #522; `gh run cancel` refused by auto mode), then posted as **#350**. Upstream S157 answered: `enrich(sequences=SequenceProxy)` in their 0.9 (RM404), offline/GRCh38 lane RM385 in 0.10.
+
+**Deploy night 2026-11-17 (the person at the boxes)**: both on 0.32.0. Both share one cache dir: RM445 check showed prod ensembl/civic/clinvar_gkm + 6 proxy lanes PRE-RM420; all re-pulled (drop+warm), check now all ok/built here. project-claims on both (prod 24, polygon 48; the polygon one ran without --mode test, harmless). Polygon upgrade done: 6 republished, upgrade-status held 0 / current 48. Prod batch running in tmux since ~01:30 CET (blood_groups, pharmgkb done by 02:40; cardio, cancer, pathogenic running); whether it runs with verify_ref off is unknown: read it off the successors' verification (reference_allele skipped not_requested vs ran) and relay to desk #350 as the person's answer. Note: the 2.0.0 versions never had the ref check (skipped offline, enricher 0.7.0). Correct client syntax: `registry-client upgrade-status --url URL`. Follow-up owed: prod modules published 11-07..11-17 may carry placements from the stale ensembl (RM445); upstream cannot say which.
+
+**RM445 (2026-11-16, upstream main, uncut enricher patch)**: a pull before RM420 (pull-record.json with no
+`release_sha256`) can serve old parquets under the hub's new release label. This machine: ensembl, clinvar, civic,
+mitomap are pre-RM420. DM'd the person a one-line check (lane_presence + pull-record.json) to run on both boxes
+before any drop/warm/upgrade, and to hold the upgrades where ensembl/clinvar read pre-RM420 (fix: drop-caches + warm,
+or wait for RM445 in 0.32.1, after which warm-caches repairs). Adopt RM445's enricher patch in 0.32.1 when cut.
