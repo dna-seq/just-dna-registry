@@ -1,4 +1,4 @@
-**just-dna-registry, where it stands** (kept by the pm; updated 2026-11-16)
+**just-dna-registry, where it stands** (kept by the pm; updated 2026-11-17)
 
 0.32.0 is released. Production serves 0.31.0, the variant-level catalog; the polygon still serves 0.30.0.
 
@@ -13,4 +13,5 @@
 **Next**
 1. Deploy 0.32.0 to both servers (the polygon is three releases behind), with `project-claims --all` where it is not yet run (the maintainer).
 2. Re-derive the five modules still on pre-0.8 tables (cancer, cardio, pathogenic, blood groups, pharmgkb) once a release with the sweep is deployed (the maintainer's production run, the lead beside it).
-3. Remote lane reads, once upstream releases RM430 (liaison watches, lead adopts).
+3. 0.32.1 (the lead's patch, built) waits on its publish; then 0.33, built and closed: a lane lookup says which release (and, when read remotely, which commit) it served, and editing a review's verdict clears the owner's pin, so it cannot turn `curated` on by itself.
+4. Remote lane reads, once upstream releases RM430 (liaison watches, lead adopts).
