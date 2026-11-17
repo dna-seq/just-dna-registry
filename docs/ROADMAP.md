@@ -1151,7 +1151,7 @@ converges).
   before the cut, else 0.33.
 
 - **A lane lookup says which release it read** (proposed by S34, the just-dna-compiler liaison for its pm's 0.9
-  client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**. Both lane replies carry
+  client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**; **built on branch `0.33`, e89c0aa**, all of it, the local `revision: null` included. Both lane replies carry
   `release` and `release_unreadable` read exactly as `/caches` reads them, and a remote read resolves the head
   commit once per request, reads every file at `@<sha>` and reports it as `revision`, so one answer never straddles
   a commit. A local reply carries the label and `revision: null` until upstream's pull record keeps the commit (the
@@ -1170,7 +1170,7 @@ converges).
   print them). Severity: low; it is provenance, and nothing gates on it.
 
 - **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (proposed by
-  S35, just-module-creator, 2026-11-17; **decided by the pm 2026-11-17: the first candidate, in 0.33**. A re-posted
+  S35, just-module-creator, 2026-11-17; **decided by the pm 2026-11-17: the first candidate, in 0.33**; **built on branch `0.33`, a69c05b**. A re-posted
   review whose verdict differs from the stored one clears `highlighted`, in the upsert, so stored rows are covered
   with no migration and the owner re-pins what they have read. A notes-only or rating-only edit keeps the pin: it
   moves nothing `curated` counts, and clearing on every typo fix would make the pin worthless. The second candidate
