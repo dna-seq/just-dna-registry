@@ -548,6 +548,10 @@ lock (1.44.2, 1.5.5, 2.3.3).
   `resolution.csv` row at all, not even `not_found`; asked whether a run can end with a subject neither placed nor
   marked. Not fixed on their `main` at `05abe19a`. The cost side is ours (a refusal after the re-derive drops it), with
   the pm as a 0.33 candidate (641258690).
+  **Addendum 2026-11-18** (lead's 641398661, production's log): cancer (25+) and pathogenic (14+) refuse the same way,
+  every duplicate an indel; pathogenic also has 12 unresolved rsIDs, and the four checked each had a `clinvar`-authority
+  `resolved` row in the stored pre-0.8 table, none after re-derivation. Asked whether re-derivation drops a ClinVar
+  placement Ensembl lacks without a `not_found` row, and what the drafter should author if so.
 - **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
   its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
   local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
