@@ -536,6 +536,18 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S158** (filed 2026-11-17 at the lead's request, 641258676; uncommitted in their inbox): production's 0.8 catalog
+  upgrade (online, `verify_ref`) refused cardio, cancer and pathogenic as `compile_failed`. On cardio 21 of 22 strict
+  errors are `Duplicate (variant, genotype)`: the SNP-core fill expands an rsID-only row's indel genotype (`C/CT`) onto
+  both spellings Ensembl lists at one position (`C>CT` and `CT>C`), and the second lands on a coordinate row the ClinVar
+  drafter authored there for another VCV. All 21 are one-base ins/del pairs, the colliding locus the one ClinVar did not
+  witness. **Not filed as the lead first worded it** ("never place on an `unplaced` locus"): `unplaced` is the witness's
+  answer, not a refusal, and 5,750 cardio rsIDs carry only `unplaced` loci, so such a gate would unplace them all. Asked
+  for one of: an ins/del-ambiguous genotype is ambiguous unless a witness answered `same_event`; an authored row wins
+  over an expansion onto its key; the drafter writes the coordinate for an indel rsID. The 22nd (`rs1452575772`) has no
+  `resolution.csv` row at all, not even `not_found`; asked whether a run can end with a subject neither placed nor
+  marked. Not fixed on their `main` at `05abe19a`. The cost side is ours (a refusal after the re-derive drops it), with
+  the pm as a 0.33 candidate (641258690).
 - **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
   its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
   local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
