@@ -482,14 +482,16 @@ def publish_version(
     rederive: bool = False,
     drift_out: list[str] | None = None,
     hold_as: str | None = None,
+    keep_as: str | None = None,
+    keep_snapshots: Mapping[str, str | None] | None = None,
 ) -> ModuleManifest:
     """Publish from individually-uploaded spec files.
 
     `gate` is an already-acquired `EnrichmentGate` permit, released here in the worker's own
     `finally` — see `import_archive` for why the release cannot live on the caller's side.
 
-    `rederive`, `drift_out` and `hold_as` are `registry upgrade`'s (M12) and no router passes them; see
-    `_finalize`.
+    `rederive`, `drift_out`, `hold_as`, `keep_as` and `keep_snapshots` are `registry upgrade`'s (M12) and no
+    router passes them; see `_finalize`.
     """
     try:
         missing = [f for f in REQUIRED_SPEC_FILES if f not in files]
@@ -511,6 +513,7 @@ def publish_version(
                 version=version, changelog=changelog, owner=owner, published_by=published_by,
                 spec_dir=spec_dir, allow_test_data=allow_test_data,
                 rederive=rederive, drift_out=drift_out, hold_as=hold_as,
+                keep_as=keep_as, keep_snapshots=keep_snapshots,
             )
     finally:
         if gate is not None:
@@ -587,6 +590,8 @@ def _finalize(
     rederive: bool = False,
     drift_out: list[str] | None = None,
     hold_as: str | None = None,
+    keep_as: str | None = None,
+    keep_snapshots: Mapping[str, str | None] | None = None,
 ) -> ModuleManifest:
     """Validate, enrich, recompile a prepared spec dir, store the version, and index it.
 
@@ -605,6 +610,10 @@ def _finalize(
     `hold_as` (`--withhold-rederive`, the predecessor's version) gates it as 0.31.0 did, refusing as
     `rederive_drift_needs_reading`, but keeps the re-derived spec first (`services/held.py`), so
     `--accept-drift` publishes it without asking any source again.
+
+    `keep_as` (the predecessor's version, 0.33.1) keeps a re-derived spec the strict compile then refuses,
+    with the `keep_snapshots` it was derived under, so the retry under a fixed compiler compiles it without
+    re-deriving (`services/held.py`, `COMPILE_FAILED`). The refusal is still `compile_failed`.
     """
     with start_action(
         action_type="publish_finalize", namespace=namespace, name=name, version=version
@@ -777,11 +786,27 @@ def _finalize(
                 errors = list(result.errors)
                 if enriched.unresolved or not enriched.ran:
                     errors.append(unresolved_hint(enriched, settings))
+                extra: dict[str, Any] = {}
+                if keep_as is not None and enriched.rederived:
+                    # A gate after an expensive step keeps that step's result: an online re-derivation
+                    # can be a day and a half of paced requests, and the compiler is what the retry waits
+                    # for. The spec dir is as the re-derivation left it; the compile wrote to `out_dir`.
+                    run = active_run()
+                    kept = held.hold(
+                        settings, namespace, name, keep_as, spec_dir,
+                        drift=enriched.drift, drift_to_read=enriched.drift_to_read,
+                        changelog=rederive_changelog(enriched), offline=enriched.offline,
+                        run=run.path.name if run is not None else None,
+                        reason=held.COMPILE_FAILED, snapshots=keep_snapshots,
+                    )
+                    action.log(message_type="kept_on_compile_failed", held=kept.path.name)
+                    extra = {"held": kept.path.name, "held_reason": held.COMPILE_FAILED}
                 raise PublishError(
                     "compile_failed",
                     errors=errors,
                     warnings=result.warnings + enriched.notes + normalization.warnings,
                     info=normalization.info + validation.info,
+                    extra=extra,
                 )
 
             manifest = result.manifest

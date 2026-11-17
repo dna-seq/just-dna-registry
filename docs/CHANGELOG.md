@@ -6,6 +6,21 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.33.1] — 2026-11-17
+
+**Client surface:** unchanged.
+
+### A strict compile refusal keeps the re-derivation for the retry
+
+`registry upgrade` re-derives a module's resolutions (online, production's three ClinVar modules took about
+37 hours on 2026-11-17) and then compiles strictly. When the compile refused, the re-derived spec went with
+the temporary directory, so the retry after a compiler fix asked every source again. A refused re-derivation
+is now kept under `held/` (`reason: compile_failed`, with the snapshot releases it read), and a later
+`upgrade --apply` compiles it without re-deriving, under a newer compiler if one is installed. It is used
+only while the enricher version and those snapshot releases are unchanged; otherwise the module re-derives
+and its line says why. `GET /upgrade/status` reports such a kept spec and its staleness as it does a drift
+hold. See UPGRADE.md, 0.33.1.
+
 ## [0.33.0] — 2026-11-17
 
 **Client surface:** unchanged (`lane_tables` and `lane_rows` return three more keys; no signature moved).

@@ -1,5 +1,25 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.33.1 — a compile refusal keeps the re-derivation (operator note)
+
+Production's online upgrade of 2026-11-17 re-derived cardio, cancer and pathogenic for about 37 hours, then
+the strict compile refused all three (`compile_failed`, an upstream placement defect filed as their S158).
+Through 0.33.0 the re-derived specs went with the publish's temporary directory, so the retry after
+upstream's fix would have spent the 37 hours again. From 0.33.1 a re-derivation the compile refuses is kept
+under `held/`, as `--withhold-rederive` keeps one. The module's log line says
+`the re-derivation is kept: a later registry upgrade --apply -m NAME compiles it without re-deriving`.
+
+The retry is a plain `--apply` (no `--online` needed, nothing is asked of any source). It uses the kept spec
+while the **enricher version and the snapshot releases** it was derived under are unchanged; the compiler
+may differ, since a fixed compiler is what the retry waits for. When either moved, the kept spec is not
+used: the module re-derives as before and its log line says why. The three modules refused on
+2026-11-17 kept nothing (0.33.0 ran), so their first retry re-derives; only refusals from 0.33.1 on are kept.
+
+```
+uv run registry upgrade --dry-run -m cardio     # "kept" on its line; run.log says why when it is not used
+uv run registry upgrade --apply -m cardio       # compiles what was kept
+```
+
 ## 0.31.1 — a re-derivation publishes in one pass (operator note)
 
 `registry upgrade --apply` no longer holds a re-derived module on drift. Through 0.31.0 a module whose

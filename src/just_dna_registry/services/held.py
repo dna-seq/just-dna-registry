@@ -14,10 +14,19 @@ would take a held result with it. A held result is **stale**, and never publishe
 enricher installed now is not the one that produced it, or when the predecessor is no longer the
 module's latest version: a different toolchain would publish a result it did not derive. Publishing one
 removes it; `revert-run` of that publish does not bring it back (it is not catalog or storage).
+
+**A strict compile refusal keeps the re-derivation too (0.33.1).** Production's online upgrade of 2026-11-17
+re-derived three ClinVar modules for about 37 hours, then the compile refused all three over an upstream
+placement defect (their S158), and the specs went with the temporary directory: the retry after upstream's fix
+would have spent the 37 hours again. A `compile_failed` hold (`reason`) is kept for exactly that retry, so its
+staleness rule differs: the **compiler may move**, since a new compiler is what the retry waits for, while the
+enricher version and the snapshot releases the re-derivation read (`snapshots`) may not, because either would
+derive a different table. A stale one of these is re-derived as before, and the sweep says why.
 """
 
 import json
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
@@ -32,6 +41,12 @@ RECORD = "held.json"
 SPEC = "spec"
 #: The packages whose installed version a held result must match to be published.
 TOOLCHAIN: tuple[str, ...] = ("just-dna-compiler", "just-dna-enricher")
+#: Why a re-derivation was kept: its drift wants reading (`--withhold-rederive`, 0.31.1), or the strict
+#: compile refused it (0.33.1), which keeps it for a retry under a newer compiler.
+DRIFT = "rederive_drift_needs_reading"
+COMPILE_FAILED = "compile_failed"
+#: What a `compile_failed` hold must still match: the deriving tier only.
+DERIVING: tuple[str, ...] = ("just-dna-enricher",)
 
 
 def held_root(settings: Settings) -> Path:
@@ -66,13 +81,36 @@ class HeldRederivation:
     def run(self) -> str | None:
         return self.record.get("run")
 
-    def stale_reason(self) -> str | None:
-        """Why this result may not be published now, or `None` when it may."""
+    @property
+    def reason(self) -> str:
+        """Why it was kept; a record from 0.31.1 to 0.33.0 names none and was a drift hold."""
+        return str(self.record.get("reason") or DRIFT)
+
+    def stale_reason(self, snapshots_now: Mapping[str, str | None] | None = None) -> str | None:
+        """Why this result may not be published now, or `None` when it may.
+
+        A drift hold must match the whole toolchain. A `compile_failed` hold must match the enricher and the
+        snapshot releases it was derived under (`snapshots_now`: the box's labels as
+        `upgrade.installed_snapshot_releases` reads them). Without `snapshots_now` they cannot be shown
+        unchanged, so the hold is stale."""
         recorded = self.record.get("toolchain") or {}
         now = toolchain()
-        moved = [f"{p} {recorded.get(p)} → {now[p]}" for p in TOOLCHAIN if recorded.get(p) != now[p]]
+        packages = DERIVING if self.reason == COMPILE_FAILED else TOOLCHAIN
+        moved = [f"{p} {recorded.get(p)} → {now[p]}" for p in packages if recorded.get(p) != now[p]]
         if moved:
             return f"re-derived under another toolchain ({', '.join(moved)}); re-derive it"
+        if self.reason != COMPILE_FAILED:
+            return None
+        if snapshots_now is None:
+            return "the snapshot releases on this box were not read, so they cannot be shown unchanged; re-derive it"
+        then = self.record.get("snapshots") or {}
+        changed = [
+            f"{authority} {then.get(authority)} → {snapshots_now.get(authority)}"
+            for authority in sorted(set(then) | set(snapshots_now))
+            if then.get(authority) != snapshots_now.get(authority)
+        ]
+        if changed:
+            return f"re-derived under other snapshot releases ({', '.join(changed)}); re-derive it"
         return None
 
     def files(self) -> dict[str, bytes]:
@@ -101,8 +139,13 @@ def hold(
     changelog: str,
     offline: bool,
     run: str | None,
+    reason: str = DRIFT,
+    snapshots: Mapping[str, str | None] | None = None,
 ) -> HeldRederivation:
-    """Keep `spec_dir` as the re-derivation of `predecessor` left it; replaces an older held one."""
+    """Keep `spec_dir` as the re-derivation of `predecessor` left it; replaces an older held one.
+
+    `reason` says why (`DRIFT` or `COMPILE_FAILED`); a `COMPILE_FAILED` hold records the `snapshots` it was
+    derived under, which its staleness compares."""
     slot = _slot(settings, namespace, name, predecessor)
     if slot.exists():
         shutil.rmtree(slot)
@@ -115,6 +158,7 @@ def hold(
         "namespace": namespace, "name": name, "predecessor": predecessor,
         "toolchain": toolchain(), "drift": drift, "drift_to_read": drift_to_read,
         "changelog": changelog, "offline": offline, "run": run,
+        "reason": reason, "snapshots": dict(snapshots) if snapshots is not None else None,
         "held_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     (staging / RECORD).write_text(json.dumps(record, indent=2, sort_keys=True))

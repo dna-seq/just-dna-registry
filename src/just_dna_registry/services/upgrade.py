@@ -1007,14 +1007,14 @@ def upgrade_version(
     does not need the network still re-derives from the snapshot alone."""
     if not is_latest_version(repo, namespace, name, version):
         return None
+    releases = installed_snapshot_releases(settings)
     prep = prepared or prepare_version_upgrade(
-        storage, namespace, name, version, manifest, trim=trim,
-        installed_releases=installed_snapshot_releases(settings),
+        storage, namespace, name, version, manifest, trim=trim, installed_releases=releases,
     )
     if prep is None or not prep.would_act(recompile=recompile):
         return None
     if from_held is not None:
-        stale = from_held.stale_reason()
+        stale = from_held.stale_reason(releases)
         if stale:
             raise UpgradeHeld(f"the kept re-derivation is stale: {stale}", code=HELD_STALE)
         new_version = _next_free_patch(repo, namespace, name, version)
@@ -1070,5 +1070,9 @@ def upgrade_version(
         rederive=prep.rederive,
         drift_out=drift_out,
         hold_as=version if withhold else None,
+        # A re-derivation the strict compile refuses is kept for the retry under a fixed compiler (0.33.1),
+        # with the snapshot releases it read, which that retry must still find.
+        keep_as=version if prep.rederive else None,
+        keep_snapshots=releases if prep.rederive else None,
     )
     return new_version, new_manifest

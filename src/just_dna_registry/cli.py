@@ -1166,15 +1166,26 @@ def _sweep_one(
     kept = held_store.find(settings, ns, name, ver) if prep.rederive else None
     if accept_drift and kept is None:
         return SweepItem(label, UNCHANGED, "not_kept", f"· {label}: unchanged not_kept")
+    rederive_why = ""
+    if kept is not None and kept.reason == held_store.COMPILE_FAILED:
+        stale = kept.stale_reason(installed_releases)
+        if stale:
+            # Kept for a retry under a fixed compiler (0.33.1), but what derived it has moved since, so
+            # it is no longer the table this box would derive: re-derive as before, and say why. Removed
+            # only by an applying run; a dry run changes nothing.
+            rederive_why = f"; the re-derivation kept by run {kept.run} is not used: {stale}"
+            if apply:
+                kept.release()
+            kept = None
     if kept is not None:
         # Published from what was kept, so neither the snapshot nor the network is asked: both
         # checks below are about a re-derivation, and this one already ran.
-        stale = kept.stale_reason()
+        stale = kept.stale_reason(installed_releases)
         if stale:
             return SweepItem(label, HELD, HELD_STALE, f"… held {label}: {HELD_STALE}", [stale])
         codes = f"{_act_codes(prep, recompile=force)} kept"
         described = f"{_describe_upgrade(prep, recompile=force)}; the re-derivation kept by run {kept.run}"
-        if withhold:
+        if withhold and (kept.reason != held_store.COMPILE_FAILED or kept.drift_to_read):
             return SweepItem(
                 label, REFUSED, "rederive_drift_needs_reading", f"✗ {label}: rederive_drift_needs_reading",
                 [f"kept by run {kept.run}; --accept-drift -m {name} publishes it", *kept.drift_to_read],
@@ -1192,7 +1203,7 @@ def _sweep_one(
             ["carries an indel, which offline 0.8 cannot left-align; needs --online"],
         )
     codes = _act_codes(prep, recompile=force)
-    described = f"{_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)}"
+    described = f"{_describe_upgrade(prep, recompile=force)}{_describe_rederive(prep)}{rederive_why}"
     online_subjects = prep.rederive_subjects if prep.needs_online else 0
     if not apply:
         return SweepItem(
@@ -1265,10 +1276,15 @@ def _publish_one(
     except UpgradeHeld as exc:
         return SweepItem(label, HELD, exc.code, f"… held {label}: {exc.code}", [str(exc)])
     except PublishError as exc:
-        kept = (
-            [f"kept; --accept-drift -m {todo.name} publishes it without re-deriving"]
-            if exc.extra.get("held") else []
-        )
+        if not exc.extra.get("held"):
+            kept = []
+        elif exc.extra.get("held_reason") == held_store.COMPILE_FAILED:
+            kept = [
+                f"the re-derivation is kept: a later `registry upgrade --apply -m {todo.name}` compiles it "
+                f"without re-deriving while the enricher and the snapshot releases stay as they are"
+            ]
+        else:
+            kept = [f"kept; --accept-drift -m {todo.name} publishes it without re-deriving"]
         return SweepItem(
             label, REFUSED, exc.detail, f"✗ {label}: {exc.detail}", [*kept, *exc.errors],
             online_subjects=todo.online_subjects,

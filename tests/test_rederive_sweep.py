@@ -41,6 +41,7 @@ from just_dna_registry.services.enrich import QUIET_DRIFT, snapshot_not_current
 from just_dna_registry.services.publish import PublishError
 from just_dna_registry.services.upgrade import (
     UpgradeHeld,
+    installed_snapshot_releases,
     needs_online_rederive,
     prepare_version_upgrade,
     resolution_needs_rederive,
@@ -854,3 +855,131 @@ def test_the_sweep_withholds_then_accepts_with_one_re_derivation(
 def test_withholding_and_accepting_at_once_is_refused(settings: Settings, monkeypatch) -> None:
     out = _sweep(settings, monkeypatch, "--apply", "--withhold-rederive", "--accept-drift", exit_code=2)
     assert "not both" in out
+
+
+# ── A strict compile refusal keeps the re-derivation for the retry (0.33.1) ─────────────────────────────
+
+
+def _failing_compile(monkeypatch) -> list[bool]:
+    """Make the strict compile refuse until the returned switch is flipped, as upstream's S158 did on
+    production; the re-derivation before it runs for real."""
+    from just_dna_registry.services import publish as publish_service
+
+    real = publish_service.compile_module
+    broken = [True]
+
+    def compile_module(spec_dir, out_dir, **kwargs):
+        if broken[0]:
+            return real(spec_dir, out_dir, **kwargs).model_copy(update={
+                "success": False, "manifest": None,
+                "errors": ["post-resolution: Duplicate (variant, genotype): (11:108256251:CT:C, C/CT)"],
+            })
+        return real(spec_dir, out_dir, **kwargs)
+
+    monkeypatch.setattr(publish_service, "compile_module", compile_module)
+    return broken
+
+
+def test_a_compile_refusal_keeps_the_re_derivation_and_a_fixed_compiler_publishes_it(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, enrich_calls: list[dict]
+) -> None:
+    """Production, 2026-11-17: ~37 h of online re-derivation, then the compile refused, and the specs went with
+    the temporary directory. The refusal now keeps the spec; the retry under a newer compiler compiles it
+    with no second re-derivation."""
+    manifest = _publish(client, api_key)
+    _as_0_7_table(app)
+    broken = _failing_compile(monkeypatch)
+    enrich_calls.clear()
+    args = {
+        "repo": app.state.repo, "storage": app.state.storage, "settings": settings,
+        "namespace": _NS, "name": _NAME, "version": "1.0.0", "manifest": manifest,
+    }
+
+    with pytest.raises(PublishError) as refused:
+        upgrade_version(**args)
+    assert refused.value.detail == "compile_failed"
+    assert refused.value.extra["held_reason"] == held.COMPILE_FAILED
+    kept = held.find(settings, _NS, _NAME, "1.0.0")
+    assert kept is not None and kept.reason == held.COMPILE_FAILED
+    releases = installed_snapshot_releases(settings)
+    assert kept.record["snapshots"] == releases
+    assert not resolution_needs_rederive(kept.files()[RESOLUTION_CSV].decode())  # the re-derived table
+
+    # Upstream ships the fix: the compiler moves, and that is exactly what this hold waits for.
+    broken[0] = False
+    real = held.toolchain()
+    monkeypatch.setattr(held, "toolchain", lambda: {**real, "just-dna-compiler": "9.9.9"})
+    assert kept.stale_reason(releases) is None
+    result = upgrade_version(**args, from_held=kept)
+    assert result is not None and result[0] == "1.0.1"
+    assert [call["rederive"] for call in enrich_calls] == [True, False]  # one re-derivation in all
+    assert "Resolutions re-derived" in _changelog(app, "1.0.1")
+    assert held.find(settings, _NS, _NAME, "1.0.0") is None  # consumed
+
+
+def test_a_compile_failed_hold_goes_stale_when_what_derived_it_moves(tmp_path: Path, monkeypatch) -> None:
+    """The compiler may move under it; the enricher and the snapshot releases may not, and an unread release
+    cannot be shown unchanged. A drift hold keeps 0.31.1's rule: the whole toolchain."""
+    settings = Settings(db_path=tmp_path / "r.db", local_storage_dir=tmp_path / "a")
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text("x")
+    snapshots = {"ensembl": _ENS, "clinvar": "clinvar_2026-11-01"}
+    common = {"drift": {}, "drift_to_read": [], "changelog": "", "offline": False, "run": None}
+    failed = held.hold(settings, _NS, _NAME, "1.0.0", spec, **common, reason=held.COMPILE_FAILED, snapshots=snapshots)
+    drift = held.hold(settings, _NS, "other", "1.0.0", spec, **common)
+    assert drift.reason == held.DRIFT
+
+    real = held.toolchain()
+    monkeypatch.setattr(held, "toolchain", lambda: {**real, "just-dna-compiler": "9.9.9"})
+    assert failed.stale_reason(snapshots) is None
+    assert "just-dna-compiler" in (drift.stale_reason(snapshots) or "")
+    assert "not read" in (failed.stale_reason(None) or "")
+    assert "clinvar" in (failed.stale_reason({**snapshots, "clinvar": "clinvar_2026-12-01"}) or "")
+    assert "ensembl" in (failed.stale_reason({**snapshots, "ensembl": None}) or "")
+    monkeypatch.setattr(held, "toolchain", lambda: {**real, "just-dna-enricher": "9.9.9"})
+    assert "just-dna-enricher" in (failed.stale_reason(snapshots) or "")
+
+
+def test_the_sweep_keeps_on_a_compile_refusal_and_the_next_one_compiles_what_it_kept(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, enrich_calls: list[dict]
+) -> None:
+    _publish(client, api_key)
+    _as_0_7_table(app)
+    broken = _failing_compile(monkeypatch)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    enrich_calls.clear()
+
+    out = _sweep(settings, monkeypatch, "--apply", "-m", _NAME)
+    assert f"✗ {_NS}/{_NAME}@1.0.0: compile_failed" in out
+    assert "compiles it without re-deriving" in _run_log(settings.db_path.parent)
+    assert held.find(settings, _NS, _NAME, "1.0.0") is not None
+
+    broken[0] = False
+    out = _sweep(settings, monkeypatch, "--apply", "-m", _NAME)
+    assert f"✓ {_NS}/{_NAME}@1.0.0 → 1.0.1" in out and "kept" in out
+    assert [call["rederive"] for call in enrich_calls] == [True, False]
+
+
+def test_the_sweep_re_derives_a_compile_failed_hold_whose_snapshot_moved_and_says_why(
+    client: TestClient, api_key: str, app, settings: Settings, monkeypatch, enrich_calls: list[dict]
+) -> None:
+    _publish(client, api_key)
+    _as_0_7_table(app)
+    broken = _failing_compile(monkeypatch)
+    monkeypatch.setattr(cli, "snapshot_not_current", lambda _s: None)
+    _sweep(settings, monkeypatch, "--apply", "-m", _NAME)
+    kept = held.find(settings, _NS, _NAME, "1.0.0")
+    assert kept is not None
+    record = json.loads((kept.path / held.RECORD).read_text())
+    record["snapshots"] = {**record["snapshots"], "clinvar": "clinvar_2026-10-01"}  # derived under an older one
+    (kept.path / held.RECORD).write_text(json.dumps(record))
+
+    broken[0] = False
+    enrich_calls.clear()
+    _sweep(settings, monkeypatch, "-m", _NAME)
+    assert held.find(settings, _NS, _NAME, "1.0.0") is not None  # a dry run removes nothing
+    _sweep(settings, monkeypatch, "--apply", "-m", _NAME)
+    assert [call["rederive"] for call in enrich_calls] == [True]  # re-derived, not the stale copy
+    assert app.state.repo.version_exists(_NS, _NAME, "1.0.1")
+    assert held.find(settings, _NS, _NAME, "1.0.0") is None
