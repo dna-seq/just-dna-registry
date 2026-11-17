@@ -109,6 +109,9 @@ reset").
   choice with nothing against one side is the seat's, built or given its state). Read as its adversary: no concern.
   The liaison has no open desk question, and its two waits (duckdb 2.0 on the lead's merge, the 0.8.8 notice on
   PyPI) wait on a seat and on a fact, never on the person.
+- reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked where the person will
+  look; a claim of absence says as of when). No concern. It touches the liaison's "not on PyPI yet" lines: each
+  now carries its read time, and the 0.8.8 notice is sent only after a fresh PyPI read.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
