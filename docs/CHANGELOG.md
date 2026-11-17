@@ -6,6 +6,17 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased] — 0.33
+
+### A changed verdict unpins a highlighted review (S35)
+
+`PUT .../versions/{v}/reviews` kept the owner's `highlighted` flag over any re-post, so an outside reviewer whose
+`concerns` review the owner had pinned could re-post it as `verified`, and since 0.32 counts verified highlights
+only, the card, `?group=curated` and `GET /stats` then read the module as curated with no act by the owner. A
+re-post whose verdict differs from the stored one (no verdict to a verdict included) now clears the highlight, and
+the owner re-pins what they have read; a rating- or notes-only edit keeps it, so rewritten notes on a pinned review
+still keep the pin. It is done in the upsert, so stored reviews need no migration.
+
 ## [0.32.1] — 2026-11-17
 
 **Client surface:** unchanged.

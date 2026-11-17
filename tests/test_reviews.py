@@ -191,3 +191,38 @@ def test_only_a_verified_outside_review_curates(client: TestClient, api_key: str
     assert counts() == (False, 0, 0), "a verified review the owner has not highlighted curates nothing"
     client.put(f"{_V}/reviews/checker/highlight", headers=_auth(api_key))
     assert counts() == (True, 1, 1)
+
+
+def test_a_changed_verdict_unpins_and_a_notes_edit_does_not(client: TestClient, api_key: str, app) -> None:
+    """0.33, S35: an outside reviewer whose pinned `concerns` review is re-posted as `verified` must not raise
+    `curated` with no act by the owner. The verdict change clears the pin; a rating or notes edit keeps it."""
+    _publish(client, api_key)
+    bob = _reviewer_key(app.state.repo)
+    client.put(f"{_V}/reviews", json={"rating": 2, "verdict": "concerns", "notes": "n"}, headers=_auth(bob))
+    client.put(f"{_V}/reviews/bob/highlight", headers=_auth(api_key))
+
+    # Rating and notes only: the pin stays, and a pinned critique still never curates.
+    body = client.put(f"{_V}/reviews", json={"rating": 3, "verdict": "concerns", "notes": "reworded"},
+                      headers=_auth(bob)).json()
+    assert body[0]["highlighted"] is True and body[0]["notes"] == "reworded"
+    assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 0
+
+    # The verdict flips to verified: the pin is cleared, so nothing curates until the owner re-pins.
+    body = client.put(f"{_V}/reviews", json={"rating": 5, "verdict": "verified", "notes": "reworded"},
+                      headers=_auth(bob)).json()
+    assert body[0]["verdict"] == "verified" and body[0]["highlighted"] is False
+    assert client.get("/api/v1/modules").json()["items"][0]["curated"] is False
+    assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 0
+
+    # The owner re-pins what they have now read: curated.
+    client.put(f"{_V}/reviews/bob/highlight", headers=_auth(api_key))
+    assert client.get("/api/v1/modules", params={"group": "curated"}).json()["total"] == 1
+
+    # No verdict to a verdict is a change too (NULL compared as a value), and back again.
+    body = client.put(f"{_V}/reviews", json={"rating": 5}, headers=_auth(bob)).json()
+    assert body[0]["verdict"] is None and body[0]["highlighted"] is False
+    client.put(f"{_V}/reviews/bob/highlight", headers=_auth(api_key))
+    body = client.put(f"{_V}/reviews", json={"rating": 4}, headers=_auth(bob)).json()
+    assert body[0]["highlighted"] is True  # None -> None is no change
+    body = client.put(f"{_V}/reviews", json={"rating": 4, "verdict": "verified"}, headers=_auth(bob)).json()
+    assert body[0]["highlighted"] is False

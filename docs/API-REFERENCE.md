@@ -1170,8 +1170,9 @@ List reviews/audits — for the whole module, or one version. Anonymous. Highlig
 ### 28. `PUT` / `DELETE /api/v1/modules/{ns}/{name}/versions/{v}/reviews`  *(bearer)*
 Post/update (`PUT`) or remove (`DELETE`) **the caller's** review of a version. **Anyone
 authenticated** — reviews are open, like a store. Body `{"rating": 1-5, "verdict":
-"verified|concerns|rejected"?, "notes"?}`; one per account per version (re-posting replaces it, and
-leaves the owner's highlight intact). Returns the version's current review list. Errors: `401`,
+"verified|concerns|rejected"?, "notes"?}`; one per account per version (re-posting replaces it). A re-post that **changes the verdict** clears the
+owner's highlight (0.33, S35), so the owner re-pins what they have read; one that changes only the rating
+or the notes keeps it. Rewritten notes on a highlighted review therefore keep the pin. Returns the version's current review list. Errors: `401`,
 `404 version_not_found`, `422` (rating out of range / bad verdict). Rate-limited (`social`).
 
 ### 29. `PUT` / `DELETE .../versions/{v}/reviews/{reviewer}/highlight`  *(bearer — owner)*
@@ -1183,7 +1184,8 @@ holds no role on the namespace as `effective_role` reads it at that moment (a pe
 owning account, an owning org's membership, or site admin). An inside review is still accepted, listed and
 highlightable, and reads as information; it never makes a module curated. So is an outside review whose
 verdict is `concerns` or `rejected` (the owner pinning a critique) or that has none (a rating asserts nothing
-was checked): listed and highlightable, never curating. Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
+was checked): listed and highlightable, never curating. The highlight is on the review as the owner read
+it: a later change of its verdict by the reviewer unpins it (§28). Returns the updated review list. Errors: `401`, `403 not_namespace_owner`,
 `404 review_not_found` (highlight) / `version_not_found`.
 
 #### A review: a `reviews` row, or an `authorship` entry? (S12)
