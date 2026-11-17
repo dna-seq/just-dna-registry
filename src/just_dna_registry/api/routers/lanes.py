@@ -43,6 +43,21 @@ _UNPUBLISHED = (
 )
 
 
+_RELEASE = (
+    "The lane's release label, read exactly as `GET /caches` reads a local lane's (0.33): from this box's "
+    "copy, or from the published repo's `release.json` at `revision`. `null` where none is stated. A label "
+    "names a release, never the bytes: a stale copy under the hub's newer `release.json` reads the new label."
+)
+_RELEASE_UNREADABLE = (
+    "A `release.json` is there and could not be read (it does not parse, or the published repo's copy could not "
+    "be fetched): the release is unknown, the rows still usable."
+)
+_REVISION = (
+    "The hub commit every file of a remote read was read at (0.33), resolved once per request, so one answer "
+    "never straddles a commit. `null` for a local copy, which keeps no commit."
+)
+
+
 class LaneRowsResponse(BaseModel):
     lane: str
     table: str
@@ -51,6 +66,9 @@ class LaneRowsResponse(BaseModel):
     truncated: bool = Field(description="More rows matched than this server returns per request")
     terms: dict[str, Any] | None = Field(default=None, description=_TERMS)
     unpublished: str | None = Field(default=None, description=_UNPUBLISHED)
+    release: str | None = Field(default=None, description=_RELEASE)
+    release_unreadable: bool = Field(default=False, description=_RELEASE_UNREADABLE)
+    revision: str | None = Field(default=None, description=_REVISION)
 
 
 class LaneTablesResponse(BaseModel):
@@ -59,6 +77,9 @@ class LaneTablesResponse(BaseModel):
     tables: list[dict[str, Any]]
     terms: dict[str, Any] | None = Field(default=None, description=_TERMS)
     unpublished: str | None = Field(default=None, description=_UNPUBLISHED)
+    release: str | None = Field(default=None, description=_RELEASE)
+    release_unreadable: bool = Field(default=False, description=_RELEASE_UNREADABLE)
+    revision: str | None = Field(default=None, description=_REVISION)
 
 
 def _refusal(request: Request, exc: lane_service.LaneLookupError) -> HTTPException:
@@ -70,12 +91,13 @@ def _refusal(request: Request, exc: lane_service.LaneLookupError) -> HTTPExcepti
 async def lane_tables(request: Request, settings: SettingsDep, lane: str) -> LaneTablesResponse:
     """What a lane holds, as tables with the key columns each can be asked by."""
     try:
-        served_from, tables = await run_in_threadpool(lane_service.lane_tables, lane, settings)
+        source, tables = await run_in_threadpool(lane_service.lane_tables, lane, settings)
     except lane_service.LaneLookupError as exc:
         raise _refusal(request, exc) from exc
     said = lane_service.lane_terms(lane)
     return LaneTablesResponse(
-        lane=lane, served_from=served_from, tables=tables, terms=said.terms, unpublished=said.unpublished
+        lane=lane, served_from=source.served_from, tables=tables, terms=said.terms, unpublished=said.unpublished,
+        release=source.release, release_unreadable=source.release_unreadable, revision=source.revision,
     )
 
 
@@ -96,4 +118,5 @@ async def lane_rows(
     return LaneRowsResponse(
         lane=found.lane, table=found.table, served_from=found.served_from, rows=found.rows,
         truncated=found.truncated, terms=said.terms, unpublished=said.unpublished,
+        release=found.release, release_unreadable=found.release_unreadable, revision=found.revision,
     )

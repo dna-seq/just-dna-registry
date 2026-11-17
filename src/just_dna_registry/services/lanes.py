@@ -16,6 +16,12 @@ Four rules, from the person and the pm's requirements:
   which narrows the read to that chromosome's files; Ensembl by rsID alone cannot be pruned (upstream
   RM431 asks for an index).
 * **No filesystem path leaves the process**: `served_from` is `local` or `remote:<repo>`.
+* **One answer reads one revision** (0.33, S34). A remote read resolves the repo's head commit once per
+  request, lists and reads every file at `@<sha>`, and reports the sha as `revision`, so an answer never
+  straddles a commit the hub took between two file reads. A local copy keeps no revision (the enricher's pull
+  record holds `repo`, `files`, `release_sha256`), so a local answer says `revision: null`. Both say the lane's
+  `release` label as `/caches` reads it (`enrich.lane_release`), and the label names a release, never the
+  bytes: RM445's stale copy carried the hub's newer `release.json` over older parquets.
 * **A lane neither held nor published answers `lane_not_available`**, with why.
 
 And every answer carries what upstream says of the lane's source (0.32, S29): its `terms` and why nothing
@@ -32,12 +38,14 @@ import io
 import json
 import logging
 import re
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from just_dna_registry.config import Settings
-from just_dna_registry.services.enrich import cache_lanes, lane_presence
+from just_dna_registry.services.enrich import cache_lanes, lane_presence, lane_release
 
 logger = logging.getLogger("registry.lanes")
 
@@ -73,12 +81,40 @@ class LaneTable:
 
 
 @dataclass
+class LaneSource:
+    """Where one request reads a lane: the tables, and which release and commit it is reading."""
+
+    served_from: str
+    tables: dict[str, LaneTable]
+    #: The lane's release label as `/caches` reads it, or `None` where its `release.json` states none.
+    release: str | None = None
+    #: A `release.json` is there and does not parse: the provenance is unknown, the data still usable.
+    release_unreadable: bool = False
+    #: The hub commit every file of a remote read was read at; `None` for a local copy, which keeps none.
+    revision: str | None = None
+
+
+@dataclass
+class RemoteListing:
+    """A published repo listed once, at one commit."""
+
+    revision: str
+    #: Data files as `hf://datasets/<repo>@<revision>/...` with their sizes.
+    files: list[tuple[str, int]]
+    #: The repo's `release.json` at that commit (an `hf://` path), or `None` where it has none.
+    release_file: str | None
+
+
+@dataclass
 class LaneRows:
     lane: str
     table: str
     served_from: str
     rows: list[dict[str, Any]]
     truncated: bool
+    release: str | None = None
+    release_unreadable: bool = False
+    revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,27 +155,65 @@ def _local_files(root: Path) -> list[tuple[str, int]]:
     ]
 
 
-def _remote_files(repo: str) -> list[tuple[str, int]]:
+def _remote_files(repo: str) -> RemoteListing:
+    """The repo at its head commit, resolved once: every path names `@<sha>`, so nothing read through this
+    listing can come from a later commit (polars and `HfFileSystem` both read a pinned `hf://` path)."""
+    from huggingface_hub import HfApi, HfFileSystem
+
+    revision = HfApi().dataset_info(repo).sha
+    found = HfFileSystem().find(f"datasets/{repo}@{revision}", detail=True)
+    root = f"datasets/{repo}@{revision}/"
+    return RemoteListing(
+        revision=revision,
+        files=[
+            (f"hf://{path}", int(info.get("size") or 0)) for path, info in sorted(found.items())
+            if path.endswith((".parquet", ".json", ".csv"))
+            and not path.endswith(("release.json", "manifest.json")) and "/." not in path
+        ],
+        release_file=f"hf://{root}release.json" if f"{root}release.json" in found else None,
+    )
+
+
+def _remote_release(lane: str, release_file: str | None) -> tuple[str | None, bool]:
+    """The remote `release.json` read by the same reader as a local one: upstream's readers open a directory,
+    so the one small file is copied into a temporary one (RM430/RM431 ask for remote readers)."""
+    if release_file is None:
+        return None, False
     from huggingface_hub import HfFileSystem
+    from huggingface_hub.errors import HfHubHTTPError
+    from just_dna_enricher.locations import RELEASE_FILENAME
 
-    fs = HfFileSystem()
-    found = fs.find(f"datasets/{repo}", detail=True)
-    return [
-        (f"hf://{path}", int(info.get("size") or 0)) for path, info in sorted(found.items())
-        if path.endswith((".parquet", ".json", ".csv")) and not path.endswith(("release.json", "manifest.json"))
-        and "/." not in path
-    ]
+    with tempfile.TemporaryDirectory(prefix="lane-release-") as tmp:
+        try:
+            if release_file.startswith("hf://"):
+                HfFileSystem().get_file(release_file.removeprefix("hf://"), str(Path(tmp) / RELEASE_FILENAME))
+            else:
+                shutil.copyfile(release_file, Path(tmp) / RELEASE_FILENAME)
+        except (OSError, HfHubHTTPError) as exc:
+            # A provenance failure is not a data failure: the listing named a `release.json` that could not be
+            # fetched, so the release is unknown and the rows are still served. Same answer as one that does
+            # not parse: present, and not read.
+            logger.warning("could not fetch %s's release.json (%s); release reported unreadable", lane, exc)
+            return None, True
+        return lane_release(cache_lanes()[lane], Path(tmp))
 
 
-def lane_source(lane: str, settings: Settings) -> tuple[str, dict[str, LaneTable]]:
-    """`(served_from, tables)` for a lane: this box's copy when it holds one, else its published repo."""
+def lane_source(lane: str, settings: Settings) -> LaneSource:
+    """Where a lane is read for one request: this box's copy when it holds one, else its published repo at
+    the commit it is at now."""
     if lane not in cache_lanes():
         raise LaneLookupError("unknown_lane", f"no lane named {lane!r}", status=404)
     where = lane_presence(settings).get(lane)
+    release: str | None = None
+    unreadable = False
+    revision: str | None = None
     if where is not None:
         served_from, listed = "local", _local_files(Path(where))
+        release, unreadable = lane_release(cache_lanes()[lane], Path(where))
     elif (repo := _repo(lane)) is not None:
-        served_from, listed = f"remote:{repo}", _remote_files(repo)
+        remote = _remote_files(repo)
+        served_from, listed, revision = f"remote:{repo}", remote.files, remote.revision
+        release, unreadable = _remote_release(lane, remote.release_file)
     else:
         raise LaneLookupError(
             "lane_not_available",
@@ -153,7 +227,7 @@ def lane_source(lane: str, settings: Settings) -> tuple[str, dict[str, LaneTable
         table = tables.setdefault(_table_name(stem), LaneTable(_table_name(stem), [], [], suffix))
         table.files.append(path)
         table.sizes.append(size)
-    return served_from, tables
+    return LaneSource(served_from, tables, release, unreadable, revision)
 
 
 def _parquet_columns(table: LaneTable) -> list[str]:
@@ -162,11 +236,11 @@ def _parquet_columns(table: LaneTable) -> list[str]:
     return list(pl.scan_parquet(table.files[0]).collect_schema().names())
 
 
-def lane_tables(lane: str, settings: Settings) -> tuple[str, list[dict[str, Any]]]:
+def lane_tables(lane: str, settings: Settings) -> tuple[LaneSource, list[dict[str, Any]]]:
     """What a caller can ask of a lane: each table with the key columns it carries."""
-    served_from, tables = lane_source(lane, settings)
+    source = lane_source(lane, settings)
     out = []
-    for table in tables.values():
+    for table in source.tables.values():
         columns = _parquet_columns(table) if table.kind == "parquet" else []
         keys = [c for c in KEY_COLUMNS if c in columns]
         if "start" not in keys and "chrom" in keys and any(c in columns for c in POSITION_COLUMNS):
@@ -175,7 +249,7 @@ def lane_tables(lane: str, settings: Settings) -> tuple[str, list[dict[str, Any]
             "table": table.name, "kind": table.kind, "files": len(table.files),
             "keys": keys if columns else ["gene"],
         })
-    return served_from, sorted(out, key=lambda t: t["table"])
+    return source, sorted(out, key=lambda t: t["table"])
 
 
 def _chrom_forms(value: str) -> list[str]:
@@ -199,7 +273,8 @@ def lookup(
         raise LaneLookupError(
             "too_many_keys", f"{count} key values; this server answers at most {settings.lane_max_keys}"
         )
-    served_from, tables = lane_source(lane, settings)
+    source = lane_source(lane, settings)
+    tables = source.tables
     table = tables.get(table_name)
     if table is None:
         raise LaneLookupError(
@@ -209,9 +284,12 @@ def lookup(
     if table.kind != "parquet":
         rows = _small_table_rows(table, keys)
     else:
-        rows = _parquet_rows(table, keys, settings, remote=served_from != "local")
+        rows = _parquet_rows(table, keys, settings, remote=source.served_from != "local")
     truncated = len(rows) > settings.lane_max_rows
-    return LaneRows(lane, table.name, served_from, rows[: settings.lane_max_rows], truncated)
+    return LaneRows(
+        lane, table.name, source.served_from, rows[: settings.lane_max_rows], truncated,
+        release=source.release, release_unreadable=source.release_unreadable, revision=source.revision,
+    )
 
 
 def _parquet_rows(table: LaneTable, keys: dict[str, list[Any]], settings: Settings, *, remote: bool) -> list[dict]:

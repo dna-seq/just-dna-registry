@@ -1376,11 +1376,21 @@ class Repository:
         now: str,
     ) -> None:
         """Create or replace the caller's review of a specific version (one per account per version).
-        Editing content leaves the owner's `highlighted` flag untouched (only the owner sets it)."""
+
+        **A changed verdict clears the owner's `highlighted` flag** (0.33, S35); a rating- or notes-only
+        edit keeps it. The pin is the owner's statement about the review they read, and since 0.32 the
+        verdict is what `curated` counts, so an outside reviewer re-posting a pinned `concerns` as
+        `verified` would otherwise raise `curated` with no act by the owner. Clearing on every edit
+        would make the pin worthless over a typo. `IS` compares with NULL as a value (no verdict to a
+        verdict is a change), and SQLite evaluates every `SET` against the old row, so the `CASE` reads
+        the stored verdict whatever order the assignments are written in. Done in the upsert, so stored
+        rows need no migration."""
         self.conn.execute(
             "INSERT INTO reviews(module_id, version, account_id, rating, verdict, notes, "
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(module_id, version, account_id) DO UPDATE SET "
+            "highlighted = CASE WHEN reviews.verdict IS excluded.verdict "
+            "THEN reviews.highlighted ELSE 0 END, "
             "rating = excluded.rating, verdict = excluded.verdict, notes = excluded.notes, "
             "updated_at = excluded.updated_at",
             (module_id, version, account_id, rating, verdict, notes, now, now),

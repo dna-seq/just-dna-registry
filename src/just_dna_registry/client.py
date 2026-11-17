@@ -1306,7 +1306,8 @@ class RegistryClient:
     def lane_tables(self, lane: str) -> dict:
         """What one snapshot lane holds (0.30): its tables and the key columns each answers by, and
         `served_from` (`local`, or `remote:<repo>` when this server reads the lane's published repo).
-        Since 0.32 also the lane's `terms` and `unpublished`, as on `lane_rows`."""
+        Since 0.32 also the lane's `terms` and `unpublished`, and since 0.33 `release`, `release_unreadable`
+        and `revision`, as on `lane_rows`."""
         return self._json(self._http.get(f"/lanes/{lane}"))
 
     def lane_rows(self, lane: str, table: str, keys: dict[str, list]) -> dict:
@@ -1315,7 +1316,10 @@ class RegistryClient:
         matched than the server returns. Read from the server's snapshot, or remotely from the lane's
         published repo when the server does not hold it. Since 0.32 the answer carries the lane source's
         `terms` (upstream's licence fields; `null` = none stated, not "unrestricted") and `unpublished`
-        (upstream's reason no snapshot is published, e.g. `refused: ...`); absent from an older server."""
+        (upstream's reason no snapshot is published, e.g. `refused: ...`); absent from an older server. Since
+        0.33 it says which release it read: `release` (the lane's label, as `caches` reads it; it names a
+        release, never the bytes), `release_unreadable`, and `revision`, the hub commit a remote read was read
+        at in full (`null` for the server's own copy)."""
         return self._json(self._http.post(f"/lanes/{lane}/{table}", json={"keys": keys}))
 
     def rename_namespace(

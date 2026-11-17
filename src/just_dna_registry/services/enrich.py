@@ -702,6 +702,21 @@ def _lane_directory(lane: Any, configured: Path | None) -> Path | None:
         return None
 
 
+def lane_release(lane: Any, where: Path) -> tuple[str | None, bool]:
+    """`(release, release_unreadable)` of a snapshot directory, the one reading `/caches` and the lane routes
+    share (0.33, S34), so a lane's label reads the same on every route that names it.
+
+    The label is upstream's `release_label`. Present-and-unparseable is not absent, and it is not a data
+    failure either: the snapshot is usable and only its provenance is not. The enricher's own `cache
+    status` draws the same line. **A label names a release, never the bytes**: a stale copy under the hub's
+    newer `release.json` (RM445) reads the new label."""
+    from just_dna_enricher.locations import RELEASE_FILENAME, read_release
+
+    release = lane.release_label(where)
+    unreadable = not release and (where / RELEASE_FILENAME).exists() and read_release(where) is None
+    return release or None, unreadable
+
+
 def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> CacheStatusReport:
     """Every snapshot lane, its state, and for an absent one the reason and the route it would take.
 
@@ -740,7 +755,6 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
 
     from just_dna_enricher.caches import provisioning_closure
     from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-    from just_dna_enricher.locations import RELEASE_FILENAME, read_release
 
     present = lane_presence(settings)
     configured = lane_destinations(settings)
@@ -756,12 +770,7 @@ def lane_status(settings: Settings, readers: Mapping[str, tuple[str, ...]]) -> C
         unreadable = False
         if where is not None:
             state = "present"
-            release = lane.release_label(where)
-            # Present-and-unparseable is not absent, and it is not a data failure either: the
-            # snapshot is usable and only its provenance is not. The enricher's own `cache status`
-            # draws the same line.
-            if not release and (where / RELEASE_FILENAME).exists() and read_release(where) is None:
-                unreadable = True
+            release, unreadable = lane_release(lane, where)
         else:
             directory = _lane_directory(lane, configured.get(name))
             occupied = directory is not None and directory.is_dir() and any(directory.iterdir())

@@ -6,6 +6,30 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.33.0] — 2026-11-17
+
+**Client surface:** unchanged (`lane_tables` and `lane_rows` return three more keys; no signature moved).
+
+### A lane lookup says which release it read (S34)
+
+`GET /lanes/{lane}` and `POST /lanes/{lane}/{table}` said `served_from` and never which release; only
+`GET /caches` named a held lane's. Both now carry `release` and `release_unreadable`, read by the same function
+`/caches` uses, and `revision`: a remote read resolves the published repo's head commit once per request and
+reads every file, `release.json` included, at that commit, so an answer can no longer mix files from two
+commits (through 0.32 each file opened the head again). A held lane's answer says `revision: null`, since the
+local copy keeps no commit. The label names a release, not the bytes: the stale copies enricher 0.8.8 repairs
+(RM445) carried the hub's newer label over older files. `registry-client lanes` and `lane-rows` print the
+release and the commit.
+
+### A changed verdict unpins a highlighted review (S35)
+
+`PUT .../versions/{v}/reviews` kept the owner's `highlighted` flag over any re-post, so an outside reviewer whose
+`concerns` review the owner had pinned could re-post it as `verified`, and since 0.32 counts verified highlights
+only, the card, `?group=curated` and `GET /stats` then read the module as curated with no act by the owner. A
+re-post whose verdict differs from the stored one (no verdict to a verdict included) now clears the highlight, and
+the owner re-pins what they have read; a rating- or notes-only edit keeps it, so rewritten notes on a pinned review
+still keep the pin. It is done in the upsert, so stored reviews need no migration.
+
 ## [0.32.1] — 2026-11-17
 
 **Client surface:** unchanged.
