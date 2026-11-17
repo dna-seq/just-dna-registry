@@ -518,6 +518,31 @@ def project_claims_command(
         raise typer.Exit(code=1)
 
 
+@app.command("show-keys")
+def show_keys(account: str = typer.Argument(..., help="The account's handle; a retired handle is followed")) -> None:
+    """Print one account's live API keys in full, to recover a key an agent or a person lost (0.33.1).
+
+    Reads only. The keys go to the terminal; the run's `run.log` keeps them masked (`mk_live_…(redacted)`),
+    as every log this registry writes does. An old handle is followed to the account that holds it now.
+    If the key may have leaked rather than been lost, `issue-key ACCOUNT` mints a new one and
+    `revoke-key KEY` retires the old."""
+    settings = get_settings()
+    repo = _open_existing_db(settings)
+    row = repo.resolve_handle(account)
+    if row is None:
+        typer.secho(f"no account {account!r}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    if row["name"] != account:
+        typer.echo(f"{account!r} is a retired handle of {row['name']!r}", err=True)
+    keys = repo.api_keys_for_account(row["id"])
+    namespaces = repo.namespaces_for_account(row["id"])
+    typer.echo(f"{row['name']}: {len(keys)} key(s); owns {', '.join(namespaces) or 'no namespace'}", err=True)
+    for key in keys:
+        typer.echo(key)
+    if not keys:
+        typer.echo(f"no live key: `registry issue-key {row['name']}` mints one", err=True)
+
+
 @app.command("export-keys")
 def export_keys(
     out: Path = typer.Option(None, "--out", "-o", help="Write JSON here (default: stdout)"),

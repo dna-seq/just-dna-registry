@@ -10,6 +10,15 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 **Client surface:** unchanged.
 
+### `registry show-keys ACCOUNT` recovers a lost key
+
+An agent or a person who lost an API key had two ways back: `issue-key` minting a new one, or `export-keys`
+printing every account's keys at once. `registry show-keys ACCOUNT` prints just that account's live keys, one
+per line on stdout (the account, its namespaces and how many keys on stderr), following a retired handle to
+the account that holds it now. It reads only: a successful run keeps no run directory, and any log the
+registry writes masks keys. Where the key may have leaked rather than been lost, mint a new one and revoke the
+old instead.
+
 ### A strict compile refusal keeps the re-derivation for the retry
 
 `registry upgrade` re-derives a module's resolutions (online, production's three ClinVar modules took about

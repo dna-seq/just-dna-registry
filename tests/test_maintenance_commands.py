@@ -82,6 +82,7 @@ REPORT_ONLY: dict[str, str] = {
     "list-backups": "lists snapshot files",
     "list-runs": "lists run directories",
     "export-keys": "writes the auth graph to stdout or a file outside the catalog",
+    "show-keys": "prints one account's keys to the terminal",
     "backup": "writes a snapshot file beside the catalog, never into it",
     "warm-caches": "--apply provisions enricher snapshots over the network into the cache directories; "
                    "it touches neither the catalog DB nor storage, and pulling tens of GB is not a test",
@@ -176,6 +177,7 @@ ROWS: tuple[Row, ...] = (
     # Scoped to the sandbox namespace: the box's legacy module stores placeholder bytes for its parquets,
     # which a projection rightly refuses (exit 1).
     Row("project-claims", ("project-claims", "--namespace", TEST_NS), True, setup=_unproject),
+    Row("show-keys", ("show-keys", "carol"), False),
     Row("export-keys/stdout", ("export-keys",), False),
     Row("export-keys/file", ("export-keys", "--out", "{root}/auth-export.json"), False),
     Row("import-keys", ("import-keys", "{inputs}/import.json"), True),

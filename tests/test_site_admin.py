@@ -353,3 +353,43 @@ def test_registry_client_merges_over_http_after_a_dry_run(
 
     missing = runner.invoke(client_cli.app, ["merge-accounts", "nobody", "name2", "--token", admin])
     assert missing.exit_code == 1 and "does not exist" in missing.stdout
+
+
+def test_show_keys_recovers_a_lost_key_and_the_run_log_masks_it(tmp_path: Path, monkeypatch) -> None:
+    """0.33.1: an agent lost its key; the operator reads it back from the catalog. The terminal gets it in
+    full, nothing written to disk holds it, and a retired handle still finds the account."""
+    import secrets
+
+    db = tmp_path / "r.db"
+    monkeypatch.setenv("REGISTRY_DB_PATH", str(db))
+    monkeypatch.setenv("REGISTRY_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(tmp_path / "art"))
+    monkeypatch.setenv("REGISTRY_RUN_DIR", str(tmp_path / "runs"))
+    get_settings.cache_clear()
+    repo = Repository(connect(db))
+    init_db(repo.conn)
+    account_id = repo.create_account("agent")
+    repo.add_namespace("agent-space", account_id)
+    keys = ["mk_live_" + secrets.token_urlsafe(24) for _ in range(2)]
+    for key in keys:
+        repo.add_api_key(key, account_id)
+    repo.conn.execute(
+        "INSERT INTO account_aliases(name, account_id, retired_at) VALUES ('old-agent', ?, '2026-11-01')",
+        (account_id,),
+    )
+    repo.conn.commit()
+    runner = CliRunner()
+    try:
+        shown = runner.invoke(cli, ["show-keys", "old-agent"])
+        assert shown.exit_code == 0, shown.output
+        assert shown.stdout.split() == keys  # stdout is the keys alone, one per line
+        assert "retired handle of 'agent'" in shown.stderr and "owns agent-space" in shown.stderr
+        # A read-only run that succeeds keeps no directory (maintenance.py), and any log that did keep one
+        # is redacted; either way no file under the box holds a key. The DB is excluded: it is the source.
+        written = [p for p in tmp_path.rglob("*") if p.is_file() and p != db]
+        assert not any(key.encode() in p.read_bytes() for p in written for key in keys)
+
+        missing = runner.invoke(cli, ["show-keys", "nobody"])
+        assert missing.exit_code == 1 and "no account 'nobody'" in missing.stderr
+    finally:
+        get_settings.cache_clear()
