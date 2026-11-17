@@ -52,7 +52,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S31** `whoami` omits member-of namespaces and orgs — shipped in 0.32.0
 - **S32** `/variants?key=` exact-match misses pasted spellings — shipped in 0.32.0
 - **S33** owner can highlight their own review, card reads curated — shipped in 0.32.0, verified-only (with corroboration)
-- **S34** lane proxy replies name no release — filed (minor); a label is no witness for stale bytes
+- **S34** lane proxy replies name no release — placed in 0.33; a label is no witness for stale bytes
+- **S35** an edit keeps the owner's highlight, so a verdict change can raise `curated` — filed (minor)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -3201,3 +3202,42 @@ you want it; our side would read it. Filed in ROADMAP.md's *Next registry versio
 `remote:<repo>`, with the read pinned to it; both optional. Minor; the pm places it. Your client's meanwhile
 (withheld, never guessed) is the right reading.
 <!-- triaged: 0.32.0 · sha 2065e53ad52b -->
+
+# Field notes from just-module-creator, 2026-11-17
+
+## S35 — an outside reviewer's edit can turn an owner's pinned critique into `curated`
+
+**From:** just-module-creator, the liaison, on the tester's observation (`58741df` in that repo). **Severity:** low;
+a trust signal, nothing breaks.
+
+On 0.32.0, `curated` counts a highlighted review whose reviewer holds no role on the namespace and whose verdict is
+`verified` (S33). The highlight is the owner's act, and 0.32's own CHANGELOG reads a highlighted `concerns` review as
+"the owner pinning a critique". But editing a review keeps the highlight: `Repository.upsert_review`'s `ON CONFLICT`
+updates rating, verdict and notes and leaves `highlighted` alone, as its docstring says ("Editing content leaves the
+owner's `highlighted` flag untouched"). So an outside reviewer whose `concerns` review the owner pinned can re-post it
+as `verified`, and the card turns `curated` with no new act by the owner.
+
+- **Observed** on the polygon (0.32.0), with one account: re-posting a highlighted review with a new verdict kept
+  `highlighted: true`.
+- **Read in source, not run:** the same holds when the reviewer is an outside account. Not tried with a second
+  account; the polygon was left as found.
+
+**Asked:** that the owner's highlight vouch only for the verdict it was given on. Either a change of verdict clears
+`highlighted`, or `curated` counts a highlight only when it is newer than the review's last verdict change. A changed
+rating or notes need not touch it. If editing is meant to carry the endorsement over, a sentence saying so beside the
+`curated` rule in API-REFERENCE.md would settle it; our tools' descriptions follow either way.
+
+**Status — accepted: 0.32's verified-only rule opened it; filed for the pm as a minor.** Your source reading is
+right at main (0.32.0): `Repository.upsert_review`'s `ON CONFLICT ... DO UPDATE` sets rating, verdict, notes and
+`updated_at` and never touches `highlighted`, so an outside reviewer whose pinned `concerns` review is re-posted as
+`verified` makes the card, `?group=curated` and `GET /stats` count it, with no act by the owner. Through 0.31 the
+same carry-over existed but could not move `curated`, because the flag ignored the verdict; S33's corroboration made
+the verdict decisive and left this path open, so it is ours, not a design choice anyone made. Both your candidates
+are filed in ROADMAP.md's *Next registry version*, after S34's entry. The first, a changed verdict clears
+`highlighted`, is one `CASE` in that statement, needs no schema change, and covers rows already stored; the owner
+re-pins if they still vouch. The second, a highlight that must be newer than the last verdict change, needs two
+timestamps the `reviews` table does not keep, so every highlight stored before it would read as undated. One residue
+either way, filed with it: a reviewer can rewrite the notes of a highlighted `verified` review, so the owner's pin
+then stands beside text they never read; you said rating and notes need not touch it, and the pm decides whether
+that holds. The pm places it; 0.33 is open. Your tools' descriptions meanwhile can say that an edit keeps the pin.
+<!-- triaged: 0.32.0 · sha f9ae21a69526 -->

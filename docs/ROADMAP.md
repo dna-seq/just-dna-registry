@@ -1169,6 +1169,18 @@ converges).
   label would have agreed on both routes. Sizing: **minor** (new optional fields; the client and `lane-rows`
   print them). Severity: low; it is provenance, and nothing gates on it.
 
+- **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (proposed by
+  S35, just-module-creator, 2026-11-17; undecided, for the pm). `Repository.upsert_review`'s `ON CONFLICT` updates
+  rating, verdict and notes and leaves `highlighted` alone, so an outside reviewer whose `concerns` review the owner
+  pinned re-posts it as `verified` and the card, `?group=curated` and `GET /stats` count it with no act by the owner.
+  0.32's verified-only rule (S33's corroboration) is what made the verdict decisive. Two candidates: a changed
+  verdict clears `highlighted` (one `CASE` in the upsert, no schema change, covers stored rows; the owner re-pins);
+  or `curated` counts a highlight only when newer than the last verdict change (two timestamps `reviews` does not
+  keep, so every stored highlight reads as undated). Residue either way: rewritten notes on a highlighted
+  `verified` review keep the pin beside text the owner never read; the reporter says notes need not touch it.
+  API-REFERENCE states the rule whichever is chosen. Sizing: **minor** (a stored flag an existing route now resets).
+  Severity: low; the same trust signal as S33.
+
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
