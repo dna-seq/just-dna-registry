@@ -51,6 +51,10 @@ reports; this file holds the seat's own decisions and the items it owns.
   `release`/`release_unreadable` on both lane replies as /caches reads them, and a remote read pinned to the head
   commit once per request (`revision`). The lead's to build. Then: a second `**Status —**` on S34 in the history
   file from the 0.33.0 changelog, its contents line, and the just-dna-compiler liaison told.
+- **S35 follow-up reply: once 0.33.0 is on PyPI.** The pm decided S35 (d792c6b), first candidate, in 0.33:
+  `upsert_review` clears `highlighted` when a re-post changes the verdict; a notes- or rating-only edit keeps the
+  pin (the residue, accepted). just-module-creator's liaison was told of the placement 2026-11-17. Then: a second
+  `**Status —**` on S35 in the history file from the 0.33.0 changelog, its contents line, and the liaison told.
 - **S29–S33 follow-up replies** — done 2026-11-16: 0.32.0 reached PyPI; a second `**Status —**` on each and on
   the S33 corroboration, contents lines updated, the consumer told. Neither box served 0.32.0 then (polygon 0.30.0,
   production 0.31.0); S30's re-run on the polygon waits for its upgrade, the consumer's to do.
