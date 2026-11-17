@@ -140,8 +140,9 @@ reset").
 
 1. ~~An audit of the registry's past filings upstream~~: done 2026-11-07, in `UPSTREAM_COMPILER.md` Outbound (no new
    lever beyond C5 and C6).
-2. **Tell the lead when RM445's enricher patch is cut** (asked 2026-11-16, 640587415): `waits until` the compiler tag
+2. ~~**Tell the lead when RM445's enricher patch is cut**~~ done 2026-11-17 (asked 2026-11-16, 640587415): `waits until` the compiler tag
    or PyPI watcher shows the enricher release carrying RM445 (main past `v0.8.7`, `1051670b`..`b78c44aa`). The lead
    adopts it in 0.32.1 so `warm-caches` repairs pre-RM420 lanes. Read the cut, then mention the lead in
    `#just-dna-registry>upstream` with the version and whether it is on PyPI.
-   **Cut** as enricher 0.8.8 (`655f1ebc`, 2026-11-16), lead told; still owed: the PyPI notice.
+   **Cut** as enricher 0.8.8 (`655f1ebc`, 2026-11-16), lead told. **On PyPI** 2026-11-17 02:17Z (no git tag yet,
+   read 02:25Z), lead told.
