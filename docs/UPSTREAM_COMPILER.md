@@ -153,6 +153,17 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Their `main` past the 0.8.8 cut** (read 2026-11-17, uncut): **RM446** (`6318392d`, enricher only, additive): a run
+  reads `retired_mark(client)` before it asks and names a route retired only for a 410 met after that mark, so a reused
+  client's earlier 410 stops telling a later run's plain outage to upgrade (RM361's sticky message itself unchanged).
+  **For us a patch worth taking**: we are exactly that host, one shared `LookupClients` for the process's life, so on a
+  long-running server one Ensembl or Crossref 410 would label every later outage on `/check`, the hint routes and
+  publish enrichment as a retirement. It reaches us inside `enrich()` and the literature pass with no code of ours
+  moving (our bundle is upstream's, so it has the counter). **RM447** (`86de38e9`, `1bbcd65f`, compiler only): a
+  resolved-allele refusal on a row Ensembl REST answered now says REST serves an older dbSNP build (156 at release 116,
+  the snapshot's dump 157) and qualifies `--rederive` to a host with the snapshot; pinned phrases stay, no column, code
+  or vocabulary moves. Nothing here reads that sentence, so not load-bearing for us. Both sized as patches on their
+  `main`; take at the cut.
 - **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; tagged at that commit and on PyPI 2026-11-17 02:17Z): RM445 alone (read
   below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
   the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
