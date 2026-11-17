@@ -7,12 +7,12 @@ seat (`docs/seats/LIAISON.md`).
 
 ## Read mark
 
-**`0.163.1`** read (2026-11-15; 0.163.0 on 2026-11-14; 0.162.7 and 0.162.6 on 2026-11-13; 0.162.5 on 2026-11-11, 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.5`
+**`0.163.2`** read (2026-11-18: one code change, #16779, a refactor of how a query/header/form *model* collects its extra keys (`_get_multidict_extras`, duplicates still a list, a lone value still a scalar) and a skip of form extraction when no plain form field is declared; behaviour unchanged by its own tests, and nothing here declares a parameter model; the rest translations. Take at the Thursday bump). **`0.163.1`** read (2026-11-15; 0.163.0 on 2026-11-14; 0.162.7 and 0.162.6 on 2026-11-13; 0.162.5 on 2026-11-11, 0.162.4 and 0.162.3 on 2026-11-10, the same day, 0.162.2 on 2026-11-07, 0.162.0 on 2026-11-05, the release notes from 0.142.0, against the list below). Installed: `0.162.5`
 (`uv.lock`, the bump of 2026-11-12, `94ce3e0`; 0.162.0 from the bump of 2026-11-05, `bb42dbd`; floor `fastapi>=0.139.0` in `pyproject.toml`), with `starlette` 1.10.0 under it.
 
 ## Backlog
 
-None: read through `0.163.1`.
+None: read through `0.163.2`.
 
 ## What the registry uses
 
