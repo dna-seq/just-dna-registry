@@ -108,7 +108,7 @@ present and still wrong**: 0.8's Ensembl lane moved repositories (RM372), a 0.7 
 present, so `warm-caches` hands a present pulled lane whose record names another repo (or none) to
 upstream's `prepare_caches` and reads the record back (0.28.1; 0.28.0 left it alone and the guide sent
 operators to the enricher's own pull); since 0.28.6 (enricher 0.8.3, RM420) every other selected present
-pulled lane goes too, for upstream to compare its release with the hub's; and `registry upgrade` checks the pull record before re-deriving
+pulled lane goes too, for upstream to compare its release with the hub's (and since 0.32.1, enricher 0.8.8, RM445, a pull made before RM420 is re-pulled even at an equal label, because its files could be older than the label it carried); and `registry upgrade` checks the pull record before re-deriving
 anything. **When the format moves a lane, our provisioning command moves with it in the same release.**
 
 **And having read one, be willing to say it is not load-bearing. `0.6.4` is the first enricher floor

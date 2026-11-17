@@ -244,6 +244,17 @@ def _parquet_rows(table: LaneTable, keys: dict[str, list[Any]], settings: Settin
     if missing:
         raise LaneLookupError("unknown_key", f"{table.name} has no column {', '.join(missing)}")
     condition = None
+    position = next((c for c in POSITION_COLUMNS if c in keys), None)
+    if position is not None and len(keys["chrom"]) == len(keys[position]) > 1:
+        # Paired (0.32.1): `chrom[i]` with `start[i]`, never chrom IN (...) AND start IN (...), whose cross product
+        # answered 22 rows for 13 positions (the compiler pm's probe, 2026-11-16). Only equal lengths pair, and a
+        # pair is one of the cross product's cells, so a request can only lose rows it never asked for. Unequal
+        # lengths keep the any-of-each meaning, so no v1 request that answered starts refusing.
+        condition = pl.any_horizontal([
+            pl.col("chrom").cast(pl.String).is_in(_chrom_forms(str(c))) & (pl.col(position) == int(s))
+            for c, s in zip(keys["chrom"], keys[position], strict=True)
+        ])
+        keys = {k: v for k, v in keys.items() if k not in ("chrom", position)}
     for column, values in keys.items():
         values = [v for c in values for v in _chrom_forms(str(c))] if column == "chrom" else list(values)
         is_position = column in POSITION_COLUMNS

@@ -1443,14 +1443,18 @@ this box's snapshot when it holds the lane, otherwise **read remotely from the l
 (HuggingFace parquet, filtered by the key, so a lookup reads only the row groups it needs). `GET` lists
 the lane's tables, each with its key columns and file count, and `served_from` (`local`, or
 `remote:<repo>`). `POST` body `{"keys": {"<column>": [values], ...}}`: the rows matching every column
-given (values ORed within a column, columns ANDed). Key columns are identifiers only (`rsid`, `id`,
+given (values ORed within a column, columns ANDed; since 0.32.1 `chrom` and `start` lists of equal length match
+as pairs, `chrom[i]` with `start[i]`, and lists of unequal length keep the any-of-each meaning). Key columns are identifiers only (`rsid`, `id`,
 `gene`, `genes`, `symbol`, `variant_id`, `variation_id`, `pmid`, `allele`, `study_locus_id`, and
 `chrom` + `start` together; `start` reads a table's `pos` where it has no `start`).
 
 **Nothing enumerates a lane**: a request needs keys, at most `lane_max_keys` values (100), and returns at
 most `lane_max_rows` rows (1,000) with `truncated: true` past that. A remote table larger than
 `lane_remote_max_scan_bytes` (2 GB) needs a position key, which narrows the read to that chromosome's
-files (Ensembl by rsID alone cannot be bounded remotely; upstream RM431 asks for an index). A lane
+files (Ensembl by rsID alone cannot be bounded remotely; upstream RM431 asks for an index). On a box that
+**holds** the lane the bound does not apply: a key with no position works and scans the whole table, so an
+Ensembl lookup by `id` (its rsID column) answers, in tens of seconds (21.5 s measured on the polygon,
+2026-11-16). Prefer `chrom` + `start` where you have them, and `POST /hint/variants` for rsIDs. A lane
 neither held nor published is `404 lane_not_available`.
 
 **Terms: a keyed lookup is not a snapshot, and every held lane answers one, saying the lane's terms.**
