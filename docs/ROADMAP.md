@@ -1152,7 +1152,7 @@ converges).
 
 - **A compile refusal after a re-derivation keeps the re-derived spec** (filed by the lead 2026-11-17, a defect
   against CLAUDE.md's "a gate placed after an expensive step keeps that step's result"; **placed by the pm
-  2026-11-17: 0.33.1, a patch**, not reopening 0.33.0, which is stamped and green. Production's online upgrade
+  2026-11-17: 0.33.1, a patch**; **built on branch `0.33.1`, eac81ad**, not reopening 0.33.0, which is stamped and green. Production's online upgrade
   re-derived cardio, cancer and pathogenic (about 37 h), then the strict compile refused all three
   (`compile_failed`, an upstream placement defect the liaison files), and the re-derived specs went with their
   temporary directory, so the retry after upstream's fix would spend the 37 h again. 0.31.1's `services/held.py`
