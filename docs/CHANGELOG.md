@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased] — 0.33
+## [0.33.0] — 2026-11-17
 
 **Client surface:** unchanged (`lane_tables` and `lane_rows` return three more keys; no signature moved).
 
