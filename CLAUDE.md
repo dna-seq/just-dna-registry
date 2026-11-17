@@ -544,7 +544,8 @@ docs/ROADMAP.md, 0.30). Through 0.29 it was built per surface, so 14 of 17 lanes
 had no route and nothing noticed. Now: every lane upstream registers (`CACHE_LANES`) answers keyed lookups
 (`POST /lanes/{lane}/{table}`, `services/lanes.py`), from this box's snapshot or read remotely from the
 lane's published repo (polars `hf://` with predicate pushdown, because upstream's readers open local paths
-only, RM430/RM431); every producer (`DERIVED_PRODUCERS`, keyed `(table, command)`) runs through
+only, RM430/RM431; since 0.33 a remote read resolves the head commit once and reads every file at `@<sha>`, reported
+as `revision` beside the `release` label `/caches` reads, through the one reader `enrich.lane_release`); every producer (`DERIVED_PRODUCERS`, keyed `(table, command)`) runs through
 `POST .../derived?passes=` (`services/passes.py`). A route says what it serves with
 `proxy_coverage.proxies(...)`, and `tests/test_proxy_coverage.py` reads the routes, so a lane or pass
 upstream adds fails a test until it is served or named in `EXEMPT_LANES`/`EXEMPT_PRODUCERS` with a

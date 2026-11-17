@@ -709,10 +709,22 @@ def lanes(
     with _client(url, token) as c:
         found = c.lane_tables(lane)
     typer.echo(f"{found['lane']} ({found['served_from']})")
+    if (said := _lane_release_line(found)) is not None:
+        typer.echo(said)
     for table in found["tables"]:
         typer.echo(f"  {table['table']:<28} keys: {', '.join(table['keys']) or '-'}  ({table['files']} file(s))")
     for line in _lane_terms_lines(found):
         typer.echo(line)
+
+
+def _lane_release_line(found: dict) -> str | None:
+    """Which release a lane answer read (0.33); `None` from an older server, which does not say."""
+    if "release" not in found:
+        return None
+    label = found["release"] or ("unknown (unreadable release.json)" if found.get("release_unreadable")
+                                 else "not stated")
+    at = f" at commit {found['revision'][:12]}" if found.get("revision") else ""
+    return f"release: {label}{at}"
 
 
 def _lane_terms_lines(found: dict) -> list[str]:
@@ -758,6 +770,8 @@ def lane_rows(
         typer.echo(json.dumps(row, sort_keys=True))
     note = " (truncated: more matched than one request returns)" if found["truncated"] else ""
     typer.secho(f"{len(found['rows'])} row(s) from {found['served_from']}{note}", fg=typer.colors.GREEN, err=True)
+    if (said := _lane_release_line(found)) is not None:
+        typer.secho(said, fg=typer.colors.GREEN, err=True)
     for line in _lane_terms_lines(found):
         typer.secho(line, fg=typer.colors.YELLOW, err=True)
 

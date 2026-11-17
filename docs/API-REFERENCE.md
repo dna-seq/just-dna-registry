@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.32.x**, API `v1` (**0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.33.x**, API `v1` (0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -1473,7 +1473,18 @@ as `route_reason`; `null` when one is). **`terms: null` means none are stated, n
 terms bind what a caller does with the rows; honouring them is the caller's. An older server omits both
 keys. (The ruling is requirement 2 of the 0.30 section of ROADMAP.md.)
 
-`200 → {"lane", "table", "served_from", "rows": [...], "truncated", "terms", "unpublished"}`. Errors: `404 unknown_lane`,
+**Which release an answer read (0.33, S34).** Both routes carry `release`, `release_unreadable` and
+`revision`. `release` is the lane's label read exactly as `GET /caches` reads a held lane's (one reader for
+both): from this box's copy, or from the published repo's `release.json`; `null` where none is stated, and
+`release_unreadable: true` where a `release.json` is there and does not parse (the rows are still served). A
+remote read resolves the repo's head commit **once per request**, lists and reads every file at that commit,
+and reports it as `revision`, so one answer never mixes two commits. A held lane's answer says
+`revision: null`: the local copy keeps no commit (the enricher's pull record does not write one). **A label
+names a release, never the bytes**: a copy pulled before 2026-11-08 could carry the hub's newer `release.json`
+over older parquets (enricher RM445), and would read the newer label. An older server omits all three.
+
+`200 → {"lane", "table", "served_from", "rows": [...], "truncated", "terms", "unpublished", "release",
+"release_unreadable", "revision"}`. Errors: `404 unknown_lane`,
 `404 unknown_table`, `404 lane_not_available`, `422 lane_needs_keys`, `422 unknown_key`,
 `422 position_needs_both`, `422 too_many_keys`, `422 remote_needs_position`, `429`. Client:
 `RegistryClient.lane_tables(lane)`, `lane_rows(lane, table, keys)`; `registry-client lanes LANE`,

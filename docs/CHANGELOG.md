@@ -8,6 +8,19 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased] — 0.33
 
+**Client surface:** unchanged (`lane_tables` and `lane_rows` return three more keys; no signature moved).
+
+### A lane lookup says which release it read (S34)
+
+`GET /lanes/{lane}` and `POST /lanes/{lane}/{table}` said `served_from` and never which release; only
+`GET /caches` named a held lane's. Both now carry `release` and `release_unreadable`, read by the same function
+`/caches` uses, and `revision`: a remote read resolves the published repo's head commit once per request and
+reads every file, `release.json` included, at that commit, so an answer can no longer mix files from two
+commits (through 0.32 each file opened the head again). A held lane's answer says `revision: null`, since the
+local copy keeps no commit. The label names a release, not the bytes: the stale copies enricher 0.8.8 repairs
+(RM445) carried the hub's newer label over older files. `registry-client lanes` and `lane-rows` print the
+release and the commit.
+
 ### A changed verdict unpins a highlighted review (S35)
 
 `PUT .../versions/{v}/reviews` kept the owner's `highlighted` flag over any re-post, so an outside reviewer whose
