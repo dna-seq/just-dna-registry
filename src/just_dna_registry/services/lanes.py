@@ -180,13 +180,21 @@ def _remote_release(lane: str, release_file: str | None) -> tuple[str | None, bo
     if release_file is None:
         return None, False
     from huggingface_hub import HfFileSystem
+    from huggingface_hub.errors import HfHubHTTPError
     from just_dna_enricher.locations import RELEASE_FILENAME
 
     with tempfile.TemporaryDirectory(prefix="lane-release-") as tmp:
-        if release_file.startswith("hf://"):
-            HfFileSystem().get_file(release_file.removeprefix("hf://"), str(Path(tmp) / RELEASE_FILENAME))
-        else:
-            shutil.copyfile(release_file, Path(tmp) / RELEASE_FILENAME)
+        try:
+            if release_file.startswith("hf://"):
+                HfFileSystem().get_file(release_file.removeprefix("hf://"), str(Path(tmp) / RELEASE_FILENAME))
+            else:
+                shutil.copyfile(release_file, Path(tmp) / RELEASE_FILENAME)
+        except (OSError, HfHubHTTPError) as exc:
+            # A provenance failure is not a data failure: the listing named a `release.json` that could not be
+            # fetched, so the release is unknown and the rows are still served. Same answer as one that does
+            # not parse: present, and not read.
+            logger.warning("could not fetch %s's release.json (%s); release reported unreadable", lane, exc)
+            return None, True
         return lane_release(cache_lanes()[lane], Path(tmp))
 
 

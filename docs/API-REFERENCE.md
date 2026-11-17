@@ -1476,7 +1476,8 @@ keys. (The ruling is requirement 2 of the 0.30 section of ROADMAP.md.)
 **Which release an answer read (0.33, S34).** Both routes carry `release`, `release_unreadable` and
 `revision`. `release` is the lane's label read exactly as `GET /caches` reads a held lane's (one reader for
 both): from this box's copy, or from the published repo's `release.json`; `null` where none is stated, and
-`release_unreadable: true` where a `release.json` is there and does not parse (the rows are still served). A
+`release_unreadable: true` where a `release.json` is there and could not be read: it does not parse, or the
+published repo's copy could not be fetched (the rows are still served). A
 remote read resolves the repo's head commit **once per request**, lists and reads every file at that commit,
 and reports it as `revision`, so one answer never mixes two commits. A held lane's answer says
 `revision: null`: the local copy keeps no commit (the enricher's pull record does not write one). **A label

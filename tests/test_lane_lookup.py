@@ -254,3 +254,12 @@ def test_the_cli_prints_the_release_and_the_commit() -> None:
     )
     assert _lane_release_line({"release": None, "release_unreadable": False}) == "release: not stated"
     assert _lane_release_line({"lane": "x", "tables": []}) is None  # an older server: nothing claimed
+
+
+def test_a_release_json_that_cannot_be_fetched_costs_the_label_not_the_rows(tmp_path, monkeypatch) -> None:
+    """The listing names a `release.json` the fetch then fails on (a hub hiccup between two calls): the answer
+    still serves its rows, with the release unknown and said to be so, never a 500 over provenance."""
+    _fake_remote(tmp_path, monkeypatch, size=10, release='{"dataset": "avi_2026-11-01"}')
+    (tmp_path / "hub" / "release.json").unlink()  # listed, then gone: the copy raises FileNotFoundError
+    found = lanes.lookup("alphagenome_avi", "avi", {"chrom": ["22"], "start": [2]}, Settings())
+    assert found.rows and (found.release, found.release_unreadable, found.revision) == (None, True, _SHA)

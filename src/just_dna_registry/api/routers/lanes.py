@@ -48,7 +48,10 @@ _RELEASE = (
     "copy, or from the published repo's `release.json` at `revision`. `null` where none is stated. A label "
     "names a release, never the bytes: a stale copy under the hub's newer `release.json` reads the new label."
 )
-_RELEASE_UNREADABLE = "A `release.json` is there and does not parse: the release is unknown, the rows still usable."
+_RELEASE_UNREADABLE = (
+    "A `release.json` is there and could not be read (it does not parse, or the published repo's copy could not "
+    "be fetched): the release is unknown, the rows still usable."
+)
 _REVISION = (
     "The hub commit every file of a remote read was read at (0.33), resolved once per request, so one answer "
     "never straddles a commit. `null` for a local copy, which keeps no commit."
