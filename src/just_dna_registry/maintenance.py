@@ -43,6 +43,7 @@ import hashlib
 import io
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import sys
@@ -87,7 +88,7 @@ ALWAYS_LOG: frozenset[str] = frozenset({
 #: then call a day of traffic "the command's change".
 #: `prune-runs` touches neither the catalog nor storage, and a run of it would copy the catalog in order
 #: to delete catalog copies.
-NOT_A_RUN: frozenset[str] = frozenset({"serve", "prune-runs"})
+NOT_A_RUN: frozenset[str] = frozenset({"serve", "prune-runs", "supervise"})
 
 
 class RevertRefused(Exception):
@@ -390,6 +391,8 @@ def maintenance_run(settings: Settings, command: str, invocation: str) -> Iterat
     run = Run(id=path.name, path=path, command=command, invocation=invocation, db_path=db_path)
     record: dict[str, Any] = {
         "id": run.id, "command": command, "invocation": invocation, "started": _stamp(),
+        # 0.34: lets `services/deploy.runs_in_progress` tell a run still going from one that was killed.
+        "pid": os.getpid(),
         "ended": None, "outcome": None, "changed": None, "db_before": before, "db_after": None,
         "reverted_by": None,
     }

@@ -70,6 +70,9 @@ from just_dna_registry.services.upgrade import (
 from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
+from just_dna_registry.supervisor import Supervisor, detect_source
+from just_dna_registry.supervisor import child_argv as supervisor_child_argv
+from just_dna_registry.supervisor import health_url as supervisor_health_url
 from just_dna_registry.sweep_report import (
     ANOMALY,
     BLOCKED,
@@ -234,6 +237,48 @@ def serve(
         "just_dna_registry.api.app:app", host=host, port=resolved, reload=reload,
         log_config=uvicorn_log_config(settings),
     )
+
+
+@app.command()
+def supervise(
+    host: str = "127.0.0.1",
+    port: int = typer.Option(None, help="Default: 8000 in prod mode, 8100 in test mode"),
+    mode: str = typer.Option(
+        None, "--mode", help="prod | test — overrides REGISTRY_MODE for this process and the server"
+    ),
+    root: Path = typer.Option(
+        None, "--root", help="The folder the server runs from: a clone of this package, or a uv project "
+        "depending on it. Default: the current directory"
+    ),
+) -> None:
+    """Run the server as a child and move it to another release when `POST /admin/deploy` asks (0.34).
+
+    Start the box with this instead of `serve` (same `--host`, `--port`, `--mode`). The server restarts if it
+    exits; a move checks out a release tag (a clone) or pins a published version (a PyPI project), syncs,
+    and is rolled back if `/health` does not answer `ok` with the new version. Moves are refused unless
+    `REGISTRY_DEPLOY` is set. Stop it with Ctrl-C or SIGTERM, which stops the server too.
+    """
+    _apply_mode(mode)
+    settings = get_settings()
+    resolved = port if port is not None else DEFAULT_PORTS[settings.mode]
+    folder = (root or Path.cwd()).resolve()
+    source = detect_source(folder, settings.deploy_extras)
+    if source is None:
+        typer.secho(
+            "neither a git clone of just-dna-registry nor a uv project depending on it; "
+            "pass --root, or run from that folder",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(2)
+    typer.echo(
+        f"mode={settings.mode} supervising the server on {host}:{resolved} from a {source.kind} install; "
+        f"deploys over the API {'on' if settings.deploy else 'off (REGISTRY_DEPLOY)'}"
+    )
+    Supervisor(
+        settings=settings, root=folder, source=source,
+        child_argv=supervisor_child_argv(host, resolved, settings.mode),
+        health_url=supervisor_health_url(host, resolved),
+    ).run()
 
 
 @app.command("init-db")

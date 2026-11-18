@@ -208,6 +208,10 @@ module, which is worse than having none.
 ## Running the service
 
 - `uv run registry serve` starts the API (Typer CLI → uvicorn). `uv run pytest -q` runs tests.
+- `uv run registry supervise` (0.34) runs `serve` as a child and moves it to another release when a site
+  admin asks (`POST /admin/deploy`; `services/deploy.py` is the request side, `supervisor.py` the move). A
+  process cannot replace its own code and come back, which is why the split exists; keep the server side
+  to writing and reading files in the deploy folder, never starting or installing anything itself.
 - The Typer CLI (`src/just_dna_registry/cli.py`) owns admin/ops tasks — `serve`, `init-db`,
   `issue-key`, and future backfill/reindex. Add new ops commands there, not as ad-hoc scripts.
 - Deployable as one container + a bucket/HF repo + a DB. No heavyweight orchestration.
@@ -913,6 +917,12 @@ running server, and one direction arms a delete endpoint on production data.
   so no router learns about it. Keep both limits. An unclaimed namespace stays `403`, or the flag
   becomes a way to publish under a name nobody claimed. And production still mounts no delete, so a
   leaked admin key can yank but cannot destroy: hard delete stays the ops CLI with its backup guard.
+  **Since 0.34 that holds only on a box that has not opted into deploys**: with `REGISTRY_DEPLOY` set, an
+  admin key can move the box to another release (`POST /admin/deploy`, carried out by `registry
+  supervise`), which is swapping the code that runs. Three limits keep that from being arbitrary code: a
+  target is a release tag or a published version, never a branch or a commit; nothing below 0.34.0, the
+  release that carries the route back; and a move that does not answer `/health` with the new version is
+  rolled back. The switch is off by default and is the operator's, never a route's.
   The flag is read from the row per request, never from a JWT claim, so a revocation binds live
   sessions.
   The acts no role can answer, **merging accounts** and **renaming another account's handle**, are the

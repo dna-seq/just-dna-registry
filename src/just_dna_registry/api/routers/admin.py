@@ -1,16 +1,18 @@
 """
 Site-admin routes (0.28): acts that cross accounts, so no namespace or org role can authorize them.
 
-Two: merging an account whose key was lost into the one its owner carried on with, and renaming
-any account's handle (an org's included, which its owners cannot do themselves). Everything else a site admin does goes through the ordinary routes, elevated in
+Merging an account whose key was lost into the one its owner carried on with, renaming any account's
+handle (an org's included, which its owners cannot do themselves), reading maintenance runs (0.28.3), and
+moving the box to another release (0.34, `services/deploy.py`). Everything else a site admin does goes through the ordinary routes, elevated in
 `deps.effective_role`, which is why this router is short.
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
 
+from just_dna_registry import __version__
 from just_dna_registry.api.deps import (
     Account,
     Pagination,
@@ -27,6 +29,9 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.models.api import (
     AccountMerge,
     AccountRename,
+    DeployRecord,
+    DeployRequest,
+    DeployStatus,
     MergeAccountsRequest,
     Page,
     RenameAccountRequest,
@@ -34,6 +39,7 @@ from just_dna_registry.models.api import (
     RunSummary,
 )
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
+from just_dna_registry.services.deploy import DeployRefused, deploy_status, request_deploy
 from just_dna_registry.services.runs import (
     DIAGNOSTIC_COMMANDS,
     list_served_runs,
@@ -142,3 +148,34 @@ def run_log_text(
     if text is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="run_not_found")
     return PlainTextResponse(text)
+
+
+# ── Deploy over the API (0.34): `services/deploy.py` checks and records, `registry supervise` moves ──────
+# Not rate-limited, like the routes above: a site admin's key is the gate, and `REGISTRY_DEPLOY` (off by
+# default) is the operator's.
+
+
+@router.get("/deploy", response_model=DeployStatus)
+def deploy_state(settings: SettingsDep, caller: AccountDep) -> DeployStatus:
+    """What this box runs, what it ran before, a waiting request, and how the last moves went. Site admins
+    only."""
+    require_site_admin(caller)
+    return DeployStatus.model_validate(deploy_status(settings, running=__version__))
+
+
+@router.post("/deploy", response_model=DeployRecord, status_code=status.HTTP_202_ACCEPTED)
+def deploy(settings: SettingsDep, caller: AccountDep, body: DeployRequest, request: Request) -> DeployRecord:
+    """Ask the supervisor to move this box to `body.version`: a release tag on a clone, a published version
+    on a PyPI install, or `previous`. `202`: the move runs after this answer, and `GET /admin/deploy` reports
+    it; a move that does not come up is rolled back. Refused (`409`) when the box is not enabled or not
+    supervised, a move is already waiting, a maintenance run or a publish is going, or the version already
+    serves; `422` for a version that is no release or predates the route. Site admins only."""
+    require_site_admin(caller)
+    try:
+        record = request_deploy(
+            settings, body.version, requested_by=caller.name, running=__version__,
+            gate_occupancy=request.app.state.enrichment_gate.occupancy(),
+        )
+    except DeployRefused as exc:
+        raise HTTPException(exc.status, detail={"error": exc.code, "errors": [exc.message]}) from exc
+    return DeployRecord.model_validate(record)
