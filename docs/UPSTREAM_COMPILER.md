@@ -177,6 +177,8 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   superhuman@2.4.1 and polygon thrombophilia@2.0.1 by itself. The new warning code needs nothing here: the sweep reads
   codes through `CARRIED_WARNING_CODES` and shows an unnamed one as `other`. `services/claims.py` reads
   `resolution_loci or []`, so `[]` vs null is the same to it; the prebuilt import's `reverse_module` gets RM451's fix.
+  **RM452** (`9a8c7c89`, enricher): a NULL `start` in the Ensembl snapshot places nothing (one warning names the rsID)
+  instead of raising `TypeError`; no published snapshot carries one (0 rows), so nothing for us now.
 - **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; tagged at that commit and on PyPI 2026-11-17 02:17Z): RM445 alone (read
   below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
   the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
