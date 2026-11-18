@@ -167,8 +167,8 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   **RM448** (`55ccb701`, enricher): a witness holding one ALT of a multi-allelic indel site no longer withholds the
   site (S158's missing rows). **RM449** (`91eefe36`, `84a256ef`, `12b1bb00`, `43914f21`; a **declared corrected
   derivation**): at a site where an insertion and a deletion share allele strings, an rsID row's genotype fills only
-  the spelling a witness placed; witnessed both ways or never asked, both stay and a new warning
-  `rsid_genotype_reads_as_two_events` says so once per rsID; witnessed neither, neither fills; an authored coordinate
+  the spelling a witness placed; witnessed both ways or never asked, both stay and a warning says so
+  once per rsID (named `rsid_genotype_reads_as_two_events` on their main, then **borrowed codes for 0.8.9**, below); witnessed neither, neither fills; an authored coordinate
   row wins over an expansion onto its exact key at a mirrored site (a paralog collision still refuses). The ClinVar
   drafter now writes indels by coordinate. **RM451** (`dae4e0c8`): `reverse` stops inventing a `resolution.csv` row
   for a coordinate row the table never filed (`resolution_loci` is `[]` there, not null); one upstream example digest
@@ -179,6 +179,14 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   `resolution_loci or []`, so `[]` vs null is the same to it; the prebuilt import's `reverse_module` gets RM451's fix.
   **RM452** (`9a8c7c89`, enricher): a NULL `start` in the Ensembl snapshot places nothing (one warning names the rsID)
   instead of raising `TypeError`; no published snapshot carries one (0 rows), so nothing for us now.
+  **RM449's last shape for 0.8.9** (`e1714779`, `90e27c40`, `b9b4f8c7`, 2026-11-18): a recorded `undecided` on both
+  spellings now reads as no verdict, so the expansion stays; `unplaced` on both (a witness's answer, online or offline)
+  still fills neither, and **strict then refuses that row as unresolved** where 0.8.8 compiled it (measured upstream on
+  `rs80356821` in their `pathogenic_clinvar`). The new code does **not** ship in 0.8.9: a format 0.8.6 reader refuses an
+  unknown `warnings_summary` key, so the sentences borrow `rsid_no_hosting_locus` (no position written) and
+  `rsid_expanded_to_multiple_loci` (one or more filled); format stays 0.8.6, the code arrives in 0.9. **For us**: an
+  upgrade sweep under 0.8.9 can count more `rsid_expanded_to_multiple_loci` (a narrowed site counts as an expansion,
+  the filled arms sit in `compilation.carried`) and can newly refuse an rsID-only indel row no witness placed either way.
 - **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; tagged at that commit and on PyPI 2026-11-17 02:17Z): RM445 alone (read
   below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
   the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
