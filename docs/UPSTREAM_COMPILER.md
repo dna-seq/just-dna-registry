@@ -159,6 +159,14 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   witness still fills only its spelling. This **removes 0.8.9's one new strict refusal**, online and offline alike
   (`unplaced` both ways is a witness that held no counterpart, e.g. ClinVar filing a deletion under a merged rsID). So
   under 0.8.9 our online re-runs can still refuse such a row; 0.8.10 will not.
+  **RM455** (`e63a8d8c`, `5799c2c9`, `78b8fb3f`, built `97b1770c`, 2026-11-18, for 0.8.10; synced into 0.9 `4a238152`),
+  enricher only, three hardenings: (1) a pull record whose bytes are not UTF-8 reads as *unreadable* in
+  `download._pull_record`, `locations.pull_record_repo`/`pulled_from` and `snapshot_record_missing` instead of a
+  `UnicodeDecodeError` traceback, which is the path `registry upgrade` and `warm-caches` read through
+  `download.pulled_from_elsewhere`; a hardening for us, no code to change; (2) a `batch_size` below 1 is refused on the
+  gnomAD, eutils, Europe PMC and PMC-id clients (nothing here sets one: `grep batch_size src/` is empty); (3) a new
+  `CacheLane.payload_filename` (strchive, acmg) replaces two `lane.name == "strchive"` checks in their `cache rebuild
+  --publish`; nothing here compares a lane by name. No floor reason of its own.
 - **Cut as `v0.8.9`** (`13b3be36`, 2026-11-18 05:27, all three packages 0.8.9, floors `>=0.8.9` throughout, no
   third-party floor; untagged and not on PyPI when read): RM446, RM447, RM448, RM449 (a declared corrected
   derivation), RM451, RM452 (each read below). **Format moves to 0.8.9 for its release record alone** (no vocabulary,
