@@ -561,6 +561,11 @@ lock (1.44.2, 1.5.5, 2.3.3).
   silent case. Their pm sizes both now. **For us**: the three production modules wait on that patch; the retry is
   0.33.1's kept-spec path once a re-derive under the fixed enricher is not needed (RM448 changes what a re-derive
   writes, so that retry likely has to re-derive after all). Lead told.
+  **RM449 on the catalog** (lead's 641415076, passed to their triage 2026-11-18): 2 of 69 latest 0.8.x-compiled versions
+  carry the silent case: prod `just-dna-seq/superhuman@2.4.1` `rs766212849` `A/A` protective, placed on `A>AAACTT`
+  (hom-ref) and on `AAACTT>A` (homozygous deletion); polygon `thrombophilia@2.0.1` `rs1572088853` `C/CC`. Their fix
+  reaches these only by a recompile (a corrected derivation, so `registry upgrade` once its release record says so).
+  6,183 single-locus `unplaced` rows across the catalog are not this: `unplaced` there means one witness, by design.
 - **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
   its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
   local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
