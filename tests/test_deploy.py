@@ -26,7 +26,16 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.maintenance import RUN_FILE, run_root
 from just_dna_registry.services import deploy
 from just_dna_registry.services.deploy import DEPLOY_FLOOR, DeployRefused, Point
-from just_dna_registry.supervisor import GitSource, PypiSource, StepFailed, Supervisor, detect_source
+from just_dna_registry.supervisor import (
+    FOLDER_LOCK,
+    FolderLock,
+    FolderTaken,
+    GitSource,
+    PypiSource,
+    StepFailed,
+    Supervisor,
+    detect_source,
+)
 
 
 def _settings(tmp_path: Path, **extra: object) -> Settings:
@@ -378,6 +387,35 @@ def test_a_server_that_exits_on_its_own_is_started_again(supervisor) -> None:
     sup.step()
     assert sup.child_running()
     assert sup.wait_healthy("0.34.0") is None
+
+
+HOLD_LOCK = textwrap.dedent('''
+    import sys, time
+    from pathlib import Path
+    from just_dna_registry.supervisor import FolderLock
+    lock = FolderLock(Path(sys.argv[1]))
+    lock.acquire()
+    print("held", flush=True)
+    time.sleep(60)
+''')
+
+
+def test_a_second_supervisor_on_the_same_folder_refuses_to_start(tmp_path: Path) -> None:
+    """Two servers started from one clone (production and the test server, say) would each move the
+    other's code; the second supervisor refuses before it starts anything, and the folder frees with
+    the first one's process."""
+    first = subprocess.Popen([sys.executable, "-c", HOLD_LOCK, str(tmp_path)], stdout=subprocess.PIPE, text=True)
+    try:
+        assert first.stdout is not None and first.stdout.readline().strip() == "held"
+        with pytest.raises(FolderTaken, match=f"pid {first.pid}"):
+            FolderLock(tmp_path).acquire()
+    finally:
+        first.kill()
+        first.wait()
+    again = FolderLock(tmp_path)
+    again.acquire()  # the kill freed it: no stale lock to clear by hand
+    assert (tmp_path / FOLDER_LOCK).read_text() == str(os.getpid())
+    again.release()
 
 
 # ── The sources ──────────────────────────────────────────────────────────────────────────────────────

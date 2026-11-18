@@ -6,6 +6,18 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased] — 0.34.1
+
+**Client surface:** unchanged.
+
+### One `registry supervise` per folder
+
+A move checks out a tag or pins a version in the folder the server runs from, so two servers started from
+one clone (production and the test server, say) would each move the other's code. A second `supervise` in a
+folder another one runs from now refuses to start, before it touches anything, and names the first one's
+pid. The lock (`.registry-supervise.lock`, git-ignored) goes with the process, so a crash leaves nothing to
+clear by hand.
+
 ## [0.34.0] — 2026-11-18
 
 **Client surface:** two new methods, `deploy_status()` and `deploy(version)`; nothing existing moved.

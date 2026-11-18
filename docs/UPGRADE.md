@@ -22,7 +22,8 @@ REGISTRY_DEPLOY=true uv run registry supervise --host 127.0.0.1 --port 8000     
 It takes the same `--host`, `--port` and `--mode` as `serve`, and runs where `serve` ran (in tmux, or as a
 unit's `ExecStart`). Ctrl-C or SIGTERM stops the server with it. The clone's tracked files must be
 unmodified: a move refuses a clone with local edits rather than overwrite them. Each box needs its own
-folder: two boxes sharing one clone would move together.
+folder: two boxes sharing one clone would move together, so from 0.34.1 a second `supervise` started in a
+folder another one already runs from refuses to start and names the first one's pid.
 
 **Running from PyPI instead of a clone** is a second folder, set up once by hand: a uv project that pins the
 package, with the box's `.env` beside it (the server reads the `.env` nearest its working directory) and

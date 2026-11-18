@@ -70,7 +70,7 @@ from just_dna_registry.services.upgrade import (
 from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
-from just_dna_registry.supervisor import Supervisor, detect_source
+from just_dna_registry.supervisor import FolderTaken, Supervisor, detect_source
 from just_dna_registry.supervisor import child_argv as supervisor_child_argv
 from just_dna_registry.supervisor import health_url as supervisor_health_url
 from just_dna_registry.sweep_report import (
@@ -274,11 +274,15 @@ def supervise(
         f"mode={settings.mode} supervising the server on {host}:{resolved} from a {source.kind} install; "
         f"deploys over the API {'on' if settings.deploy else 'off (REGISTRY_DEPLOY)'}"
     )
-    Supervisor(
-        settings=settings, root=folder, source=source,
-        child_argv=supervisor_child_argv(host, resolved, settings.mode),
-        health_url=supervisor_health_url(host, resolved),
-    ).run()
+    try:
+        Supervisor(
+            settings=settings, root=folder, source=source,
+            child_argv=supervisor_child_argv(host, resolved, settings.mode),
+            health_url=supervisor_health_url(host, resolved),
+        ).run()
+    except FolderTaken as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
 
 
 @app.command("init-db")
