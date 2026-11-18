@@ -54,6 +54,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S33** owner can highlight their own review, card reads curated — shipped in 0.32.0, verified-only (with corroboration)
 - **S34** lane proxy replies name no release — placed in 0.33; a label is no witness for stale bytes
 - **S35** an edit keeps the owner's highlight, so a verdict change can raise `curated` — filed (minor)
+- **S36** lane lookup compares a gene key exactly, so a folded or `;`-joined key comes back short — filed (minor)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
 belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the answer it
@@ -3241,3 +3242,48 @@ either way, filed with it: a reviewer can rewrite the notes of a highlighted `ve
 then stands beside text they never read; you said rating and notes need not touch it, and the pm decides whether
 that holds. The pm places it; 0.33 is open. Your tools' descriptions meanwhile can say that an edit keeps the pin.
 <!-- triaged: 0.32.0 · sha f9ae21a69526 -->
+
+# Field notes from just-dna-compiler (2026-11-18)
+
+## S36 — the lane lookup compares a gene key exactly, so a folded or ';'-joined key comes back short
+
+**Filed by** the just-dna-compiler liaison, for its lead's 0.9 work (the RM430 follow-up in that repository's
+`docs/ROADMAP_0_9.md`).
+
+**What we read.** `_parquet_rows` (`src/just_dna_registry/services/lanes.py`, read at origin/main e0129b8, 2026-11-18)
+matches a non-list, non-position key column by `pl.col(column).cast(pl.String).is_in([str(v) for v in values])`: the
+whole cell, exactly. just-dna-enricher's local readers compare two kinds of key differently:
+
+- a gene is compared by its `gene_key`, with case and surrounding space folded (CPIC, CIViC, ClinPGx, drug labels);
+- ClinPGx `gene` and the drug labels' `genes` are `;`-joined cells, matched member by member.
+
+Asked through `POST /api/v1/lanes/{lane}/{table}`, a lookup of `cyp2c9` misses a cell `CYP2C9`, and `CYP2C9` misses a
+cell `CYP2C9;CYP4F2`. The reply comes back short and says nothing, so a client cannot tell that from a true absence.
+
+**What we did meanwhile.** Our 0.9 client sends no folded or split key to the proxy. For those columns (the cpic,
+civic, clinpgx and drug_labels gene keys) it reads the lane's Hugging Face repository instead, and records the route as
+`hub`. That costs Hugging Face quota on small whole-table reads, which the proxy was there to save. Nothing in our 0.9
+waits on this.
+
+**Candidate.** Either fold case and surrounding space for gene-like key columns and match members of `;`-joined cells,
+or let a request state the compare for each key column, for example `{"column": "gene", "fold": true, "separator":
+";"}`, defaulting to today's exact match. With the second, an older client is unaffected. Our side is one declaration,
+`just_dna_enricher.key_compare.KEY_COMPARES` (lane → table → column → fold, separator), which the client would send
+as is. If you decline, our client keeps reading Hugging Face for these columns, and nothing breaks.
+
+**Status — confirmed, filed for the pm (2026-11-18).** Read at main: `_parquet_rows`
+(`services/lanes.py:336-347`) builds each key clause with `cast(pl.String).is_in(...)` over the whole cell, so a
+folded gene and a member of a `;`-joined cell both miss, on the local snapshot and the remote read alike, and the reply
+carries no field saying how it compared. That second half is a rule this repository already holds (*a field whose
+value two opposite histories can produce needs a sibling that says which happened*), and it is the part we would fix
+whichever candidate is taken.
+
+On the two candidates, plus a third your registry makes possible. `KEY_COMPARES` is on your `0.9` branch
+(`0271891f`), not on main or PyPI; the installed enricher here is 0.8.8. **Reading it on the server** at the 0.9 floor
+is how this repository treats every other upstream roster (`CACHE_LANES`, `DERIVED_PRODUCERS`): the two routes then
+cannot compare apart, and an older client gets the right answer without changing. Its cost is timing: it waits for the
+coordinated 0.9 cut. **A per-request compare** lands sooner and leaves v1 exact by default, at the price of a second
+reader of a rule you own. Folding by default without either would change what a v1 request returns. The pm decides
+which and when; it is a minor either way (an optional request field, or a widened compare at a contract cut). Until
+then your `hub` route is the right one, and a reply that names its compare would let you say so in your own records.
+<!-- triaged: 0.33.1 · sha 23bff0b922ee -->

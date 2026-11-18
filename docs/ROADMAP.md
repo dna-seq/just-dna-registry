@@ -1202,6 +1202,19 @@ converges).
   API-REFERENCE states the rule whichever is chosen. Sizing: **minor** (a stored flag an existing route now resets).
   Severity: low; the same trust signal as S33.
 
+- **A lane lookup compares a key the way upstream's own reader does** (proposed by S36, the just-dna-compiler
+  liaison for its lead's 0.9 work; **undecided**). `_parquet_rows` (`services/lanes.py`) matches every non-list,
+  non-position key column by `cast(pl.String).is_in(...)` over the whole cell, on the local snapshot and the remote
+  read alike. Upstream's local readers fold a gene by `gene_key` (CPIC, CIViC, ClinPGx, drug labels) and match members
+  of a `;`-joined cell (ClinPGx `gene`, drug labels `genes`), so `cyp2c9` misses `CYP2C9` and `CYP2C9` misses
+  `CYP2C9;CYP4F2`, and the reply is short with nothing said. Upstream's `0.9` branch declares the compares as one
+  registry, `just_dna_enricher.key_compare.KEY_COMPARES` (lane → table → column → `fold`, `separator`; `0271891f`), not
+  on main or PyPI as of 2026-11-18. Three candidates: read `KEY_COMPARES` on the server at the 0.9 floor (one reader,
+  as `CACHE_LANES` is read; an old client is answered right unchanged; waits for the coordinated cut); a per-request
+  compare per key column, exact by default (lands before 0.9, a second reader of upstream's rule); or fold by default
+  with neither (changes what a v1 request returns). Whichever: the reply names the compare it applied per key column,
+  so a short answer can be told from an absent one. Meanwhile the reporter's 0.9 client reads Hugging Face for those
+  columns (`hub` route); nothing waits on it. Sizing: **minor**. Severity: low.
 - ✅ **A variant-level catalog, with a gene-level facet** (**shipped in 0.31.0, published 2026-11-13**;
   **decided by the person 2026-11-04 in the dream's
   triage, `docs/DREAMS.md` §7: "Yes, and gene-level facet also (should be semi-feasible with enricher)";
