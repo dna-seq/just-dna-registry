@@ -311,7 +311,15 @@ def deploy_command(
             for record in ([state["pending"]] if state.get("pending") else []) + state.get("history", [])[:5]:
                 typer.echo(f"  {record.get('requested_at')}  {_deploy_line(record)}")
             return
-        record = c.deploy(version)
+        try:
+            record = c.deploy(version)
+        except RegistryError as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if exc.status_code not in (409, 422) or "error" not in detail:
+                raise
+            reasons = "; ".join(detail.get("errors") or [])
+            typer.secho(f"✗ refused ({detail['error']}): {reasons}", fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
         typer.echo(f"asked: {_deploy_line(record)}")
         if not wait:
             return

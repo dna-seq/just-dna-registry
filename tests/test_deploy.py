@@ -16,7 +16,10 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sdk_transport import sdk_transport
+from typer.testing import CliRunner
 
+from just_dna_registry import client_cli
 from just_dna_registry.api.app import create_app
 from just_dna_registry.config import Settings
 from just_dna_registry.db.repository import Repository
@@ -170,6 +173,32 @@ def test_the_routes_are_for_site_admins_and_serve_no_path(tmp_path: Path) -> Non
     assert body["enabled"] is True and body["supervised"] is True
     assert body["pending"]["id"] == asked.json()["id"]
     assert str(tmp_path) not in status.text
+
+
+def test_registry_client_deploy_shows_the_box_and_says_a_refusal_in_one_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _settings(tmp_path, deploy=True)
+    app = create_app(settings)
+    client = TestClient(app)
+    _account(app.state.repo, "ops", admin=True)
+    _beat(settings)
+    monkeypatch.setattr(client_cli, "_client", lambda *a, **k: client_cli._CliClient(
+        "http://testserver", "mk_live_ops", transport=sdk_transport(client), check_version=False))
+    runner = CliRunner()
+
+    shown = runner.invoke(client_cli.app, ["deploy", "--token", "mk_live_ops"])
+    assert shown.exit_code == 0, shown.output
+    assert "enabled True, supervised True, floor " + DEPLOY_FLOOR in shown.output
+
+    refused = runner.invoke(client_cli.app, ["deploy", "0.1.0", "--token", "mk_live_ops"])
+    assert refused.exit_code == 1
+    assert "refused (below_deploy_floor)" in refused.output
+    assert "Traceback" not in refused.output and refused.exception is None or isinstance(refused.exception, SystemExit)
+
+    asked = runner.invoke(client_cli.app, ["deploy", "99.0.0", "--token", "mk_live_ops"])
+    assert asked.exit_code == 0, asked.output
+    assert asked.output.startswith("asked: 99.0.0 from ")
 
 
 # ── The supervisor, against a real child ─────────────────────────────────────────────────────────────
