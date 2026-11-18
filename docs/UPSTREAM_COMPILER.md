@@ -584,6 +584,13 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **0.8.10 cut asked** (2026-11-19, at the lead's request 641716768; sent 641716854 in `agent-chat > upstream`, a
+  message, not an S item): all three tiers. Measurement: cardio's spec from production's refused 2026-11-17 run,
+  re-derived online (enricher 0.8.8), strict under compiler 0.8.9: RM449's duplicates gone, 4 mirrored ins/del rsIDs
+  `unplaced` both ways by ClinVar (rs551348450, rs759332741, rs771806027, rs786205353) refused by the RM453 case online,
+  where their known-issue note says offline; a 5th (rs1452575772) is RM448, fixed by a 0.8.9 re-derive. Also asked:
+  is RM453 the whole online story. Production's upgrade waits for 0.8.10 (registry 0.34.1 floors 0.8.9 meanwhile),
+  since RM455 moves the enricher and a held re-derivation is not reused across enricher releases.
 - **S158** (filed 2026-11-17 at the lead's request, 641258676; uncommitted in their inbox): production's 0.8 catalog
   upgrade (online, `verify_ref`) refused cardio, cancer and pathogenic as `compile_failed`. On cardio 21 of 22 strict
   errors are `Duplicate (variant, genotype)`: the SNP-core fill expands an rsID-only row's indel genotype (`C/CT`) onto
