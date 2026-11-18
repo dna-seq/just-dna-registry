@@ -382,9 +382,9 @@ server = [
     # 12 rsIDs unresolved. RM449 (compiler, declared): an rsID row's indel genotype is filled on the spelling a
     # second source witnessed, not on both events of a mirrored insertion and deletion, which put duplicate
     # (variant, genotype) rows in cardio, cancer and pathogenic and a silent second claim in superhuman. Known
-    # issue RM453 (offline, a mirrored site witnessed on neither spelling refuses) is compiler-only and fixed in
-    # 0.8.10, so a module 0.8.9 refuses over it keeps its re-derivation (0.33.1) and compiles under 0.8.10
-    # without a second re-derivation, provided the enricher version is unchanged.
+    # issue RM453 (a mirrored site ClinVar marks `unplaced` on both spellings refuses) is compiler-only and fixed
+    # in 0.8.10; upstream filed it as offline-only, and cardio's online table carries four such rsIDs
+    # (measured 2026-11-19), so the production upgrade of the ClinVar modules waits for the 0.8.10 floor.
     "just-dna-compiler>=0.8.9",  # lockstep with the format floor above
     "just-dna-enricher>=0.8.9",  # RM448/RM449 (S158), see the 0.8.9 note above
 ]

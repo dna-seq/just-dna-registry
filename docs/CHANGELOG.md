@@ -24,7 +24,7 @@ names an account, not a key.
 the new one back to the same line, so neither key reaches the terminal; without `--env-file` it prints the
 new key once. The SDK's `rotate_key()` switches the client to the new key itself.
 
-### Upstream 0.8.9: the three refused ClinVar modules can publish
+### Upstream 0.8.9: two of the three causes behind the refused ClinVar modules are fixed
 
 Format, compiler and enricher floor at **0.8.9** (our S158). On 2026-11-17 production's online upgrade
 re-derived cardio, cancer and pathogenic for 12.5 hours and the strict compile refused all three: RM448
@@ -32,9 +32,12 @@ re-derived cardio, cancer and pathogenic for 12.5 hours and the strict compile r
 (compiler) placed an rsID row's indel genotype on both events of a mirrored insertion and deletion, which
 produced duplicate rows. RM449 is a declared corrected derivation in format 0.8.9's release record, so the
 next `registry upgrade --apply --online` also republishes the modules it reached (production's superhuman
-2.4.1, where one rsID could match an all-sites VCF on the wrong event). Known issue upstream, RM453: offline, a
-mirrored site witnessed on neither spelling still refuses under 0.8.9; it is compiler-only and fixed in 0.8.10,
-and a module refused over it keeps its re-derivation (0.33.1) for the retry.
+2.4.1, where one rsID could match an all-sites VCF on the wrong event). **Still refused under 0.8.9: RM453**, a
+mirrored insertion and deletion that ClinVar records as `unplaced` on both spellings. Upstream filed it as
+offline-only, but cardio's online re-derivation carries four such rsIDs (measured 2026-11-19: its refused
+spec compiled strict under compiler 0.8.9 has no duplicates left and refuses exactly those four plus one
+RM448 row a 0.8.9 re-derive fills). It is fixed in 0.8.10, so **run the production upgrade of cardio,
+cancer and pathogenic on the release that floors 0.8.10, not on this one**.
 
 ### One `registry supervise` per folder
 
