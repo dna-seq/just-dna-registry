@@ -80,7 +80,12 @@ dependencies = [
     # every axis `False` with nothing declared, and no public name, field, table or warning code moved. It is
     # the floor because the enricher 0.8.3 the `server` extra needs floors all three tiers at `>=0.8.3`.
     # 0.8.4 likewise (0.29.1): the enricher 0.8.4 floors all three tiers at `>=0.8.4`; 0.8.6 too (0.31.0).
-    "just-dna-format>=0.8.6",
+    # **0.8.9 is the hard kind** (0.34.1), and here for its release record alone: format 0.8.9 changes no
+    # model, field or vocabulary, only `RELEASE_RECORDS["0.8.9"]`, which declares RM449's corrected derivation
+    # (scoped on `compilation.expanded_keys`). `registry upgrade` reads that record to know which published
+    # modules RM449 reaches (production's superhuman 2.4.1, the polygon's thrombophilia 2.0.1, measured
+    # 2026-11-18); on 0.8.6 there is no record for the interval and the sweep would leave them as they are.
+    "just-dna-format>=0.8.9",
 ]
 
 [project.optional-dependencies]
@@ -127,7 +132,7 @@ dependencies = [
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.8.6",  # lockstep with the format floor above
+    "just-dna-compiler>=0.8.9",  # lockstep with the format floor above
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -371,8 +376,17 @@ server = [
     # 2026-11-17 on production: ensembl, civic, clinvar_gkm and six proxy lanes were such pulls. Its one new
     # refusal (a missing `release.json` on a pull) is raised per lane and `prepare_caches` reports it as that
     # lane's failure. No release record: the compiler did not change, so a recompile moves nothing.
-    "just-dna-compiler>=0.8.6",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.8",  # RM445 (warm-caches repairs a pre-RM420 pull), see the 0.8.8 note above
+    # **0.8.9, all three** (0.34.1), the hard kind: our S158, three production ClinVar modules refused by the
+    # strict compile after a 12.5 h online re-derivation (2026-11-17). RM448 (enricher): a witness holding one
+    # ALT of a multi-allelic indel site no longer withholds the whole site, which left cardio 1 and pathogenic
+    # 12 rsIDs unresolved. RM449 (compiler, declared): an rsID row's indel genotype is filled on the spelling a
+    # second source witnessed, not on both events of a mirrored insertion and deletion, which put duplicate
+    # (variant, genotype) rows in cardio, cancer and pathogenic and a silent second claim in superhuman. Known
+    # issue RM453 (offline, a mirrored site witnessed on neither spelling refuses) is compiler-only and fixed in
+    # 0.8.10, so a module 0.8.9 refuses over it keeps its re-derivation (0.33.1) and compiles under 0.8.10
+    # without a second re-derivation, provided the enricher version is unchanged.
+    "just-dna-compiler>=0.8.9",  # lockstep with the format floor above
+    "just-dna-enricher>=0.8.9",  # RM448/RM449 (S158), see the 0.8.9 note above
 ]
 
 [build-system]
