@@ -682,6 +682,11 @@ lock (1.44.2, 1.5.5, 2.3.3).
   **Answered 2026-11-11** (archived, open, their pm sizes): S145 is **RM430** (asks 1-3; the format tier never fetches,
   so a remote `release.json` is read by the enricher, not `just_dna_format.snapshot`) and **RM431** (asks 4-7); S146
   is **RM432**. Lead told.
+  **RM431, first part on `0.9`** (`f3b8c657`, 2026-11-18, unreleased): `mitomap_miss` now declares a `stale_reason`
+  from `stale_parents` (a moved ClinVar or MITOMAP parent makes `cache status` say stale; a gone parent leaves it
+  present), and a walk over `CACHE_LANES` holds every lane with parents to one. Not asks 4-7 of S145 yet (the remote
+  reads). It is a parent-moved axis, not the builder-version one our `LaneAge` bandaid in `warm-caches` covers
+  (CLAUDE.md, "One bandaid"), so the bandaid stays; re-check the retire condition when 0.9 is cut.
   **RM432 landed** (`ac3f1bc`, 2026-11-11, unreleased): `gene_metrics.lookup_snapshot` and `civic_snapshot_rows` raise
   `FileNotFoundError` on a reference with no parquet (no new name); inside the enricher the gene-metrics pass reads it
   as not consulted (offline it had written `not_found` rows for a snapshot it never opened), the CIViC refutation
