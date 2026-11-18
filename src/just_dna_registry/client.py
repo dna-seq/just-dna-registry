@@ -1273,6 +1273,15 @@ class RegistryClient:
             self._http.post(f"/admin/accounts/{source}/merge", json={"into": into, "apply": apply})
         )
 
+    def rotate_key(self, *, revoke_others: bool = False) -> dict:
+        """Trade this client's API key for a new one (0.34.1): `{token, account, revoked}`. The old key is
+        dead once this returns, so the client switches to the new one itself; keep `token`, since the
+        server shows it this once. `revoke_others=True` also revokes every other key of the account, for a
+        key that leaked."""
+        rotated = self._json(self._http.post("/auth/rotate", json={"revoke_others": revoke_others}))
+        self._http.headers["Authorization"] = f"Bearer {rotated['token']}"
+        return rotated
+
     def rename_account(
         self, name: str, *, dry_run: bool = False, allow_test_data: bool = False
     ) -> dict:

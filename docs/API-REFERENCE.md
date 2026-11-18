@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.34.x**, API `v1` (**0.34 adds two site-admin routes**, `GET` and `POST /admin/deploy`; 0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.34.x**, API `v1` (**0.34.1 adds one route**, `POST /auth/rotate`; **0.34 adds two site-admin routes**, `GET` and `POST /admin/deploy`; 0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -198,6 +198,7 @@ Publish/import `422.error` codes: `missing_spec_files`, `invalid_spec` (carries
 | 50 | GET | `/api/v1/upgrade/status?state=&page=&per_page=` | — | Which current versions the upgrade sweep has not brought up to date, and why (0.32) |
 | 51 | GET | `/api/v1/admin/deploy` | site admin | What the box runs, what it ran before, and how the last moves went (0.34) |
 | 52 | POST | `/api/v1/admin/deploy` | site admin | Ask the box's supervisor to move the server to another release (0.34) |
+| 53 | POST | `/api/v1/auth/rotate` | API key | Trade the calling key for a new one; the old one dies at once (0.34.1) |
 
 ---
 
@@ -1563,6 +1564,13 @@ snapshots: `upgrade`, `replay-upgrade`, `revalidate`, `warm-caches`. A run of an
 `<data>`, `<storage>`, `<cache:ensembl>`, `<cache>`, `<venv>`, `<python>`, `<cwd>`, `~`), and any
 absolute path left after that by `<path>`. API keys never reach the log. The copy on the box keeps its
 paths. Not rate-limited, like the other site-admin routes.
+
+### 53. `POST /api/v1/auth/rotate`  *(the API key being rotated, 0.34.1)*
+
+`{"revoke_others": false}` → `RotatedKey`: `token` (the new key, shown this once), `account`, `revoked`
+(1, or every key the account had with `revoke_others: true`). The key that made the request stops working
+in the same transaction that creates the new one. On demand only; not rate-limited, since each call spends
+its own key. `422 rotate_needs_api_key` for a JWT session bearer, `401` for no or a dead key.
 
 ### 51–52. `GET`, `POST /api/v1/admin/deploy`  *(site admin, 0.34)*
 

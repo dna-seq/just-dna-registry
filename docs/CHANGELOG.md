@@ -8,7 +8,21 @@ Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md)
 
 ## [Unreleased] — 0.34.1
 
-**Client surface:** unchanged.
+**Client surface:** one new method, `rotate_key(revoke_others=False)`; nothing existing moved.
+
+### A key holder rotates their own key, on demand
+
+The person, 2026-11-18: "Don't bug me with rotating keys. Implement rotation." Through 0.34.0 replacing a
+key took someone on the box (`issue-key`, then `revoke-key`). `POST /auth/rotate`, called with the key itself,
+answers a new key for the same account and kills the calling key in the same transaction;
+`revoke_others: true` kills every other key of the account too, for a key that leaked. Nothing rotates on a
+schedule: a key lives until its holder rotates it or an operator revokes it. The route is not rate-limited,
+since every call spends the key that made it. A JWT session cannot rotate (`422 rotate_needs_api_key`): it
+names an account, not a key.
+
+`registry-client rotate-key --env-file PATH --env-var NAME` reads the key from a `.env`, rotates it and writes
+the new one back to the same line, so neither key reaches the terminal; without `--env-file` it prints the
+new key once. The SDK's `rotate_key()` switches the client to the new key itself.
 
 ### One `registry supervise` per folder
 
