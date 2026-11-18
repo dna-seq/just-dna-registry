@@ -16,7 +16,7 @@ The person, 2026-11-18: "rewind git deployments or run server from pypi with an 
 Less ssh logins for me". `registry supervise` runs the server as its child and replaces `serve` as the
 box's start command. `POST /admin/deploy {"version": "X.Y.Z" | "previous"}` leaves a request; the
 supervisor prepares with the server still serving (on a clone, `git fetch --tags` and the tag `vX.Y.Z`; on a
-PyPI-installed folder, the version on PyPI), stops it, checks out or pins, runs `uv sync --inexact`, starts
+PyPI-installed folder, the version on PyPI), stops it, checks out or pins, syncs (on a clone `uv sync --frozen`, the release's own lock), starts
 it, and reads `/health` for `status: ok` and the new version. A move that does not come up is rolled back to
 the commit or version that ran before, and `GET /admin/deploy` says which happened (`deployed`, `refused`,
 `rolled_back`, `failed`, `interrupted`), with the history of moves. `registry-client deploy [VERSION]

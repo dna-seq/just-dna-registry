@@ -15,7 +15,7 @@ rolled back to what ran before. Each move is refused while a `registry` command 
 **The one ssh step, per box** (from a clone, which is how both boxes run today):
 
 ```
-git fetch --tags origin && git checkout --detach v0.34.0 && uv sync --inexact --extra server
+git fetch --tags origin && git checkout --detach v0.34.0 && uv sync --inexact --frozen --extra server
 REGISTRY_DEPLOY=true uv run registry supervise --host 127.0.0.1 --port 8000     # the polygon: --mode test --port 8100
 ```
 

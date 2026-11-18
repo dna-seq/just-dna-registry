@@ -396,13 +396,13 @@ def test_a_clone_moves_by_release_tag_and_returns_by_commit(tmp_path: Path) -> N
     source.prepare("0.34.1")  # fetched: the tag pushed after the clone is there now
     source.apply("0.34.1")
     assert source.current().version == "0.34.1"
-    assert synced == [["uv", "sync", "--inexact", "--extra", "server"]]
+    assert synced == [["uv", "sync", "--inexact", "--frozen", "--extra", "server"]]
 
     source.restore(before)
     assert source.current() == before
 
     (clone / "pyproject.toml").write_text("edited by hand\n")
-    with pytest.raises(StepFailed, match="uncommitted changes"):
+    with pytest.raises(StepFailed, match=r"uncommitted changes to tracked files \(pyproject.toml\)"):
         source.prepare("0.34.1")
 
 

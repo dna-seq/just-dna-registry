@@ -7,8 +7,9 @@ the deploy folder, and this process, which outlives the server, carries it out. 
    and find the tag `vX.Y.Z`; on a PyPI install, ask PyPI for the version. A failure here is `refused` and
    touches nothing.
 2. **stop** the server (SIGTERM, so open requests finish, for up to `deploy_stop_seconds`; then SIGKILL).
-3. **apply**: `git checkout --detach vX.Y.Z` or `uv add --no-sync 'just-dna-registry[server]==X.Y.Z'`, then
-   `uv sync --inexact` (extras from `REGISTRY_DEPLOY_EXTRAS`).
+3. **apply**: `git checkout --detach vX.Y.Z` then `uv sync --inexact --frozen` (the release's own lock,
+   never rewritten), or `uv add --no-sync 'just-dna-registry[server]==X.Y.Z'` then `uv sync --inexact`
+   (extras from `REGISTRY_DEPLOY_EXTRAS`).
 4. **start** and **check**: `/health` must answer `status: ok` with the target's version within
    `deploy_health_seconds`.
 5. Anything failing after step 2 **rolls back** to the commit or version recorded at step 1, checked the same
@@ -99,8 +100,10 @@ def _pyproject(root: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
 
-def sync_argv(extras: str) -> list[str]:
-    argv = ["uv", "sync", "--inexact"]
+def sync_argv(extras: str, *, frozen: bool = False) -> list[str]:
+    """`--frozen` on a clone: install the release's committed lock exactly and never rewrite it, or the
+    rewritten `uv.lock` is a tracked change the next move refuses (found rehearsing, 2026-11-18)."""
+    argv = ["uv", "sync", "--inexact", *(["--frozen"] if frozen else [])]
     for extra in extras.split():
         argv += ["--extra", extra]
     return argv
@@ -124,8 +127,12 @@ class GitSource:
         dirty = _checked(
             self.runner, ["git", "status", "--porcelain", "--untracked-files=no"], self.root, "git status"
         )
-        if dirty.strip():
-            raise StepFailed("the clone has uncommitted changes to tracked files; commit or discard them first")
+        changed = sorted({line[3:].strip() for line in dirty.splitlines() if line.strip()})
+        if changed:
+            raise StepFailed(
+                f"the clone has uncommitted changes to tracked files ({', '.join(changed)}); "
+                "commit or discard them first"
+            )
         _checked(self.runner, ["git", "fetch", "--tags", "--quiet", "origin"], self.root, "git fetch")
         probe = self.runner(["git", "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}"], self.root)
         if probe.returncode != 0:
@@ -141,7 +148,7 @@ class GitSource:
 
     def _checkout(self, ref: str) -> None:
         _checked(self.runner, ["git", "checkout", "--detach", "--quiet", ref], self.root, "git checkout")
-        _checked(self.runner, sync_argv(self.extras), self.root, "uv sync")
+        _checked(self.runner, sync_argv(self.extras, frozen=True), self.root, "uv sync")
 
 
 def pypi_has(version: str) -> bool:
