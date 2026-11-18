@@ -1150,7 +1150,7 @@ converges).
   Sizing: **minor** either way. Severity: medium, the same trust signal as S33. Rides with S33 in 0.32 if decided
   before the cut, else 0.33.
 
-- **A compile refusal after a re-derivation keeps the re-derived spec** (**built on branch `0.33.1`, eac81ad**; filed by the lead 2026-11-17, a defect
+- ✅ **A compile refusal after a re-derivation keeps the re-derived spec** (**shipped in 0.33.1, published 2026-11-18**; filed by the lead 2026-11-17, a defect
   against CLAUDE.md's "a gate placed after an expensive step keeps that step's result"; **placed by the pm
   2026-11-17: 0.33.1, a patch**; **built on branch `0.33.1`, eac81ad**, not reopening 0.33.0, which is stamped and green. Production's online upgrade
   re-derived cardio, cancer and pathogenic (about 37 h), then the strict compile refused all three
@@ -1166,7 +1166,7 @@ converges).
   both 0.8.x patches upstream (their S158 answer, 2026-11-18). The three were refused before 0.33.1, so their first
   retry after those patches still re-derives once; only refusals from 0.33.1 on are kept.
 
-- **A lane lookup says which release it read** (**built on branch `0.33`, e89c0aa**; proposed by S34, the just-dna-compiler liaison for its pm's 0.9
+- ✅ **A lane lookup says which release it read** (**shipped in 0.33.0, published 2026-11-18**; proposed by S34, the just-dna-compiler liaison for its pm's 0.9
   client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**; **built on branch `0.33`, e89c0aa**, all of it, the local `revision: null` included. Both lane replies carry
   `release` and `release_unreadable` read exactly as `/caches` reads them, and a remote read resolves the head
   commit once per request, reads every file at `@<sha>` and reports it as `revision`, so one answer never straddles
@@ -1185,7 +1185,7 @@ converges).
   label would have agreed on both routes. Sizing: **minor** (new optional fields; the client and `lane-rows`
   print them). Severity: low; it is provenance, and nothing gates on it.
 
-- **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (**built on branch `0.33`, a69c05b**; proposed by
+- ✅ **An edit to a highlighted review keeps the owner's pin, so a verdict change can raise `curated`** (**shipped in 0.33.0, published 2026-11-18**; proposed by
   S35, just-module-creator, 2026-11-17; **decided by the pm 2026-11-17: the first candidate, in 0.33**; **built on branch `0.33`, a69c05b**. A re-posted
   review whose verdict differs from the stored one clears `highlighted`, in the upsert, so stored rows are covered
   with no migration and the owner re-pins what they have read. A notes-only or rating-only edit keeps the pin: it

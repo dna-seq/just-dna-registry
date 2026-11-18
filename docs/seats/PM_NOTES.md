@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-16)
+## Now (2026-11-18)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -26,6 +26,11 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **0.32.0 published** (2026-11-16, `v0.32.0` on e2e172b): S29, S30, S31, S32 (all four pieces), S33 and its
   corroboration (`curated` counts only an outside reviewer's `verified` highlight, decided 2bb903e), the person's
   `GET /upgrade/status`, C13/C15, enricher 0.8.7. Six items under *Next registry version* marked ✅.
+- **0.33.0 and 0.33.1 published** (2026-11-18, `v0.33.0` on da53225, `v0.33.1` on c965700): S34 (lane replies name
+  their release and remote commit), S35 (a verdict change clears the owner's pin), and the kept spec after a compile
+  refusal (0.33.1). Three items marked ✅. Both servers still on 0.32.1 at 22:35 CET; deploy is the person's.
+- **S36 decided** (1469f92, 8dd726a): lane gene keys compared by upstream's `KEY_COMPARES`, read at the 0.9 floor
+  (enricher included); the reply names its compare in that release.
 - **Upstream RM441** (declared corrections, with RM399 and our S156) now proposed for its 0.10; the RM438 probe
   stays the path until then. Remote lane reads still wait on RM430 (upstream 0.9 zone).
 - **Duty: milestones** (kit v0.1.187, `PM.md` of the kit): the `state` post in `#just-dna-registry>state` is kept
