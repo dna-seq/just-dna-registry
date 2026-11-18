@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased] — 0.34
+## [0.34.0] — 2026-11-18
 
 **Client surface:** two new methods, `deploy_status()` and `deploy(version)`; nothing existing moved.
 
