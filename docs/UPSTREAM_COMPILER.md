@@ -552,6 +552,15 @@ lock (1.44.2, 1.5.5, 2.3.3).
   every duplicate an indel; pathogenic also has 12 unresolved rsIDs, and the four checked each had a `clinvar`-authority
   `resolved` row in the stored pre-0.8 table, none after re-derivation. Asked whether re-derivation drops a ClinVar
   placement Ensembl lacks without a `not_found` row, and what the drafter should author if so.
+  **Answered 2026-11-18** (their `d611a73f`, 641407999): both halves are defects, reproduced on their `main` with an
+  online `verify_ref` run, filed high as 0.8.x patches. **RM448**: the missing rows are not a dropped ClinVar placement;
+  Ensembl holds `rs1452575772` as `A>AC,AT` and ClinVar as `A>AC`, and RM267's witness reads Ensembl's other insertion
+  as a disagreement and withholds the whole locus (our run log should say `Placement disagreement` for those ids;
+  reproduced for all four). **RM449**: the duplicates, and the silent case is real (an rsID row alone compiles under
+  strict with its claim on both `C>CT` and `CT>C`); our remedy 1 recommended, 3 beside it, 2 rejected as hiding the
+  silent case. Their pm sizes both now. **For us**: the three production modules wait on that patch; the retry is
+  0.33.1's kept-spec path once a re-derive under the fixed enricher is not needed (RM448 changes what a re-derive
+  writes, so that retry likely has to re-derive after all). Lead told.
 - **S157** (filed 2026-11-16 at the lead's request, 640870607, from desk #330's measurement): `enrich()` builds
   its one `SequenceProxy` at `DEFAULT_SEQREPO_URI` and takes no URI or proxy, so a re-derivation cannot read a
   local reference; one remote read is about 0.34 s, and cardio (57,756 rows) took 6.9 h with `verify_ref` and
