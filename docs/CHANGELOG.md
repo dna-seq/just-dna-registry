@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased] — 0.34.1
+## [0.34.1] — 2026-11-19
 
 **Client surface:** one new method, `rotate_key(revoke_others=False)`; nothing existing moved.
 
