@@ -8,7 +8,10 @@ reset").
 - **Watchers** armed and alive: `compiler` (tags), `compiler-next` (`docs/CHANGELOG.md` on `0.8`), `fastapi` and
   `huggingface-hub` (tags), plus `desk`. Clones outside the repo: `/data/sources/just-dna-compiler`,
   `/data/sources/fastapi`, `/data/sources/huggingface_hub`, each a line (`repo=just-dna-registry`) in the
-  liaison state file. When the compiler opens `0.9`, move `just-dna-compiler-next`'s `branch=` from `main` to it.
+  liaison state file. `just-dna-compiler-next`'s `branch=` moved from `main` to `0.9` on 2026-11-18 (upstream's
+  `origin/0.9` opened 2026-11-17: 94 commits past main, 61 touching `docs/CHANGELOG.md`, unread; read at the 0.9 cut,
+  and earlier only for RM430/RM431/RM441/RM443/RM404 or `key_compare`, which S36 now waits on: `KEY_COMPARES` lives in
+  the enricher, so the release that reads it floors enricher 0.9 too, as upstream's liaison told the pm).
 - **Ledgers**: `docs/UPSTREAM_COMPILER.md` (read mark `v0.8.0`), `docs/UPSTREAM_FASTAPI.md` (installed `0.141.1`,
   read through 0.162.0 on 2026-11-05: F1, for the first bump), `docs/UPSTREAM_HUGGINGFACE_HUB.md` (installed `v2.0.0`,
   read through v2.4.0 on 2026-11-05: H2 to H4).
