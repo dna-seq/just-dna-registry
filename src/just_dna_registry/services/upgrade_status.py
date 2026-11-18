@@ -33,7 +33,12 @@ from just_dna_registry.db.repository import Repository
 from just_dna_registry.maintenance import SWEEP_FILE, list_runs, read_record
 from just_dna_registry.models.api import UpgradeStatusItem, UpgradeStatusReport, UpgradeSweepVerdict
 from just_dna_registry.services import held as held_store
-from just_dna_registry.services.upgrade import GAP_CONTRACT, GAP_UNKNOWN, gap_from_stamp
+from just_dna_registry.services.upgrade import (
+    GAP_CONTRACT,
+    GAP_UNKNOWN,
+    gap_from_stamp,
+    installed_snapshot_releases,
+)
 from just_dna_registry.sweep_report import PROBLEMS, WOULD_UPGRADE
 from just_dna_registry.version import installed_compiler
 
@@ -125,17 +130,20 @@ def upgrade_status(
     settings: Settings, repo: Repository, *, state: str | None, page: int, per_page: int
 ) -> UpgradeStatusReport:
     sweeps = recorded_sweeps(settings, repo)
+    releases: dict[str, str | None] | None = None
     items: list[UpgradeStatusItem] = []
     for row in repo.current_versions_for_status():
         ns, name, version = row["namespace"], row["name"], row["version"]
         gap = gap_from_stamp(row["compiler_stamp"], has_signature=bool(row["has_signature"]))
         verdict = sweeps.verdicts.get((ns, name, version))
         kept = held_store.find(settings, ns, name, version)
+        if kept is not None and releases is None:
+            releases = installed_snapshot_releases(settings)  # read once, and only when something is kept
         items.append(UpgradeStatusItem(
             namespace=ns, name=name, version=version,
             state=_state(gap.scale, verdict, kept is not None),
             compiled_under=gap.compiled_under, gap=gap.scale, last_sweep=verdict,
-            kept=kept is not None, kept_stale=kept.stale_reason() if kept is not None else None,
+            kept=kept is not None, kept_stale=kept.stale_reason(releases) if kept is not None else None,
         ))
     counts = dict.fromkeys(STATES, 0)
     for item in items:

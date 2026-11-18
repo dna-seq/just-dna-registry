@@ -1736,6 +1736,12 @@ Run it on a connection of its own: the dry run rolls back the whole connection's
             c.rollback()
         return report
 
+    def api_keys_for_account(self, account_id: int) -> list[str]:
+        """Every live key of one account, as stored (plaintext), for `registry show-keys`."""
+        return [r[0] for r in self.conn.execute(
+            "SELECT key FROM api_keys WHERE account_id = ? ORDER BY rowid", (account_id,)
+        ).fetchall()]
+
     def revoke_api_keys_for_account(self, name: str) -> int:
         row = self.account_by_name(name)
         if row is None:

@@ -6,6 +6,30 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.33.1] — 2026-11-17
+
+**Client surface:** unchanged.
+
+### `registry show-keys ACCOUNT` recovers a lost key
+
+An agent or a person who lost an API key had two ways back: `issue-key` minting a new one, or `export-keys`
+printing every account's keys at once. `registry show-keys ACCOUNT` prints just that account's live keys, one
+per line on stdout (the account, its namespaces and how many keys on stderr), following a retired handle to
+the account that holds it now. It reads only: a successful run keeps no run directory, and any log the
+registry writes masks keys. Where the key may have leaked rather than been lost, mint a new one and revoke the
+old instead.
+
+### A strict compile refusal keeps the re-derivation for the retry
+
+`registry upgrade` re-derives a module's resolutions (online, production's three ClinVar modules took about
+37 hours on 2026-11-17) and then compiles strictly. When the compile refused, the re-derived spec went with
+the temporary directory, so the retry after a compiler fix asked every source again. A refused re-derivation
+is now kept under `held/` (`reason: compile_failed`, with the snapshot releases it read), and a later
+`upgrade --apply` compiles it without re-deriving, under a newer compiler if one is installed. It is used
+only while the enricher version and those snapshot releases are unchanged; otherwise the module re-derives
+and its line says why. `GET /upgrade/status` reports such a kept spec and its staleness as it does a drift
+hold. See UPGRADE.md, 0.33.1.
+
 ## [0.33.0] — 2026-11-17
 
 **Client surface:** unchanged (`lane_tables` and `lane_rows` return three more keys; no signature moved).

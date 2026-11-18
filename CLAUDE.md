@@ -177,7 +177,9 @@ outside `QUIET_DRIFT` counted on its line and listed in the run's log. `--withho
 its temporary directory and `--accept-drift` re-derived, so every online request was spent twice for a
 result already in hand (the person: "a pathway that does dry run under disguise of upgrade"); tolerable,
 if ever, only while a re-derivation read nothing but the local Ensembl parquet. **A gate placed after an
-expensive step keeps that step's result, or it is a dry run that costs the full price.** **The snapshot is checked before the first PATCH**, through upstream's
+expensive step keeps that step's result, or it is a dry run that costs the full price.** The strict compile is such a gate
+too (0.33.1): a refusal keeps the re-derived spec, reusable under a newer compiler but not under another
+enricher or snapshot release (`held.COMPILE_FAILED`). **The snapshot is checked before the first PATCH**, through upstream's
 `download.pulled_from_elsewhere`; the pull record spells the repo as its fsspec prefix, so comparing it
 with `ensembl_reference` would refuse every correctly pulled cache. It converges: a re-derived table
 names its release on every row, so the next sweep carries it. And one module's refusal no longer ends

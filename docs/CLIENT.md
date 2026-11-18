@@ -448,6 +448,7 @@ Not part of the client surface, but for completeness — run **on the server**, 
 registry serve --host 0.0.0.0 --port 8000
 registry init-db
 registry issue-key <account> -n <namespace>          # mint an API key
+registry show-keys <account>                         # print a lost key again (0.33.1; terminal only)
 registry revoke-key <key>                            # invalidate a leaked key
 registry revoke-account <account> [--yes]            # invalidate all of an account's keys
 registry feature <ns> / unfeature <ns>               # curate: float a namespace to the top
