@@ -1204,7 +1204,8 @@ converges).
 
 - **A lane lookup compares a key the way upstream's own reader does** (proposed by S36, the just-dna-compiler
   liaison for its lead's 0.9 work; **decided by the pm 2026-11-18: the first candidate, in the registry release that
-  floors upstream format 0.9**, the same coordinated cut that brings remote lane reads through RM430). Why the first:
+  floors upstream at 0.9**, the enricher included, since `KEY_COMPARES` is the enricher's and not the format's (the
+  0.x cuts here move all three tiers together); the same coordinated cut that brings remote lane reads through RM430). Why the first:
   every other upstream roster here is read, never copied (`CACHE_LANES`, `DERIVED_PRODUCERS`), and a per-request
   compare would be a second reader of a rule upstream owns; folding by default with neither changes v1 answers on a
   rule of ours. Its only cost is the wait, and nothing waits on it: the reporter's client reads Hugging Face for those
