@@ -55,6 +55,11 @@ reports; this file holds the seat's own decisions and the items it owns.
   `upsert_review` clears `highlighted` when a re-post changes the verdict; a notes- or rating-only edit keeps the
   pin (the residue, accepted). just-module-creator's liaison was told of the placement 2026-11-17. Then: a second
   `**Status —**` on S35 in the history file from the 0.33.0 changelog, its contents line, and the liaison told.
+- **S36 follow-up reply: once the registry release that floors upstream 0.9 is on PyPI.** The pm decided S36
+  (1469f92): the lane lookup reads upstream's `KEY_COMPARES` (just-dna-enricher's, on their 0.9 branch) at that
+  floor, and the reply names the compare per key column; no per-request field. The pm told the reporter directly
+  (2026-11-18). Then: a second `**Status —**` on S36 in the history file from that release's changelog, its
+  contents line, and just-dna-compiler's liaison told.
 - **S29–S33 follow-up replies** — done 2026-11-16: 0.32.0 reached PyPI; a second `**Status —**` on each and on
   the S33 corroboration, contents lines updated, the consumer told. Neither box served 0.32.0 then (polygon 0.30.0,
   production 0.31.0); S30's re-run on the polygon waits for its upgrade, the consumer's to do.
