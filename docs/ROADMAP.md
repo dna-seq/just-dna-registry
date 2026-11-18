@@ -1203,7 +1203,13 @@ converges).
   Severity: low; the same trust signal as S33.
 
 - **A lane lookup compares a key the way upstream's own reader does** (proposed by S36, the just-dna-compiler
-  liaison for its lead's 0.9 work; **undecided**). `_parquet_rows` (`services/lanes.py`) matches every non-list,
+  liaison for its lead's 0.9 work; **decided by the pm 2026-11-18: the first candidate, in the registry release that
+  floors upstream format 0.9**, the same coordinated cut that brings remote lane reads through RM430). Why the first:
+  every other upstream roster here is read, never copied (`CACHE_LANES`, `DERIVED_PRODUCERS`), and a per-request
+  compare would be a second reader of a rule upstream owns; folding by default with neither changes v1 answers on a
+  rule of ours. Its only cost is the wait, and nothing waits on it: the reporter's client reads Hugging Face for those
+  columns meanwhile. The reply naming the compare it applied per key column ships in the same release, so a short
+  answer can be told from an absent one from the first day the compare can differ from exact. `_parquet_rows` (`services/lanes.py`) matches every non-list,
   non-position key column by `cast(pl.String).is_in(...)` over the whole cell, on the local snapshot and the remote
   read alike. Upstream's local readers fold a gene by `gene_key` (CPIC, CIViC, ClinPGx, drug labels) and match members
   of a `;`-joined cell (ClinPGx `gene`, drug labels `genes`), so `cyp2c9` misses `CYP2C9` and `CYP2C9` misses
