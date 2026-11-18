@@ -163,7 +163,20 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   resolved-allele refusal on a row Ensembl REST answered now says REST serves an older dbSNP build (156 at release 116,
   the snapshot's dump 157) and qualifies `--rederive` to a host with the snapshot; pinned phrases stay, no column, code
   or vocabulary moves. Nothing here reads that sentence, so not load-bearing for us. Both sized as patches on their
-  `main`; take at the cut.
+  `main`; take at the cut. **Then, for the 0.8.9 cut** (their `a5289b86`, 2026-11-18 04:35, pushed, uncut):
+  **RM448** (`55ccb701`, enricher): a witness holding one ALT of a multi-allelic indel site no longer withholds the
+  site (S158's missing rows). **RM449** (`91eefe36`, `84a256ef`, `12b1bb00`, `43914f21`; a **declared corrected
+  derivation**): at a site where an insertion and a deletion share allele strings, an rsID row's genotype fills only
+  the spelling a witness placed; witnessed both ways or never asked, both stay and a new warning
+  `rsid_genotype_reads_as_two_events` says so once per rsID; witnessed neither, neither fills; an authored coordinate
+  row wins over an expansion onto its exact key at a mirrored site (a paralog collision still refuses). The ClinVar
+  drafter now writes indels by coordinate. **RM451** (`dae4e0c8`): `reverse` stops inventing a `resolution.csv` row
+  for a coordinate row the table never filed (`resolution_loci` is `[]` there, not null); one upstream example digest
+  moves. **For us**: RM448 + RM449 are what production's cardio, cancer and pathogenic wait on (a re-derive under
+  0.8.9, since RM448 is in what the enricher writes); RM449's release record should make `registry upgrade` act on
+  superhuman@2.4.1 and polygon thrombophilia@2.0.1 by itself. The new warning code needs nothing here: the sweep reads
+  codes through `CARRIED_WARNING_CODES` and shows an unnamed one as `other`. `services/claims.py` reads
+  `resolution_loci or []`, so `[]` vs null is the same to it; the prebuilt import's `reverse_module` gets RM451's fix.
 - **Cut as `v0.8.8`** (`655f1ebc`, 2026-11-16, enricher only; tagged at that commit and on PyPI 2026-11-17 02:17Z): RM445 alone (read
   below); enricher floors stay `>=0.8.6`, no third-party floor; no release record. Upstream's INTEGRATION_0_8 now floors
   the enricher at `>=0.8.8`. For us a floor worth taking (the lead adopts it in 0.32.1): it is what makes `warm-caches`
