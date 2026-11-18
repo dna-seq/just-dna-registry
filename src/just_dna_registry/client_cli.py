@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 import httpx
@@ -272,6 +273,65 @@ def upgrade_status(
             if item.kept_stale:
                 line += f" (stale: {item.kept_stale})"
         typer.secho(line, fg=colour.get(item.state))
+
+
+def _deploy_line(record: dict) -> str:
+    outcome = record.get("outcome") or f"running ({record.get('phase')})"
+    line = f"{record.get('version')} from {record.get('from_version') or '?'}: {outcome}"
+    if record.get("detail"):
+        line += f" — {record['detail']}"
+    return line
+
+
+@app.command("deploy")
+def deploy_command(
+    version: str | None = typer.Argument(
+        None, help="A release X.Y.Z, or `previous`; omit to show what the box runs"
+    ),
+    wait: bool = typer.Option(False, "--wait", help="Poll until the move ends, and exit 1 unless it deployed"),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Move a supervised box to another release, or show what it runs (0.34). Site admins only.
+
+    The box must run `registry supervise` with `REGISTRY_DEPLOY` set. A move that does not come up is rolled
+    back by the supervisor; `--wait` follows it to its end.
+    """
+    with _client(url, token, need_token=True) as c:
+        if version is None:
+            state = c.deploy_status()
+            typer.echo(
+                f"running {state['running']} ({state.get('source') or 'source unknown'}); "
+                f"enabled {state['enabled']}, supervised {state['supervised']}, floor {state['floor']}"
+            )
+            if state.get("previous"):
+                typer.echo(f"previous: {state['previous'].get('version')}")
+            if state.get("busy"):
+                typer.secho(f"maintenance runs going: {', '.join(state['busy'])}", fg=typer.colors.YELLOW)
+            for record in ([state["pending"]] if state.get("pending") else []) + state.get("history", [])[:5]:
+                typer.echo(f"  {record.get('requested_at')}  {_deploy_line(record)}")
+            return
+        record = c.deploy(version)
+        typer.echo(f"asked: {_deploy_line(record)}")
+        if not wait:
+            return
+        deadline = time.monotonic() + 3600
+        last: dict | None = None
+        while time.monotonic() < deadline:
+            time.sleep(5)
+            try:
+                state = c.deploy_status()
+            except httpx.TransportError:
+                continue  # the server is down while it moves
+            last = state.get("last")
+            if last and last.get("id") == record["id"] and last.get("outcome"):
+                break
+        if last is None or last.get("id") != record["id"] or not last.get("outcome"):
+            typer.secho("the move has not ended after an hour; `registry-client deploy` shows it", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        typer.secho(_deploy_line(last), fg=typer.colors.GREEN if last["outcome"] == "deployed" else typer.colors.RED)
+        if last["outcome"] != "deployed":
+            raise typer.Exit(1)
 
 
 @app.command("list")

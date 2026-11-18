@@ -531,6 +531,22 @@ class Settings(BaseSettings):
     log_file_max_bytes: int = 10 * 1024 * 1024
     log_file_backups: int = 5
 
+    # ── Deploy over the API (0.34, `services/deploy.py`, `registry supervise`) ───────────────────────
+    #: Whether `POST /admin/deploy` may ask this box's supervisor to move the server to another release.
+    #: Off by default: a site-admin key that can call it can swap the running code, which is more than
+    #: yanking. Set it on a box started with `registry supervise`, once its admin keys are its own.
+    deploy: bool = False
+    #: Where the supervisor and the API exchange requests and state. Default `deploy/` beside `db_path`.
+    deploy_dir: Path | None = None
+    #: Extras a move syncs (`uv sync --inexact --extra ...`), space-separated; the admin CLI and the
+    #: server need `server`.
+    deploy_extras: str = "server"
+    #: How long the moved server has to answer `/health` with `status: ok` and the target's version
+    #: before the supervisor restores what ran before.
+    deploy_health_seconds: int = 180
+    #: How long a stopping server may finish its open requests before it is killed.
+    deploy_stop_seconds: int = 600
+
 
     @property
     def is_test_instance(self) -> bool:

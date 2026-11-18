@@ -2003,6 +2003,69 @@ class RunDetail(BaseModel):
     sweep: RunSweep | None = None
 
 
+# ── Deploy over the API (0.34) ──────────────────────────────────────────────────────────────────────
+
+
+class DeployRequest(BaseModel):
+    """`POST /admin/deploy`: the release to move this box to."""
+
+    version: str = Field(
+        description="A release, `X.Y.Z` (a git tag `vX.Y.Z` on a clone, the published version on a PyPI "
+        "install), or `previous` for what ran before the last move. Never below `floor`."
+    )
+
+
+class DeployPoint(BaseModel):
+    """What the box ran: a release and, on a git clone, the commit."""
+
+    version: str | None = None
+    revision: str | None = Field(None, description="The commit on a git clone; `null` on a PyPI install")
+
+
+class DeployRecord(BaseModel):
+    """One move, as the supervisor recorded it. Commands and versions only, never a path."""
+
+    id: str
+    version: str = Field(description="The release asked for")
+    requested_by: str
+    requested_at: str
+    phase: str = Field(
+        description="`pending`, `preparing`, `stopping`, `applying`, `checking`, `rolling_back`, or `done`"
+    )
+    outcome: str | None = Field(
+        None,
+        description="`null` while it runs; `deployed`; `refused` (nothing was stopped); `rolled_back` (the "
+        "move did not come up and the box serves what it did before); `failed` (neither came up: the shell "
+        "is needed); `interrupted` (the supervisor stopped mid-move)",
+    )
+    detail: str | None = Field(None, description="Why, for every outcome but `deployed`")
+    started: str | None = None
+    ended: str | None = None
+    from_version: str | None = Field(None, description="The release serving when it was asked")
+    from_revision: str | None = None
+
+
+class DeployStatus(BaseModel):
+    """`GET /admin/deploy`: what this box runs, what it ran before, and how the last move went."""
+
+    enabled: bool = Field(description="`REGISTRY_DEPLOY` on this box; off, every request is refused")
+    supervised: bool = Field(description="A `registry supervise` heartbeat is fresh; without one nothing moves")
+    source: str | None = Field(None, description="`git` (a clone) or `pypi` (a uv project pinning the package)")
+    supervisor_version: str | None = Field(
+        None, description="The supervisor's own release: it moves at its own next start, not with the server's"
+    )
+    running: str = Field(description="The release serving this answer")
+    floor: str = Field(description="The oldest release a move may go to: the first that has this route")
+    current: DeployPoint | None = None
+    previous: DeployPoint | None = Field(None, description="What `version: previous` moves to")
+    pending: DeployRecord | None = Field(None, description="A request the supervisor has not picked up yet")
+    last: DeployRecord | None = None
+    history: list[DeployRecord] = Field(default_factory=list, description="Finished moves, newest first")
+    busy: list[str] = Field(
+        default_factory=list, description="Maintenance runs still going; a move is refused while there are any"
+    )
+
+
 # ── Upgrade status (0.32) ───────────────────────────────────────────────────────────────────────────
 
 

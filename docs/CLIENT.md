@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.33.x** against a server speaking API `v1` (0.33 adds no method: `lane_tables` and `lane_rows` answers carry `release`, `release_unreadable` and `revision`; 0.32 adds `upgrade_status`; 0.31 adds `variant_claims`, `gene_claims` and `list_modules(pgs_id=)`; 0.30 adds `lane_tables`, `lane_rows`, and `derived(passes=, offline=, gene=, chrom=, start=, end=)`; 0.29 adds `rename_namespace`; 0.25 added nine methods
+**Normative for:** client **0.14.x–0.34.x** against a server speaking API `v1` (0.34 adds `deploy_status` and `deploy`; 0.33 adds no method: `lane_tables` and `lane_rows` answers carry `release`, `release_unreadable` and `revision`; 0.32 adds `upgrade_status`; 0.31 adds `variant_claims`, `gene_claims` and `list_modules(pgs_id=)`; 0.30 adds `lane_tables`, `lane_rows`, and `derived(passes=, offline=, gene=, chrom=, start=, end=)`; 0.29 adds `rename_namespace`; 0.25 added nine methods
 and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`;
 0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server;
 0.28 adds `merge_accounts`, `rename_account` and `admin_rename_account`, gives `publish` `recover_within=`
@@ -446,6 +446,7 @@ Not part of the client surface, but for completeness — run **on the server**, 
 
 ```bash
 registry serve --host 0.0.0.0 --port 8000
+registry supervise --host 0.0.0.0 --port 8000      # serve as a child; moves on POST /admin/deploy (0.34)
 registry init-db
 registry issue-key <account> -n <namespace>          # mint an API key
 registry show-keys <account>                         # print a lost key again (0.33.1; terminal only)
@@ -609,6 +610,19 @@ A site admin reads the enricher-facing runs over HTTP (paths scrubbed):
 client.runs(command="upgrade")              # newest first: id, outcome, has_sweep, ...
 client.run(run_id)["sweep"]["items"]        # per module: status, code, detail, warnings_summary
 client.run_log(run_id, tail=200)            # the run.log as text
+```
+
+And moves a box started with `registry supervise` (and `REGISTRY_DEPLOY` set) to another release (0.34):
+
+```python
+client.deploy_status()                      # running, current, previous, pending, last, history, busy
+client.deploy("0.34.1")                     # 202: the supervisor moves, checks /health, rolls back if not ok
+client.deploy("previous")                   # rewind to what ran before the last move
+```
+
+```bash
+registry-client deploy --url https://module-registry.just-dna.life           # what the box runs
+registry-client deploy 0.34.1 --wait --url https://module-registry.just-dna.life
 ```
 
 See [UPGRADE.md](UPGRADE.md) for the order these must run in and why.

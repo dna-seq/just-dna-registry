@@ -6,6 +6,28 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [Unreleased] — 0.34
+
+**Client surface:** two new methods, `deploy_status()` and `deploy(version)`; nothing existing moved.
+
+### A site admin moves a box to another release over the API
+
+The person, 2026-11-18: "rewind git deployments or run server from pypi with an admin API call from here.
+Less ssh logins for me". `registry supervise` runs the server as its child and replaces `serve` as the
+box's start command. `POST /admin/deploy {"version": "X.Y.Z" | "previous"}` leaves a request; the
+supervisor prepares with the server still serving (on a clone, `git fetch --tags` and the tag `vX.Y.Z`; on a
+PyPI-installed folder, the version on PyPI), stops it, checks out or pins, runs `uv sync --inexact`, starts
+it, and reads `/health` for `status: ok` and the new version. A move that does not come up is rolled back to
+the commit or version that ran before, and `GET /admin/deploy` says which happened (`deployed`, `refused`,
+`rolled_back`, `failed`, `interrupted`), with the history of moves. `registry-client deploy [VERSION]
+[--wait]` wraps both.
+
+Refused when the box has not opted in (`REGISTRY_DEPLOY`, off by default: a key that can move the box can
+swap its code), when no supervisor is running, while a `registry` command still runs on the box (run
+records now name their `pid`) or a publish holds the enrichment gate, and for anything but a plain release
+at or above 0.34.0: no branch, no commit, and no rewind below the release that has the route back. The
+operator note is docs/UPGRADE.md, 0.34; the first switch to `supervise` is one last ssh step per box.
+
 ## [0.33.1] — 2026-11-17
 
 **Client surface:** unchanged.

@@ -1,5 +1,49 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.34 — moving a box to another release over the API (operator note)
+
+A box started with `registry supervise` instead of `registry serve` can be moved to another release by a
+site admin, with no shell: `registry-client deploy 0.34.1 --wait` (or `previous` to rewind). The supervisor
+runs the server as its child, checks out the tag `vX.Y.Z` (a git clone) or pins the published version (a
+PyPI-installed folder), syncs, restarts the server, and reads `/health`; a release that does not come up is
+rolled back to what ran before. Each move is refused while a `registry` command is still running on the box
+(the 12-hour `upgrade` shares the environment a move replaces) or a publish holds the enrichment gate.
+
+**Off by default.** A site-admin key that can move the box can swap its code, so a box opts in with
+`REGISTRY_DEPLOY=true`. Rotate any admin key that has been seen outside the box before turning it on.
+
+**The one ssh step, per box** (from a clone, which is how both boxes run today):
+
+```
+git fetch --tags origin && git checkout --detach v0.34.0 && uv sync --inexact --extra server
+REGISTRY_DEPLOY=true uv run registry supervise --host 127.0.0.1 --port 8000     # the polygon: --mode test --port 8100
+```
+
+It takes the same `--host`, `--port` and `--mode` as `serve`, and runs where `serve` ran (in tmux, or as a
+unit's `ExecStart`). Ctrl-C or SIGTERM stops the server with it. The clone's tracked files must be
+unmodified: a move refuses a clone with local edits rather than overwrite them. Each box needs its own
+folder: two boxes sharing one clone would move together.
+
+**Running from PyPI instead of a clone** is a second folder, set up once by hand: a uv project that pins the
+package, with the box's `.env` beside it (the server reads the `.env` nearest its working directory) and
+every path in it absolute, `REGISTRY_DB_PATH` first, since the default `data/registry.db` is relative:
+
+```
+mkdir ~/registry-box && cd ~/registry-box && uv init --bare --name registry-box
+uv add 'just-dna-registry[server]==0.34.0'
+cp ~/just-dna-marketplace/.env .     # then make REGISTRY_DB_PATH and the other paths absolute
+REGISTRY_DEPLOY=true uv run registry supervise --host 127.0.0.1 --port 8000
+```
+
+A move there is `uv add 'just-dna-registry[server]==X.Y.Z'` and a sync. A clone cannot become a PyPI folder
+by request.
+
+**What it does not do.** No move goes below 0.34.0 (it would remove the route back). The supervisor's own
+code moves at its own next start, not with the server's (`GET /admin/deploy` shows both versions).
+`warm-caches`, `project-claims` and the catalog `upgrade` are still run on the box. If even the rollback
+does not come up, the move's outcome is `failed` and the shell is needed; the supervisor's own output (in
+its terminal or the unit's journal) holds each failing command's last lines.
+
 ## 0.33.1 — a compile refusal keeps the re-derivation (operator note)
 
 Production's online upgrade of 2026-11-17 re-derived cardio, cancer and pathogenic for about 37 hours, then

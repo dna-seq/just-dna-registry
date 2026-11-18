@@ -72,6 +72,8 @@ EXCLUDED: dict[str, str] = {
              "and a run around it would call a day of traffic one command's change",
     "prune-runs": "deletes old runs' snapshots and touches neither the catalog nor storage; a run of it "
                   "would copy the catalog in order to delete catalog copies",
+    "supervise": "runs the server as its child until stopped, as `serve` does; a move it makes changes code, "
+                 "not the catalog, and is recorded in the deploy folder's state",
 }
 
 #: Commands with no path that changes the catalog DB or the storage tree, and why. Each still has a row,
@@ -397,7 +399,7 @@ def box(seed_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Box:
 # ── The table is complete ────────────────────────────────────────────────────────────────────────────
 
 
-def test_every_command_has_a_row_and_only_serve_and_prune_runs_are_excluded() -> None:
+def test_every_command_has_a_row_and_only_the_excluded_ones_leave_no_run() -> None:
     commands = set(typer.main.get_command(cli.app).commands)  # type: ignore[attr-defined]
     # Floor before the set comparison: an enumeration that came back near-empty would make "every
     # command has a row" vacuous. Well under today's count.

@@ -1371,6 +1371,18 @@ class RegistryClient:
         self._raise_for_status(resp)
         return resp.text
 
+    def deploy_status(self) -> dict:
+        """**Site admins only.** What the box runs (`running`, `current`), what it ran before (`previous`), a
+        waiting move (`pending`), the last one and the history, whether a supervisor is there (`supervised`)
+        and whether the box takes moves at all (`enabled`) (0.34)."""
+        return self._json(self._http.get("/admin/deploy"))
+
+    def deploy(self, version: str) -> dict:
+        """**Site admins only.** Ask the box's supervisor to move the server to `version`: a release `X.Y.Z`
+        or `"previous"` (0.34). Returns the request's record at once; the move runs after it, and
+        `deploy_status()["last"]` says how it ended (`deployed`, `refused`, `rolled_back`, `failed`)."""
+        return self._json(self._http.post("/admin/deploy", json={"version": version}))
+
     # ── Orgs (0.9.0) ────────────────────────────────────────────────────────────
 
     def create_org(self, name: str) -> dict:
