@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.8`** read (2026-11-16: enricher only, cut `655f1ebc`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-17 02:17Z; carries RM445 alone; format and compiler stay 0.8.6). **`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
+**`v0.8.9`** read (2026-11-18: all three at 0.8.9, cut `13b3be36`, untagged and not on PyPI when read; carries RM446-RM449, RM451, RM452). **`v0.8.8`** read (2026-11-16: enricher only, cut `655f1ebc`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-17 02:17Z; carries RM445 alone; format and compiler stay 0.8.6). **`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
 registry 0.29.1). **`v0.8.3`** read (2026-11-10: tagged `725eb2b`, the commit read at the cut on 2026-11-09, all three packages at 0.8.3 on PyPI; RM425 to RM427 are past it). **`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
 backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
@@ -153,7 +153,18 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
-- **Their `main` past the 0.8.8 cut** (read 2026-11-17, uncut): **RM446** (`6318392d`, enricher only, additive): a run
+- **Cut as `v0.8.9`** (`13b3be36`, 2026-11-18 05:27, all three packages 0.8.9, floors `>=0.8.9` throughout, no
+  third-party floor; untagged and not on PyPI when read): RM446, RM447, RM448, RM449 (a declared corrected
+  derivation), RM451, RM452 (each read below). **Format moves to 0.8.9 for its release record alone** (no vocabulary,
+  model or field moves; a 0.8.6 reader reads 0.8.9 output), and that record is what makes RM449 visible to us:
+  `declared_movement` reads `release_records` from the *installed format*, so the registry must take all three at
+  0.8.9 for `registry upgrade` to act on the correction. The record declares RM449 a correction scoped on
+  `compilation.expanded_keys` (measured on their `pathogenic_clinvar`: `expanded_keys` 11 -> 9, two weights rows fewer)
+  and RM451 an addition on `parquet_bytes`; `content_signature` moved in 0 of 21. Known issue **RM453** (for 0.8.10): an
+  *offline* re-derivation leaves a mirrored site unplaced and strict refuses it; online clears it. **For the lead at
+  PyPI**: a patch, floors `>=0.8.9` on all three; then cardio, cancer and pathogenic re-derive online under it, and
+  `upgrade` should pick up superhuman@2.4.1 and polygon thrombophilia@2.0.1 by the record.
+- **Their `main` past the 0.8.8 cut** (read 2026-11-17; now cut as 0.8.9, above): **RM446** (`6318392d`, enricher only, additive): a run
   reads `retired_mark(client)` before it asks and names a route retired only for a 410 met after that mark, so a reused
   client's earlier 410 stops telling a later run's plain outage to upgrade (RM361's sticky message itself unchanged).
   **For us a patch worth taking**: we are exactly that host, one shared `LookupClients` for the process's life, so on a
