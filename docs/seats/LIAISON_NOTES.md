@@ -112,6 +112,11 @@ reset").
 - reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked where the person will
   look; a claim of absence says as of when). No concern. It touches the liaison's "not on PyPI yet" lines: each
   now carries its read time, and the 0.8.8 notice is sent only after a fresh PyPI read.
+- reflect after 2026-11-25: classes/base/BASE.md as of v0.1.236 (a worktree goes in the clone's `.worktrees/` by
+  `bin/wt.sh`, never in the scratchpad, and goes once landed, kit #536). Read as its adversary: no concern. The weekly
+  bump's branch was made as a sibling directory under /data/sources (`just-dna-registry-deps*`), on disk but not in
+  `.worktrees/`; from 2026-11-19 it uses `bin/wt.sh`. Both earlier bump worktrees are merged and unlocked, left for the
+  person (removal is theirs). On reading it, /tmp was 96 % full; my scratchpad's 332 MB download (RM438, 11-12) went.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
