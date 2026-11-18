@@ -153,6 +153,12 @@ read at the cut, is the read of the tag. Installed on `main`: all three at 0.8.0
   published moves (RM438 below). Residuals filed as their RM439 and RM440. **For the lead at PyPI**: a patch (the
   weekly bump's, or the lead's own floor), and the five modules on pre-0.8 tables (`cancer`, `cardio`, `pathogenic`,
   `blood_groups`, `pharmgkb`) are re-derived on it, not before.
+- **Their `main` past the 0.8.9 cut**: **RM453** (`0301397e`, merged `19a7cdb0`, 2026-11-18, for 0.8.10, a declared
+  corrected derivation): `unplaced` on every spelling of a mirrored ins/del site now keeps both spellings filled (said
+  once per rsID under the borrowed `rsid_expanded_to_multiple_loci`), as `undecided` or an empty cell does; a one-sided
+  witness still fills only its spelling. This **removes 0.8.9's one new strict refusal**, online and offline alike
+  (`unplaced` both ways is a witness that held no counterpart, e.g. ClinVar filing a deletion under a merged rsID). So
+  under 0.8.9 our online re-runs can still refuse such a row; 0.8.10 will not.
 - **Cut as `v0.8.9`** (`13b3be36`, 2026-11-18 05:27, all three packages 0.8.9, floors `>=0.8.9` throughout, no
   third-party floor; untagged and not on PyPI when read): RM446, RM447, RM448, RM449 (a declared corrected
   derivation), RM451, RM452 (each read below). **Format moves to 0.8.9 for its release record alone** (no vocabulary,
