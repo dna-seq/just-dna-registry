@@ -1150,7 +1150,7 @@ converges).
   Sizing: **minor** either way. Severity: medium, the same trust signal as S33. Rides with S33 in 0.32 if decided
   before the cut, else 0.33.
 
-- **A compile refusal after a re-derivation keeps the re-derived spec** (filed by the lead 2026-11-17, a defect
+- **A compile refusal after a re-derivation keeps the re-derived spec** (**built on branch `0.33.1`, eac81ad**; filed by the lead 2026-11-17, a defect
   against CLAUDE.md's "a gate placed after an expensive step keeps that step's result"; **placed by the pm
   2026-11-17: 0.33.1, a patch**; **built on branch `0.33.1`, eac81ad**, not reopening 0.33.0, which is stamped and green. Production's online upgrade
   re-derived cardio, cancer and pathogenic (about 37 h), then the strict compile refused all three
@@ -1161,7 +1161,10 @@ converges).
   was derived under are unchanged; when either moved, re-derive as now and say why. The sweep's line names a kept
   spec and what retries it. No API change. Severity: medium, the cost is a day and a half of upstream requests per
   retry; it must be deployed before the retry, which waits on upstream's fix anyway. Meanwhile the three stay at
-  2.0.0 and keep serving.
+  2.0.0 and keep serving. The upstream cause is two defects, RM448 (a second Ensembl insertion read as a
+  placement disagreement, so the locus is withheld) and RM449 (an rsID claim placed on an `unplaced` locus),
+  both 0.8.x patches upstream (their S158 answer, 2026-11-18). The three were refused before 0.33.1, so their first
+  retry after those patches still re-derives once; only refusals from 0.33.1 on are kept.
 
 - **A lane lookup says which release it read** (**built on branch `0.33`, e89c0aa**; proposed by S34, the just-dna-compiler liaison for its pm's 0.9
   client, 2026-11-16; **decided by the pm 2026-11-16: the candidate whole, in 0.33**; **built on branch `0.33`, e89c0aa**, all of it, the local `revision: null` included. Both lane replies carry
