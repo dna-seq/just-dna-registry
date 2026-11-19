@@ -12,32 +12,33 @@ rolled back to what ran before. Each move is refused while a `registry` command 
 **Off by default.** A site-admin key that can move the box can swap its code, so a box opts in with
 `REGISTRY_DEPLOY=true`. Rotate any admin key that has been seen outside the box before turning it on.
 
-**The one ssh step, per box** (from a clone, which is how both boxes run today):
+**The one ssh step, per box: run it from PyPI with `uvx`** (0.34.2; the person, 2026-11-19: "maybe uvx from
+pypi with proper env would be a better solution?"). Start it from the folder that holds the box's `.env` and
+`data/` (today's clone folder works as it is: nothing in it is read but those):
 
 ```
-git fetch --tags origin && git checkout --detach v0.34.0 && uv sync --inexact --frozen --extra server
-REGISTRY_DEPLOY=true uv run registry supervise --host 127.0.0.1 --port 8000     # the polygon: --mode test --port 8100
+cd /home/web/just-dna-marketplace
+REGISTRY_DEPLOY=true uvx --from 'just-dna-registry[server]==0.34.2' registry supervise --host 127.0.0.1 --port 8000
 ```
 
-It takes the same `--host`, `--port` and `--mode` as `serve`, and runs where `serve` ran (in tmux, or as a
-unit's `ExecStart`). Ctrl-C or SIGTERM stops the server with it. The clone's tracked files must be
-unmodified: a move refuses a clone with local edits rather than overwrite them. Each box needs its own
-folder: two boxes sharing one clone would move together, so from 0.34.1 a second `supervise` started in a
-folder another one already runs from refuses to start and names the first one's pid.
+The polygon: `--mode test --port 8100`, from its own folder. **The `.env` of that folder is the one read**, by
+the supervisor and by the server it starts there: under uvx the package sits in uv's cache, with no `.env` of its
+own to fall back to. Keep paths in it absolute or relative to that folder. Run it where `serve` ran (tmux, or a
+unit's `ExecStart` with `WorkingDirectory=` set to that folder).
 
-**Running from PyPI instead of a clone** is a second folder, set up once by hand: a uv project that pins the
-package, with the box's `.env` beside it (the server reads the `.env` nearest its working directory) and
-every path in it absolute, `REGISTRY_DB_PATH` first, since the default `data/registry.db` is relative:
+From then on a move installs the target with `uvx` into uv's cache while the old server still serves (an
+install that fails is `refused`, nothing stopped), then restarts the server from it in seconds; a rewind
+restarts the previous one, still cached. **The dependencies are the release's own lock**: from 0.34.2 the sdist
+carries `uv.lock`, the supervisor exports it into `deploy/constraints/<version>.txt` and passes it as
+`uvx -c`, so a box runs the set the release was tested on. A release from before 0.34.2 has no lock in its
+sdist and gets its upload time as `--exclude-newer` alone, which can resolve a newer dependency than was
+tested (0.34.1 measured: fastapi 0.165.0 where the lock had 0.162.5). A restarted supervisor serves the
+release the deploy state last recorded, not the one its start command names, so a reboot never quietly
+rewinds a box.
 
-```
-mkdir ~/registry-box && cd ~/registry-box && uv init --bare --name registry-box
-uv add 'just-dna-registry[server]==0.34.0'
-cp ~/just-dna-marketplace/.env .     # then make REGISTRY_DB_PATH and the other paths absolute
-REGISTRY_DEPLOY=true uv run registry supervise --host 127.0.0.1 --port 8000
-```
-
-A move there is `uv add 'just-dna-registry[server]==X.Y.Z'` and a sync. A clone cannot become a PyPI folder
-by request.
+**A git clone still works**: `supervise` started inside a clone of this package moves by checking out the tag
+`vX.Y.Z` and `uv sync --inexact --frozen`, and refuses a clone with local edits. Each server needs its own
+folder either way: a second `supervise` in a folder another one runs from refuses to start (0.34.1).
 
 **What it does not do.** No move goes below 0.34.0 (it would remove the route back). The supervisor's own
 code moves at its own next start, not with the server's (`GET /admin/deploy` shows both versions).

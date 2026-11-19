@@ -2037,7 +2037,12 @@ class DeployPoint(BaseModel):
     """What the box ran: a release and, on a git clone, the commit."""
 
     version: str | None = None
-    revision: str | None = Field(None, description="The commit on a git clone; `null` on a PyPI install")
+    revision: str | None = Field(None, description="The commit on a git clone; `null` when run from PyPI")
+    pinned_at: str | None = Field(
+        None,
+        description="Run from PyPI (0.34.2): the release's upload time its dependencies were resolved as of "
+        "(uv `--exclude-newer`), so a restart installs what the release was published against",
+    )
 
 
 class DeployRecord(BaseModel):
@@ -2068,7 +2073,7 @@ class DeployStatus(BaseModel):
 
     enabled: bool = Field(description="`REGISTRY_DEPLOY` on this box; off, every request is refused")
     supervised: bool = Field(description="A `registry supervise` heartbeat is fresh; without one nothing moves")
-    source: str | None = Field(None, description="`git` (a clone) or `pypi` (a uv project pinning the package)")
+    source: str | None = Field(None, description="`git` (a clone) or `uvx` (run from PyPI, 0.34.2)")
     supervisor_version: str | None = Field(
         None, description="The supervisor's own release: it moves at its own next start, not with the server's"
     )

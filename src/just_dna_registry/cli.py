@@ -22,6 +22,7 @@ from just_dna_format.manifest import ModuleManifest
 from just_dna_format.vocab import VALID_DECLARED_USE
 from typer.core import TyperGroup
 
+from just_dna_registry import __version__
 from just_dna_registry.backup import create_backup, list_backups, restore_backup
 from just_dna_registry.config import DEFAULT_PORTS, VALID_MODES, Settings, get_settings
 from just_dna_registry.db.repository import HandleReserved, Repository
@@ -50,6 +51,7 @@ from just_dna_registry.permissions import VALID_NS_ROLES, VALID_ORG_ROLES
 from just_dna_registry.replay import ReplayRefused, replay_upgrade
 from just_dna_registry.services import held as held_store
 from just_dna_registry.services.accounts import RenameRefused, merge_accounts, rename_account
+from just_dna_registry.services.deploy import Point, deploy_root, read_state
 from just_dna_registry.services.enrich import enricher_available, snapshot_not_current
 from just_dna_registry.services.namespaces import NamespaceRenameRefused, rename_namespace
 from just_dna_registry.services.pmid_check import verify_pmids
@@ -70,9 +72,9 @@ from just_dna_registry.services.upgrade import (
 from just_dna_registry.startup import export_enricher_credentials, legacy_db_message
 from just_dna_registry.storage.base import StorageBackend
 from just_dna_registry.storage.local import LocalStorage
-from just_dna_registry.supervisor import FolderTaken, Supervisor, detect_source
-from just_dna_registry.supervisor import child_argv as supervisor_child_argv
+from just_dna_registry.supervisor import FolderTaken, StepFailed, Supervisor, detect_source
 from just_dna_registry.supervisor import health_url as supervisor_health_url
+from just_dna_registry.supervisor import serve_args as supervisor_serve_args
 from just_dna_registry.sweep_report import (
     ANOMALY,
     BLOCKED,
@@ -246,38 +248,43 @@ def supervise(
     mode: str = typer.Option(
         None, "--mode", help="prod | test — overrides REGISTRY_MODE for this process and the server"
     ),
-    root: Path = typer.Option(
-        None, "--root", help="The folder the server runs from: a clone of this package, or a uv project "
-        "depending on it. Default: the current directory"
-    ),
 ) -> None:
     """Run the server as a child and move it to another release when `POST /admin/deploy` asks (0.34).
 
-    Start the box with this instead of `serve` (same `--host`, `--port`, `--mode`). The server restarts if it
-    exits; a move checks out a release tag (a clone) or pins a published version (a PyPI project), syncs,
-    and is rolled back if `/health` does not answer `ok` with the new version. Moves are refused unless
-    `REGISTRY_DEPLOY` is set. Stop it with Ctrl-C or SIGTERM, which stops the server too.
+    Start the box with this instead of `serve` (same `--host`, `--port`, `--mode`), from the folder holding its
+    `.env`: the supervisor and the server both read the `.env` of the folder it is started in, so they agree
+    on the catalog, the data and the deploy folder. In a git clone of this package a move checks out a release
+    tag and syncs; anywhere else the server runs from PyPI (`uvx --from 'just-dna-registry[server]==X.Y.Z'`,
+    dependencies pinned to the release's upload time). A move that does not answer `/health` with the new
+    version is rolled back. Moves are refused unless `REGISTRY_DEPLOY` is set. Stop it with Ctrl-C or SIGTERM,
+    which stops the server too.
     """
     _apply_mode(mode)
     settings = get_settings()
     resolved = port if port is not None else DEFAULT_PORTS[settings.mode]
-    folder = (root or Path.cwd()).resolve()
-    source = detect_source(folder, settings.deploy_extras)
-    if source is None:
+    folder = Path.cwd().resolve()  # the folder whose `.env` this process already read (config.DOTENV)
+    try:
+        source = detect_source(
+            folder, settings.deploy_extras,
+            recorded=Point.from_json(read_state(settings).get("current")), own_version=__version__,
+            constraints_dir=deploy_root(settings) / "constraints",
+        )
+    except StepFailed as exc:
         typer.secho(
-            "neither a git clone of just-dna-registry nor a uv project depending on it; "
-            "pass --root, or run from that folder",
+            f"cannot run from PyPI: {exc}. Run a published release, or start from a git clone of this package",
             fg=typer.colors.RED, err=True,
         )
-        raise typer.Exit(2)
+        raise typer.Exit(2) from exc
+    serving = source.current()
     typer.echo(
-        f"mode={settings.mode} supervising the server on {host}:{resolved} from a {source.kind} install; "
-        f"deploys over the API {'on' if settings.deploy else 'off (REGISTRY_DEPLOY)'}"
+        f"mode={settings.mode} supervising the server on {host}:{resolved} from {source.kind}"
+        + (f" ({serving.version}, dependencies as of {serving.pinned_at})" if source.kind == "uvx" else "")
+        + f"; deploys over the API {'on' if settings.deploy else 'off (REGISTRY_DEPLOY)'}"
     )
     try:
         Supervisor(
             settings=settings, root=folder, source=source,
-            child_argv=supervisor_child_argv(host, resolved, settings.mode),
+            serve_args=supervisor_serve_args(host, resolved, settings.mode),
             health_url=supervisor_health_url(host, resolved),
         ).run()
     except FolderTaken as exc:
