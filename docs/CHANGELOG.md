@@ -6,6 +6,25 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.34.2] — 2026-11-19
+
+**Client surface:** unchanged. `GET /admin/deploy` answers `source: uvx` for a box run from PyPI, and
+`pinned_at` beside each `version`.
+
+### A supervised box runs from PyPI with `uvx`, on the release's own lock
+
+The person, 2026-11-19: "checkout detach.... maybe uvx from pypi with proper env would be a better solution?"
+and "with uvx: the cwd'd .env is to be respected". `registry supervise` started in any folder that is not a git
+clone of this package runs the server as `uvx --from 'just-dna-registry[server]==X.Y.Z' registry serve`, in that
+folder, so the server reads that folder's `.env` as the supervisor did. No clone, project or lock file is kept
+on the box. A move installs the target into uv's cache before it stops anything and restarts in seconds; a
+rewind needs no install. The sdist now carries `uv.lock`, which the supervisor exports into constraints for
+`uvx -c`, so a box installs exactly what the release was tested on; every release is also pinned to its upload
+time (`--exclude-newer`), which is all a release from before 0.34.2 gets. A restarted supervisor serves the
+release last recorded, never the one its start command names. `--root` is gone: the supervisor and the
+server always read the `.env` of the folder `supervise` is started in. The 0.34.0 mode for a uv project that
+pinned the package is replaced by this one.
+
 ## [0.34.1] — 2026-11-19
 
 **Client surface:** one new method, `rotate_key(revoke_others=False)`; nothing existing moved.

@@ -166,7 +166,7 @@ def deploy_state(settings: SettingsDep, caller: AccountDep) -> DeployStatus:
 @router.post("/deploy", response_model=DeployRecord, status_code=status.HTTP_202_ACCEPTED)
 def deploy(settings: SettingsDep, caller: AccountDep, body: DeployRequest, request: Request) -> DeployRecord:
     """Ask the supervisor to move this box to `body.version`: a release tag on a clone, a published version
-    on a PyPI install, or `previous`. `202`: the move runs after this answer, and `GET /admin/deploy` reports
+    on a box run from PyPI (`uvx`), or `previous`. `202`: the move runs after this answer, and `GET /admin/deploy` reports
     it; a move that does not come up is rolled back. Refused (`409`) when the box is not enabled or not
     supervised, a move is already waiting, a maintenance run or a publish is going, or the version already
     serves; `422` for a version that is no release or predates the route. Site admins only."""

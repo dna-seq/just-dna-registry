@@ -212,6 +212,9 @@ module, which is worse than having none.
   admin asks (`POST /admin/deploy`; `services/deploy.py` is the request side, `supervisor.py` the move). A
   process cannot replace its own code and come back, which is why the split exists; keep the server side
   to writing and reading files in the deploy folder, never starting or installing anything itself.
+  Since 0.34.2 a box that is not a git clone runs from PyPI through `uvx`, on the release's own lock (the sdist
+  carries `uv.lock`, exported to constraints), in the folder `supervise` starts in, whose `.env` both processes
+  read. Keep `uv.lock` in the sdist (`source-include`): without it a box resolves whatever is newest.
 - The Typer CLI (`src/just_dna_registry/cli.py`) owns admin/ops tasks — `serve`, `init-db`,
   `issue-key`, and future backfill/reindex. Add new ops commands there, not as ad-hoc scripts.
 - Deployable as one container + a bucket/HF repo + a DB. No heavyweight orchestration.

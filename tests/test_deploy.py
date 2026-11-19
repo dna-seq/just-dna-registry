@@ -5,12 +5,15 @@ version a fake source last installed), so stopping, starting, the health check a
 real; only what a move installs is faked. The git source runs against real repositories, with `uv sync`
 the one command answered without running."""
 
+import io
 import json
 import os
 import socket
 import subprocess
 import sys
+import tarfile
 import textwrap
+import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -31,9 +34,10 @@ from just_dna_registry.supervisor import (
     FolderLock,
     FolderTaken,
     GitSource,
-    PypiSource,
+    PypiRelease,
     StepFailed,
     Supervisor,
+    UvxSource,
     detect_source,
 )
 
@@ -261,6 +265,10 @@ class FakeSource:
             raise StepFailed("uv sync exited 1")
         (self.root / "installed").write_text(str(point.version))
 
+    def serve_argv(self, serve: list[str]) -> list[str]:
+        port = serve[serve.index("--port") + 1]
+        return [sys.executable, str(self.root / "child.py"), str(self.root), port]
+
 
 def _free_port() -> int:
     with socket.socket() as sock:
@@ -280,7 +288,7 @@ def supervisor(tmp_path: Path):
     def build(source: FakeSource | None = None) -> Supervisor:
         sup = Supervisor(
             settings=_settings(tmp_path, deploy=True), root=root, source=source or FakeSource(root),
-            child_argv=[sys.executable, str(root / "child.py"), str(root), str(port)],
+            serve_args=["--host", "127.0.0.1", "--port", str(port)],
             health_url=f"http://127.0.0.1:{port}/health", poll_seconds=0.2,
         )
         made.append(sup)
@@ -307,8 +315,8 @@ def test_a_move_that_comes_up_is_recorded_with_what_ran_before(supervisor) -> No
     state = deploy.read_state(sup.settings)
     assert state["last"]["id"] == asked["id"]
     assert (state["last"]["outcome"], state["last"]["phase"]) == ("deployed", "done")
-    assert state["previous"] == {"version": "0.34.0", "revision": "rev-0.34.0"}
-    assert state["current"] == {"version": "0.34.1", "revision": "rev-0.34.1"}
+    assert state["previous"] == {"version": "0.34.0", "revision": "rev-0.34.0", "pinned_at": None}
+    assert state["current"] == {"version": "0.34.1", "revision": "rev-0.34.1", "pinned_at": None}
     assert sup.health(sup.health_url)["version"] == "0.34.1"
     assert deploy.read_request(sup.settings) is None
 
@@ -425,7 +433,7 @@ def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout
 
 
-def _release(work: Path, version: str) -> None:
+def _tag_release(work: Path, version: str) -> None:
     (work / "pyproject.toml").write_text(f'[project]\nname = "just-dna-registry"\nversion = "{version}"\n')
     _git(work, "add", "pyproject.toml")
     _git(work, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", version)
@@ -436,12 +444,12 @@ def test_a_clone_moves_by_release_tag_and_returns_by_commit(tmp_path: Path) -> N
     origin, work = tmp_path / "origin.git", tmp_path / "work"
     _git(tmp_path, "init", "-q", "--bare", "--initial-branch=main", str(origin))
     _git(tmp_path, "init", "-q", "--initial-branch=main", str(work))
-    _release(work, "0.34.0")
+    _tag_release(work, "0.34.0")
     _git(work, "remote", "add", "origin", str(origin))
     _git(work, "push", "-q", "origin", "HEAD:refs/heads/main", "--tags")
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", "-q", str(origin), str(clone))
-    _release(work, "0.34.1")
+    _tag_release(work, "0.34.1")
     _git(work, "push", "-q", "origin", "HEAD:refs/heads/main", "--tags")
 
     synced: list[list[str]] = []
@@ -452,7 +460,7 @@ def test_a_clone_moves_by_release_tag_and_returns_by_commit(tmp_path: Path) -> N
             return subprocess.CompletedProcess(argv, 0, "", "")
         return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
 
-    source = detect_source(clone, "server")
+    source = detect_source(clone, "server", recorded=None, own_version="0.34.0", constraints_dir=tmp_path / "c")
     assert isinstance(source, GitSource)
     source.runner = runner
     before = source.current()
@@ -473,37 +481,133 @@ def test_a_clone_moves_by_release_tag_and_returns_by_commit(tmp_path: Path) -> N
         source.prepare("0.34.1")
 
 
-def test_a_pypi_project_moves_by_pin(tmp_path: Path) -> None:
-    root = tmp_path / "srv"
-    root.mkdir()
-    (root / "pyproject.toml").write_text(
-        '[project]\nname = "registry-box"\nversion = "0"\ndependencies = ["just-dna-registry[server]==0.34.0"]\n'
-    )
-    (root / "uv.lock").write_text(
-        'version = 1\n[[package]]\nname = "just-dna-registry"\nversion = "0.34.0"\n'
-    )
-    ran: list[list[str]] = []
+RELEASES = {
+    "0.34.0": PypiRelease("2026-11-19T01:00:00Z", None),  # an older release: no lock in its sdist
+    "0.34.2": PypiRelease("2026-11-20T09:30:00Z", "https://files.example/just_dna_registry-0.34.2.tar.gz"),
+}
+
+
+def _release(version: str) -> PypiRelease:
+    if version not in RELEASES:
+        raise StepFailed(f"{version} is not on PyPI")
+    return RELEASES[version]
+
+
+def _sdist_of_this_repo() -> bytes:
+    """An sdist carrying this repository's own pyproject.toml and uv.lock, as 0.34.2's does."""
+    repo = Path(__file__).resolve().parents[1]
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name in ("pyproject.toml", "uv.lock"):
+            archive.add(repo / name, arcname=f"just_dna_registry-0.34.2/{name}")
+    return buffer.getvalue()
+
+
+def _locked_version(package: str) -> str:
+    lock = tomllib.loads((Path(__file__).resolve().parents[1] / "uv.lock").read_text())
+    return next(p["version"] for p in lock["package"] if p["name"] == package)
+
+
+def test_a_folder_that_is_not_a_clone_runs_from_pypi_on_the_releases_own_lock(tmp_path: Path) -> None:
+    """From PyPI (0.34.2): the target's lock is exported from its sdist into constraints, the target is
+    installed into uv's cache before anything stops, and a rewind installs nothing."""
+    installs: list[list[str]] = []
 
     def runner(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-        ran.append(argv)
+        if argv[:2] == ["uv", "export"]:  # the real export, offline from the lock
+            return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
+        assert cwd == tmp_path
+        installs.append(argv)
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    source = detect_source(root, "server")
-    assert isinstance(source, PypiSource)
-    source.runner = runner
-    source.exists = lambda version: version == "0.34.1"
-    assert source.current() == Point("0.34.0")
-    with pytest.raises(StepFailed, match="0.34.7 is not on PyPI"):
-        source.prepare("0.34.7")
-    source.prepare("0.34.1")
-    source.apply("0.34.1")
-    assert ran == [
-        ["uv", "add", "--no-sync", "just-dna-registry[server]==0.34.1"],
-        ["uv", "sync", "--inexact"],
+    constraints_dir = tmp_path / "deploy" / "constraints"
+    source = detect_source(
+        tmp_path, "server", recorded=None, own_version="0.34.0", constraints_dir=constraints_dir,
+        release=_release, download=lambda url: _sdist_of_this_repo(), runner=runner,
+    )
+    assert isinstance(source, UvxSource)
+    before = source.current()
+    assert before == Point("0.34.0", pinned_at="2026-11-19T01:00:00Z")
+    serve = ["--host", "127.0.0.1", "--port", "8000"]
+    # 0.34.0's sdist has no lock: the upload-time pin alone
+    assert source.serve_argv(serve) == [
+        "uvx", "--from", "just-dna-registry[server]==0.34.0", "--exclude-newer", "2026-11-19T01:00:00Z",
+        "registry", "serve", *serve,
     ]
 
+    installs.clear()
+    with pytest.raises(StepFailed, match="0.34.7 is not on PyPI"):
+        source.prepare("0.34.7")
+    assert installs == []
+    source.prepare("0.34.2")
+    locked = constraints_dir / "0.34.2.txt"
+    pins = dict(line.split("==", 1) for line in locked.read_text().splitlines() if "==" in line and not line.startswith("#"))
+    assert pins["fastapi"].strip() == _locked_version("fastapi")
+    assert pins["just-dna-enricher"].strip() == _locked_version("just-dna-enricher")
+    assert installs == [["uvx", "--from", "just-dna-registry[server]==0.34.2", "-c", str(locked),
+                         "--exclude-newer", "2026-11-20T09:30:00Z", "registry", "--help"]]
+    assert source.current() == before  # preparing moves nothing: the old server still serves
+    source.apply("0.34.2")
+    assert source.serve_argv(serve)[:5] == ["uvx", "--from", "just-dna-registry[server]==0.34.2", "-c", str(locked)]
+    source.restore(before)
+    assert source.current() == before
+    assert len(installs) == 1  # the rewind installs nothing: the old release is in uv's cache
 
-def test_a_folder_that_is_neither_is_not_supervised(tmp_path: Path) -> None:
-    assert detect_source(tmp_path, "server") is None
+
+def test_from_pypi_a_restart_serves_the_recorded_release_and_asks_nothing(tmp_path: Path) -> None:
+    def no_network(version: str) -> PypiRelease:
+        raise AssertionError("a recorded release needs no PyPI lookup")
+
+    recorded = Point("0.34.2", pinned_at="2026-11-20T09:30:00Z")
+    source = detect_source(tmp_path, "server", recorded=recorded, own_version="0.34.0",
+                           constraints_dir=tmp_path / "c", release=no_network)
+    assert source.current() == recorded
+
+
+def test_a_failed_install_from_pypi_is_refused_before_the_server_stops(supervisor, tmp_path: Path) -> None:
+    sup = supervisor()
+    sup.recover()
+    sup.start_child()
+    assert sup.wait_healthy("0.34.0") is None
+    pid_before = sup.child.pid
+
+    def failing(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 1, "", "No solution found when resolving tool dependencies")
+
+    uvx = UvxSource(tmp_path / "srv", "server", "0.34.0", "2026-11-19T01:00:00Z", tmp_path / "c",
+                    runner=failing, release=_release)
+    sup.source.prepare = uvx.prepare  # type: ignore[method-assign]
+    _ask(sup, "0.34.1")
+    sup.step()
+    last = deploy.read_state(sup.settings)["last"]
+    assert (last["outcome"], last["detail"]) == ("refused", "0.34.1 is not on PyPI")
+    RELEASES["0.34.1"] = PypiRelease("2026-11-19T02:00:00Z", None)
+    try:
+        _ask(sup, "0.34.1")
+        sup.step()
+    finally:
+        del RELEASES["0.34.1"]
+    last = deploy.read_state(sup.settings)["last"]
+    assert (last["outcome"], last["detail"]) == ("refused", "uvx install exited 1")
+    assert sup.child.pid == pid_before and sup.child_running()
+
+
+def test_the_server_runs_in_the_folder_whose_env_the_supervisor_read(supervisor) -> None:
+    """The person, 2026-11-19: "with uvx: the cwd'd .env is to be respected". The server is started in the
+    supervisor's folder, so `config.choose_dotenv` finds the same `.env` there (under uvx the package sits
+    in uv's cache, with no `.env` of its own to fall back to)."""
+    sup = supervisor()
+    sup.start_child()
+    assert sup.wait_healthy("0.34.0") is None
+    assert Path(f"/proc/{sup.child.pid}/cwd").resolve() == sup.root.resolve()
+
+
+def test_a_clone_of_another_package_runs_from_pypi(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "registry-box"\nversion = "0"\n')
+    (tmp_path / ".git").mkdir()
+    source = detect_source(tmp_path, "server", recorded=Point("0.34.0", pinned_at="2026-11-19T01:00:00Z"),
+                           own_version="0.34.0", constraints_dir=tmp_path / "c")
+    assert isinstance(source, UvxSource)
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "just-dna-registry"\nversion = "0.34.0"\n')
-    assert detect_source(tmp_path, "server") is None  # the package's own tree, but not a clone
+    assert isinstance(detect_source(tmp_path, "server", recorded=None, own_version="0.34.0",
+                                    constraints_dir=tmp_path / "c"), GitSource)

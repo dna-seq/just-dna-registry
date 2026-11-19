@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.34.1"
+version = "0.34.2"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -398,6 +398,9 @@ build-backend = "uv_build"
 # Defensive: never let secrets / editor junk into the sdist or wheel, regardless of what the
 # default inclusion picks up. (The default already ships only src/ + metadata.)
 [tool.uv.build-backend]
+# The lock travels in the sdist (0.34.2): `registry supervise` running from PyPI exports it into constraints for
+# `uvx`, so a box installs the dependency set the release was tested on, not whatever resolves on the day.
+source-include = ["uv.lock"]
 source-exclude = [".env", ".env.*", "*.swp", "*.swo", "*.swn", ".*.swp"]
 wheel-exclude = [".env", ".env.*", "*.swp", "*.swo", "*.swn", ".*.swp"]
 

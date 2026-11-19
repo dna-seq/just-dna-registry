@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.34.x**, API `v1` (**0.34.1 adds one route**, `POST /auth/rotate`; **0.34 adds two site-admin routes**, `GET` and `POST /admin/deploy`; 0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.34.x**, API `v1` (0.34.2 adds `pinned_at` on `DeployPoint`; **0.34.1 adds one route**, `POST /auth/rotate`; **0.34 adds two site-admin routes**, `GET` and `POST /admin/deploy`; 0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -1578,7 +1578,8 @@ Moving a box to another release without a shell. The server only records the req
 which runs the server as its child, makes the move: it prepares with the server still serving, stops it
 (open requests finish first), checks out the tag `vX.Y.Z` on a git clone or pins the published version on a
 uv project that depends on the package, syncs, starts it, and reads `/health` for `status: ok` and the new
-version. A move that does not come up is rolled back to the commit or version that ran before.
+version. A move that does not come up is rolled back to the commit or version that ran before. From 0.34.2 a
+box that is not a git clone runs from PyPI through `uvx` on the release's own lock (docs/UPGRADE.md, 0.34).
 
 - **`POST /admin/deploy`** `{"version": "X.Y.Z" | "previous"}` → `202` `DeployRecord`: `id`, `version`,
   `requested_by`, `requested_at`, `phase` (`pending`, `preparing`, `stopping`, `applying`, `checking`,
@@ -1597,9 +1598,10 @@ version. A move that does not come up is rolled back to the commit or version th
   - `422 invalid_version`: not a plain `X.Y.Z` release (no branch, commit, `v` prefix or pre-release).
   - `422 below_deploy_floor`: older than 0.34.0, the first release with this route; moving there would
     leave no way back but the shell.
-- **`GET /admin/deploy`** → `DeployStatus`: `enabled`, `supervised`, `source` (`git` | `pypi`),
+- **`GET /admin/deploy`** → `DeployStatus`: `enabled`, `supervised`, `source` (`git` | `uvx`, since 0.34.2),
   `supervisor_version` (it moves at its own next start, not with the server), `running`, `floor`,
-  `current` and `previous` (`DeployPoint`: `version`, `revision`, the commit on a clone), `pending`,
+  `current` and `previous` (`DeployPoint`: `version`, `revision`, the commit on a clone, and from 0.34.2
+  `pinned_at`, the upload time a PyPI release's dependencies are pinned to), `pending`,
   `last`, `history` (finished moves, newest first, at most 20), `busy` (maintenance runs still going).
 
 No path is served: a failing step is named by its command and exit code (`uv sync exited 1`), and its

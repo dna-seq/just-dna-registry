@@ -11,7 +11,7 @@ supervisor recorded. Nothing here starts, stops or installs anything.
 Four rules keep a deploy from costing the ssh login it exists to save:
 
 - **Only a release moves.** A target is a plain `X.Y.Z` (or `previous`): a git tag `vX.Y.Z` on a clone, the
-  published version on a PyPI install. Never a branch or a commit a site admin typed.
+  published version on a box run from PyPI (`uvx`). Never a branch or a commit a site admin typed.
 - **Never below `DEPLOY_FLOOR`**, the first release that carries the supervisor's counterpart: a rewind
   there would remove the route back, and the next move would need the shell again.
 - **Not while the box is busy**: a maintenance run still going (its `run.json` names a live `pid`), or a
@@ -62,19 +62,21 @@ class DeployRefused(Exception):
 
 @dataclass(frozen=True)
 class Point:
-    """What a box ran: a release and, on a clone, the commit."""
+    """What a box ran: a release and, on a clone, the commit; from PyPI, the moment its dependencies were
+    resolved as of (`pinned_at`, uv's `--exclude-newer`)."""
 
     version: str | None
     revision: str | None = None
+    pinned_at: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {"version": self.version, "revision": self.revision}
+        return {"version": self.version, "revision": self.revision, "pinned_at": self.pinned_at}
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> "Point | None":
         if not data:
             return None
-        return cls(version=data.get("version"), revision=data.get("revision"))
+        return cls(version=data.get("version"), revision=data.get("revision"), pinned_at=data.get("pinned_at"))
 
 
 def stamp() -> str:

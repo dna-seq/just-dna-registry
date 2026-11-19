@@ -4,11 +4,12 @@ The API side is `services/deploy.py`, which explains why the work is split: the 
 the deploy folder, and this process, which outlives the server, carries it out. One move:
 
 1. **prepare** with the server still serving: on a clone, refuse tracked changes, `git fetch --tags origin`
-   and find the tag `vX.Y.Z`; on a PyPI install, ask PyPI for the version. A failure here is `refused` and
-   touches nothing.
+   and find the tag `vX.Y.Z`; from PyPI, ask PyPI when the version was uploaded and install it into uv's cache
+   with `uvx`. A failure here is `refused` and touches nothing.
 2. **stop** the server (SIGTERM, so open requests finish, for up to `deploy_stop_seconds`; then SIGKILL).
 3. **apply**: `git checkout --detach vX.Y.Z` then `uv sync --inexact --frozen` (the release's own lock,
-   never rewritten), or `uv add --no-sync 'just-dna-registry[server]==X.Y.Z'` then `uv sync --inexact`
+   never rewritten); from PyPI nothing is left to do, the next start runs
+   `uvx --from 'just-dna-registry[server]==X.Y.Z' --exclude-newer <upload time> registry serve`
    (extras from `REGISTRY_DEPLOY_EXTRAS`).
 4. **start** and **check**: `/health` must answer `status: ok` with the target's version within
    `deploy_health_seconds`.
@@ -16,9 +17,10 @@ the deploy folder, and this process, which outlives the server, carries it out. 
    way. `rolled_back` means the box serves what it served before; `failed` means even that did not come up,
    and the shell is needed after all.
 
-The source is read off the folder the supervisor runs in (`detect_source`): a git clone of this package, or a
-uv project that depends on it. A clone cannot become a PyPI install by request; that switch is a new folder,
-set up once by hand (docs/UPGRADE.md).
+The source is read off the folder the supervisor runs in (`detect_source`): a git clone of this package moves
+by tag; any other folder (one holding `.env` and the data) runs from PyPI through `uvx`, which keeps no clone,
+no project and no lock file in step. A clone cannot become a PyPI box by request; that is a start command
+changed once by hand (docs/UPGRADE.md).
 
 **The supervisor's own code moves at its own next start, not with the server's.** It has imported what it
 runs before the move; `GET /admin/deploy` names its version beside the server's.
@@ -28,14 +30,18 @@ supervisor being a supervisor, not a deploy.
 """
 
 import fcntl
+import io
 import logging
 import os
 import signal
 import subprocess
+import tarfile
+import tempfile
 import time
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -135,6 +141,8 @@ class Source(Protocol):
 
     def restore(self, point: Point) -> None: ...
 
+    def serve_argv(self, serve: list[str]) -> list[str]: ...
+
 
 def _pyproject(root: Path) -> dict[str, Any]:
     path = root / "pyproject.toml"
@@ -187,6 +195,9 @@ class GitSource:
             raise StepFailed("no commit was recorded to return to")
         self._checkout(point.revision)
 
+    def serve_argv(self, serve: list[str]) -> list[str]:
+        return ["uv", "run", "--no-sync", "registry", "serve", *serve]
+
     def _checkout(self, ref: str) -> None:
         _checked(self.runner, ["git", "checkout", "--detach", "--quiet", ref], self.root, "git checkout")
         _checked(self.runner, sync_argv(self.extras, frozen=True), self.root, "uv sync")
@@ -198,53 +209,150 @@ def pypi_has(version: str) -> bool:
     return response.status_code == 200
 
 
+@dataclass(frozen=True)
+class PypiRelease:
+    """What PyPI says about one version of this package: when its dependencies are pinned to, and its sdist."""
+
+    pinned_at: str
+    sdist_url: str | None
+
+
+def pypi_release(version: str) -> PypiRelease:
+    """Ask PyPI about `version`: its upload time, one minute late, as uv's `--exclude-newer` takes it, and its
+    sdist, which carries the release's `uv.lock` from 0.34.2 on."""
+    try:
+        response = httpx.get(f"https://pypi.org/pypi/{PACKAGE}/{version}/json", timeout=30, follow_redirects=True)
+    except httpx.HTTPError as exc:
+        raise StepFailed(f"PyPI could not be asked about {version}: {type(exc).__name__}") from exc
+    if response.status_code == 404:
+        raise StepFailed(f"{version} is not on PyPI")
+    if response.status_code != 200:
+        raise StepFailed(f"PyPI answered {response.status_code} for {version}")
+    files = response.json().get("urls", [])
+    uploads = [f["upload_time_iso_8601"] for f in files if f.get("upload_time_iso_8601")]
+    if not uploads:
+        raise StepFailed(f"PyPI lists no files for {version}")
+    latest = max(datetime.fromisoformat(u) for u in uploads)
+    sdist = next((f["url"] for f in files if f.get("packagetype") == "sdist"), None)
+    return PypiRelease((latest + timedelta(minutes=1)).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), sdist)
+
+
+def fetch_bytes(url: str) -> bytes:
+    try:
+        response = httpx.get(url, timeout=120, follow_redirects=True)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise StepFailed(f"the sdist could not be downloaded: {type(exc).__name__}") from exc
+    return response.content
+
+
+#: The two files `uv export` needs, read out of an sdist by name and nothing else extracted.
+_LOCK_MEMBERS = ("pyproject.toml", "uv.lock")
+
+
+def export_locked_constraints(sdist: bytes, extras: str, out: Path, runner: Runner) -> bool:
+    """Write the release's locked dependency set to `out` as a constraints file; `False` when the sdist carries
+    no `uv.lock` (releases before 0.34.2), and the caller falls back to the upload-time pin alone."""
+    found: dict[str, bytes] = {}
+    with tarfile.open(fileobj=io.BytesIO(sdist), mode="r:gz") as archive:
+        for member in archive.getmembers():
+            parts = member.name.split("/")
+            if member.isfile() and len(parts) == 2 and parts[1] in _LOCK_MEMBERS:
+                handle = archive.extractfile(member)
+                if handle is not None:
+                    found[parts[1]] = handle.read()
+    if set(found) != set(_LOCK_MEMBERS):
+        return False
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        for name, data in found.items():
+            (work / name).write_bytes(data)
+        argv = ["uv", "export", "--frozen", "--no-hashes", "--no-emit-project", "--quiet", "--output-file", str(out)]
+        for extra in extras.split():
+            argv += ["--extra", extra]
+        _checked(runner, argv, work, "uv export")
+    return True
+
+
 @dataclass
-class PypiSource:
-    """A uv project depending on this package: a move pins another published version."""
+class UvxSource:
+    """Run from PyPI with `uvx` (0.34.2): no clone and no project, only the folder holding `.env` and data.
+
+    A move installs the target into uv's cache with the server still serving (a failed install is a
+    `refused`, nothing stopped), then restarts the server from it; a rewind restarts from the previous one,
+    already cached. Dependencies are the release's own lock where its sdist carries one (exported to
+    `constraints/<version>.txt` in the deploy folder, passed as `uvx -c`), and pinned to its upload time
+    (`--exclude-newer`) in any case, which is all a release from before 0.34.2 gets."""
 
     root: Path
     extras: str
+    version: str
+    pinned_at: str
+    constraints_dir: Path
     runner: Runner = run_command
-    exists: Callable[[str], bool] = pypi_has
-    kind: str = "pypi"
+    release: Callable[[str], PypiRelease] = pypi_release
+    download: Callable[[str], bytes] = fetch_bytes
+    kind: str = "uvx"
+    _prepared: tuple[str, str] | None = field(default=None, init=False)
+
+    def constraints(self, version: str) -> Path:
+        return self.constraints_dir / f"{version}.txt"
+
+    def _uvx(self, version: str, pinned_at: str) -> list[str]:
+        extras = ",".join(self.extras.split())
+        spec = f"{PACKAGE}[{extras}]=={version}" if extras else f"{PACKAGE}=={version}"
+        locked = self.constraints(version)
+        return ["uvx", "--from", spec, *(["-c", str(locked)] if locked.is_file() else []), "--exclude-newer", pinned_at]
 
     def current(self) -> Point:
-        lock = self.root / "uv.lock"
-        if lock.is_file():
-            for package in tomllib.loads(lock.read_text(encoding="utf-8")).get("package", []):
-                if package.get("name") == PACKAGE:
-                    return Point(version=package.get("version"))
-        return Point(version=None)
+        return Point(version=self.version, pinned_at=self.pinned_at)
 
     def prepare(self, version: str) -> None:
-        try:
-            found = self.exists(version)
-        except httpx.HTTPError as exc:
-            raise StepFailed(f"PyPI could not be asked about {version}: {type(exc).__name__}") from exc
-        if not found:
-            raise StepFailed(f"{version} is not on PyPI")
+        release = self.release(version)
+        if release.sdist_url and not self.constraints(version).is_file():
+            exported = export_locked_constraints(
+                self.download(release.sdist_url), self.extras, self.constraints(version), self.runner
+            )
+            if not exported:
+                log.warning("%s carries no uv.lock in its sdist; dependencies pinned to its upload time only", version)
+        _checked(self.runner, [*self._uvx(version, release.pinned_at), "registry", "--help"], self.root, "uvx install")
+        self._prepared = (version, release.pinned_at)
 
     def apply(self, version: str) -> None:
-        extras = ",".join(self.extras.split())
-        requirement = f"{PACKAGE}[{extras}]=={version}" if extras else f"{PACKAGE}=={version}"
-        _checked(self.runner, ["uv", "add", "--no-sync", requirement], self.root, "uv add")
-        _checked(self.runner, ["uv", "sync", "--inexact"], self.root, "uv sync")
+        if self._prepared is None or self._prepared[0] != version:
+            raise StepFailed(f"{version} was not prepared")
+        self.version, self.pinned_at = self._prepared
 
     def restore(self, point: Point) -> None:
-        if point.version is None:
+        if point.version is None or point.pinned_at is None:
             raise StepFailed("no version was recorded to return to")
-        self.apply(point.version)
+        self.version, self.pinned_at = point.version, point.pinned_at
+
+    def serve_argv(self, serve: list[str]) -> list[str]:
+        return [*self._uvx(self.version, self.pinned_at), "registry", "serve", *serve]
 
 
-def detect_source(root: Path, extras: str) -> GitSource | PypiSource | None:
-    """A clone of this package, a uv project depending on it, or neither."""
+def detect_source(
+    root: Path, extras: str, *, recorded: Point | None, own_version: str, constraints_dir: Path,
+    release: Callable[[str], PypiRelease] = pypi_release, download: Callable[[str], bytes] = fetch_bytes,
+    runner: Runner = run_command,
+) -> GitSource | UvxSource:
+    """A git clone of this package moves by tag; any other folder runs from PyPI through `uvx`.
+
+    From PyPI, the release served is the one the deploy state last recorded, with no network asked; else the
+    supervisor's own, prepared once (asked of PyPI, its lock exported, installed). A restart of the supervisor,
+    after a reboot say, must not quietly put back the release it was started as."""
     project = _pyproject(root).get("project") or {}
-    if project.get("name") == PACKAGE:
-        return GitSource(root, extras) if (root / ".git").exists() else None
-    dependencies = project.get("dependencies") or []
-    if any(str(dep).replace("_", "-").startswith(PACKAGE) for dep in dependencies):
-        return PypiSource(root, extras)
-    return None
+    if project.get("name") == PACKAGE and (root / ".git").exists():
+        return GitSource(root, extras, runner=runner)
+    if recorded is not None and recorded.version and recorded.pinned_at:
+        return UvxSource(root, extras, recorded.version, recorded.pinned_at, constraints_dir,
+                         runner=runner, release=release, download=download)
+    source = UvxSource(root, extras, own_version, "", constraints_dir, runner=runner, release=release, download=download)
+    source.prepare(own_version)
+    source.apply(own_version)
+    return source
 
 
 def fetch_health(url: str) -> dict[str, Any] | None:
@@ -261,8 +369,8 @@ def fetch_health(url: str) -> dict[str, Any] | None:
 class Supervisor:
     settings: Settings
     root: Path
-    source: GitSource | PypiSource
-    child_argv: list[str]
+    source: GitSource | UvxSource
+    serve_args: list[str]
     health_url: str
     health: Callable[[str], dict[str, Any] | None] = fetch_health
     poll_seconds: float = 1.0
@@ -276,8 +384,9 @@ class Supervisor:
     # ── the child ────────────────────────────────────────────────────────────────────────────────
 
     def start_child(self) -> None:
-        log.info("starting the server: %s", " ".join(self.child_argv))
-        self.child = subprocess.Popen(self.child_argv, cwd=self.root)
+        argv = self.source.serve_argv(self.serve_args)
+        log.info("starting the server: %s", " ".join(argv))
+        self.child = subprocess.Popen(argv, cwd=self.root)
 
     def child_running(self) -> bool:
         return self.child is not None and self.child.poll() is None
@@ -441,8 +550,9 @@ class Supervisor:
             lock.release()
 
 
-def child_argv(host: str, port: int, mode: str | None) -> list[str]:
-    argv = ["uv", "run", "--no-sync", "registry", "serve", "--host", host, "--port", str(port)]
+def serve_args(host: str, port: int, mode: str | None) -> list[str]:
+    """What follows `registry serve` for the child, whichever source launches it."""
+    argv = ["--host", host, "--port", str(port)]
     if mode:
         argv += ["--mode", mode]
     return argv
