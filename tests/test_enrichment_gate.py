@@ -186,7 +186,9 @@ def test_the_publish_thread_is_niced_and_not_reused() -> None:
     main_before = os.getpriority(os.PRIO_PROCESS, threading.get_native_id())
     (tid_a, nice_a), (tid_b, nice_b) = asyncio.run(scenario())
 
-    assert nice_a == nice_b == 7
+    # Raising is the only direction an unprivileged thread can go, so a suite already running niced past 7
+    # (this machine runs every test at nice 19) leaves the thread where it started rather than at 7.
+    assert nice_a == nice_b == max(7, main_before)
     assert tid_a != tid_b, "a niced thread must not be reused — its nice value cannot be undone"
     # Per-thread on Linux: the caller is untouched, which is what makes this safe to do at all.
     assert os.getpriority(os.PRIO_PROCESS, threading.get_native_id()) == main_before
