@@ -45,16 +45,13 @@ reports; this file holds the seat's own decisions and the items it owns.
   185a8c7's docs on that branch. Once 0.29.0 is cut: append a second `**Status —**` paragraph to S28 in
   `docs/CONSUMER_SUGGESTIONS_HISTORY.md` (accepted, shipped 0.29.0, the call to make), update its contents line,
   and say so to the consumer. Until then the delete-and-republish advice stands on the polygon.
-- **Desk #313, the exposed registry keys** (supersedes #225, refiled 2026-11-14 for the secretary's nightly
-  sweep): `blocked: desk #313`, default no change. Withdraw it `moot:` once the person has rotated them.
-- **S34 follow-up reply: once 0.33.0 is on PyPI.** The pm placed S34 in 0.33 (044df54), the candidate whole:
-  `release`/`release_unreadable` on both lane replies as /caches reads them, and a remote read pinned to the head
-  commit once per request (`revision`). The lead's to build. Then: a second `**Status —**` on S34 in the history
-  file from the 0.33.0 changelog, its contents line, and the just-dna-compiler liaison told.
-- **S35 follow-up reply: once 0.33.0 is on PyPI.** The pm decided S35 (d792c6b), first candidate, in 0.33:
-  `upsert_review` clears `highlighted` when a re-post changes the verdict; a notes- or rating-only edit keeps the
-  pin (the residue, accepted). just-module-creator's liaison was told of the placement 2026-11-17. Then: a second
-  `**Status —**` on S35 in the history file from the 0.33.0 changelog, its contents line, and the liaison told.
+- **Desk #313, the exposed registry keys** — superseded by the lead's key rotation, 2026-11-19. The person answered
+  in the lead's chat (2026-11-18): "Don't bug me with rotating keys. Implement rotation." The lead relayed it to the
+  desk and built `registry-client rotate-key` (0.34.1, published); the lead rotates the three keys once 0.34.1 runs on
+  both servers. Nothing left for this seat.
+- **S34 follow-up reply** — done 2026-11-19: 0.33.0 on PyPI 2026-11-18; second `**Status —**` and contents line in the
+  history file, just-dna-compiler's liaison told. Neither server ran it then (both 0.32.1).
+- **S35 follow-up reply** — done 2026-11-19: as S34's, just-module-creator's liaison told.
 - **S36 follow-up reply: once the registry release that floors upstream 0.9 is on PyPI.** The pm decided S36
   (1469f92): the lane lookup reads upstream's `KEY_COMPARES` (just-dna-enricher's, on their 0.9 branch) at that
   floor, and the reply names the compare per key column; no per-request field. The pm told the reporter directly

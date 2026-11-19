@@ -52,8 +52,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S31** `whoami` omits member-of namespaces and orgs — shipped in 0.32.0
 - **S32** `/variants?key=` exact-match misses pasted spellings — shipped in 0.32.0
 - **S33** owner can highlight their own review, card reads curated — shipped in 0.32.0, verified-only (with corroboration)
-- **S34** lane proxy replies name no release — placed in 0.33; a label is no witness for stale bytes
-- **S35** an edit keeps the owner's highlight, so a verdict change can raise `curated` — filed (minor)
+- **S34** lane proxy replies name no release — shipped in 0.33.0 (`release`, `revision`)
+- **S35** an edit keeps the owner's highlight, so a verdict change can raise `curated` — shipped in 0.33.0
 - **S36** lane lookup compares a gene key exactly, so a folded or `;`-joined key comes back short — filed (minor)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the detail
@@ -3204,6 +3204,15 @@ you want it; our side would read it. Filed in ROADMAP.md's *Next registry versio
 (withheld, never guessed) is the right reading.
 <!-- triaged: 0.32.0 · sha 2065e53ad52b -->
 
+**Status — shipped in 0.33.0 (on PyPI 2026-11-18).** `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}` now
+carry `release` and `release_unreadable`, read by the same function `/caches` uses, and `revision`: a remote read
+resolves the published repo's head commit once per request and reads every file, `release.json` included, at that
+commit, so one answer can no longer mix files from two commits. A held lane's answer says `revision: null`, since
+the local copy keeps no commit. As said above, the label names a release, not the bytes; `revision` is the witness
+for a remote read. `registry-client lanes` and `lane-rows` print both. As of 2026-11-19 neither server runs it yet
+(both on 0.32.1), so the fields appear once a box is upgraded.
+<!-- triaged: 0.33.0 · sha 2065e53ad52b -->
+
 # Field notes from just-module-creator, 2026-11-17
 
 ## S35 — an outside reviewer's edit can turn an owner's pinned critique into `curated`
@@ -3242,6 +3251,12 @@ either way, filed with it: a reviewer can rewrite the notes of a highlighted `ve
 then stands beside text they never read; you said rating and notes need not touch it, and the pm decides whether
 that holds. The pm places it; 0.33 is open. Your tools' descriptions meanwhile can say that an edit keeps the pin.
 <!-- triaged: 0.32.0 · sha f9ae21a69526 -->
+
+**Status — shipped in 0.33.0 (on PyPI 2026-11-18).** A re-posted review whose verdict differs from the stored one
+(no verdict to a verdict included) clears `highlighted`, so the owner re-pins what they have read; a rating- or
+notes-only edit keeps the pin, the residue the pm accepted. It is done in the upsert, so stored reviews need no
+migration, and API-REFERENCE states the rule. As of 2026-11-19 neither server runs it yet (both on 0.32.1).
+<!-- triaged: 0.33.0 · sha f9ae21a69526 -->
 
 # Field notes from just-dna-compiler (2026-11-18)
 
