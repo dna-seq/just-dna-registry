@@ -584,6 +584,13 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **S160, S161, S162** (filed 2026-11-19 at the lead's request 641717159, the person's word on re-derivation cost;
+  uncommitted in their inbox): S160 row-level re-derive in the enricher (only the rows a correction or a stale
+  `source_release` reaches, verify passes over those only; cardio ~75k rows for ~30 moved, 12.5 h `verify_ref` off,
+  ~37 h on); S161 an enricher release record declaring derivation changes, so a kept re-derivation survives an
+  enricher patch that declares none; S162 a persistent online-answer cache keyed by source release. Learned while
+  filing: an ordinary `enrich` gap-fills and never re-asks, so drop-and-refill is open to us today (the lead's
+  measurement on cardio).
 - **0.8.10 cut asked** (2026-11-19, at the lead's request 641716768; sent 641716854 in `agent-chat > upstream`, a
   message, not an S item): all three tiers. Measurement: cardio's spec from production's refused 2026-11-17 run,
   re-derived online (enricher 0.8.8), strict under compiler 0.8.9: RM449's duplicates gone, 4 mirrored ins/del rsIDs
@@ -594,6 +601,14 @@ lock (1.44.2, 1.5.5, 2.3.3).
   **Answered** (641717086): their lead takes the 0.8.10 cut, all three tiers, once two things land on their main: the
   fix for main CI (red since 2026-11-05), and triage/pm's check that RM453 covers our four online rsIDs (with a fix on
   main if not), which is also the answer to (2). Main holds RM453 and RM455. Publishing is their person's step; no date.
+  **Their pm on (2)** (641718057): RM453 covers the four sites by construction (the compiler reads only placement
+  verdicts, online or offline; no verdict combination leaves a row unpositioned now; online the likelier cause is
+  ClinVar holding neither spelling). No promise of no other strict refusal, but measurable today: the enricher moved
+  only bookkeeping since 0.8.9 (RM455), so an 0.8.9 re-derive resolves as 0.8.10's would, and compiling the existing
+  re-derive with main's compiler should leave only rs1452575772 (RM448). **0.8.10 cut** (641746186, 2026-11-19;
+  `65cfa25b`, RM453, RM455, RM456), checks green, waits on their PyPI publish. Additive enricher names
+  `CacheLane.payload_filename`, `net.check_batch_size`; `MirroredSettlement.withheld_all` (0.8.9) removed; nothing
+  here uses it.
 - **S158** (filed 2026-11-17 at the lead's request, 641258676; uncommitted in their inbox): production's 0.8 catalog
   upgrade (online, `verify_ref`) refused cardio, cancer and pathogenic as `compile_failed`. On cardio 21 of 22 strict
   errors are `Duplicate (variant, genotype)`: the SNP-core fill expands an rsID-only row's indel genotype (`C/CT`) onto
