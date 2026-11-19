@@ -584,6 +584,12 @@ lock (1.44.2, 1.5.5, 2.3.3).
 
 ## Outbound
 
+- **0.9 pre-cut try** (2026-11-19, their ask 641755221; reported 641766434): full suite against all three tiers
+  from git at `d9c578ae` (they install as 0.8.10): 975 passed, 6 failed, no upstream break. Ours at the 0.9 floor:
+  `CLIENT_FIELDS` gains `snapshots` (`RemoteSnapshots`), left `None` by `shared_lookup_clients` (3 tests); the
+  variant hint report gains `routes`, not passed by our proxy (`test_hint_proxy` parity); new lane
+  `ensembl_rsid_index` absent from `.env.template` (`test_startup`); `test_deploy`'s constraints `KeyError` is an
+  artefact of git sources. Asked: is `snapshots` process-shared state or per run. Lead and pm told (641766463).
 - **S160, S161, S162** (filed 2026-11-19 at the lead's request 641717159, the person's word on re-derivation cost;
   uncommitted in their inbox): S160 row-level re-derive in the enricher (only the rows a correction or a stale
   `source_release` reaches, verify passes over those only; cardio ~75k rows for ~30 moved, 12.5 h `verify_ref` off,
