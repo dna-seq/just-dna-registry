@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-18)
+## Now (2026-11-19)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -29,6 +29,9 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **0.33.0 and 0.33.1 published** (2026-11-18, `v0.33.0` on da53225, `v0.33.1` on c965700): S34 (lane replies name
   their release and remote commit), S35 (a verdict change clears the owner's pin), and the kept spec after a compile
   refusal (0.33.1). Three items marked ✅. Both servers still on 0.32.1 at 22:35 CET; deploy is the person's.
+- **0.34.0 and 0.34.1 published** (2026-11-18/19, `v0.34.0` on 8c53d21, `v0.34.1` on b11f991): the lead's minors
+  (deploy over the API; key rotation, folder lock, upstream 0.8.9 floor), no roadmap items to mark. 0.34.2 (supervise
+  via uvx) and 0.34.3 (0.8.10 floor) are the lead's. Servers on 0.32.1 at 08:00 CET.
 - **S36 decided** (1469f92, 8dd726a): lane gene keys compared by upstream's `KEY_COMPARES`, read at the 0.9 floor
   (enricher included); the reply names its compare in that release.
 - **Upstream RM441** (declared corrections, with RM399 and our S156) now proposed for its 0.10; the RM438 probe
