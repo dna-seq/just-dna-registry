@@ -596,6 +596,10 @@ lock (1.44.2, 1.5.5, 2.3.3).
   lane's pin lives as long as the holder, so a process-wide one keeps the revision it first read until closed and
   rebuilt (ours since 0.33 resolves the head commit per remote read); and with no proxy URL it reads
   `$JUST_DNA_SNAPSHOT_PROXY_URL`, so in the registry's own process it should be Hub-only, or it may ask itself.
+  **Their lead confirms** (641766625): a process-wide holder in `LookupClients.snapshots` is the intended shape;
+  `close()` waits for lookups in flight. A long-lived host rebuilds the holder to follow a new revision; in our own
+  process pass `proxy_url=None` with the variable unset, or Hub-only; close it after the last lookup
+  (their `INTEGRATION_0_9`). Our six failures need nothing from them.
 - **S160, S161, S162** (filed 2026-11-19 at the lead's request 641717159, the person's word on re-derivation cost;
   uncommitted in their inbox): S160 row-level re-derive in the enricher (only the rows a correction or a stale
   `source_release` reaches, verify passes over those only; cardio ~75k rows for ~30 moved, 12.5 h `verify_ref` off,
