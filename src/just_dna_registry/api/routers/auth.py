@@ -4,7 +4,7 @@ import secrets
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from just_dna_format.identity import is_valid_namespace
 from pydantic import BaseModel
 
@@ -25,6 +25,8 @@ from just_dna_registry.models.api import (
     AccountRename,
     ProfileUpdate,
     RenameSelfRequest,
+    RotatedKey,
+    RotateKeyRequest,
     WhoAmI,
 )
 from just_dna_registry.services.accounts import RenameRefused, rename_account
@@ -103,6 +105,36 @@ def issue_token(repo: RepoDep, settings: SettingsDep, body: TokenRequest) -> dic
     return {"token": token, "token_type": "Bearer", "expires_in": expires_in}
 
 
+def new_api_key() -> str:
+    return "mk_live_" + secrets.token_urlsafe(24)
+
+
+@router.post("/rotate", response_model=RotatedKey)
+def rotate(
+    repo: RepoDep,
+    account: AccountDep,
+    body: RotateKeyRequest,
+    authorization: Annotated[str, Header()],
+) -> RotatedKey:
+    """Trade the API key that makes this request for a new one (0.34.1). The calling key stops working at
+    once; with `revoke_others`, so does every other key of the account. The new key is in this answer
+    only: nothing stores it anywhere a later request could read it back.
+
+    On demand only, never on a schedule, and not rate-limited: every call spends the key that made it, so
+    one key in is one key out and nothing accumulates.
+
+    The bearer must be an API key: a JWT session names an account, not a key, so it is refused
+    (`422 rotate_needs_api_key`) rather than guessed at."""
+    presented = authorization.split(" ", 1)[1].strip()
+    if repo.account_for_key(presented) is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="rotate_needs_api_key")
+    fresh = new_api_key()
+    revoked = repo.rotate_api_key(presented, fresh, revoke_others=body.revoke_others)
+    if revoked is None:  # revoked by someone else between the two reads
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
+    return RotatedKey(token=fresh, account=account.name, revoked=revoked)
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(repo: RepoDep, settings: SettingsDep, body: RegisterRequest) -> dict:
     """Self-service onboarding: a valid install-id (proof-of-work) mints an account + API key.
@@ -131,7 +163,7 @@ def register(repo: RepoDep, settings: SettingsDep, body: RegisterRequest) -> dic
             raise HTTPException(status.HTTP_409_CONFLICT, detail="account_taken") from exc
         name = body.account
 
-    key = "mk_live_" + secrets.token_urlsafe(24)
+    key = new_api_key()
     repo.add_api_key(key, account_id)
     return {
         "token": key, "account": name, "namespaces": repo.namespaces_for_account(account_id),

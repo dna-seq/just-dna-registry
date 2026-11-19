@@ -27,6 +27,7 @@ A child that exits on its own is started again after `RESTART_BACKOFF_SECONDS`, 
 supervisor being a supervisor, not a deploy.
 """
 
+import fcntl
 import logging
 import os
 import signal
@@ -60,6 +61,9 @@ from just_dna_registry.services.deploy import (
 log = logging.getLogger("just_dna_registry.supervisor")
 
 RESTART_BACKOFF_SECONDS = 5.0
+#: Held (flock) by the one supervisor of a folder, in that folder: two boxes started from one clone would
+#: each move the other's code (0.34.1). Untracked and git-ignored; the lock goes with the process.
+FOLDER_LOCK = ".registry-supervise.lock"
 #: A failing step's output kept in the supervisor's own log, never in the served record (it holds paths).
 OUTPUT_TAIL_LINES = 20
 
@@ -68,6 +72,43 @@ Runner = Callable[[list[str], Path], subprocess.CompletedProcess[str]]
 
 def run_command(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
+
+
+class FolderTaken(Exception):
+    """Another supervisor already runs from this folder; the message names its pid."""
+
+
+class FolderLock:
+    """One supervisor per folder, whatever box each serves: a move checks out or pins the folder, so two
+    supervisors on one folder (production and the test server from a shared clone, say) would move both."""
+
+    def __init__(self, root: Path) -> None:
+        self.path = root / FOLDER_LOCK
+        self._handle: Any = None
+
+    def acquire(self) -> None:
+        handle = self.path.open("a+", encoding="utf-8")
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            handle.seek(0)
+            holder = handle.read().strip() or "another process"
+            handle.close()
+            raise FolderTaken(
+                f"another `registry supervise` (pid {holder}) already runs from this folder; each server "
+                "needs a folder of its own, or a move of one would move the other"
+            ) from None
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()))
+        handle.flush()
+        self._handle = handle
+
+    def release(self) -> None:
+        if self._handle is not None:
+            fcntl.flock(self._handle, fcntl.LOCK_UN)
+            self._handle.close()
+            self._handle = None
 
 
 class StepFailed(Exception):
@@ -384,6 +425,8 @@ class Supervisor:
             nonlocal stopping
             stopping = True
 
+        lock = FolderLock(self.root)
+        lock.acquire()  # before any signal handler or child: a refused start touches nothing
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
         self.folder.mkdir(parents=True, exist_ok=True)
@@ -395,6 +438,7 @@ class Supervisor:
         finally:
             self.stop_child()
             (self.folder / HEARTBEAT_FILE).unlink(missing_ok=True)
+            lock.release()
 
 
 def child_argv(host: str, port: int, mode: str | None) -> list[str]:

@@ -593,6 +593,7 @@ _WRAPPED_ROUTES: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/v1/admin/runs"): ("runs",),
     ("GET", "/api/v1/admin/runs/{run_id}"): ("run",),
     ("GET", "/api/v1/admin/runs/{run_id}/log"): ("run_log",),
+    ("POST", "/api/v1/auth/rotate"): ("rotate_key",),
     ("GET", "/api/v1/admin/deploy"): ("deploy_status",),
     ("POST", "/api/v1/admin/deploy"): ("deploy",),
     # `list_modules` alone — `catalog_stats` paged it before 0.28 (and still does against an older

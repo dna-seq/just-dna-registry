@@ -579,7 +579,7 @@ wheels = [
 
 [[package]]
 name = "just-dna-compiler"
-version = "0.8.6"
+version = "0.8.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "just-dna-format" },
@@ -587,14 +587,14 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/6d/8382391e0c67e6d1cb72d9d19cd11de1779d1ff08e8695a9341413b1a220/just_dna_compiler-0.8.6.tar.gz", hash = "sha256:1ca7dc1b4487e5cb7e15f49d8040f18e09816b32325da5b604842e1d8978c71a", size = 315831, upload-time = "2026-11-13T14:24:28.871Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/62/0e129f3d33eec591447ac96abdf0eb7fa3404c68b2057a6b6f64e777a436/just_dna_compiler-0.8.9.tar.gz", hash = "sha256:1364a3316a7f847136f7942feb06a86da3f3d5eeb79b68a083802dada35d8e37", size = 320684, upload-time = "2026-11-18T22:45:49.924Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/f5/4a3e8574d1b381007a923c9d216d0b4fd0f4d4917bec2f1ab914c164530e/just_dna_compiler-0.8.6-py3-none-any.whl", hash = "sha256:8a11fed589f8a93754750f0d4e5fe6ecb0dadeee89ae9a808dd80bae23125421", size = 342696, upload-time = "2026-11-13T14:24:24.499Z" },
+    { url = "https://files.pythonhosted.org/packages/32/46/a49f4812705215ca3d9b6004e48f575de0ad62a4fa68f78e75aa5e06de54/just_dna_compiler-0.8.9-py3-none-any.whl", hash = "sha256:e0a5be2d01579bca5c80e850a7ee41727da1475e0d9fd8b360c9b244badcd3b7", size = 347679, upload-time = "2026-11-18T22:45:45.857Z" },
 ]
 
 [[package]]
 name = "just-dna-enricher"
-version = "0.8.8"
+version = "0.8.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "duckdb" },
@@ -608,27 +608,27 @@ dependencies = [
     { name = "tenacity" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c0/95/19ec9cca08a285e4f671a2dc3dc3f249af68d489dcc3b3788b32db69a516/just_dna_enricher-0.8.8.tar.gz", hash = "sha256:0a8ed7c3ab076ab3b7cae1680335c5627cfa0c580a011dbe8c9fe8bf392803a9", size = 1045411, upload-time = "2026-11-17T02:17:47.903Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/71/ce884b09f5cd30d32a0bbdee5aa06327ab2b867debb1cf30fc87cdd8acf4/just_dna_enricher-0.8.9.tar.gz", hash = "sha256:f470d81e8e20e0f775da664f90024af69ec88e26625934ddee641a0aad40732b", size = 1047186, upload-time = "2026-11-18T22:45:51.399Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/0c/555d018bab3afe3b30c7d7411a94f8e6036dbdbaecacbac0fe8aaa5c579f/just_dna_enricher-0.8.8-py3-none-any.whl", hash = "sha256:0cfa39c53b0f0c725426b98849828238c12638ac1b0097acfa6e3b3e26f36052", size = 1148709, upload-time = "2026-11-17T02:17:45.866Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/f5/2f211672e6c33d465a4b9791a656bfee3226d5ab35d422d1a53e1f0b427f/just_dna_enricher-0.8.9-py3-none-any.whl", hash = "sha256:b39a07317497f1ac3db015e9b33b035d54bf52e407a3a53e0a48c61190493518", size = 1150480, upload-time = "2026-11-18T22:45:47.331Z" },
 ]
 
 [[package]]
 name = "just-dna-format"
-version = "0.8.6"
+version = "0.8.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ba/7f/315ce21e0e4df4ac5f474c02b5f1282f29f28a8e7d00d16d45a4cf7edf3e/just_dna_format-0.8.6.tar.gz", hash = "sha256:0f00b5ed298fdf9303e144dbc3552636373ea73d156ca978c3c3b88afa7d7397", size = 355589, upload-time = "2026-11-13T14:24:31.508Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/ef/9c8ba03f8c899aa1502c5cb3f99753b7c45bcd75497df72f5c20e679c928/just_dna_format-0.8.9.tar.gz", hash = "sha256:cd425bbcf5371892146e01f404acfa2aebe6e48b0a03f3d4a092baa06a163c7c", size = 357497, upload-time = "2026-11-18T22:45:52.874Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/6d/2a7c5f370fb550be679d8e70f2b887147795678068ae16b942cf71e1bb58/just_dna_format-0.8.6-py3-none-any.whl", hash = "sha256:b54eb74dd85ba3a870ca8d566d1d74cd2848554497afbea18972075e0c3c8cae", size = 389725, upload-time = "2026-11-13T14:24:27.541Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/49/38e60c3da27fb57b1e9be63c1a2973bafaa486ff0f510dcfc072523e0edf/just_dna_format-0.8.9-py3-none-any.whl", hash = "sha256:1ee621fddb39e37525bce65422ce2c3fde5c5e3b66c8c3bee79b6a3f5bebac65", size = 391705, upload-time = "2026-11-18T22:45:48.736Z" },
 ]
 
 [[package]]
 name = "just-dna-registry"
-version = "0.34.0"
+version = "0.34.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -669,10 +669,10 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'server'", specifier = ">=0.34.0" },
-    { name = "just-dna-compiler", marker = "extra == 'compiler'", specifier = ">=0.8.6" },
-    { name = "just-dna-compiler", marker = "extra == 'server'", specifier = ">=0.8.6" },
-    { name = "just-dna-enricher", marker = "extra == 'server'", specifier = ">=0.8.8" },
-    { name = "just-dna-format", specifier = ">=0.8.6" },
+    { name = "just-dna-compiler", marker = "extra == 'compiler'", specifier = ">=0.8.9" },
+    { name = "just-dna-compiler", marker = "extra == 'server'", specifier = ">=0.8.9" },
+    { name = "just-dna-enricher", marker = "extra == 'server'", specifier = ">=0.8.9" },
+    { name = "just-dna-format", specifier = ">=0.8.9" },
     { name = "pydantic", marker = "extra == 'server'", specifier = ">=2.13.4" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.7.0" },
     { name = "pyjwt", marker = "extra == 'server'", specifier = ">=2.10.0" },

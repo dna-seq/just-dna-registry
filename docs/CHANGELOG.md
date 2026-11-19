@@ -6,6 +6,47 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.34.1] — 2026-11-19
+
+**Client surface:** one new method, `rotate_key(revoke_others=False)`; nothing existing moved.
+
+### A key holder rotates their own key, on demand
+
+The person, 2026-11-18: "Don't bug me with rotating keys. Implement rotation." Through 0.34.0 replacing a
+key took someone on the box (`issue-key`, then `revoke-key`). `POST /auth/rotate`, called with the key itself,
+answers a new key for the same account and kills the calling key in the same transaction;
+`revoke_others: true` kills every other key of the account too, for a key that leaked. Nothing rotates on a
+schedule: a key lives until its holder rotates it or an operator revokes it. The route is not rate-limited,
+since every call spends the key that made it. A JWT session cannot rotate (`422 rotate_needs_api_key`): it
+names an account, not a key.
+
+`registry-client rotate-key --env-file PATH --env-var NAME` reads the key from a `.env`, rotates it and writes
+the new one back to the same line, so neither key reaches the terminal; without `--env-file` it prints the
+new key once. The SDK's `rotate_key()` switches the client to the new key itself.
+
+### Upstream 0.8.9: two of the three causes behind the refused ClinVar modules are fixed
+
+Format, compiler and enricher floor at **0.8.9** (our S158). On 2026-11-17 production's online upgrade
+re-derived cardio, cancer and pathogenic for 12.5 hours and the strict compile refused all three: RM448
+(enricher) left rsIDs unresolved where a witness held one ALT of a multi-allelic indel site, and RM449
+(compiler) placed an rsID row's indel genotype on both events of a mirrored insertion and deletion, which
+produced duplicate rows. RM449 is a declared corrected derivation in format 0.8.9's release record, so the
+next `registry upgrade --apply --online` also republishes the modules it reached (production's superhuman
+2.4.1, where one rsID could match an all-sites VCF on the wrong event). **Still refused under 0.8.9: RM453**, a
+mirrored insertion and deletion that ClinVar records as `unplaced` on both spellings. Upstream filed it as
+offline-only, but cardio's online re-derivation carries four such rsIDs (measured 2026-11-19: its refused
+spec compiled strict under compiler 0.8.9 has no duplicates left and refuses exactly those four plus one
+RM448 row a 0.8.9 re-derive fills). It is fixed in 0.8.10, so **run the production upgrade of cardio,
+cancer and pathogenic on the release that floors 0.8.10, not on this one**.
+
+### One `registry supervise` per folder
+
+A move checks out a tag or pins a version in the folder the server runs from, so two servers started from
+one clone (production and the test server, say) would each move the other's code. A second `supervise` in a
+folder another one runs from now refuses to start, before it touches anything, and names the first one's
+pid. The lock (`.registry-supervise.lock`, git-ignored) goes with the process, so a crash leaves nothing to
+clear by hand.
+
 ## [0.34.0] — 2026-11-18
 
 **Client surface:** two new methods, `deploy_status()` and `deploy(version)`; nothing existing moved.

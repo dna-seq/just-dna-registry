@@ -645,6 +645,24 @@ class CatalogStats(BaseModel):
     genes: int
 
 
+class RotateKeyRequest(BaseModel):
+    """Body for `POST /auth/rotate` (0.34.1)."""
+
+    revoke_others: bool = Field(
+        False,
+        description="Also revoke every other key of the account, for a key that leaked and whose copies "
+        "cannot all be found. The new key is then the account's only one.",
+    )
+
+
+class RotatedKey(BaseModel):
+    """`POST /auth/rotate`: the account's new API key, shown this once. The key that called is dead."""
+
+    token: str = Field(description="The new API key; the one that made this request no longer works")
+    account: str
+    revoked: int = Field(description="Keys revoked: 1 (the caller's), or all the account had with `revoke_others`")
+
+
 class RenameSelfRequest(BaseModel):
     """Body for `POST /auth/rename`: the caller's new handle. `dry_run` reports without acting."""
 

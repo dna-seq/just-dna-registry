@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 import typer
-from dotenv import find_dotenv, load_dotenv
+from dotenv import dotenv_values, find_dotenv, load_dotenv, set_key
 from just_dna_format.identity import parse_version
 from just_dna_format.manifest import read_manifest, write_manifest
 
@@ -273,6 +273,46 @@ def upgrade_status(
             if item.kept_stale:
                 line += f" (stale: {item.kept_stale})"
         typer.secho(line, fg=colour.get(item.state))
+
+
+@app.command("rotate-key")
+def rotate_key_command(
+    env_file: Path | None = typer.Option(
+        None, "--env-file", help="Read the key from this .env and write the new one back in place, never printing it"
+    ),
+    env_var: str = typer.Option(_TOKEN_ENV, "--env-var", help="The variable holding the key in --env-file"),
+    revoke_others: bool = typer.Option(
+        False, "--revoke-others", help="Also revoke every other key of the account (for a key that leaked)"
+    ),
+    url: str | None = UrlOpt,
+    token: str | None = TokenOpt,
+) -> None:
+    """Trade an API key for a new one; the old key stops working at once (0.34.1).
+
+    With `--env-file`, the key is read from that file's `--env-var` and the new key written back to the same
+    line, so neither ever reaches the terminal. Without it, the key is `--token` (or the environment) and the
+    new one is printed, once.
+    """
+    if env_file is not None:
+        if not env_file.is_file() or not os.access(env_file, os.W_OK):
+            raise typer.BadParameter(f"{env_file} is not a writable file", param_hint="--env-file")
+        token = dotenv_values(env_file).get(env_var)
+        if not token:
+            raise typer.BadParameter(f"{env_var} is not set in {env_file}", param_hint="--env-var")
+    with _client(url, token, need_token=True) as c:
+        rotated = c.rotate_key(revoke_others=revoke_others)
+    if env_file is None:
+        typer.echo(rotated["token"])
+        typer.echo(f"account {rotated['account']}: {rotated['revoked']} key(s) revoked", err=True)
+        return
+    try:
+        set_key(env_file, env_var, rotated["token"], quote_mode="never")
+    except OSError:
+        # The old key is already dead: printing the new one is the only way it is not lost.
+        typer.secho(f"could not write {env_file}; the new key, which replaces the old one:", fg=typer.colors.RED, err=True)
+        typer.echo(rotated["token"])
+        raise typer.Exit(1) from None
+    typer.echo(f"{env_var} in {env_file} rotated for account {rotated['account']}; {rotated['revoked']} key(s) revoked")
 
 
 def _deploy_line(record: dict) -> str:

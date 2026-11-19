@@ -5,7 +5,7 @@ re-implementing REST calls + integrity verification. It ships as a Python librar
 (`RegistryClient`) and an equivalent CLI (`registry-client`). Wire protocol:
 [API-REFERENCE.md](API-REFERENCE.md).
 
-**Normative for:** client **0.14.x–0.34.x** against a server speaking API `v1` (0.34 adds `deploy_status` and `deploy`; 0.33 adds no method: `lane_tables` and `lane_rows` answers carry `release`, `release_unreadable` and `revision`; 0.32 adds `upgrade_status`; 0.31 adds `variant_claims`, `gene_claims` and `list_modules(pgs_id=)`; 0.30 adds `lane_tables`, `lane_rows`, and `derived(passes=, offline=, gene=, chrom=, start=, end=)`; 0.29 adds `rename_namespace`; 0.25 added nine methods
+**Normative for:** client **0.14.x–0.34.x** against a server speaking API `v1` (0.34.1 adds `rotate_key`; 0.34 adds `deploy_status` and `deploy`; 0.33 adds no method: `lane_tables` and `lane_rows` answers carry `release`, `release_unreadable` and `revision`; 0.32 adds `upgrade_status`; 0.31 adds `variant_claims`, `gene_claims` and `list_modules(pgs_id=)`; 0.30 adds `lane_tables`, `lane_rows`, and `derived(passes=, offline=, gene=, chrom=, start=, end=)`; 0.29 adds `rename_namespace`; 0.25 added nine methods
 and moved none; 0.26 adds none and gives `RegistryError` its `headers`, `retry_after` and `bucket`;
 0.27 adds none and gives `publish` a `pack=` keyword and an archive path, needing a 0.27 server;
 0.28 adds `merge_accounts`, `rename_account` and `admin_rename_account`, gives `publish` `recover_within=`
@@ -450,6 +450,7 @@ registry supervise --host 0.0.0.0 --port 8000      # serve as a child; moves on 
 registry init-db
 registry issue-key <account> -n <namespace>          # mint an API key
 registry show-keys <account>                         # print a lost key again (0.33.1; terminal only)
+registry-client rotate-key --env-file .env --env-var REGISTRY_TOKEN   # holder trades a key in place (0.34.1)
 registry revoke-key <key>                            # invalidate a leaked key
 registry revoke-account <account> [--yes]            # invalidate all of an account's keys
 registry feature <ns> / unfeature <ns>               # curate: float a namespace to the top

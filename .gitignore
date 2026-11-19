@@ -150,6 +150,8 @@ activemq-data/
 
 # Environments
 .env
+# `registry supervise` holds this in the folder it runs from (0.34.1)
+.registry-supervise.lock
 .envrc
 .venv
 env/

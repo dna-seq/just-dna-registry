@@ -1637,6 +1637,27 @@ class Repository:
         self.conn.commit()
         return cur.rowcount > 0
 
+    def rotate_api_key(self, old_key: str, new_key: str, *, revoke_others: bool) -> int | None:
+        """Replace `old_key` with `new_key` for the same account, in one transaction (0.34.1).
+
+        `None` when `old_key` is not a live key. Otherwise the number of keys revoked: `old_key` itself,
+        plus every other key of the account with `revoke_others` (the leaked-key case, where the holder
+        cannot tell which copies are out). The new key is inserted before anything is deleted, inside
+        the same transaction, so a failure leaves the account exactly as it was."""
+        with self.conn:
+            row = self.conn.execute("SELECT account_id FROM api_keys WHERE key = ?", (old_key,)).fetchone()
+            if row is None:
+                return None
+            account_id = int(row[0])
+            self.conn.execute("INSERT INTO api_keys(key, account_id) VALUES (?, ?)", (new_key, account_id))
+            if revoke_others:
+                cur = self.conn.execute(
+                    "DELETE FROM api_keys WHERE account_id = ? AND key != ?", (account_id, new_key)
+                )
+            else:
+                cur = self.conn.execute("DELETE FROM api_keys WHERE key = ?", (old_key,))
+            return cur.rowcount
+
     def revoke_api_key(self, key: str) -> bool:
         cur = self.conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
         self.conn.commit()
