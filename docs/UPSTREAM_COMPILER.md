@@ -591,6 +591,12 @@ lock (1.44.2, 1.5.5, 2.3.3).
   enricher patch that declares none; S162 a persistent online-answer cache keyed by source release. Learned while
   filing: an ordinary `enrich` gap-fills and never re-asks, so drop-and-refill is open to us today (the lead's
   measurement on cardio).
+  **Answered** 2026-11-19 (641761537; their `1fc67e47`, archived), all three filed as minors, release undecided:
+  S160 is **RM467** (a re-derive scoped by a reason or a list of rows; verify over only the rows a run wrote, as an
+  option); S161 folds into **RM441**, planned for 0.10, on the condition that every release record states its
+  re-derive answer, "nothing to re-derive" included; S162 is **RM468** (a store of online answers keyed by the
+  answering source release). The fact we asked: today verify does **not** skip carried rows on drop-and-gap-fill;
+  it reads them too (`orchestration.py`), so drop-and-refill saves the resolve, not the verify.
 - **0.8.10 cut asked** (2026-11-19, at the lead's request 641716768; sent 641716854 in `agent-chat > upstream`, a
   message, not an S item): all three tiers. Measurement: cardio's spec from production's refused 2026-11-17 run,
   re-derived online (enricher 0.8.8), strict under compiler 0.8.9: RM449's duplicates gone, 4 mirrored ins/del rsIDs
