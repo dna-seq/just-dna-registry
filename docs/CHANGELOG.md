@@ -6,7 +6,7 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
-## [Unreleased] — 0.34.2
+## [0.34.2] — 2026-11-19
 
 **Client surface:** unchanged. `GET /admin/deploy` answers `source: uvx` for a box run from PyPI, and
 `pinned_at` beside each `version`.
