@@ -590,6 +590,12 @@ lock (1.44.2, 1.5.5, 2.3.3).
   variant hint report gains `routes`, not passed by our proxy (`test_hint_proxy` parity); new lane
   `ensembl_rsid_index` absent from `.env.template` (`test_startup`); `test_deploy`'s constraints `KeyError` is an
   artefact of git sources. Asked: is `snapshots` process-shared state or per run. Lead and pm told (641766463).
+  **Answered** (641766510, their liaison from `remote.py` on `origin/0.9`, their lead to confirm): `RemoteSnapshots`
+  is a thread-safe holder like the HTTP clients (the proxy httpx client, a Hub client, one duckdb connection and one
+  pin per lane, per-lane locks, a cursor per query), so it may be shared process-wide. Two facts for our design: a
+  lane's pin lives as long as the holder, so a process-wide one keeps the revision it first read until closed and
+  rebuilt (ours since 0.33 resolves the head commit per remote read); and with no proxy URL it reads
+  `$JUST_DNA_SNAPSHOT_PROXY_URL`, so in the registry's own process it should be Hub-only, or it may ask itself.
 - **S160, S161, S162** (filed 2026-11-19 at the lead's request 641717159, the person's word on re-derivation cost;
   uncommitted in their inbox): S160 row-level re-derive in the enricher (only the rows a correction or a stale
   `source_release` reaches, verify passes over those only; cardio ~75k rows for ~30 moved, 12.5 h `verify_ref` off,
