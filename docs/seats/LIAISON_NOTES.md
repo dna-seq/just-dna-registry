@@ -141,6 +141,12 @@ reset").
   `-deps` worktree still holds last week's uncommitted lock edits (superseded by `bb42dbd`); left, not discarded.
   Its `nightly.py done deps` was missed, so the nightly said deps due again on 2026-11-13; marked done then. **End
   every bump with `done deps`**, or the watcher re-asks.
+- **Bump of 2026-11-19**: branch `deps/2026-11-19` (`2c8ef91`, `.worktrees/deps-2026-11-19` by `bin/wt.sh`,
+  unlocked), eleven moves (fastapi 0.165.0, typer 0.29.2, pydantic-settings 2.16.3, python-multipart 0.0.34,
+  pytest-asyncio 1.5.0, ruff 0.17.5, five small), duckdb 2.0 still held; 981 passed niced, ruff clean, no Node.
+  Handed to the lead (641771808); `done deps` marked. `nightly.py` lives under `classes/base/`, not `bin/`.
+  Also unlocked, done: `.worktrees/probe-upstream-0.9-d9c578ae` (0.9 pre-cut try; its pyproject edit is a probe
+  only, never to commit).
 - **Compiler 0.8.5 on PyPI told to the lead** 2026-11-12, with the re-derive advice for the five modules on pre-0.8
   tables (ledger, "Cut as v0.8.5").
 
