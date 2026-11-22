@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-19)
+## Now (2026-11-22)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -32,6 +32,8 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
 - **0.34.0 and 0.34.1 published** (2026-11-18/19, `v0.34.0` on 8c53d21, `v0.34.1` on b11f991): the lead's minors
   (deploy over the API; key rotation, folder lock, upstream 0.8.9 floor), no roadmap items to mark. 0.34.2 (supervise
   via uvx) and 0.34.3 (0.8.10 floor) are the lead's. Servers on 0.32.1 at 08:00 CET.
+- **0.34.2 published** (2026-11-22 on PyPI, `v0.34.2` on aca25f4): supervise from PyPI via `uvx`, the lead's patch, no
+  roadmap item. Milestone 642621117. Servers on 0.32.1 at 07:12 CET 2026-11-22. 0.34.3 (0.8.10 floor) is next.
 - **S36 decided** (1469f92, 8dd726a): lane gene keys compared by upstream's `KEY_COMPARES`, read at the 0.9 floor
   (enricher included); the reply names its compare in that release.
 - **Upstream RM441** (declared corrections, with RM399 and our S156) now proposed for its 0.10; the RM438 probe
@@ -49,7 +51,8 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   the lead (637623436, after 0.28, so now due for 0.29's sizing); nine ideas on `docs/TO_RESEARCH.md`.
 - **Push works**; commits go by path, `git commit --only -- <paths>` (base, kit #286), after a race on
   2026-11-05 put a pm roadmap paragraph inside the liaison's 7e88e7d.
-- **Auto-mode rules**: current (checked 2026-11-12, `automode.py --check`); the pm runs `--apply` itself when stale.
+- **Kit pin and auto-mode rules are the lead's** since 183d3b1 (2026-11-22, `duties = "pin-mover automode-rules"`, the
+  kit's seat-builder): the pm no longer moves the pin or runs `automode.py` on a kit release.
 
 ## Tools
 
