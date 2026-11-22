@@ -125,9 +125,10 @@ reset").
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
 
 - **Desk #222** withdrawn 2026-11-08 (`moot:` done): auto-mode rules current, rule 14 included.
-- **A kit release is put into effect by the seat** (the kit's builder, 2026-11-08): after `move-to-tag.py`, run
-  nothing; the prompt hook types `/reload-plugins` once idle. `watchdog.sh reload` (rule 14) only for a reload no
-  hook starts. move-to-tag's "left for the person" line is wrong (kit #306).
+- **A kit release is the lead's, not mine, since 2026-11-22** (183d3b1, `duties = "pin-mover automode-rules"` on
+  `[seat.lead]`, handed by the kit's seat-builder, their 642570028: "from now on that is the lead's step"). A release
+  no longer wakes me; the reloader types `/reload-plugins` here as before. I last moved the pin to v0.1.258. Should a
+  release announcement still reach me, let it go: no move-to-tag, no automode run.
 - **0.8.4 on PyPI told to the lead** 2026-11-11 (their 639314607, for 0.29.1 and the GWAS rebuild); untagged when
   told, so the `compiler` tag watcher did not fire: check PyPI too when a cut is read.
 - **0.30's remote keyed lane reads** (handoff 2026-11-11): S145/S146 filed, answered as RM430, RM431, RM432, lead
