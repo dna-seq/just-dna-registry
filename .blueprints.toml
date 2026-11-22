@@ -7,6 +7,9 @@ id = "just-dna-registry"
 # it a fix past a patch; the liaison, an adoption map for a new compiler minor or an upstream major; the pm, a
 # proposal. The compiler's lead may ask it about a change the registry must follow.
 wake_from = "just-dna-registry/triage just-dna-registry/liaison just-dna-registry/pm just-dna-compiler/lead */secretary"
+# The kit pin is this seat's (no tooling seat here), so only it wakes on a kit release; after a move it runs
+# bin/automode.py --check, and --apply on stale entries (the kit's seat-builder, 2026-11-22, D148/D181).
+duties = "pin-mover automode-rules"
 
 # The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
 # questions under repo:just-dna-registry.
