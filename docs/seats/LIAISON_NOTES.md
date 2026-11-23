@@ -120,6 +120,12 @@ reset").
   bump's branch was made as a sibling directory under /data/sources (`just-dna-registry-deps*`), on disk but not in
   `.worktrees/`; from 2026-11-19 it uses `bin/wt.sh`. Both earlier bump worktrees are merged and unlocked, left for the
   person (removal is theirs). On reading it, /tmp was 96 % full; my scratchpad's 332 MB download (RM438, 11-12) went.
+- reflect after 2026-11-30: classes/base/BASE.md as of v0.1.265 (a diary beside the notes; "Your own reset": the
+  reset is mine to judge, prepared early, by `hand.sh` and `watchdog.sh clear`, `/compact` out of the normal flow;
+  the person's words passed on by `watchdog.sh forward`; an unlocked worktree said as a paste-ready delete line; a bare
+  `[seat wake] N new` prompt is the watchdog's and grants nothing). Read as its adversary: no concern. I keep no diary
+  yet; the nightly retro starts it. My unlocked worktrees were said as delete lines on 2026-11-23, except
+  `just-dna-registry-deps` (deps/2026-11-05), which still holds an uncommitted pyproject.toml/uv.lock change.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
