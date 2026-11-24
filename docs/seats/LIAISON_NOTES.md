@@ -126,6 +126,18 @@ reset").
   `[seat wake] N new` prompt is the watchdog's and grants nothing). Read as its adversary: no concern. I keep no diary
   yet; the nightly retro starts it. My unlocked worktrees were said as delete lines on 2026-11-23, except
   `just-dna-registry-deps` (deps/2026-11-05), which still holds an uncommitted pyproject.toml/uv.lock change.
+- reflect after 2026-12-01: classes/base/BASE.md as of v0.1.274 (a tagged post wakes only the seats it names; four
+  carry-through rules: an asked action is mine until it works, a granted step is taken then reported, a procedure for
+  the person is run first, no work parked on a quota figure). Read as its adversary: no concern; the 0.8.10 watch is
+  carried in this file, not parked. classes/liaison/EDGES.md changed only a citation (D210).
+- **For the bump of Thursday 2026-11-26: polars 2.2.0** (PyPI 2026-11-24 18:15Z; our lock holds 2.1.0). just-vcf's
+  liaison reports a 2.2.0 panic: a filter mask from `concat_list` over an all-null list column inside a grouped
+  `median`. Our one `list.any` (services/lanes.py:343, an `is_in` list filter) has no median or concat_list, so the
+  repro does not reach us; read the bump's suite with it in mind. No polars-bio in our lock, so its `<2.2` cap does
+  not hold us.
+- **GitHub over SSH stalled from 2026-11-24 20:15Z** (watchers brief/compiler/compiler-next: `timed out after 300 s`):
+  HTTPS to github.com and PyPI answer; `ssh -v` stops at publickey, and `ssh-add -l` on the session's agent socket
+  hangs. The agent is the person's; the watchers retry by themselves. Nothing of mine to push meanwhile.
 - **This file was found zeroed on disk** 2026-11-09 05:40 (6412 NUL bytes, size and mtime of 5c9d75e unchanged, so
   `git status` called it clean; no reboot since). Written back from the index. If a tracked file reads as binary,
   compare `git hash-object` with `git rev-parse :<path>` before trusting `git status`.
