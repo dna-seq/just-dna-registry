@@ -75,23 +75,31 @@ cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-registry liai
 # The upstreams' watchers (kit classes/liaison/watch-upstream.sh), each reading its line in the liaison state file
 # for its clone and branch. The compiler first: each release by its tags, and the coming minor's changelog on its
 # branch (just-dna-compiler-next's line names the branch; move it to 0.9 when 0.8 is cut).
+# Each line of these four is read first by the duty run upstream-read (the kit's D220; LIAISON.md, "Duty:
+# upstream-read"), against the files docs/seats/LIAISON.md declares for each upstream.
 [seat.liaison.watch.compiler]
 cmd = "sh kit:classes/liaison/watch-upstream.sh just-dna-compiler --tags"
+duty = "upstream-read"
 
 [seat.liaison.watch.compiler-next]
 cmd = "sh kit:classes/liaison/watch-upstream.sh just-dna-compiler-next --path docs/CHANGELOG.md"
+duty = "upstream-read"
 
 # The libraries under the server: busy upstreams, tags only.
 [seat.liaison.watch.fastapi]
 cmd = "sh kit:classes/liaison/watch-upstream.sh fastapi --tags"
+duty = "upstream-read"
 
 [seat.liaison.watch.huggingface-hub]
 cmd = "sh kit:classes/liaison/watch-upstream.sh huggingface-hub --tags"
+duty = "upstream-read"
 
 # The in-house upstream's releases from the package index (the kit's liaison duty upstream-index, L136): a tag is
 # not a publish, and 0.8.4 reached PyPI hours before its tag. No --upstream flag: from kit v0.1.200 (L143) the
 # repository's own [on_publish] (the branch sweep, below) runs only on a release of its own packages. Through v0.1.199
 # it ran on each of these three too (the sweep ran three times on 0.8.6, exit 0).
+# No duty run here: for an index line the run gathers no notes and always answers unknown, which wakes the seat as
+# a counted malfunction (upstream-context.py, "pypi"); the same publish reaches a duty run through the tag watcher.
 [seat.liaison.watch.upstream-index]
 cmd = "python3 kit:drivers/pypi/watch-pypi.py just-dna-format just-dna-compiler just-dna-enricher"
 

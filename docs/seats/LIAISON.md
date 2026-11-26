@@ -7,6 +7,16 @@ the tag this clone pins); read that first. This file adds the repository's facts
 Seated on the person's word of 2026-11-04: "Liaison (characteristically, it should watch updates and communicate
 tightly with -compiler)".
 
+The duty run upstream-read (the kit's `LIAISON.md`, "Duty: upstream-read", D220) reads this file, then, for the
+upstream a watcher line names, the files declared below: where the ledger writes down what the registry uses of it and
+its register of our pieces it may come to replace, plus the pins. A section or file the registry's use moves to is
+added here.
+
+<!-- upstream-read just-dna-compiler: "docs/UPSTREAM_COMPILER.md#What the registry uses" "docs/UPSTREAM_COMPILER.md#Our pieces the upstream may come to do" pyproject.toml -->
+<!-- upstream-read just-dna-compiler-next: "docs/UPSTREAM_COMPILER.md#What the registry uses" "docs/UPSTREAM_COMPILER.md#Our pieces the upstream may come to do" pyproject.toml -->
+<!-- upstream-read fastapi: "docs/UPSTREAM_FASTAPI.md#What the registry uses" "docs/UPSTREAM_FASTAPI.md#Our pieces the upstream may come to do" -->
+<!-- upstream-read huggingface-hub: "docs/UPSTREAM_HUGGINGFACE_HUB.md#What the registry uses" "docs/UPSTREAM_HUGGINGFACE_HUB.md#Our pieces the upstream may come to do" -->
+
 ## The compiler comes first
 
 The registry stands on the compiler repository's three packages, `just-dna-format` (the manifest contract),
