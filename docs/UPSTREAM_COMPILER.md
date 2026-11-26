@@ -716,6 +716,7 @@ lock (1.44.2, 1.5.5, 2.3.3).
   polygon for their trial). Their pm measured the polygon (640494791): 0.22-0.37 s, plus three findings relayed to our
   lead (stale polygon ClinPGx; an Ensembl id-only lookup scans locally for 21.5 s since `remote_needs_position` guards
   remote reads only; chrom x start batches are a cross product).
+  **RM461** (`c85ed125` on their `0.9`, 2026-11-26, RM430's rest, read): their `RemoteRoute` now carries our proxy's `release_unreadable` (served on every lane reply since 0.33), kept when every reply of a split agrees; a split now takes the column holding the most values (`start` on a tie), which our route answers on any key column under `lane_max_keys`; their `caches.lane_status` refuses a URL in `locations`, and we call only our own `enrich.lane_status`. Nothing moves here. **RM458, RM462, RM463, RM466** (0.9 branch, same day: the group preflight reads the pulled manifest, `lookup_variant` asks remote ClinVar twice at most, the public per-run sequence view, goldens for `enrich` with neither new argument) wait for the 0.9 cut, as planned; the duty run's `affects` on each named the paths, not a change we must make before then.
 
 - **S145** and **S146** (filed 2026-11-11, appended to `/data/sources/just-dna-format`'s inbox, uncommitted; their
   triage told in `agent-chat > upstream`): the lead's 0.30 handoff (remote keyed lane reads). S145: no lane reads
