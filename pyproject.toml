@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.34.2"
+version = "0.34.3"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -85,7 +85,10 @@ dependencies = [
     # (scoped on `compilation.expanded_keys`). `registry upgrade` reads that record to know which published
     # modules RM449 reaches (production's superhuman 2.4.1, the polygon's thrombophilia 2.0.1, measured
     # 2026-11-18); on 0.8.6 there is no record for the interval and the sweep would leave them as they are.
-    "just-dna-format>=0.8.9",
+    # **0.8.10 is the hard kind again** (0.34.3), for the same reason: format 0.8.10 changes only
+    # `RELEASE_RECORDS["0.8.10"]`, which declares RM453's corrected derivation, and `needs_recompile(stamp,
+    # "0.8.10")` needs that record to answer. No model, field or vocabulary moved.
+    "just-dna-format>=0.8.10",
 ]
 
 [project.optional-dependencies]
@@ -132,7 +135,7 @@ dependencies = [
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
 compiler = [
-    "just-dna-compiler>=0.8.9",  # lockstep with the format floor above
+    "just-dna-compiler>=0.8.10",  # lockstep with the format floor above
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -385,8 +388,16 @@ server = [
     # issue RM453 (a mirrored site ClinVar marks `unplaced` on both spellings refuses) is compiler-only and fixed
     # in 0.8.10; upstream filed it as offline-only, and cardio's online table carries four such rsIDs
     # (measured 2026-11-19), so the production upgrade of the ClinVar modules waits for the 0.8.10 floor.
-    "just-dna-compiler>=0.8.9",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.9",  # RM448/RM449 (S158), see the 0.8.9 note above
+    # **0.8.10, all three** (0.34.3), the hard kind: that floor. RM453 (compiler, declared): a mirrored
+    # insertion and deletion where no spelling was witnessed `same_event` keeps both spellings under a warning,
+    # where 0.8.9's `--strict` refused the row, so cardio's four online sites compile. A re-derivation 0.33.1
+    # kept after a 0.8.9 compile refusal is reused under it (`held.COMPILE_FAILED`: the compiler may differ,
+    # the enricher may not). The enricher also moves (RM455: a pull record that is not UTF-8, a batch size
+    # below 1 and a lane's payload chosen by its name, none of which this service sets), so a kept
+    # re-derivation re-derives once. RM456 (compiler): `compile_module` no longer raises on Python 3.13
+    # over a `logs/` directory it may list but not search.
+    "just-dna-compiler>=0.8.10",  # lockstep with the format floor above
+    "just-dna-enricher>=0.8.10",  # RM453 (S158's known issue), see the 0.8.10 note above
 ]
 
 [build-system]

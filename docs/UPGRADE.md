@@ -1,5 +1,23 @@
 # Contract upgrades & the stale-module procedure
 
+## 0.34.3 — upstream 0.8.10 (operator note — one sweep per box)
+
+Move the box to 0.34.3 (`registry-client deploy 0.34.3 --wait` on a supervised box), then on the box, from the
+folder `supervise` runs in, look before acting:
+
+```
+uvx --from 'just-dna-registry[server]==0.34.3' registry upgrade --dry-run
+uvx --from 'just-dna-registry[server]==0.34.3' registry upgrade --apply --online
+```
+
+The polygon adds `--mode test` after `registry`. What it does on production, by module: cardio, cancer and
+pathogenic re-derive online and publish a PATCH each (the re-derivation refused on 2026-11-17 by the 0.8.9
+compile was not kept, since 0.33.0 ran, so it is spent once more: about 37 hours); superhuman publishes 2.4.2
+under RM449's and RM453's declared corrections, replacing 2.4.1 as the latest. On the polygon the same record
+reaches thrombophilia 2.0.1 (both measured 2026-11-18). The dry run names every module it would touch; read it before
+the apply. The two `uvx` lines are not yet run as written (the form is the one `supervise` runs from, 0.34.2).
+The run is revertible (`registry revert-run`) while it is among the newest `REGISTRY_RUN_KEEP`.
+
 ## 0.34 — moving a box to another release over the API (operator note)
 
 A box started with `registry supervise` instead of `registry serve` can be moved to another release by a

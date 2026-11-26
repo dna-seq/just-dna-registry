@@ -6,6 +6,20 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.34.3] — 2026-11-26
+
+**Client surface:** unchanged.
+
+### Upstream 0.8.10, all three tiers: the production upgrade of the ClinVar modules can run
+
+All three floors move to `>=0.8.10` (the reasons are beside the pins in `pyproject.toml`). RM453 is what
+production waited for: 0.8.9's `--strict` refused an rsID row at a mirrored insertion and deletion that no
+witness placed as either spelling, which is four of cardio's sites in its online table (measured 2026-11-19).
+0.8.10 keeps both spellings under a warning, and its release record declares that as a corrected derivation, so
+`registry upgrade` finds the modules it reaches by itself. RM455 and RM456 change nothing this service sets or
+calls. Also carries the weekly dependency bumps since 0.34.2 (polars 2.2.0, pydantic 2.14.4). See
+[UPGRADE.md](UPGRADE.md), 0.34.3, for the one sweep per box.
+
 ## [0.34.2] — 2026-11-19
 
 **Client surface:** unchanged. `GET /admin/deploy` answers `source: uvx` for a box run from PyPI, and
