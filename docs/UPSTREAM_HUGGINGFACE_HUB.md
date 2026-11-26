@@ -15,7 +15,7 @@ removed or retyped in 2.0 to 2.4, so no cap is wanted.
 
 ## Backlog
 
-None: read through `v2.4.0`.
+`v2.5.0` when tagged (a pre-release, `v2.5.0.rc0` at `90842dbf`, 2026-11-26, the weekly bump does not take one). From the rc, the two the duty run named: #5434 (`998328e9`) raises `EgressLimitError` on a 402 `EgressLimitReached`, a subclass of `HfHubHTTPError`, so `services/lanes.py:192`'s `except (OSError, HfHubHTTPError)` still catches it; #5368 (`af273ff3`) drops empty User-Agent parts, and we set none. Nothing moves so far; the rest of the rc is read at the tag.
 
 ## What the registry uses
 
