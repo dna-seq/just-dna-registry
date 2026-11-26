@@ -166,6 +166,12 @@ reset").
   Handed to the lead (641771808); `done deps` marked. `nightly.py` lives under `classes/base/`, not `bin/`.
   Also unlocked, done: `.worktrees/probe-upstream-0.9-d9c578ae` (0.9 pre-cut try; its pyproject edit is a probe
   only, never to commit).
+- **Bump of 2026-11-26**: branch `deps-2026-11-26` (`72646b9`, `.worktrees/deps-2026-11-26` by `bin/wt.sh`,
+  unlocked), polars 2.2.0, pydantic 2.14.4, ruff 0.17.6 and seven small; duckdb still held. 981 passed niced, ruff
+  clean, no Node; the 127 ResourceWarnings (unclosed sqlite in our tests) show only under `-W default`. Handed to
+  the lead (643733771); `done deps` marked.
+- **Duty run upstream-read adopted** 2026-11-26 (0500d45): four watchers carry it, the priming declares each
+  upstream's ledger sections; the index watcher left without it (always unknown). Watchers restarted, all armed.
 - **Compiler 0.8.5 on PyPI told to the lead** 2026-11-12, with the re-derive advice for the five modules on pre-0.8
   tables (ledger, "Cut as v0.8.5").
 
