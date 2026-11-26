@@ -2,7 +2,7 @@
 
 The pm seat's working state, rewritten to the present before a reset (`docs/seats/PM.md`, "Before a reset").
 
-## Now (2026-11-22)
+## Now (2026-11-27)
 
 First seating done on this machine. SPEC, ROADMAP (from "Next registry version") and UPGRADE read whole.
 
@@ -34,6 +34,12 @@ First seating done on this machine. SPEC, ROADMAP (from "Next registry version")
   via uvx) and 0.34.3 (0.8.10 floor) are the lead's. Servers on 0.32.1 at 08:00 CET.
 - **0.34.2 published** (2026-11-22 on PyPI, `v0.34.2` on aca25f4): supervise from PyPI via `uvx`, the lead's patch, no
   roadmap item. Milestone 642621117. Servers on 0.32.1 at 07:12 CET 2026-11-22. 0.34.3 (0.8.10 floor) is next.
+- **0.34.3 published** (2026-11-26 19:31Z, `v0.34.3` on 41b1b3d): upstream 0.8.10 floor, no roadmap item. 0.34.4 (`compat`
+  extra) is not on PyPI (lead's desk #471: publish it or fold into 0.35). **Both servers deployed 2026-11-26** on a new
+  host under `supervise`, serving 0.34.4 from the tag; caches warmed (17/17), backups daily, leaked keys rotated.
+  Public posts name no host.
+- **0.35.0 in build** (lead, `.worktrees/0.35`): upstream 0.9 floor, S36 (`KEY_COMPARES`, reply names `compares`),
+  RemoteSnapshots Hub-only. Mark S36 ✅ when 0.35 is on PyPI. Then the one sweep per box (prod ClinVar trio ~37 h).
 - **S36 decided** (1469f92, 8dd726a): lane gene keys compared by upstream's `KEY_COMPARES`, read at the 0.9 floor
   (enricher included); the reply names its compare in that release.
 - **Upstream RM441** (declared corrections, with RM399 and our S156) now proposed for its 0.10; the RM438 probe
