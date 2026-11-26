@@ -318,8 +318,10 @@ def shared_lookup_clients(settings: Settings | None = None) -> Any:
                     PmcIdConverterClient,
                 )
                 from just_dna_enricher.lookup import LookupClients
+                from just_dna_enricher.remote import RemoteSnapshots
 
-                timeout = (settings or get_settings()).enrich_http_timeout_seconds
+                resolved = settings or get_settings()
+                timeout = resolved.enrich_http_timeout_seconds
                 given: dict[str, float] = {} if timeout is None else {"timeout": timeout}
                 # `EutilsClient` reads `NCBI_API_KEY` at construction to pick its interval (3/s
                 # without, 10/s with), which is why `export_enricher_credentials` runs at boot and
@@ -341,6 +343,16 @@ def shared_lookup_clients(settings: Settings | None = None) -> Any:
                     # holds it to upstream's `CLIENT_FIELDS`.
                     pmc_idconv=PmcIdConverterClient(**given),
                     grch37=Grch37Client(settings=Grch37Settings(**given)),
+                    # Enricher 0.9 (RM430): the remote half of a lane's read order, which a `/hint`
+                    # leg reads when this box does not hold the lane. **Hugging Face only**:
+                    # `proxy_url=""` keeps it from reading `$JUST_DNA_SNAPSHOT_PROXY_URL`, since the
+                    # proxy it would name is this registry, asking itself. It pins each lane's head
+                    # at its first remote read and keeps that pin for the process's life (the
+                    # `/lanes` routes resolve the head per read instead, 0.33); a restart re-pins. The
+                    # licence gate judges this box's declaration before any remote read.
+                    snapshots=RemoteSnapshots(
+                        proxy_url="", proxy_token="", declared_use=resolved.declared_use
+                    ),
                 )
     return _shared_clients
 

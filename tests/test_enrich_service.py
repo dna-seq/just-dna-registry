@@ -706,7 +706,7 @@ def test_the_shared_bundle_actually_holds_clients() -> None:
         assert all(
             getattr(client, "gate", None) is not None
             for name, client in members.items()
-            if name != "ensembl"
+            if name not in UNPACED_MEMBERS
         ), members
     finally:
         close_lookup_clients()
@@ -788,6 +788,15 @@ class _NoClients:
         return None
 
 
+#: Bundle members with no `PacingGate`, each for a reason. `ensembl` is the last link after cache and
+#: snapshot, so its volume stays low. `snapshots` (enricher 0.9, RM430) reads lane files from Hugging Face
+#: when this box lacks a lane: not a rate-limited API, and it takes no gate.
+UNPACED_MEMBERS = frozenset({"ensembl", "snapshots"})
+#: Members `enrich_http_timeout_seconds` cannot reach. `RemoteSnapshots` takes no timeout argument: its
+#: Hub and proxy clients use upstream's `HF_API_TIMEOUT` / `PROXY_TIMEOUT` constants.
+FIXED_TIMEOUT_MEMBERS = frozenset({"snapshots"})
+
+
 def _client_timeout(client: object) -> float | None:
     """The per-request timeout a client hands httpx: its own `timeout`, or its settings' one."""
     own = getattr(client, "timeout", None)
@@ -809,13 +818,15 @@ def test_the_timeout_setting_reaches_every_client_in_the_bundle(timeout: float |
     try:
         bundle = shared_lookup_clients(Settings(enrich_http_timeout_seconds=timeout))
         assert len(CLIENT_FIELDS) >= 8, CLIENT_FIELDS
-        seen = {name: _client_timeout(getattr(bundle, name)) for name in CLIENT_FIELDS}
+        assert set(CLIENT_FIELDS) >= FIXED_TIMEOUT_MEMBERS, "an exemption for a member upstream dropped"
+        reached = [name for name in CLIENT_FIELDS if name not in FIXED_TIMEOUT_MEMBERS]
+        seen = {name: _client_timeout(getattr(bundle, name)) for name in reached}
         assert all(value is not None for value in seen.values()), seen
         if timeout is not None:
-            assert seen == dict.fromkeys(CLIENT_FIELDS, timeout)
+            assert seen == dict.fromkeys(reached, timeout)
         else:
             # Each member's class constructed with no arguments is upstream's own default.
-            upstream = {name: _client_timeout(type(getattr(bundle, name))()) for name in CLIENT_FIELDS}
+            upstream = {name: _client_timeout(type(getattr(bundle, name))()) for name in reached}
             assert seen == upstream
     finally:
         close_lookup_clients()

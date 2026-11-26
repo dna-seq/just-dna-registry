@@ -6,6 +6,20 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.35.0] — unreleased
+
+**Client surface:** unchanged. `GET /hint/variant` and `POST /hint/variants` answer one new field, `routes`.
+
+### Upstream 0.9, all three tiers
+
+All three floors move to `>=0.9.0`, a coordinated cut: the enricher imports a function new in format 0.9. Nothing
+a compiled module carries moved, and upstream's release record measures every axis unmoved, so `registry upgrade`
+recompiles nothing for 0.9's sake (the 0.8.10 sweep of 0.34.3 is still the one to run). The `compat` extra is now
+upstream's (`just-dna-compiler[compat]`). The shared enrichment bundle fills 0.9's new `snapshots` member, the
+remote half of a lane's read order, Hugging Face only: a `/hint` lookup reads a lane this box does not hold from
+the lane's published repo. The variant hint passes `routes` through: per lane read remotely, the route, release
+and revision; null when this box's snapshots answered.
+
 ## [0.34.4] — 2026-11-26
 
 **Client surface:** unchanged.

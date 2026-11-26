@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.34.4"
+version = "0.35.0"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -88,7 +88,11 @@ dependencies = [
     # **0.8.10 is the hard kind again** (0.34.3), for the same reason: format 0.8.10 changes only
     # `RELEASE_RECORDS["0.8.10"]`, which declares RM453's corrected derivation, and `needs_recompile(stamp,
     # "0.8.10")` needs that record to answer. No model, field or vocabulary moved.
-    "just-dna-format>=0.8.10",
+    # **0.9.0 is a coordinated cut** (0.35.0): the enricher imports format 0.9's `snapshot.parse_release`,
+    # so the three move together. Nothing a compiled module carries moved (upstream's INTEGRATION_0_9 § 1.0),
+    # and `RELEASE_RECORDS["0.9.0"]` measures every axis unmoved over the 22 reference modules, so
+    # `registry upgrade` recompiles nothing for 0.9's sake.
+    "just-dna-format>=0.9.0",
 ]
 
 [project.optional-dependencies]
@@ -140,10 +144,10 @@ dependencies = [
 # `REGISTRY_DEPLOY_EXTRAS="server compat"` for `registry supervise`. Probe, on the box:
 # `uv run python -c "import polars._plr as p; print(p.__name__)"` names `_polars_runtime_compat...` once it is in.
 compat = [
-    "polars[rtcompat]",
+    "just-dna-compiler[compat]>=0.9.0",  # upstream's own extra since 0.9.0 (INTEGRATION_0_9 § 1.15)
 ]
 compiler = [
-    "just-dna-compiler>=0.8.10",  # lockstep with the format floor above
+    "just-dna-compiler>=0.9.0",  # lockstep with the format floor above
 ]
 # Everything needed to RUN the registry: FastAPI app, server-side enrich+recompile, storage, admin
 # CLI. `just-dna-enricher` is the only tier permitted to fetch (CONSTITUTION Principle 2); it lives
@@ -404,8 +408,11 @@ server = [
     # below 1 and a lane's payload chosen by its name, none of which this service sets), so a kept
     # re-derivation re-derives once. RM456 (compiler): `compile_module` no longer raises on Python 3.13
     # over a `logs/` directory it may list but not search.
-    "just-dna-compiler>=0.8.10",  # lockstep with the format floor above
-    "just-dna-enricher>=0.8.10",  # RM453 (S158's known issue), see the 0.8.10 note above
+    # **0.9.0, all three** (0.35.0): the remote half of a lane's read order (RM430, `RemoteSnapshots`, a
+    # `LookupClients` field this service fills Hugging Face only) and `key_compare.KEY_COMPARES`, which the
+    # `/lanes` routes read (our S36). The compiler's source did not move.
+    "just-dna-compiler>=0.9.0",  # lockstep with the format floor above
+    "just-dna-enricher>=0.9.0",  # RM453 (S158's known issue), see the 0.8.10 note above
 ]
 
 [build-system]
