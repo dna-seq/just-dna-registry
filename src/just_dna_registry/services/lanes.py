@@ -115,6 +115,8 @@ class LaneRows:
     release: str | None = None
     release_unreadable: bool = False
     revision: str | None = None
+    #: Per key column asked, how it was compared with the cells, in words (S36, 0.35).
+    compares: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -283,17 +285,57 @@ def lookup(
         )
     if table.kind != "parquet":
         rows = _small_table_rows(table, keys)
+        compares = {column: SMALL_TABLE_COMPARE for column in keys if column in ("gene", "symbol")}
     else:
-        rows = _parquet_rows(table, keys, settings, remote=source.served_from != "local")
+        rows, compares = _parquet_rows(lane, table, keys, settings, remote=source.served_from != "local")
     truncated = len(rows) > settings.lane_max_rows
     return LaneRows(
         lane, table.name, source.served_from, rows[: settings.lane_max_rows], truncated,
         release=source.release, release_unreadable=source.release_unreadable, revision=source.revision,
+        compares=compares,
     )
 
 
-def _parquet_rows(table: LaneTable, keys: dict[str, list[Any]], settings: Settings, *, remote: bool) -> list[dict]:
+#: How the small JSON/CSV lanes (STRchive's catalogue, the ACMG list) compare a gene: upstream declares no
+#: compare for them (`KEY_COMPARES` covers parquet tables), and this reader has always folded case.
+SMALL_TABLE_COMPARE = "case-insensitively"
+#: How a chrom key is compared: with or without the `chr` prefix, on every lane (ours since 0.25; a superset of
+#: each lane's declared normalization, which reads a key into the one spelling that lane stores).
+CHROM_COMPARE = "with or without the `chr` prefix"
+
+
+def _folded(expr: Any) -> Any:
+    """`spelling.gene_key` (`strip().casefold()`) as a polars expression; gene symbols are ASCII, where
+    lower case and casefold agree."""
+    return expr.str.strip_chars().str.to_lowercase()
+
+
+def _key_clause(column: str, dtype: Any, compare: Any, values: list[Any]) -> tuple[Any, str]:
+    """The filter for one non-position, non-chrom key column under upstream's declared compare (S36), and the
+    compare in words. Keys are read by `compare.key` (folded, an rsID spelled as the snapshots spell it, a
+    drug normalized); cells by the compare's own rule: folded, split on its separator, or whole and exact."""
     import polars as pl
+
+    read = sorted({compare.key(v) for v in values})
+    if isinstance(dtype, pl.List):
+        member = _folded(pl.element().cast(pl.String)) if compare.fold else pl.element().cast(pl.String)
+        return pl.col(column).list.eval(member.is_in(read)).list.any(), f"any list member, {compare.described}"
+    cell = pl.col(column).cast(pl.String)
+    if compare.separator is not None:
+        member = _folded(pl.element()) if compare.fold else pl.element()
+        clause = cell.str.split(compare.separator).list.eval(member.is_in(read)).list.any()
+    elif compare.fold:
+        clause = _folded(cell).is_in(read)
+    else:
+        clause = cell.is_in(read)
+    return clause.fill_null(False), compare.described
+
+
+def _parquet_rows(
+    lane: str, table: LaneTable, keys: dict[str, list[Any]], settings: Settings, *, remote: bool
+) -> tuple[list[dict], dict[str, str]]:
+    import polars as pl
+    from just_dna_enricher.key_compare import lane_compare
 
     files = table.files
     if "chrom" in keys:
@@ -322,6 +364,7 @@ def _parquet_rows(table: LaneTable, keys: dict[str, list[Any]], settings: Settin
     if missing:
         raise LaneLookupError("unknown_key", f"{table.name} has no column {', '.join(missing)}")
     condition = None
+    compares: dict[str, str] = {}
     position = next((c for c in POSITION_COLUMNS if c in keys), None)
     if position is not None and len(keys["chrom"]) == len(keys[position]) > 1:
         # Paired (0.32.1): `chrom[i]` with `start[i]`, never chrom IN (...) AND start IN (...), whose cross product
@@ -332,21 +375,22 @@ def _parquet_rows(table: LaneTable, keys: dict[str, list[Any]], settings: Settin
             pl.col("chrom").cast(pl.String).is_in(_chrom_forms(str(c))) & (pl.col(position) == int(s))
             for c, s in zip(keys["chrom"], keys[position], strict=True)
         ])
+        compares.update({"chrom": CHROM_COMPARE, position: "exactly, paired with chrom"})
         keys = {k: v for k, v in keys.items() if k not in ("chrom", position)}
+    schema = frame.collect_schema()
     for column, values in keys.items():
-        values = [v for c in values for v in _chrom_forms(str(c))] if column == "chrom" else list(values)
-        is_position = column in POSITION_COLUMNS
-        if is_position:
-            values = [int(v) for v in values]
-        dtype = frame.collect_schema()[column]
-        clause = (
-            pl.col(column).list.eval(pl.element().is_in(values)).list.any()
-            if isinstance(dtype, pl.List) else pl.col(column).cast(pl.String).is_in([str(v) for v in values])
-            if not is_position else pl.col(column).is_in(values)
-        )
+        if column == "chrom":
+            forms = [v for c in values for v in _chrom_forms(str(c))]
+            clause, compares[column] = pl.col(column).cast(pl.String).is_in(forms), CHROM_COMPARE
+        elif column in POSITION_COLUMNS:
+            clause, compares[column] = pl.col(column).is_in([int(v) for v in values]), "exactly"
+        else:
+            clause, compares[column] = _key_clause(
+                column, schema[column], lane_compare(lane, table.name, column), list(values)
+            )
         condition = clause if condition is None else condition & clause
     result = frame.filter(condition).head(settings.lane_max_rows + 1).collect()
-    return json.loads(result.write_json())
+    return json.loads(result.write_json()), compares
 
 
 def _small_table_rows(table: LaneTable, keys: dict[str, list[Any]]) -> list[dict]:

@@ -3,7 +3,7 @@
 Exhaustive reference for the registry HTTP API (v1). For the design rationale see
 [SPEC.md](SPEC.md); for the reference client see [CLIENT.md](CLIENT.md).
 
-- **Normative for:** registry **0.14.x–0.34.x**, API `v1` (0.34.2 adds `pinned_at` on `DeployPoint`; **0.34.1 adds one route**, `POST /auth/rotate`; **0.34 adds two site-admin routes**, `GET` and `POST /admin/deploy`; 0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
+- **Normative for:** registry **0.14.x–0.35.x**, API `v1` (0.35 adds `compares` on `POST /lanes/{lane}/{table}` and `routes` on the variant hints; 0.34.2 adds `pinned_at` on `DeployPoint`; **0.34.1 adds one route**, `POST /auth/rotate`; **0.34 adds two site-admin routes**, `GET` and `POST /admin/deploy`; 0.33 adds `release`, `release_unreadable` and `revision` on both lane routes, and a changed review verdict unpins the owner's highlight; **0.32 adds one route**, `GET /upgrade/status`; `curated` counts only outside `verified` reviews; `spellings` and `matched` on `GET /variants`, `haplotype` on each claim; `terms` and `unpublished` on both lane routes, `proxy_live_legs`, `approx_mb`, `provision_lanes` and `provision_mb` on `GET /caches`, `member_of` and `orgs` on `whoami` and `register`; **0.31 adds two routes**, `GET /variants?key=` and `GET /genes/{symbol}/claims`, and `?pgs_id=` on `GET /modules`; **0.30 adds two routes**, `GET /lanes/{lane}` and `POST /lanes/{lane}/{table}`, and `passes=` on `POST .../derived`; **0.29 adds one route**, `POST /namespaces/{ns}/rename`, and the old-name alias every namespace path follows; **0.28.3 adds three site-admin routes**, `GET /admin/runs[/{id}[/log]]`; **0.28 adds three routes**: `POST /auth/rename`, `POST /admin/accounts/{account}/rename` and `GET /stats`, beside merge's; `GET /modules` gains `clin_sig=`). (**0.27 adds no route**: `POST
   /versions` takes a spec as one compressed `archive` part as well as loose `files`, carrying every
   member, logo included, and a second publish of a version that was indexed while it compiled now
   gets `409 version_exists` instead of a `500`. **0.26 adds no route either**: a `429
@@ -1487,8 +1487,18 @@ and reports it as `revision`, so one answer never mixes two commits. A held lane
 names a release, never the bytes**: a copy pulled before 2026-11-08 could carry the hub's newer `release.json`
 over older parquets (enricher RM445), and would read the newer label. An older server omits all three.
 
+**How a key is compared (0.35, S36).** Each key column is compared the way upstream's own reader for that lane
+compares it, read from the enricher's `key_compare.KEY_COMPARES` (one registry, never a copy here): a gene folds
+case and surrounding space where the reader does (`cyp2c9` finds `CYP2C9` in CPIC, CIViC, ClinPGx, drug labels,
+PharmVar, MANE, constraint), matches any member of a `;`-joined cell where the reader splits one (ClinPGx `gene`,
+drug labels `genes`: `CYP2C9` finds `CYP2C9;CYP4F2`), an rsID key is read as one (`RS334` and `334` are `rs334`
+where the lane declares it), and a column declared for nothing compares the whole cell exactly. `chrom` matches
+with or without the `chr` prefix on every lane, positions exactly. `POST` answers `compares`: per key column asked,
+the compare applied, in words, so a short answer can be told from an absent one. Through 0.34 every cell compared
+exactly. An older server omits it.
+
 `200 → {"lane", "table", "served_from", "rows": [...], "truncated", "terms", "unpublished", "release",
-"release_unreadable", "revision"}`. Errors: `404 unknown_lane`,
+"release_unreadable", "revision", "compares"}`. Errors: `404 unknown_lane`,
 `404 unknown_table`, `404 lane_not_available`, `422 lane_needs_keys`, `422 unknown_key`,
 `422 position_needs_both`, `422 too_many_keys`, `422 remote_needs_position`, `429`. Client:
 `RegistryClient.lane_tables(lane)`, `lane_rows(lane, table, keys)`; `registry-client lanes LANE`,

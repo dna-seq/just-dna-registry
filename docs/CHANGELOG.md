@@ -20,6 +20,14 @@ remote half of a lane's read order, Hugging Face only: a `/hint` lookup reads a 
 the lane's published repo. The variant hint passes `routes` through: per lane read remotely, the route, release
 and revision; null when this box's snapshots answered.
 
+### A lane lookup compares a key the way the lane's own reader does (S36)
+
+`POST /lanes/{lane}/{table}` compared every cell exactly, so `cyp2c9` missed `CYP2C9` and `CYP2C9` missed a
+ClinPGx row for `CYP2C9;CYP4F2`, and the short answer said nothing. Each key column now follows the enricher's
+declared compare (`key_compare.KEY_COMPARES`, read, never copied): genes fold where the lane's reader folds them,
+`;`-joined cells match by member where it splits them, rsID keys are read as rsIDs. The reply's new `compares`
+says per key column which compare ran, and `registry-client lane-rows` prints it.
+
 ## [0.34.4] — 2026-11-26
 
 **Client surface:** unchanged.

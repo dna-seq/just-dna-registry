@@ -69,6 +69,15 @@ class LaneRowsResponse(BaseModel):
     release: str | None = Field(default=None, description=_RELEASE)
     release_unreadable: bool = Field(default=False, description=_RELEASE_UNREADABLE)
     revision: str | None = Field(default=None, description=_REVISION)
+    compares: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per key column asked, how it was compared with the cells, in words (0.35, S36): upstream's "
+            "declared compare (`key_compare.KEY_COMPARES`), so `cyp2c9` finds `CYP2C9` where the lane's own "
+            "reader folds a gene and `CYP2C9` finds `CYP2C9;CYP4F2` where it reads members of a joined cell; "
+            "`exactly` where nothing is declared. Read it to tell a short answer from an absent one."
+        ),
+    )
 
 
 class LaneTablesResponse(BaseModel):
@@ -119,4 +128,5 @@ async def lane_rows(
         lane=found.lane, table=found.table, served_from=found.served_from, rows=found.rows,
         truncated=found.truncated, terms=said.terms, unpublished=said.unpublished,
         release=found.release, release_unreadable=found.release_unreadable, revision=found.revision,
+        compares=found.compares,
     )
