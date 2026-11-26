@@ -8,14 +8,14 @@ watched by its tags only: `[seat.liaison.watch.huggingface-hub]`, from a clone o
 
 ## Read mark
 
-**`v2.4.0`** read (2026-11-05, the release notes of 2.0.0 to 2.4.0 against the list below). Installed: `v2.4.0`
+**`v2.5.0`** read (2026-11-26, its 75 commits from `v2.4.0` by subject, and the diffs of `hf_api.py` and `hf_file_system.py`, against the list below; 2.4.0 and earlier read 2026-11-05). Installed: `v2.4.0`
 (`uv.lock`, the bump of 2026-11-05, `bb42dbd`; suite green, no warning from it). The floor in `pyproject.toml` is still `huggingface-hub>=0.34.0`, which admits 0.x, 1.x and 2.x
 alike: the 2.0 major came in by a relock (registry 0.26.2), not a decision. Nothing the registry calls was
 removed or retyped in 2.0 to 2.4, so no cap is wanted.
 
 ## Backlog
 
-`v2.5.0` when tagged (a pre-release, `v2.5.0.rc0` at `90842dbf`, 2026-11-26, the weekly bump does not take one). From the rc, the two the duty run named: #5434 (`998328e9`) raises `EgressLimitError` on a 402 `EgressLimitReached`, a subclass of `HfHubHTTPError`, so `services/lanes.py:192`'s `except (OSError, HfHubHTTPError)` still catches it; #5368 (`af273ff3`) drops empty User-Agent parts, and we set none. Nothing moves so far; the rest of the rc is read at the tag.
+None: read through `v2.5.0`.
 
 ## What the registry uses
 
@@ -53,7 +53,7 @@ swappable.
 - Read, nothing for us: 2.0's removed APIs (none of them called here); 2.1 `HfFileSystem.get_file` through
   `hf_xet` (we use `cat_file`), Jobs, Inference, Sandboxes; 2.2 jobs and download changes; 2.3 bucket
   `live_follow`, parallel listing, `create_commit` keeping a re-added file (we only add); 2.4 bucket copies, a
-  clearer "repository not found".
+  clearer "repository not found". 2.5: `EgressLimitError` on a 402 `EgressLimitReached` (#5434), a subclass of `HfHubHTTPError`, so `services/lanes.py:192` still catches it; empty User-Agent parts dropped (#5368, we set none); `HfFileSystem` bucket transactions, exclusive create raising `FileExistsError`, `info()` fixes for bucket listings, the repo root and `refresh=True`'s parent cache (H4 unchanged: we never pass `refresh`); no signature of `create_commit`, `delete_folder` or `create_repo` moved. The bump of 2026-12-03 takes it.
 
 ## Our pieces the upstream may come to do
 
