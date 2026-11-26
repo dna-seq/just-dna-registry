@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-registry"
-version = "0.34.3"
+version = "0.34.4"
 description = "Reference client (and optional server) for the just-dna annotation module registry"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -134,6 +134,14 @@ dependencies = [
 # **0.7.2 is the same soft kind.** Its only changes are a docstring and the remedy sentence of
 # `quote_counter_stale` (RM277), which nothing here matches; upstream's 16-module sweep gate moved
 # no axis between 0.7.1 and 0.7.2. It moves because the enricher 0.7.3 floors it.
+# A box whose CPU lacks AVX2, FMA or BMI (polars' default runtime needs them) installs polars' compat runtime
+# beside it, which polars then prefers by itself (0.34.4: whale's CPU, where the default runtime dies with
+# SIGILL at import, exit 132). Opt-in, so every other box keeps the faster runtime: `--extra compat`, or
+# `REGISTRY_DEPLOY_EXTRAS="server compat"` for `registry supervise`. Probe, on the box:
+# `uv run python -c "import polars._plr as p; print(p.__name__)"` names `_polars_runtime_compat...` once it is in.
+compat = [
+    "polars[rtcompat]",
+]
 compiler = [
     "just-dna-compiler>=0.8.10",  # lockstep with the format floor above
 ]

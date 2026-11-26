@@ -6,6 +6,18 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.34.4] — 2026-11-26
+
+**Client surface:** unchanged.
+
+### A box without AVX2 runs: the `compat` extra
+
+The registry moves to a host whose CPU lacks AVX2, FMA and BMI, which polars' default runtime needs: there the
+server died at import with SIGILL (exit 132) before it logged a line. The new optional extra `compat` installs
+polars' compat runtime beside the default one, and polars prefers it by itself. A supervised box selects it with
+`REGISTRY_DEPLOY_EXTRAS="server compat"`, which every later move keeps; any other box leaves it out and keeps the
+faster runtime.
+
 ## [0.34.3] — 2026-11-26
 
 **Client surface:** unchanged.
