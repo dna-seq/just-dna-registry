@@ -11,7 +11,7 @@ commit to `docs/CHANGELOG.md` on the coming minor's branch (`main` between the 0
 
 ## Read mark
 
-**`v0.8.10`** read (2026-11-19: all three at 0.8.10, cut `65cfa25b`; all three on PyPI 2026-11-26 11:11Z, tagged `v0.8.10` at that commit shortly after; carries RM453, RM455, RM456). **`v0.8.9`** read (2026-11-18: all three at 0.8.9, cut `13b3be36`; all three on PyPI 2026-11-18 22:45Z, still untagged at 22:54Z; carries RM446-RM449, RM451, RM452). **`v0.8.8`** read (2026-11-16: enricher only, cut `655f1ebc`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-17 02:17Z; carries RM445 alone; format and compiler stay 0.8.6). **`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
+**`v0.9.0`** read (2026-11-26: all three at 0.9.0, cut `93160691` on their `cut/v0.9.0-2`, tagged `v0.9.0` at that commit; all three on PyPI 2026-11-26 21:11Z; read through their `docs/INTEGRATION_0_9.md` and the full suite run against it, see *The coming minor: format 0.9* below). **`v0.8.10`** read (2026-11-19: all three at 0.8.10, cut `65cfa25b`; all three on PyPI 2026-11-26 11:11Z, tagged `v0.8.10` at that commit shortly after; carries RM453, RM455, RM456). **`v0.8.9`** read (2026-11-18: all three at 0.8.9, cut `13b3be36`; all three on PyPI 2026-11-18 22:45Z, still untagged at 22:54Z; carries RM446-RM449, RM451, RM452). **`v0.8.8`** read (2026-11-16: enricher only, cut `655f1ebc`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-17 02:17Z; carries RM445 alone; format and compiler stay 0.8.6). **`v0.8.7`** read (2026-11-14: enricher only, cut `3b65ab7a`, untagged and not on PyPI when read; tagged at that commit and on PyPI 2026-11-15 16:01Z; format and compiler stay 0.8.6). **`v0.8.6`** read (2026-11-13: tagged `2f03ab4`, the commit read at the cut, all three on PyPI). **`v0.8.5`** read (2026-11-12: tagged `c036c70`, the commit read at the cut, all three on PyPI). **`v0.8.4`** read (2026-11-11: tagged `36cbc20`, the commit read at the cut, all three on PyPI; installed by
 registry 0.29.1). **`v0.8.3`** read (2026-11-10: tagged `725eb2b`, the commit read at the cut on 2026-11-09, all three packages at 0.8.3 on PyPI; RM425 to RM427 are past it). **`v0.8.2`** read (2026-11-08: all three packages at 0.8.2 on PyPI, tag `b98f7e9`, read commit by commit in the
 backlog below). **`v0.8.1`** read (2026-11-07: enricher 0.8.1 on PyPI 16:47 UTC, tag `6330f90`, read at its recut below; format and compiler stay 0.8.0). **`v0.8.0`** read (2026-11-05): all three packages at 0.8.0, on PyPI since 19:56 UTC; the tag is `e97339a3` on
 `main`, whose package sources are byte-identical to `edf2661c` on `0.8` (only `docs/` differs), so the map below,
@@ -480,6 +480,37 @@ both boxes already gzip at the proxy.
 State, 2026-11-04: the lead filed C4, C1 and C2 on `docs/ROADMAP.md` (fcd2589, cd4c511; "Next registry version",
 unattended patches in that order), with the 0.8 map's M2 folded into C4's derivation. C3 was folded into the
 roadmap's older column-release entry, now unattended too (f96eca4).
+
+## The coming minor: format 0.9 (adoption map, 2026-11-27)
+
+For the lead and the pm, for the release that floors 0.9. Read from upstream's `docs/INTEGRATION_0_9.md` at the cut
+`93160691` (its § 3 has a registry list, which this map checks) and from our full suite run against the published
+0.9.0 (`.worktrees/probe-upstream-0.9.0`, floors raised to `>=0.9.0`, `uv lock` moved only the three workspace
+packages): **975 passed, 6 failed, 10 skipped**, niced, 1 h 59 min. No upstream break. **0.9 moves no compiled
+output** (`RELEASE_RECORDS["0.9.0"]` measures every axis unmoved on 22 reference modules, `content_signature` equal in
+44 of 44 pairs; no vocabulary, manifest field, parquet column or warning code), so `registry upgrade` recompiles
+nothing for 0.9's sake and `enrich` with no new argument writes 0.8.10's bytes (their RM466 goldens).
+
+| # | What changes | Where it lands here | Fix and cost |
+|---|---|---|---|
+| A1 | Floors: the enricher imports format 0.9's `parse_release`, so all three move together | `pyproject.toml` (four pins) | `>=0.9.0` on all three plus `uv lock`. A minor, so a coordinated cut by CLAUDE.md's lockstep, but nothing a module carries moved (their § 1.0) |
+| A2 | `CLIENT_FIELDS` gains `snapshots` (`RemoteSnapshots`) | `shared_lookup_clients` leaves it `None`: `test_the_shared_bundle_actually_holds_clients` and both `test_the_timeout_setting_reaches_every_client_in_the_bundle` cases fail | Fill it, by our own "fill every field" rule. Build it **Hub-only** in our process (`proxy_url=None` is not enough: with none it reads `$JUST_DNA_SNAPSHOT_PROXY_URL`, so the registry could ask itself; pass `huggingface=True` with the env var left unset on our boxes, or a guard that refuses our own URL). A process-wide holder keeps the revision it first read until closed (their lead's answer, 2026-11-19); our lane routes resolve the head per read since 0.33. About 1 h with the guard and tests |
+| A3 | `VariantHint.routes` (set only for a lane answered remotely) | `/hint/variant`'s model does not carry it: `test_every_field_the_enricher_reports_about_a_variant_survives_the_proxy` | Add the field (with its console mirror in `types.ts` and the SDK parity), `None` unless a lane was read remotely. 30 min |
+| A4 | New lane `ensembl_rsid_index` (derived, built only when named, never published, not remote) | `.env.template` lacks its variable: `test_env_template_mentions_every_cache_lane` | One line. `warm-caches` must not build it by default (upstream's `named_only` says why: 42 min, 6 GB); building it on a box is an operator choice, and `rsid_index=` is then passed by path (S36's lanes do not need it) |
+| A5 | **S36**: read `key_compare.KEY_COMPARES` for the lane proxy's compare per lane, table and column | `services/lanes.py` compares a cell exactly | The pm's decision, at this floor. Since RM454 the registry covers the local readers too (Ensembl `id`, ClinVar `rsid`/`chrom`/`gene`, constraint, MANE, PharmVar, PubMind, Open Targets) beside the remote lanes. Until it lands, upstream ships **RM459** as a known issue: a 0.9 client with our proxy set and Hugging Face off answers could-not-ask on gene lookups for clinpgx, cpic, drug_labels and civic. The largest item here |
+| A6 | `enrich(rederive_subjects=..., verify_written_only=...)` (RM467, our S160) | `registry upgrade`'s re-derive re-asks every row of a held module | Pass the held module's subjects; cardio ~30 rows of ~75k. Selection by a declared correction's reach waits for RM441 (0.10). Optional for the floor release, the biggest saving for the next sweep |
+| A7 | `enrich(clients=, sequences=)` (RM404) | We hand single clients per pass | Optional: pass the shared bundle whole; no client we pass is closed by the run. Not needed for the floor |
+| A8 | `caches.lane_status(locations=...)`, `LANE_STATES` gains `stale` | Our `/caches` derives its own states (`lane_status` in `services/enrich.py`), so `stale` does not reach us; a URL in `locations` raises, and we pass none | Nothing at the floor; their § 3 item 3 (replace our loop) is a choice for later |
+| A9 | RM470: ClinVar-GKM builds from its `v1/1.2` line; a retired line raises `ClinVarGkmRetired` (a `ClinVarGkmUnavailable`) | `clinvar_gkm` is a pulled lane here; the published snapshot stays readable | Nothing; a rebuild of that lane works only on 0.9 |
+| A10 | `just-dna-compiler[compat]` / `just-dna-enricher[compat]` = `polars[rtcompat]>=1.42.0` | Our own `compat` extra (`polars[rtcompat]`, for whale's CPU without AVX2) | Optional: point ours at `just-dna-enricher[compat]` to stay in step with upstream's floor. Whale works either way |
+| A11 | `EnsemblSettings` refuses `batch_size` outside 1..200 and `batch_timeout <= 0`; private names gone (`_BatchResolver`, `_resolve_rsids`, `_held_by_one_run`, `_ensure_opentargets_snapshot`, `_PART_COUNT_KEYS`) | We pass only `timeout`, and import none of the names (grep, 2026-11-27) | Nothing |
+
+**The sixth failure is ours and not 0.9's**: `test_publish_recovery.py::test_a_version_that_never_appears_gives_up_at_the_deadline_and_says_so`
+saw 1 poll inside its 0.3 s deadline under the niced full run and passes alone (1.3 s). A timing margin to widen.
+
+**Order, per box**: the 0.9-floor release reaches a box only after that box's 0.34.3 sweep has finished, since a
+held re-derivation (`services/held.py`) is not reused across enricher releases. Optional on a box that reads
+remotely: `duckdb` `httpfs` preinstalled (their § 1.2); none of ours reads remotely through the enricher yet.
 
 ## The coming minor: format 0.8 (adoption map, first pass, 2026-11-04)
 
