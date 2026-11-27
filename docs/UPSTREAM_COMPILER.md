@@ -481,6 +481,23 @@ State, 2026-11-04: the lead filed C4, C1 and C2 on `docs/ROADMAP.md` (fcd2589, c
 unattended patches in that order), with the 0.8 map's M2 folded into C4's derivation. C3 was folded into the
 roadmap's older column-release entry, now unattended too (f96eca4).
 
+## The next minor: format 0.10 (consumers' preview, probed 2026-11-27)
+
+Upstream's lead asked both liaisons to try their branch `0.10` at `992e85b1` before their first review round
+(644035415; versions still read 0.9.0). Probed in `.worktrees/probe-upstream-0.10-992e85b1`: main at `b83ce89`
+(0.35.0), the three packages pointed at `992e85b1` by a `[tool.uv.sources]` block that is never committed, plus
+targeted calls. Filed **S163-S165** (uncommitted in their inbox) and answered in their thread (644037290). The full
+suite result goes below once it ends.
+
+| # | Item | What it does to us | State |
+|---|---|---|---|
+| B1 | **RM468** answer store (our S162): live answers in a per-host SQLite under the cache base, **on by default** | `enrich()` opens a run per call and takes `answer_store=`. Our `/hint` lookups use the shared bundle outside any run, so each client's own run keeps its **first** release label for the life of the process (measured: 116 stays 116 after 117; v0.9.0 asked every time), and nothing but the environment or `.env` tells those clients where the store is | **S163**. Adoption: pass a configured `answer_store=` on every `enrich()` call (a setting of ours, never ambient), and fence the suite as upstream fences theirs (`JUST_DNA_ANSWER_STORE=""` autouse, their `enricher/tests/conftest.py`); on this box the default store is the shared cache base's `live-answers.sqlite3`. `/hint` waits on S163 |
+| B2 | **RM399/RM441** `derivation_records.needs_rederive(old, new, table)`, three-valued, offline (our S156, S161) | Answers what our sweep's `declared_correction` arm probes by hand, and more: 0.8.4 to 0.9.0 names RM438 **and RM448**, which our probe never saw | **S164**: no `0.10.0` record on the branch yet (every span ending at 0.10.0 reads `None`), and which version a host should pass as `from_release` (we read `verification.json`'s `producer`; whether a gap-fill moves it is unmeasured). Adoption: replace the RM438 arm with the record, `None` staying *cannot say* |
+| B3 | **RM385** `SequenceProxy(uri="fasta+file://...")` reads a local GRCh38 FASTA offline, binding per contig by digest (our S132, S157) | Could lift our indel hold (`needs_online_rederive`) offline. On this box's Ensembl primary assembly 10 of 25 contigs bind (4, 5, 8, 11, 14, 15, 18, 19, 20, MT), as upstream says; the first read digested the file in ~155 s niced and wrote `<fasta>.refget.json` beside it | **S165** asks for a structured per-contig answer and the name of a FASTA that binds all 25. Adoption: a sequence-URI setting passed as `sequences=`, and the hold decided per contig |
+| B4 | **RM435** `StudyRow.effect_direction` (increase/decrease of the trait, not clinical direction); a studies parquet column and manifest counts | `services/claims.py` projects direction from the weights table only, so it never reaches the conflict marker, as upstream intends | Nothing beyond the floor, pending the suite and the 0.10.0 record |
+| B5 | **RM460** `rsid_genotype_reads_as_two_events` on mirrored-site fills | New warning codes; we read codes by member, and the sweep's type table counts an unnamed code as `other` | Nothing beyond the floor, pending the suite |
+| B6 | **Old-reader break**: RM435 and RM460 add warning codes, so a format reader older than 0.10 refuses a manifest naming them | Server, `registry-client` and console move together | A coordinated minor, as 0.8 and 0.9 were |
+
 ## The coming minor: format 0.9 (adoption map, 2026-11-27)
 
 For the lead and the pm, for the release that floors 0.9. Read from upstream's `docs/INTEGRATION_0_9.md` at the cut
@@ -508,7 +525,7 @@ nothing for 0.9's sake and `enrich` with no new argument writes 0.8.10's bytes (
 **The sixth failure is ours and not 0.9's**: `test_publish_recovery.py::test_a_version_that_never_appears_gives_up_at_the_deadline_and_says_so`
 saw 1 poll inside its 0.3 s deadline under the niced full run and passes alone (1.3 s). A timing margin to widen.
 
-**Checked by the lead against 0.35** (644018585, 2026-11-27): A1, A2, A3, A5, A10 done on branch `0.35`; A4 after its suite; A7-A9, A11 nothing. A2 is Hub-only by `proxy_url=""`, which never reads the variable (the map's wording above was loose). **A6 corrected**: production's cardio, cancer and pathogenic tables carry no `source_release` column at all (57,756 / 70,808 / 309,394 rows, measured on whale), so the sweep re-derives them whole and RM467 saves nothing there; it goes in a later release. **The order note is moot for production**: November's refusal ran under 0.33.0 and kept nothing, so no held re-derivation exists to lose.
+**Checked by the lead against 0.35** (644018585, 2026-11-27): A1, A2, A3, A5, A10 done on branch `0.35`; A4 after its suite (landed `2d0394c`; 0.35.0 merged `f8c6013`, suite 981 passed, publish asked on desk #471); A7-A9, A11 nothing. A2 is Hub-only by `proxy_url=""`, which never reads the variable (the map's wording above was loose). **A6 corrected**: production's cardio, cancer and pathogenic tables carry no `source_release` column at all (57,756 / 70,808 / 309,394 rows, measured on whale), so the sweep re-derives them whole and RM467 saves nothing there; it goes in a later release. **The order note is moot for production**: November's refusal ran under 0.33.0 and kept nothing, so no held re-derivation exists to lose.
 
 **Order, per box**: the 0.9-floor release reaches a box only after that box's 0.34.3 sweep has finished, since a
 held re-derivation (`services/held.py`) is not reused across enricher releases. Optional on a box that reads
