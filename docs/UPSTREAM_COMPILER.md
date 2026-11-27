@@ -508,6 +508,8 @@ nothing for 0.9's sake and `enrich` with no new argument writes 0.8.10's bytes (
 **The sixth failure is ours and not 0.9's**: `test_publish_recovery.py::test_a_version_that_never_appears_gives_up_at_the_deadline_and_says_so`
 saw 1 poll inside its 0.3 s deadline under the niced full run and passes alone (1.3 s). A timing margin to widen.
 
+**Checked by the lead against 0.35** (644018585, 2026-11-27): A1, A2, A3, A5, A10 done on branch `0.35`; A4 after its suite; A7-A9, A11 nothing. A2 is Hub-only by `proxy_url=""`, which never reads the variable (the map's wording above was loose). **A6 corrected**: production's cardio, cancer and pathogenic tables carry no `source_release` column at all (57,756 / 70,808 / 309,394 rows, measured on whale), so the sweep re-derives them whole and RM467 saves nothing there; it goes in a later release. **The order note is moot for production**: November's refusal ran under 0.33.0 and kept nothing, so no held re-derivation exists to lose.
+
 **Order, per box**: the 0.9-floor release reaches a box only after that box's 0.34.3 sweep has finished, since a
 held re-derivation (`services/held.py`) is not reused across enricher releases. Optional on a box that reads
 remotely: `duckdb` `httpfs` preinstalled (their § 1.2); none of ours reads remotely through the enricher yet.
