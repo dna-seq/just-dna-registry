@@ -19,6 +19,8 @@ upstream's (`just-dna-compiler[compat]`). The shared enrichment bundle fills 0.9
 remote half of a lane's read order, Hugging Face only: a `/hint` lookup reads a lane this box does not hold from
 the lane's published repo. The variant hint passes `routes` through: per lane read remotely, the route, release
 and revision; null when this box's snapshots answered.
+`.env.template` names 0.9's new lane, `ensembl_rsid_index`: built from this box's own Ensembl core, only when
+named (about 42 minutes, 6 GB), with no setting of ours.
 
 ### A lane lookup compares a key the way the lane's own reader does (S36)
 
