@@ -1202,7 +1202,7 @@ converges).
   API-REFERENCE states the rule whichever is chosen. Sizing: **minor** (a stored flag an existing route now resets).
   Severity: low; the same trust signal as S33.
 
-- **A lane lookup compares a key the way upstream's own reader does** (proposed by S36, the just-dna-compiler
+- ✅ **A lane lookup compares a key the way upstream's own reader does** (**built in 0.35.0**, 2026-11-27, the lead: `services/lanes._key_clause` reads `lane_compare`, the reply carries `compares`; proposed by S36, the just-dna-compiler
   liaison for its lead's 0.9 work; **decided by the pm 2026-11-18: the first candidate, in the registry release that
   floors upstream at 0.9**, the enricher included, since `KEY_COMPARES` is the enricher's and not the format's (the
   0.x cuts here move all three tiers together); the same coordinated cut that brings remote lane reads through RM430). Why the first:

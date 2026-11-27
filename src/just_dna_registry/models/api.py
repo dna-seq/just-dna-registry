@@ -1828,6 +1828,15 @@ class VariantHintReport(BaseModel):
     rsid_candidates: list[str] = Field(default_factory=list)
     populations: list[dict] = Field(default_factory=list)
     clin_sig: list[dict] = Field(default_factory=list)
+    routes: dict[str, dict] | None = Field(
+        default=None,
+        description=(
+            "Per lane this box does not hold and read from Hugging Face instead (enricher 0.9): "
+            "`route` (`hf`), `release` (the label at the commit read), `revision` (that commit), "
+            "`served_from` and `release_unreadable` (null on this route). Null when no lane was read "
+            "remotely, which is every offline lookup and every lookup this box's snapshots answered."
+        ),
+    )
     pubmind: list[dict] = Field(
         default_factory=list,
         description=(

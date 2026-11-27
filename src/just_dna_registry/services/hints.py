@@ -34,7 +34,7 @@ bound and the field says so.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -310,6 +310,13 @@ def run_variant(
             "ambiguous": hint.ambiguous,
             "findings": _findings(hint, scrub),
             "alterations": _alterations(hint, scrub),
+            # Enricher 0.9 (RM430): per lane answered remotely, the route (`hf`; never `proxy`, since the
+            # bundle's holder asks no proxy), its release label and Hub revision. No path: a lane read
+            # from this box's disk is in `snapshots`, which is never serialized.
+            "routes": (
+                {lane: asdict(route) for lane, route in hint.routes.items()}
+                if hint.routes is not None else None
+            ),
         },
         charges=charges,
         served_from=scrub.served_from(hint.checked),

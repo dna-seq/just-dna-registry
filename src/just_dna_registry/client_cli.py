@@ -880,6 +880,8 @@ def lane_rows(
     typer.secho(f"{len(found['rows'])} row(s) from {found['served_from']}{note}", fg=typer.colors.GREEN, err=True)
     if (said := _lane_release_line(found)) is not None:
         typer.secho(said, fg=typer.colors.GREEN, err=True)
+    for column, how in (found.get("compares") or {}).items():
+        typer.secho(f"{column}: compared {how}", fg=typer.colors.GREEN, err=True)
     for line in _lane_terms_lines(found):
         typer.secho(line, fg=typer.colors.YELLOW, err=True)
 

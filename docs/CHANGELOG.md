@@ -6,6 +6,30 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.35.0] — unreleased
+
+**Client surface:** unchanged. `GET /hint/variant` and `POST /hint/variants` answer one new field, `routes`.
+
+### Upstream 0.9, all three tiers
+
+All three floors move to `>=0.9.0`, a coordinated cut: the enricher imports a function new in format 0.9. Nothing
+a compiled module carries moved, and upstream's release record measures every axis unmoved, so `registry upgrade`
+recompiles nothing for 0.9's sake (the 0.8.10 sweep of 0.34.3 is still the one to run). The `compat` extra is now
+upstream's (`just-dna-compiler[compat]`). The shared enrichment bundle fills 0.9's new `snapshots` member, the
+remote half of a lane's read order, Hugging Face only: a `/hint` lookup reads a lane this box does not hold from
+the lane's published repo. The variant hint passes `routes` through: per lane read remotely, the route, release
+and revision; null when this box's snapshots answered.
+`.env.template` names 0.9's new lane, `ensembl_rsid_index`: built from this box's own Ensembl core, only when
+named (about 42 minutes, 6 GB), with no setting of ours.
+
+### A lane lookup compares a key the way the lane's own reader does (S36)
+
+`POST /lanes/{lane}/{table}` compared every cell exactly, so `cyp2c9` missed `CYP2C9` and `CYP2C9` missed a
+ClinPGx row for `CYP2C9;CYP4F2`, and the short answer said nothing. Each key column now follows the enricher's
+declared compare (`key_compare.KEY_COMPARES`, read, never copied): genes fold where the lane's reader folds them,
+`;`-joined cells match by member where it splits them, rsID keys are read as rsIDs. The reply's new `compares`
+says per key column which compare ran, and `registry-client lane-rows` prints it.
+
 ## [0.34.4] — 2026-11-26
 
 **Client surface:** unchanged.
