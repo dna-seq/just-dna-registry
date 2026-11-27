@@ -487,14 +487,35 @@ Upstream's lead asked both liaisons to try their branch `0.10` at `992e85b1` bef
 (644035415; versions still read 0.9.0). Probed in `.worktrees/probe-upstream-0.10-992e85b1`: main at `b83ce89`
 (0.35.0), the three packages pointed at `992e85b1` by a `[tool.uv.sources]` block that is never committed, plus
 targeted calls. Filed **S163-S165** (uncommitted in their inbox) and answered in their thread (644037290). Upstream's lead takes S163 as
-a real RM468 defect, to be fixed on 0.10 before its first review round (644037365). The full
-suite result goes below once it ends.
+a real RM468 defect, to be fixed on 0.10 before its first review round (644037365).
+
+**Full suite on `992e85b1`: 981 passed, 1 failed, 10 skipped**, niced, 2 h 3 min. The one failure is the probe's and
+not 0.10's: `test_deploy.py::test_a_folder_that_is_not_a_clone_runs_from_pypi_on_the_releases_own_lock` reads `uv
+export`'s `name==version` pins, and a git-sourced package exports as `name @ git+...`, so `just-dna-enricher` has no
+`==` line (`KeyError`). It passes once the floors name a published 0.10. No `live-answers.sqlite3` appeared under the
+cache base or `~/.cache`, so nothing in our suite wrote to the store. The `test_publish_recovery` timing flake did not
+fire this time.
+
+**Upstream's answers** (their triage 644038106 and 644041579, their lead 644050847; built on `0.10` at `d23fd638`,
+their merged suite 8473 passed, not probed here):
+- **S163 fixed**: outside an `answer_run` each client call gets a run of its own, so the release is probed per call.
+  `LookupClients(answer_store=...)` (keyword-only: a store, a path, `False` or `None`) carries a host's store to every
+  `lookup.*` entry point, and `answer_run(...)` is now public (ENRICHER.md) for one probe per batch. So `/hint` no
+  longer waits: `shared_lookup_clients()` passes our configured store.
+- **S164**: unchanged, the 0.10.0 record is written at the cut and will state RM385 and RM460. No row names the
+  enricher that wrote it, and neither producer survives a gap-fill; each `resolution.csv` row carries `fetched_at`,
+  so with a record of which enricher ran when, the oldest `fetched_at` gives `from_release`. Until a stamp exists,
+  pass the oldest enricher version the catalog knows wrote the table.
+- **S165**: `SequenceProxy.contig_identity()` / `FastaReference.contig_identity()` answer per GRCh38 primary contig
+  (`bound`, `digest_mismatch`, `absent`, with name, expected accession and digest; a seqrepo source answers `None`).
+  NCBI's `GCF_000001405.40_GRCh38.p14_genomic.fna.gz`, unpacked and indexed, binds all 25 (RefSeq names mapped, 393 s
+  for the first pass); UCSC hg38 binds the same 10 as Ensembl.
 
 | # | Item | What it does to us | State |
 |---|---|---|---|
-| B1 | **RM468** answer store (our S162): live answers in a per-host SQLite under the cache base, **on by default** | `enrich()` opens a run per call and takes `answer_store=`. Our `/hint` lookups use the shared bundle outside any run, so each client's own run keeps its **first** release label for the life of the process (measured: 116 stays 116 after 117; v0.9.0 asked every time), and nothing but the environment or `.env` tells those clients where the store is | **S163**. Adoption: pass a configured `answer_store=` on every `enrich()` call (a setting of ours, never ambient), and fence the suite as upstream fences theirs (`JUST_DNA_ANSWER_STORE=""` autouse, their `enricher/tests/conftest.py`); on this box the default store is the shared cache base's `live-answers.sqlite3`. `/hint` waits on S163 |
+| B1 | **RM468** answer store (our S162): live answers in a per-host SQLite under the cache base, **on by default** | `enrich()` opens a run per call and takes `answer_store=`. Our `/hint` lookups use the shared bundle outside any run, so each client's own run keeps its **first** release label for the life of the process (measured: 116 stays 116 after 117; v0.9.0 asked every time), and nothing but the environment or `.env` tells those clients where the store is | **S163**. Adoption: pass a configured `answer_store=` on every `enrich()` call (a setting of ours, never ambient), and fence the suite as upstream fences theirs (`JUST_DNA_ANSWER_STORE=""` autouse, their `enricher/tests/conftest.py`); on this box the default store is the shared cache base's `live-answers.sqlite3`. S163 fixed at `d23fd638`: `/hint` passes the same store through `LookupClients(answer_store=...)` |
 | B2 | **RM399/RM441** `derivation_records.needs_rederive(old, new, table)`, three-valued, offline (our S156, S161) | Answers what our sweep's `declared_correction` arm probes by hand, and more: 0.8.4 to 0.9.0 names RM438 **and RM448**, which our probe never saw | **S164**: no `0.10.0` record on the branch yet (every span ending at 0.10.0 reads `None`; upstream's lead, 644037365: written at the cut by design, a test fails the cut without it, so this holds only on the unreleased branch), and which version a host should pass as `from_release` (we read `verification.json`'s `producer`; whether a gap-fill moves it is unmeasured). Adoption: replace the RM438 arm with the record, `None` staying *cannot say* |
-| B3 | **RM385** `SequenceProxy(uri="fasta+file://...")` reads a local GRCh38 FASTA offline, binding per contig by digest (our S132, S157) | Could lift our indel hold (`needs_online_rederive`) offline. On this box's Ensembl primary assembly 10 of 25 contigs bind (4, 5, 8, 11, 14, 15, 18, 19, 20, MT), as upstream says; the first read digested the file in ~155 s niced and wrote `<fasta>.refget.json` beside it | **S165** asks for a structured per-contig answer and the name of a FASTA that binds all 25. Adoption: a sequence-URI setting passed as `sequences=`, and the hold decided per contig |
+| B3 | **RM385** `SequenceProxy(uri="fasta+file://...")` reads a local GRCh38 FASTA offline, binding per contig by digest (our S132, S157) | Could lift our indel hold (`needs_online_rederive`) offline. On this box's Ensembl primary assembly 10 of 25 contigs bind (4, 5, 8, 11, 14, 15, 18, 19, 20, MT), as upstream says; the first read digested the file in ~155 s niced and wrote `<fasta>.refget.json` beside it | **S165** answered: `contig_identity()` per contig, and NCBI's RefSeq p14 FASTA binds all 25. Adoption: a sequence-URI setting passed as `sequences=`, and the hold decided per contig |
 | B4 | **RM435** `StudyRow.effect_direction` (increase/decrease of the trait, not clinical direction); a studies parquet column and manifest counts | `services/claims.py` projects direction from the weights table only, so it never reaches the conflict marker, as upstream intends | Nothing beyond the floor, pending the suite and the 0.10.0 record |
 | B5 | **RM460** `rsid_genotype_reads_as_two_events` on mirrored-site fills | New warning codes; we read codes by member, and the sweep's type table counts an unnamed code as `other` | Nothing beyond the floor, pending the suite |
 | B6 | **Old-reader break**: RM435 and RM460 add warning codes, so a format reader older than 0.10 refuses a manifest naming them | Server, `registry-client` and console move together | A coordinated minor, as 0.8 and 0.9 were |
