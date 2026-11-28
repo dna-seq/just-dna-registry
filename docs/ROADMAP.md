@@ -1063,6 +1063,33 @@ this patch, reports as current. The five modules the liaison named come back fla
 dry run, which is read-only. A second dry run right after an `--apply` reports none of them (it
 converges).
 
+## Next — upstream 0.10 adoption: re-derivation reads its reference sequence locally (decided 2026-11-28, the person; the lead)
+
+**Why.** A re-derivation of the three ClinVar-scale modules (production's cardio, cancer and pathogenic, about 438k
+rows between them) spends almost all its time reading reference sequence, one HTTP read at a time, from the public
+seqrepo REST service upstream defaults to (`services.genomicmedlab.org`), about 6 reads a second. Measured from the
+production runs' logs (`data/runs/*-upgrade/run.log`, logger `ga4gh.vrs.dataproxy`): on 2026-11-11 the 21 other
+modules finished in 28 minutes and the three took about 30 h (pathogenic alone ~22 h); on 2026-11-17, with the
+reference-allele check off, 13.5 h (pathogenic ~10 h). Neither whale `.env` turns that check off, so a whale sweep would
+be the 30 h kind. The person: "37 hours, this is still unacceptably long ... It is a scaling blocker", then "we need
+full ofline mode for that in registry. With our own fa copy etc. ... holding a few dozen gb more is an accepteable
+tradeoff for avoiding 13 hr runs", then "the full ofline ships in 0.10 so withold upgrade".
+
+**What.**
+- `unattended` Adopt upstream 0.10's offline reference sequence: provision the local reference copy through
+  `warm-caches` (as a lane if 0.10 registers one; read `CACHE_LANES` first), and hand every `enrich()` path (publish,
+  `/check`, `registry upgrade`, the proxy passes) the one shared local sequence source, including our shared
+  `EnsemblResolver`'s anchor reads (0.9 had no public parameter for that: check 0.10 has one, else file it).
+- Done means: a re-derivation reads no sequence over the network (a run's log has no `ga4gh.vrs.dataproxy`
+  `Fetching https://` line; a test with the socket tripwire armed), and pathogenic's re-derivation is timed on whale
+  before the sweep is run, the number written here.
+- Probed 2026-11-28: `biocommons.seqrepo` 0.6.11 (pysam 0.24.1) installs and imports on Python 3.14, isolated.
+
+**The sweep is withheld on both boxes until this ships** (the person, 2026-11-28). Both serve 0.35.0. Dry runs that
+day: production 21 would upgrade, cardio, cancer and pathogenic held `needs_online`; the polygon 48 of 48 would
+upgrade, no re-derivation (both carry RM449/RM453's declared corrections over every version compiled before 0.8.10,
+plus the 0.9 contract gap). Superhuman 2.4.2 (desk #354) waits with it.
+
 ## Next registry version (post-0.11)
 
 - ✅ **A lane lookup's answer carries its lane's terms** (**shipped in 0.32.0, published 2026-11-16**; proposed by S29, just-module-creator, 2026-11-12;
