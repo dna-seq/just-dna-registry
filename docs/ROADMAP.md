@@ -1084,6 +1084,13 @@ tradeoff for avoiding 13 hr runs", then "the full ofline ships in 0.10 so withol
   `Fetching https://` line; a test with the socket tripwire armed), and pathogenic's re-derivation is timed on whale
   before the sweep is run, the number written here.
 - Probed 2026-11-28: `biocommons.seqrepo` 0.6.11 (pysam 0.24.1) installs and imports on Python 3.14, isolated.
+- Upstream 0.10 as read by the liaison (d23fd638, 2026-11-28): a sequence source can be `fasta+file://` (it writes a
+  `.refget.json` beside the FASTA on first read; NCBI's GRCh38.p14 `GCF_000001405.40` binds all 25 sequences, first
+  read 393 s) or `seqrepo+file://`. **No lane**: provisioning is ours (a setting plus a `warm-caches` step), unless
+  0.10 registers one. **Two remote defaults remain**, filed upstream as their S166: a caller's `EnsemblResolver` (ours,
+  shared) reads indel anchors remotely whatever `sequences=` says, and `civic_draft` (our `/drafts`) takes no
+  `sequences=`. An offline re-derive never asks the resolver, so the gap bites only `--online`, which the three held
+  modules need: adopt once S166 is answered, or hold the three and run the rest offline.
 
 **The sweep is withheld on both boxes until this ships** (the person, 2026-11-28). Both serve 0.35.0. Dry runs that
 day: production 21 would upgrade, cardio, cancer and pathogenic held `needs_online`; the polygon 48 of 48 would
