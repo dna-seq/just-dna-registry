@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from just_dna_registry import cli
@@ -61,14 +62,20 @@ class _Server:
         if str(request.url) == f"{FOLDER}/md5checksums.txt":
             return httpx.Response(200, text=f"0000  ./README.txt\n{self.md5}  ./{NAME}.gz\n")
         assert str(request.url) == URL
+        assert request.headers.get("accept-encoding") == "identity"  # offsets and md5 are over wire bytes
         asked = request.headers.get("range")
         self.ranges.append(asked)
         if self.cut_first_at is not None and len(self.ranges) == 1:
             return httpx.Response(200, stream=_Cut(PACKED[: self.cut_first_at]))
         if asked:
             start = int(asked.removeprefix("bytes=").rstrip("-"))
-            return httpx.Response(206, content=PACKED[start:])
-        return httpx.Response(200, content=PACKED)
+            return httpx.Response(206, stream=httpx.ByteStream(PACKED[start:]))
+        return httpx.Response(200, stream=httpx.ByteStream(PACKED))
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ref, "RETRY_DELAYS", (0.0,) * len(ref.RETRY_DELAYS))
 
 
 def _client(server: _Server) -> httpx.Client:
@@ -81,16 +88,24 @@ def test_path_follows_the_setting_then_the_cache_base_then_nothing(tmp_path: Pat
     assert ref.reference_state(_settings(tmp_path)).state == "not_configured"
 
     monkeypatch.setenv(ref.CACHE_BASE_VAR, str(tmp_path / "cache"))
-    assert ref.reference_path(_settings(tmp_path)) == tmp_path / "cache" / "reference" / NAME
+    assert ref.reference_path(_settings(tmp_path)) == tmp_path / "cache" / "grch38_reference" / NAME
 
     chosen = tmp_path / "elsewhere" / "grch38.fna"
     assert ref.reference_path(_settings(tmp_path, reference_fasta=chosen)) == chosen
 
 
-def test_a_url_that_is_not_gzipped_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ref.CACHE_BASE_VAR, str(tmp_path / "cache"))
-    with pytest.raises(ref.ReferenceError, match="gzipped"):
-        ref.reference_path(_settings(tmp_path, reference_fasta_url=f"{FOLDER}/plain.fna"))
+@pytest.mark.parametrize("url", [f"{FOLDER}/plain.fna", "ftp://ftp.example.org/x.fna.gz", "x.fna.gz"])
+def test_a_url_that_cannot_name_a_gzipped_fasta_refuses_the_settings(tmp_path: Path, url: str) -> None:
+    """Refused at boot: the scrubber resolves the file's name on every served run log, so a late refusal
+    would be a 500 there rather than a setting to fix."""
+    with pytest.raises(ValidationError, match="reference_fasta_url"):
+        _settings(tmp_path, reference_fasta_url=url)
+
+
+def test_a_relative_setting_is_made_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Upstream's `fasta+file://` URI takes an absolute path only."""
+    monkeypatch.chdir(tmp_path)
+    assert ref.reference_path(_settings(tmp_path, reference_fasta=Path("ref/x.fna"))) == tmp_path / "ref" / "x.fna"
 
 
 def test_provisioning_downloads_checks_and_unpacks(tmp_path: Path) -> None:
@@ -121,7 +136,7 @@ def test_a_download_whose_md5_disagrees_is_removed_and_nothing_reads_as_a_fasta(
     target = tmp_path / "ref" / NAME
     settings = _settings(tmp_path, reference_fasta=target)
 
-    with pytest.raises(ref.ReferenceError, match="md5"):
+    with pytest.raises(ref.ReferenceFastaError, match="md5"):
         ref.provision_reference(settings, lambda _: None, client=_client(_Server(md5="0" * 32)))
 
     assert not target.exists()
@@ -161,7 +176,7 @@ def test_a_present_fasta_is_left_alone_and_asks_nothing(tmp_path: Path) -> None:
 
 def test_a_second_provisioning_of_the_same_file_is_refused_while_one_runs(tmp_path: Path) -> None:
     target = tmp_path / "ref" / NAME
-    with ref._exclusive(target), pytest.raises(ref.ReferenceError, match="another provisioning"):
+    with ref._exclusive(target), pytest.raises(ref.ReferenceFastaError, match="another provisioning"):
         ref.provision_reference(_settings(tmp_path, reference_fasta=target), lambda _: None, client=_client(_Server()))
 
 
@@ -184,7 +199,7 @@ def test_the_dry_run_lists_the_reference_under_its_own_heading_and_asks_for_appl
     code, out = _warm(tmp_path, monkeypatch)
     assert code == 1
     assert out.index("lanes:") < out.index("reference:")
-    assert f"✗ {tmp_path / 'cache' / 'reference' / NAME}: not provisioned" in out
+    assert f"✗ {tmp_path / 'cache' / 'grch38_reference' / NAME}: not provisioned" in out
     assert "The reference FASTA to provision" in out
 
     code, out = _warm(tmp_path, monkeypatch, "--no-reference")
@@ -201,9 +216,11 @@ def test_apply_provisions_the_reference_and_the_next_dry_run_finds_it(
     code, out = _warm(tmp_path, monkeypatch, "--apply")
 
     assert code == 0, out
-    target = tmp_path / "cache" / "reference" / NAME
+    target = tmp_path / "cache" / "grch38_reference" / NAME
     assert target.read_bytes() == FASTA
-    assert f"✓ reference: {target}" in out
+    # No green over a file upstream's reader would refuse: with no index it is downloaded, not usable.
+    assert f"– reference: downloaded to {target}, not usable yet" in out
+    assert "✓ reference" not in out
     # Unindexed until the index is written (upstream S167), so the next dry run still says what is missing.
     code, out = _warm(tmp_path, monkeypatch)
     assert f"✗ {target}: no {NAME}.fai beside it" in out

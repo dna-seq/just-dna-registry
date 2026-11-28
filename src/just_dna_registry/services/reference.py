@@ -31,6 +31,7 @@ import gzip
 import hashlib
 import os
 import shutil
+import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -44,8 +45,9 @@ from just_dna_registry.config import Settings
 #: The variable every enricher lane's default directory sits under (upstream's `CACHE_BASE_VAR`). Read as a
 #: literal, as `PathScrubber` does, because this module must not import the enricher tier.
 CACHE_BASE_VAR = "JUST_DNA_PIPELINES_CACHE_DIR"
-#: The directory under the cache base that holds the reference, beside the lanes.
-REFERENCE_SUBDIR = "reference"
+#: The directory under the cache base that holds the reference, beside the lanes' own. Its own name: a bare
+#: `reference/` is what people already use by hand for assorted genomes (one box holds eleven entries there).
+REFERENCE_SUBDIR = "grch38_reference"
 #: NCBI publishes one checksum file per assembly folder, naming each file as `./<name>`.
 CHECKSUM_FILE = "md5checksums.txt"
 
@@ -53,10 +55,11 @@ CHECKSUM_FILE = "md5checksums.txt"
 REFERENCE_STATES: tuple[str, ...] = ("not_configured", "absent", "partial", "unindexed", "indexed")
 
 _CHUNK = 16 * 1024 * 1024
-_ATTEMPTS = 5
+#: Seconds to wait before each retry, so a short outage does not spend every attempt at once.
+RETRY_DELAYS: tuple[float, ...] = (5.0, 15.0, 30.0, 60.0)
 
 
-class ReferenceError(RuntimeError):
+class ReferenceFastaError(RuntimeError):
     """Provisioning could not finish; the message says which step and what is left on disk."""
 
 
@@ -74,21 +77,18 @@ class ReferenceState:
 
 
 def reference_name(url: str) -> str:
-    """The unpacked file's name: the download's last path segment without `.gz`."""
-    name = Path(urlsplit(url).path).name
-    if not name.endswith(".gz"):
-        raise ReferenceError(f"expected a gzipped FASTA at {url}")
-    return name.removesuffix(".gz")
+    """The unpacked file's name: the download's last path segment without `.gz` (`Settings` checks the suffix)."""
+    return Path(urlsplit(url).path).name.removesuffix(".gz")
 
 
 def reference_path(settings: Settings) -> Path | None:
     """The configured FASTA path, else the one under the shared cache base, else `None`."""
     if settings.reference_fasta is not None:
-        return settings.reference_fasta.expanduser()
+        return settings.reference_fasta.expanduser().absolute()  # a fasta+file:// URI takes an absolute path
     base = os.environ.get(CACHE_BASE_VAR)
     if not base:
         return None
-    return Path(base).expanduser() / REFERENCE_SUBDIR / reference_name(settings.reference_fasta_url)
+    return Path(base).expanduser().absolute() / REFERENCE_SUBDIR / reference_name(settings.reference_fasta_url)
 
 
 def _gz(path: Path) -> Path:
@@ -132,7 +132,7 @@ def _exclusive(path: Path) -> Generator[None]:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise ReferenceError(f"another provisioning of {path.name} is running (it holds {lock.name})") from exc
+            raise ReferenceFastaError(f"another provisioning of {path.name} is running (it holds {lock.name})") from exc
         try:
             yield
         finally:
@@ -148,34 +148,41 @@ def expected_md5(client: httpx.Client, url: str) -> str:
         digest, _, listed = line.strip().partition("  ")
         if listed in (f"./{name}", name):
             return digest.lower()
-    raise ReferenceError(f"{CHECKSUM_FILE} beside {url} lists no {name}, so the download cannot be checked")
+    raise ReferenceFastaError(f"{CHECKSUM_FILE} beside {url} lists no {name}, so the download cannot be checked")
 
 
 def download(client: httpx.Client, url: str, target: Path, echo: Callable[[str], None]) -> None:
-    """Fetch `url` into `target`, resuming a partial `.part` across attempts, then rename it into place."""
+    """Fetch `url` into `target`, resuming a partial `.part` across attempts, then rename it into place.
+
+    Raw bytes with `Accept-Encoding: identity`: the resume offset and NCBI's md5 are both over the bytes on the
+    wire, so nothing may decode them on the way to disk. Written as they arrive, since a chunker drops whatever
+    it holds when the connection is cut.
+    """
     part = _part(target)
-    last: Exception | None = None
-    for attempt in range(1, _ATTEMPTS + 1):
+    attempts = len(RETRY_DELAYS) + 1
+    for attempt in range(1, attempts + 1):
         have = part.stat().st_size if part.exists() else 0
-        headers = {"Range": f"bytes={have}-"} if have else {}
+        headers = {"Accept-Encoding": "identity"} | ({"Range": f"bytes={have}-"} if have else {})
         try:
             with client.stream("GET", url, headers=headers) as response:
                 if response.status_code == 416 and have:
                     break  # the partial file already holds every byte
                 response.raise_for_status()
                 resumed = response.status_code == 206
-                mode = "ab" if resumed else "wb"
                 if have and not resumed:
                     echo(f"  · {url} did not honour the resume; starting over")
-                with part.open(mode) as handle:
-                    for chunk in response.iter_bytes():  # as received: a chunker would drop its buffer on a cut
+                with part.open("ab" if resumed else "wb") as handle:
+                    for chunk in response.iter_raw():
                         handle.write(chunk)
             break
         except httpx.HTTPError as exc:
-            last = exc
-            echo(f"  · download attempt {attempt} of {_ATTEMPTS} stopped ({type(exc).__name__}); resuming")
-    else:
-        raise ReferenceError(f"could not download {url} in {_ATTEMPTS} attempts: {last}; {part.name} is kept")
+            if attempt == attempts:
+                raise ReferenceFastaError(
+                    f"could not download {url} in {attempts} attempts: {exc}; {part.name} is kept"
+                ) from exc
+            delay = RETRY_DELAYS[attempt - 1]
+            echo(f"  · download attempt {attempt} of {attempts} stopped ({type(exc).__name__}); resuming in {delay:g}s")
+            time.sleep(delay)
     part.replace(target)
 
 
@@ -222,7 +229,7 @@ def provision_reference(
                 got = _md5(gz)
                 if got != want:
                     gz.unlink()
-                    raise ReferenceError(f"{gz.name}: md5 {got}, NCBI lists {want}; the download was removed")
+                    raise ReferenceFastaError(f"{gz.name}: md5 {got}, NCBI lists {want}; the download was removed")
                 echo(f"  · md5 matches NCBI's ({want}); unpacking")
                 unpack(gz, path)
                 gz.unlink()

@@ -1936,7 +1936,7 @@ def warm_caches(
         repull_left_undone,
     )
     from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes
-    from just_dna_registry.services.reference import ReferenceError, provision_reference, reference_state
+    from just_dna_registry.services.reference import ReferenceFastaError, provision_reference, reference_state
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
     # `huggingface_hub` reads `HF_TOKEN` and knows nothing of the `REGISTRY_` prefix, and the two
@@ -2124,11 +2124,18 @@ def warm_caches(
     if ref_todo:
         try:
             done = provision_reference(settings, typer.echo)
-        except (ReferenceError, httpx.HTTPError, OSError) as exc:
+        except (ReferenceFastaError, httpx.HTTPError, OSError) as exc:
             typer.secho(f"✗ reference: FAILED — {exc}", fg=typer.colors.RED, err=True)
             reference_failures = 1
         else:
-            typer.secho(f"✓ reference: {done.path} — {done.detail}", fg=typer.colors.GREEN)
+            if done.state == "indexed":
+                typer.secho(f"✓ reference: {done.path} — {done.detail}", fg=typer.colors.GREEN)
+            else:
+                # Green only for a file upstream's reader opens: one with no index is downloaded, not usable.
+                typer.secho(
+                    f"– reference: downloaded to {done.path}, not usable yet — {done.detail}",
+                    fg=typer.colors.YELLOW,
+                )
 
     # **After the report, before the provisioning.** The report answers "what would the running
     # server find", which is this deployment's own resolvers; the provisioning happens inside the

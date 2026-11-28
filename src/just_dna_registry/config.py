@@ -9,6 +9,7 @@ nothing is hardcoded elsewhere.
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator
@@ -207,7 +208,7 @@ class Settings(BaseSettings):
     # 13-30 hour catalog sweep (2026-11-11, 2026-11-17). Upstream reads an uncompressed, indexed FASTA
     # instead, and the file is ours to provision: `registry warm-caches` downloads it from
     # `reference_fasta_url`, checks NCBI's md5 and unpacks it. `None` puts it under the shared cache base
-    # (`$JUST_DNA_PIPELINES_CACHE_DIR/reference/`), and with no base either, no local reference is
+    # (`$JUST_DNA_PIPELINES_CACHE_DIR/grch38_reference/`), and with no base either, no local reference is
     # configured. Only NCBI's RefSeq file binds all 25 GRCh38 primaries by refget digest: Ensembl's
     # primary assembly binds 10 (its ambiguity codes are N), and an unbound contig is withheld, never
     # read remotely (measured on upstream 135eed6d, 2026-11-28).
@@ -591,6 +592,20 @@ class Settings(BaseSettings):
         v = (v or "").strip()
         if not v:
             raise ValueError("test_data_prefix must not be empty (it would match every module)")
+        return v
+
+    @field_validator("reference_fasta_url")
+    @classmethod
+    def _validate_reference_fasta_url(cls, v: str) -> str:
+        """A gzipped FASTA over http(s), refused at boot otherwise.
+
+        The unpacked file is named after the download (its `.gz` stripped), and the path scrubber resolves that
+        name on every served run log, so a URL that cannot name a file would surface as a 500 on `/admin/runs`
+        rather than as a setting to fix.
+        """
+        parts = urlsplit(v)
+        if parts.scheme not in ("http", "https") or not parts.path.endswith(".gz"):
+            raise ValueError(f"reference_fasta_url must be an http(s) URL of a .gz FASTA, got: {v!r}")
         return v
 
     @field_validator("declared_use")
