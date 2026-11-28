@@ -1102,8 +1102,9 @@ tradeoff for avoiding 13 hr runs", then "the full ofline ships in 0.10 so withol
   is withheld (digest mismatch) and never read over HTTP, so the file must bind all 25. The CIViC drafter
   (`draft_panel_from_civic(sequences=)`) was not probed: our `/drafts` test covers it at adoption. Adopt once 0.10 is
   on PyPI.
-- **Built on branch `0.36`, part one** (2f52967, 2026-11-28, pushed): `REGISTRY_REFERENCE_FASTA` (default
-  `$JUST_DNA_PIPELINES_CACHE_DIR/reference/`) and `REGISTRY_REFERENCE_FASTA_URL` (NCBI's RefSeq GRCh38.p14);
+- **Built on branch `0.36`, part one** (2f52967 + 7049c35, 2026-11-28, pushed; a real run from NCBI took 971 s
+  and unpacked a file byte-identical to the one that binds 25 of 25): `REGISTRY_REFERENCE_FASTA` (default
+  `$JUST_DNA_PIPELINES_CACHE_DIR/grch38_reference/`) and `REGISTRY_REFERENCE_FASTA_URL` (NCBI's RefSeq GRCh38.p14);
   `warm-caches` lists it under `reference:` and under `--apply` downloads it with resume (NCBI answers 206), checks
   NCBI's md5, unpacks it, and refuses a second concurrent provisioning; `<reference>` in the path scrubber.
   **Correction:** Ensembl's primary assembly binds 10 of 25, not 25 (the liaison, `contig_identity()` on 135eed6d;
