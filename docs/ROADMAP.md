@@ -1091,6 +1091,11 @@ tradeoff for avoiding 13 hr runs", then "the full ofline ships in 0.10 so withol
   shared) reads indel anchors remotely whatever `sequences=` says, and `civic_draft` (our `/drafts`) takes no
   `sequences=`. An offline re-derive never asks the resolver, so the gap bites only `--online`, which the three held
   modules need: adopt once S166 is answered, or hold the three and run the rest offline.
+- **S166 taken into 0.10** (2026-11-28, upstream's lead): `EnsemblResolver(sequences=)` public and used by the anchor
+  reader, `civic_draft(sequences=)`. The reference file stays ours to provision for 0.10 (NCBI `GCF_000001405.40`);
+  a lane may come in a later minor. The liaison checks the commit for zero seqrepo HTTP reads. So the registry side
+  is: `REGISTRY_REFERENCE_FASTA` (or the like), a `warm-caches` step that fetches it and does the first read, and one
+  shared sequence source handed to `enrich()`, our shared resolver and `/drafts`.
 
 **The sweep is withheld on both boxes until this ships** (the person, 2026-11-28). Both serve 0.35.0. Dry runs that
 day: production 21 would upgrade, cardio, cancer and pathogenic held `needs_online`; the polygon 48 of 48 would
