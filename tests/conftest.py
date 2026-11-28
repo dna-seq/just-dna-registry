@@ -81,6 +81,14 @@ def _make_manifest(
     return manifest, files
 
 
+@pytest.fixture(autouse=True)
+def _no_reference_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may fetch the 1 GB reference FASTA (0.36): a developer's `.env` usually sets the cache base,
+    so a `warm-caches --apply` that forgot `--no-reference` would download it into their real cache. An
+    `.invalid` host fails at once instead. `tests/test_reference.py` passes its own URL to a stub."""
+    monkeypatch.setenv("REGISTRY_REFERENCE_FASTA_URL", "https://reference.invalid/GCF_test_genomic.fna.gz")
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(

@@ -1850,6 +1850,11 @@ def warm_caches(
             "REGISTRY_DECLARED_USE."
         ),
     ),
+    reference: bool = typer.Option(
+        True, "--reference/--no-reference",
+        help="The local GRCh38 reference FASTA a re-derivation reads sequence from (about 1 GB to "
+             "download, 3.3 GB unpacked)",
+    ),
     apply: bool = typer.Option(False, "--apply/--dry-run"),
 ) -> None:
     """Provision the reference snapshots enrichment needs.
@@ -1904,6 +1909,11 @@ def warm_caches(
     terms are accepted when the data is *taken*, so `unstated` skips them and `commercial` refuses.
     Checked before the fetch, never after: refusing means nothing was taken, which is the whole point
     of gating at acquisition. Ensembl, ClinVar and gnomAD never ask.
+
+    **The reference FASTA is not a lane** (0.36, `services/reference.py`): upstream reads it through a URI
+    rather than a lane, so it is listed under its own heading and provisioned here, from NCBI, with NCBI's
+    md5 checked before it is unpacked. `--no-reference` leaves it out. Present is not ready: which of its
+    contigs bind is read on its first use, and a contig that does not bind is withheld, never fetched.
     """
     settings = get_settings()
     from just_dna_registry.lane_tags import reader_tag
@@ -1926,6 +1936,7 @@ def warm_caches(
         repull_left_undone,
     )
     from just_dna_registry.services.lane_readers import lane_readers, proxy_lanes
+    from just_dna_registry.services.reference import ReferenceError, provision_reference, reference_state
 
     # `create_app` does this at boot, and this command runs without one. It matters most here:
     # `huggingface_hub` reads `HF_TOKEN` and knows nothing of the `REGISTRY_` prefix, and the two
@@ -2068,7 +2079,20 @@ def warm_caches(
                 fg=typer.colors.YELLOW,
             )
 
-    if not missing and not stale and (not hub_check or not apply):
+    ref_state = reference_state(settings)
+    ref_todo = reference and ref_state.state in ("absent", "partial")
+    typer.secho("reference:", bold=True)
+    where = ref_state.path if ref_state.path is not None else "-"
+    if ref_state.state == "indexed":
+        typer.echo(f"  ✓ {where}: {ref_state.detail}")
+    elif ref_state.state == "not_configured":
+        typer.echo(f"  – {ref_state.detail}")
+    elif not reference:
+        typer.echo(f"  – {where}: {ref_state.detail} (--no-reference)")
+    else:
+        typer.secho(f"  ✗ {where}: {ref_state.detail}", fg=typer.colors.YELLOW)
+
+    if not missing and not stale and not ref_todo and (not hub_check or not apply):
         typer.secho("\nEvery selected lane is present.", fg=typer.colors.GREEN)
         if hub_check:
             typer.echo(
@@ -2092,7 +2116,19 @@ def warm_caches(
                 f"\n{len(hub_check)} present pulled lane(s) --apply also compares with the hub's release: "
                 f"{', '.join(hub_check)}."
             )
+        if ref_todo:
+            typer.echo("\nThe reference FASTA to provision: re-run with --apply (about 1 GB download).")
         raise typer.Exit(code=1)
+
+    reference_failures = 0
+    if ref_todo:
+        try:
+            done = provision_reference(settings, typer.echo)
+        except (ReferenceError, httpx.HTTPError, OSError) as exc:
+            typer.secho(f"✗ reference: FAILED — {exc}", fg=typer.colors.RED, err=True)
+            reference_failures = 1
+        else:
+            typer.secho(f"✓ reference: {done.path} — {done.detail}", fg=typer.colors.GREEN)
 
     # **After the report, before the provisioning.** The report answers "what would the running
     # server find", which is this deployment's own resolvers; the provisioning happens inside the
@@ -2101,7 +2137,7 @@ def warm_caches(
     for var, value in sorted(export_lane_locations(settings).items()):
         typer.echo(f"  · {var}={value}")
 
-    rebuild_failures = 0
+    rebuild_failures = reference_failures
     for name in stale:
         built, detail = rebuild_derived_lane(settings, ages[name])
         if built is True:
@@ -2198,7 +2234,7 @@ def warm_caches(
 
     if failures:
         typer.secho(
-            f"\n{failures} lane(s) could not be provisioned. The rest are usable — a missing "
+            f"\n{failures} lane(s) or the reference could not be provisioned. The rest are usable — a missing "
             f"resolution snapshot degrades publishing, a missing PGx or ACMG one skips a check leg.",
             fg=typer.colors.YELLOW,
         )

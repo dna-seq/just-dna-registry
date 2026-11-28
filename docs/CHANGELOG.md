@@ -6,6 +6,24 @@ All notable changes to **just-dna-registry**. Format follows
 Full API: [API-REFERENCE.md](API-REFERENCE.md) · client: [CLIENT.md](CLIENT.md) · plan:
 [ROADMAP.md](ROADMAP.md).
 
+## [0.36.0] — unreleased
+
+**Client surface:** unchanged.
+
+### `warm-caches` provisions the local reference FASTA (upstream 0.10, first part)
+
+A re-derivation that left-aligns an indel or checks a reference allele read its sequence one HTTP request at a
+time from the public seqrepo service, which was most of a 13-30 hour catalog sweep. Upstream 0.10 reads an
+uncompressed, indexed FASTA instead and leaves the file to the host. `registry warm-caches` now lists it under its
+own `reference:` heading and, under `--apply`, downloads NCBI's RefSeq GRCh38.p14 FASTA
+(`REGISTRY_REFERENCE_FASTA_URL`), checks it against NCBI's published md5, and unpacks it to
+`REGISTRY_REFERENCE_FASTA`, or by default `$JUST_DNA_PIPELINES_CACHE_DIR/reference/` (about 1 GB to download, 3.3 GB
+unpacked). A dropped download resumes; a wrong md5 removes the download; two instances sharing one cache base
+cannot provision it at once. `--no-reference` leaves it out. Only NCBI's file binds all 25 GRCh38 primaries:
+Ensembl's primary assembly binds 10. Run logs served to site admins name its folder `<reference>`.
+Still to come in this release: the `.fai` index (asked upstream as their S167), the first read that binds the
+contigs, and handing the file to every enrichment path once 0.10 is on PyPI.
+
 ## [0.35.0] — unreleased
 
 **Client surface:** unchanged. `GET /hint/variant` and `POST /hint/variants` answer one new field, `routes`.

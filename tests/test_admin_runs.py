@@ -141,6 +141,16 @@ def test_a_held_dir_set_apart_is_named_as_held(settings: Settings, tmp_path: Pat
     assert str(tmp_path) not in scrub(line)
 
 
+def test_the_reference_fasta_folder_is_named_as_the_reference(settings: Settings, tmp_path: Path) -> None:
+    """The reference FASTA (0.36) may be set apart from the cache base, and a run that provisioned or read
+    it names it in its log."""
+    fasta = tmp_path / "kept-apart" / "GCF_X_genomic.fna"
+    scrub = PathScrubber(settings.model_copy(update={"reference_fasta": fasta}))
+    line = f"✓ reference: {fasta} — indexed"
+    assert scrub(line) == "✓ reference: <reference>/GCF_X_genomic.fna — indexed"
+    assert str(tmp_path) not in scrub(line)
+
+
 def test_a_real_upgrade_dry_run_keeps_its_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REGISTRY_DB_PATH", str(tmp_path / "registry.db"))
     monkeypatch.setenv("REGISTRY_LOCAL_STORAGE_DIR", str(tmp_path / "artifacts"))

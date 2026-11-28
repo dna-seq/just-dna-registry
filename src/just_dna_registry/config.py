@@ -201,6 +201,22 @@ class Settings(BaseSettings):
     enrich_verify_datasets: bool = False
     enrich_keep_par_twin: bool = False  # record a pseudoautosomal locus once, on X
 
+    # The local GRCh38 reference FASTA (0.36; upstream 0.10's RM385 and our S166). A re-derivation that
+    # left-aligns an indel or checks a reference allele reads sequence, and with no local copy it read it
+    # one HTTP request at a time from the public seqrepo service: about six a second, which is most of a
+    # 13-30 hour catalog sweep (2026-11-11, 2026-11-17). Upstream reads an uncompressed, indexed FASTA
+    # instead, and the file is ours to provision: `registry warm-caches` downloads it from
+    # `reference_fasta_url`, checks NCBI's md5 and unpacks it. `None` puts it under the shared cache base
+    # (`$JUST_DNA_PIPELINES_CACHE_DIR/reference/`), and with no base either, no local reference is
+    # configured. Only NCBI's RefSeq file binds all 25 GRCh38 primaries by refget digest: Ensembl's
+    # primary assembly binds 10 (its ambiguity codes are N), and an unbound contig is withheld, never
+    # read remotely (measured on upstream 135eed6d, 2026-11-28).
+    reference_fasta: Path | None = None
+    reference_fasta_url: str = (
+        "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/"
+        "GCF_000001405.40_GRCh38.p14_genomic.fna.gz"
+    )
+
     # Reference snapshot caches. ALWAYS passed explicitly to the enricher: with no path its
     # `resolve_*_reference()` helpers fall through to $JUST_DNA_ENSEMBL_CACHE /
     # $JUST_DNA_PIPELINES_CACHE_DIR / a platformdirs default, which would make CI and production

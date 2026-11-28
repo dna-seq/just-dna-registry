@@ -36,6 +36,7 @@ from just_dna_registry.maintenance import (
 from just_dna_registry.models.api import RunDetail, RunSummary, RunSweep
 from just_dna_registry.services.cache_drop import lane_directories
 from just_dna_registry.services.held import held_root
+from just_dna_registry.services.reference import reference_path
 
 #: The commands whose runs are served: the ones that call the enricher or provision its snapshots.
 DIAGNOSTIC_COMMANDS: frozenset[str] = frozenset({"upgrade", "replay-upgrade", "revalidate", "warm-caches"})
@@ -63,6 +64,9 @@ class PathScrubber:
         if base:
             roots.append((Path(base), "<cache>"))
         roots += [(where, f"<cache:{name}>") for name, where in lane_directories(settings).items()]
+        fasta = reference_path(settings)  # 0.36: the reference FASTA's folder, outside any lane
+        if fasta is not None:
+            roots.append((fasta.parent, "<reference>"))
         spellings: dict[str, str] = {}
         for path, label in roots:
             for form in {str(path), str(path.resolve())}:

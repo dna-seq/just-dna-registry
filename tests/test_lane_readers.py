@@ -59,7 +59,7 @@ def _warm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> str:
     monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", str(tmp_path / "empty"))
     cli.get_settings.cache_clear()
     try:
-        return CliRunner().invoke(cli.app, ["warm-caches", *args]).output
+        return CliRunner().invoke(cli.app, ["warm-caches", "--no-reference", *args]).output
     finally:
         cli.get_settings.cache_clear()
 

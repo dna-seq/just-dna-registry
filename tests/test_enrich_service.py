@@ -890,7 +890,7 @@ def test_every_lane_the_enricher_knows_is_reported_by_warm_caches(
     monkeypatch.setenv("REGISTRY_DB_PATH", str(tmp_path / "m.db"))
     monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", str(tmp_path / "empty"))
     cli.get_settings.cache_clear()
-    result = CliRunner().invoke(cli.app, ["warm-caches"])
+    result = CliRunner().invoke(cli.app, ["warm-caches", "--no-reference"])
     cli.get_settings.cache_clear()
 
     for name in provisionable_lanes():

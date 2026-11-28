@@ -44,7 +44,7 @@ def _run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ensure, *args: str) ->
     monkeypatch.delenv("JUST_DNA_ENSEMBL_CACHE", raising=False)
     cli.get_settings.cache_clear()
     try:
-        result = CliRunner().invoke(cli.app, ["warm-caches", "--no-clinvar", *args])
+        result = CliRunner().invoke(cli.app, ["warm-caches", "--no-clinvar", "--no-reference", *args])
     finally:
         cli.get_settings.cache_clear()
     return result.exit_code, result.output
