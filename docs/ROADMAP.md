@@ -1102,6 +1102,15 @@ tradeoff for avoiding 13 hr runs", then "the full ofline ships in 0.10 so withol
   is withheld (digest mismatch) and never read over HTTP, so the file must bind all 25. The CIViC drafter
   (`draft_panel_from_civic(sequences=)`) was not probed: our `/drafts` test covers it at adoption. Adopt once 0.10 is
   on PyPI.
+- **Built on branch `0.36`, part one** (2f52967, 2026-11-28, pushed): `REGISTRY_REFERENCE_FASTA` (default
+  `$JUST_DNA_PIPELINES_CACHE_DIR/reference/`) and `REGISTRY_REFERENCE_FASTA_URL` (NCBI's RefSeq GRCh38.p14);
+  `warm-caches` lists it under `reference:` and under `--apply` downloads it with resume (NCBI answers 206), checks
+  NCBI's md5, unpacks it, and refuses a second concurrent provisioning; `<reference>` in the path scrubber.
+  **Correction:** Ensembl's primary assembly binds 10 of 25, not 25 (the liaison, `contig_identity()` on 135eed6d;
+  an earlier count here read the `.refget.json` cache's entries), so the NCBI file is the only one. **Left:** the
+  `.fai` (no tool on our boxes writes one; asked upstream as their S167, else pyfaidx as a server dependency), the
+  first read that binds the contigs, `ready` meaning all 25 bound, and the 0.10 wiring (`enrich()`, the shared
+  resolver, `/drafts`, an `upgrade` pre-check before the first PATCH).
 
 **The sweep is withheld on both boxes until this ships** (the person, 2026-11-28). Both serve 0.35.0. Dry runs that
 day: production 21 would upgrade, cardio, cancer and pathogenic held `needs_online`; the polygon 48 of 48 would
